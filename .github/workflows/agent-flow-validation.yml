@@ -1,0 +1,78 @@
+# CI for the llm-d benchmarking agent: prove the agent drives the RIGHT COMMANDS for each
+# end-to-end flow (kind quickstart, optimized-baseline, teardown, …).
+#
+# The gating job is fully HERMETIC: the flow harness replays each flow's golden transcript
+# through the real agent loop + real allowlist + real approval gating, capturing the
+# commands without spawning anything — so it needs no API key, no Docker, no kind, and not
+# even the llm-d / llm-d-benchmark repos checked out. Fast and deterministic.
+#
+# A second, OPT-IN job runs the *live* eval (a real LLM drives each flow from mock input).
+# It only runs on manual dispatch and never blocks: it needs an API-key secret and is
+# nondeterministic by nature.
+name: agent-flow-validation
+
+on:
+  push:
+    paths:
+      - "llm-d-benchmarking-agent-project/**"
+      - ".github/workflows/agent-flow-validation.yml"
+  pull_request:
+    paths:
+      - "llm-d-benchmarking-agent-project/**"
+      - ".github/workflows/agent-flow-validation.yml"
+  workflow_dispatch:
+    inputs:
+      run_live_eval:
+        description: "Also run the live LLM eval (needs LLM_API_KEY secret)"
+        type: boolean
+        default: false
+
+defaults:
+  run:
+    working-directory: llm-d-benchmarking-agent-project
+
+jobs:
+  flow-validation:
+    name: Flow validation (deterministic, hermetic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # No submodules on purpose — the flow harness is hermetic.
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install (editable + dev extras)
+        run: python -m pip install -e ".[dev]"
+
+      - name: Validate flows (readable summary)
+        run: python scripts/validate_flows.py --show
+
+      - name: Full test suite (gating)
+        # Flow validation + every other test. Tests that need the read-only repos skip
+        # cleanly when the submodules aren't checked out.
+        run: python -m pytest tests/ -v
+
+  live-eval:
+    name: Live LLM eval (opt-in, non-gating)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_eval }}
+    continue-on-error: true   # informational only — never blocks the build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Live eval
+        env:
+          # Provide whichever your provider needs via repo/org secrets.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_EVAL_LIVE: "1"
+        run: python -m pytest tests/flows/test_flows_live.py -v
