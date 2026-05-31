@@ -63,6 +63,24 @@ pip install -e '.[dev]'
 pytest tests/
 ```
 
+## Validate the agent runs the *right commands*
+A **flow-validation harness** proves the agent drives the correct command sequence for
+each end-to-end flow (the kind quickstart, the optimized-baseline guide, teardown,
+benchmarking an already-running stack, dry-run previews, and out-of-policy refusals):
+
+```bash
+make validate        # deterministic & hermetic — no API key, Docker, kind, or repos needed
+make flows           # list the known flows
+make validate-live   # the real LLM drives each flow from natural-language input (needs a key)
+```
+
+It replays each flow through the **real** agent loop + allowlist + approval gating,
+capturing every command without executing anything, and asserts the right commands run
+with correct read-only/mutating gating. This is what
+[`.github/workflows/agent-flow-validation.yml`](../.github/workflows/agent-flow-validation.yml)
+runs on every push/PR. See [`docs/VALIDATION.md`](docs/VALIDATION.md) for the full design
+and how to add a flow.
+
 ## Layout
 | Path | What |
 |---|---|
