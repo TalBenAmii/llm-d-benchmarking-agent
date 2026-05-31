@@ -32,6 +32,28 @@ class ReadRepoDocInput(BaseModel):
     max_bytes: int = Field(default=40_000, ge=1, le=200_000)
 
 
+class FetchKeyDocsInput(BaseModel):
+    task: str | None = Field(
+        default=None,
+        description="Filter to one task's docs (e.g. 'quickstart', 'optimized_baseline'). "
+                    "Omit to fetch every pinned doc.",
+    )
+    max_bytes_each: int = Field(default=20_000, ge=1, le=80_000)
+
+
+class RunCommandInput(BaseModel):
+    argv: list[str] = Field(
+        ...,
+        description="The command as an argv list (NEVER a shell string), e.g. "
+                    "['kind','create','cluster','--name','llmd-quickstart'] or "
+                    "['install_prereqs.sh','--all']. Validated by the deny-by-default "
+                    "allowlist; mutating commands require approval. Prefer a dedicated "
+                    "tool when one exists.",
+        min_length=1,
+    )
+    timeout: float | None = Field(default=None, description="Optional timeout in seconds")
+
+
 class LocateReportInput(BaseModel):
     results_dir: str | None = Field(default=None, description="Explicit results directory, if known")
     session_id: str | None = None

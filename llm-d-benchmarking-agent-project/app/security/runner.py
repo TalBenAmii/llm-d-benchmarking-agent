@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Awaitable, Callable
 
+from app.config import PROJECT_ROOT
+
 # Environment keys allowed through to child processes. Notably EXCLUDES
 # ANTHROPIC_API_KEY / OPENAI_API_KEY and anything else secret.
 _ENV_PASSTHROUGH = (
@@ -41,6 +43,14 @@ class RunResult:
     output: str = ""              # captured stdout+stderr (tail-bounded)
     timed_out: bool = False
     lines: list[str] = field(default_factory=list)
+
+
+def _is_within(child: Path, parent: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
 
 
 class CommandRunner:
@@ -94,6 +104,17 @@ class CommandRunner:
             script = self._resolve_repo_ref(entry["cwd_must_be"]) / runner["script"]
             if not script.exists():
                 raise RunnerError(f"script {script} not found")
+            real = [str(script), *rest]
+        elif invoke == "project-script":
+            # A vetted script shipped with the agent project (e.g. scripts/install_prereqs.sh),
+            # resolved against the project root — not a cloned repo. The allowlist constrains
+            # which script + flags may run; the script's own contents are the only commands it
+            # can execute (the allowlist grants no raw apt-get/curl/sudo).
+            script = (PROJECT_ROOT / runner["script"]).resolve()
+            if not _is_within(script, PROJECT_ROOT.resolve()):
+                raise RunnerError(f"project script {runner['script']!r} escapes the project root")
+            if not script.exists():
+                raise RunnerError(f"project script {script} not found")
             real = [str(script), *rest]
         else:
             which = shutil.which(exe)

@@ -11,10 +11,12 @@ security sandbox, asking for your approval before anything that changes your sys
 
 > **Status: MVP implemented & verified (2026-05-31).** The end-to-end vertical works —
 > chat UI → agent loop → schema-validated, approval-gated tools → real `llmdbenchmark`
-> execution → validated Benchmark Report summary. **44 tests pass.** The supported path is
+> execution → validated Benchmark Report summary. **100 tests pass.** The supported path is
 > the `llm-d-benchmark` *quickstart* (local [kind](https://kind.sigs.k8s.io/) cluster,
-> CPU-only simulated engine). A live LLM session needs an API key in `.env`; GPU / `llm-d`
-> guide deploys, DoE sweeps, and multi-harness A/B come later. See
+> CPU-only simulated engine). The agent can bootstrap the host end-to-end — install the
+> prerequisites `install.sh` doesn't (Docker + the kind binary, via a vetted installer),
+> create/delete the kind cluster, then deploy and benchmark — each step approval-gated. A
+> live LLM session needs an API key in `.env`; GPU / `llm-d` guide deploys come later. See
 > [`plan.md`](plan.md#implementation-status) for the full status.
 
 ## Design in one line
@@ -26,12 +28,16 @@ editable knowledge files under [`knowledge/`](knowledge/). Reliability comes fro
 
 ## How it stays safe
 - **Deny-by-default allowlist** ([`security/allowlist.yaml`](security/allowlist.yaml)): the
-  agent can only run a small, explicit set of commands (`llmdbenchmark`, plus read-only
-  `kubectl`/`kind`/`docker` probes, `git clone` of the llm-d repos, and `install.sh`).
+  agent can only run a small, explicit set of commands — `llmdbenchmark`; read-only
+  `kubectl`/`kind`/`docker` probes; `git clone` of the llm-d repos; `install.sh`;
+  `kind create`/`delete cluster`; and the vetted [`scripts/install_prereqs.sh`](scripts/install_prereqs.sh),
+  which is the *only* way it can install Docker + the kind binary (the allowlist grants no
+  raw `apt`/`curl`/`sudo`; the script is the single reviewed artifact, pinned by name and flags).
 - **No shell, ever.** Commands run as argv lists with `shell=False` — command injection is
   structurally impossible.
 - **Per-action approval.** Read-only probes run automatically; every *mutating* command
-  (standup, run, teardown) shows you the exact command and waits for you to click Approve.
+  (installing Docker/kind, creating/deleting the cluster, standup, run, teardown) shows you
+  the exact command and waits for you to click Approve.
 - **Secrets stay server-side.** Your LLM API key never reaches the browser.
 
 ## The four determinism gates

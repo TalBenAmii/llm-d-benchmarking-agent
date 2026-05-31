@@ -12,16 +12,18 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
-from app.tools import compare, config_artifact, execute, plan, probe, repos
+from app.tools import command, compare, config_artifact, execute, plan, probe, repos
 from app.tools.context import ToolContext
 from app.tools.schemas import (
     CompareReportsInput,
     EnsureReposInput,
     ExecuteInput,
+    FetchKeyDocsInput,
     ListCatalogInput,
     LocateReportInput,
     ProbeEnvironmentInput,
     ReadRepoDocInput,
+    RunCommandInput,
     RunSetupInput,
     WriteConfigInput,
 )
@@ -51,6 +53,21 @@ _DESCRIPTIONS = {
     "read_repo_doc": (
         "Read a documentation or spec file from inside the (read-only) repos, e.g. the "
         "quickstart guide. Use to confirm the authoritative flow/flags before acting."
+    ),
+    "fetch_key_docs": (
+        "Fetch the LIVE content of the authoritative docs pinned in knowledge/key_docs.yaml "
+        "(filter by task, e.g. 'quickstart'). The list of docs is fixed; content is read "
+        "fresh from the clone. Read-only. Call this to ground yourself in the real procedure "
+        "BEFORE proposing a deployment SessionPlan."
+    ),
+    "run_command": (
+        "Run an allowlisted CLI command given as an argv list (e.g. ['kind','create',"
+        "'cluster','--name','llmd-quickstart'] or ['install_prereqs.sh','--all']). The "
+        "deny-by-default allowlist validates it; read-only commands auto-run, mutating ones "
+        "need approval. Use for allowlisted commands without a dedicated tool — notably "
+        "creating/deleting the kind cluster and installing the prerequisites (Docker + kind) "
+        "via install_prereqs.sh. Prefer the dedicated tools (execute_llmdbenchmark, "
+        "ensure_repos, run_setup) when one fits."
     ),
     "propose_session_plan": (
         "Propose a structured SessionPlan (use case, spec, namespace, harness, workload, "
@@ -97,11 +114,13 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("probe_environment", _DESCRIPTIONS["probe_environment"], ProbeEnvironmentInput, probe.probe_environment),
         ToolSpec("list_catalog", _DESCRIPTIONS["list_catalog"], ListCatalogInput, probe.list_catalog),
         ToolSpec("read_repo_doc", _DESCRIPTIONS["read_repo_doc"], ReadRepoDocInput, probe.read_repo_doc),
+        ToolSpec("fetch_key_docs", _DESCRIPTIONS["fetch_key_docs"], FetchKeyDocsInput, probe.fetch_key_docs),
         ToolSpec("propose_session_plan", _DESCRIPTIONS["propose_session_plan"], SessionPlan, plan.propose_session_plan),
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),
         ToolSpec("run_setup", _DESCRIPTIONS["run_setup"], RunSetupInput, repos.run_setup),
         ToolSpec("write_and_validate_config", _DESCRIPTIONS["write_and_validate_config"], WriteConfigInput, config_artifact.write_and_validate_config),
         ToolSpec("execute_llmdbenchmark", _DESCRIPTIONS["execute_llmdbenchmark"], ExecuteInput, execute.execute_llmdbenchmark),
+        ToolSpec("run_command", _DESCRIPTIONS["run_command"], RunCommandInput, command.run_command),
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, probe.locate_and_parse_report),
         ToolSpec("compare_reports", _DESCRIPTIONS["compare_reports"], CompareReportsInput, compare.compare_reports),
     ]

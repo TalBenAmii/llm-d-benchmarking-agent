@@ -63,11 +63,15 @@ Drive the `llm-d-benchmark` quickstart (local kind cluster, CPU-only sim) end-to
 probe → ensure repo → `install.sh --uv` → `standup --spec cicd/kind` → `smoketest` →
 `run -l inference-perf -w sanity_random.yaml` → parse report → summarize → offer teardown.
 
-**Status:** the full vertical is built and `pytest tests/` passes (44 tests). A real LLM
+**Status:** the full vertical is built and `pytest tests/` passes (100 tests). A real LLM
 session needs an API key in `.env` (only the fake-provider loop is exercised in tests).
-GPU/`llm-d/guides/*` deploys, DoE sweeps, and multi-harness A/B are deferred. The 9 agent
-tools live in `app/tools/`; the loop is `app/agent/loop.py`; the policy is
-`security/allowlist.yaml`. See `plan.md` → "Implementation status" for the full record.
+GPU/`llm-d/guides/*` deploys are deferred. The agent owns host bootstrap: it installs the
+prerequisites `install.sh` does NOT (the Docker daemon + the kind binary) via the vetted
+`scripts/install_prereqs.sh`, creates/deletes the kind cluster (`kind create/delete
+cluster`), and runs any allowlisted command through the generic `run_command` tool — all
+approval-gated, and all widened purely via `security/allowlist.yaml` (no per-command
+Python). The 12 agent tools live in `app/tools/`; the loop is `app/agent/loop.py`; the
+policy is `security/allowlist.yaml`. See `plan.md` → "Implementation status" for the record.
 
 ## Run locally
 ```bash

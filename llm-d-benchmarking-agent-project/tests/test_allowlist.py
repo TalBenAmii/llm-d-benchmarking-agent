@@ -82,6 +82,31 @@ def test_install_sh_uv_allowed(allowlist):
     assert d.allowed and d.mode == MUTATING
 
 
+def test_kind_create_cluster_allowed_and_mutating(allowlist):
+    d = allowlist.validate(["kind", "create", "cluster", "--name", "llmd-quickstart"])
+    assert d.allowed and d.mode == MUTATING and d.requires_approval
+
+
+def test_kind_create_cluster_with_wait_allowed(allowlist):
+    d = allowlist.validate(["kind", "create", "cluster", "--name", "llmd-quickstart", "--wait", "120s"])
+    assert d.allowed and d.mode == MUTATING
+
+
+def test_kind_delete_cluster_allowed(allowlist):
+    d = allowlist.validate(["kind", "delete", "cluster", "--name", "llmd-quickstart"])
+    assert d.allowed and d.mode == MUTATING
+
+
+def test_install_prereqs_allowed_and_mutating(allowlist):
+    d = allowlist.validate(["install_prereqs.sh", "--all"])
+    assert d.allowed and d.mode == MUTATING and d.requires_approval
+
+
+def test_install_prereqs_kind_version_allowed(allowlist):
+    d = allowlist.validate(["install_prereqs.sh", "--kind", "--kind-version", "v0.31.0"])
+    assert d.allowed and d.mode == MUTATING
+
+
 # ---- denials --------------------------------------------------------------
 
 def test_unknown_executable_denied(allowlist):
@@ -150,3 +175,27 @@ def test_unexpected_positional_denied(allowlist):
 
 def test_flag_missing_value_denied(allowlist, catalog):
     assert not allowlist.validate(["llmdbenchmark", "--spec", "cicd/kind", "standup", "-p"], catalog=catalog).allowed
+
+
+def test_kind_create_bad_cluster_name_denied(allowlist):
+    # uppercase / underscore violate the cluster_name constraint
+    assert not allowlist.validate(["kind", "create", "cluster", "--name", "Bad_Name"]).allowed
+
+
+def test_kind_create_wrong_positional_denied(allowlist):
+    # only the literal 'cluster' positional is allowed
+    assert not allowlist.validate(["kind", "create", "node"]).allowed
+
+
+def test_kind_unknown_subcommand_denied(allowlist):
+    assert not allowlist.validate(["kind", "load", "docker-image", "x"]).allowed
+
+
+def test_install_prereqs_unknown_flag_denied(allowlist):
+    # only the pinned flags are allowed — no arbitrary args reach the script
+    assert not allowlist.validate(["install_prereqs.sh", "--rm-rf"]).allowed
+
+
+def test_install_prereqs_bad_kind_version_denied(allowlist):
+    # kind_version must look like vX.Y.Z
+    assert not allowlist.validate(["install_prereqs.sh", "--kind", "--kind-version", "latest; rm -rf /"]).allowed

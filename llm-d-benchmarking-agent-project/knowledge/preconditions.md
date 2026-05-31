@@ -4,13 +4,27 @@ Always call `probe_environment` before proposing a plan or doing anything. Read 
 structured result and reason about it — do not assume.
 
 ## What the signals mean
-- `container_runtime.daemon_up == false` → the user must start Docker/Podman. If
+- `container_runtime.daemon_up == false` → Docker/Podman is installed but not running. If
   `socket_permission_error == true`, it's a permissions issue (docker group / rootless),
-  not a "down" daemon. Explain the fix; never try `sudo` — it's not allowlisted.
+  not a "down" daemon — explain the fix. To (re)start the Docker daemon you may run
+  `run_command argv=["install_prereqs.sh","--docker"]` (it skips the install if docker is
+  already present and just tries to start it); on WSL/Docker-Desktop it may still need to
+  be started manually. Never run raw `sudo` — only the pinned `install_prereqs.sh` is
+  allowlisted.
 - `repos.<name>.present == false` → clone with `ensure_repos` before anything else.
 - `tools.<x> == false` → that tool is missing from PATH. `run_setup` (install.sh) installs
-  most of them; for a container runtime the user must install it themselves.
+  most of them (kubectl, helm, helmfile, jq, yq, kustomize, skopeo, crane, and uv→Python
+  3.11). It does NOT install `docker` or `kind` — but you can, with the vetted installer:
+  - `tools.docker == false` (and no podman) → install Docker Engine with
+    `run_command argv=["install_prereqs.sh","--docker"]` (mutating; needs root or
+    passwordless sudo). Relay any warning the installer prints (e.g. daemon couldn't
+    auto-start, or the user must re-login for docker-group membership).
+  - `tools.kind == false` → install the kind binary with
+    `run_command argv=["install_prereqs.sh","--kind"]` (combine as `--docker --kind` or
+    `--all` to do both at once).
 - `venv.exists == false` → run `run_setup` before any `llmdbenchmark` command.
+- `kind_clusters.clusters` empty (but `kind` is present) → no local cluster yet. For the
+  quickstart, create one yourself: `run_command argv=["kind","create","cluster","--name","llmd-quickstart"]`.
 - `kind_clusters.clusters` non-empty → a local cluster exists; it may host a stack.
 - `kube_context` / `cluster_info.reachable` → whether kubectl can talk to a cluster.
 
