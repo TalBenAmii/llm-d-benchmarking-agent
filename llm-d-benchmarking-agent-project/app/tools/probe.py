@@ -9,6 +9,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from app.tools.context import ToolContext, ToolError
 from app.validation.report import load_report, summarize_report, validate_report
 
@@ -182,6 +184,50 @@ def read_repo_doc(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) -> di
         "path": str(resolved),
         "content": data[:max_bytes],
         "truncated": truncated,
+    }
+
+
+def fetch_key_docs(
+    ctx: ToolContext,
+    *,
+    task: str | None = None,
+    max_bytes_each: int = 20_000,
+) -> dict[str, Any]:
+    """Fetch the LIVE content of the authoritative repo docs pinned in
+    knowledge/key_docs.yaml (optionally filtered to one task, e.g. 'quickstart').
+
+    The *list* of docs is hard-coded (in key_docs.yaml); the *content* is read live from
+    the cloned repos, so it is never a stale vendored copy. Read-only. Call this before
+    proposing a deployment plan so the flow/flags come from the real procedure."""
+    kfile = ctx.settings.knowledge_dir / "key_docs.yaml"
+    if not kfile.is_file():
+        return {"docs": [], "note": f"key_docs.yaml not found at {kfile}"}
+    try:
+        spec = yaml.safe_load(kfile.read_text()) or {}
+    except yaml.YAMLError as exc:
+        raise ToolError(f"key_docs.yaml is not valid YAML: {exc}")
+
+    entries = spec.get("docs", []) if isinstance(spec, dict) else []
+    if task:
+        entries = [e for e in entries if e.get("task") == task]
+
+    fetched: list[dict[str, Any]] = []
+    for entry in entries:
+        rel = entry.get("path", "")
+        item: dict[str, Any] = {"path": rel, "task": entry.get("task"), "why": entry.get("why")}
+        try:
+            doc = read_repo_doc(ctx, path=rel, max_bytes=max_bytes_each)
+            item.update(found=True, resolved=doc["path"], content=doc["content"], truncated=doc["truncated"])
+        except ToolError as exc:
+            item.update(found=False, reason=str(exc))
+        fetched.append(item)
+
+    available = sorted({e.get("task") for e in spec.get("docs", []) if isinstance(e, dict) and e.get("task")})
+    return {
+        "task": task,
+        "available_tasks": available,
+        "docs": fetched,
+        "found_count": sum(1 for d in fetched if d.get("found")),
     }
 
 

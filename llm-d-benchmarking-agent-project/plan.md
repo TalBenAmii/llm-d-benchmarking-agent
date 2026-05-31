@@ -1,9 +1,17 @@
 # Plan: llm-d Benchmarking Assistant Agent
 
 > **Status — MVP implemented & verified (2026-05-31).** All planned steps below are done;
-> 44 tests pass. See **[Implementation status](#implementation-status)** for what was built,
+> 100 tests pass. See **[Implementation status](#implementation-status)** for what was built,
 > how it was verified, and what remains. The sections after that are the original design
 > reference (kept as written).
+>
+> **Increment — agent-owned host bootstrap.** The agent now installs the prerequisites
+> `install.sh` does not (the Docker daemon + the kind binary) via the vetted
+> `scripts/install_prereqs.sh`, creates/deletes the kind cluster (`kind create/delete
+> cluster`), and reaches any allowlisted command through a generic `run_command` tool plus
+> a `fetch_key_docs` doc-grounding tool — all approval-gated and widened purely through
+> `security/allowlist.yaml` (the `project-script` runner invoke type runs the pinned
+> installer; the allowlist grants no raw `apt`/`curl`/`sudo`).
 
 ## Implementation status
 

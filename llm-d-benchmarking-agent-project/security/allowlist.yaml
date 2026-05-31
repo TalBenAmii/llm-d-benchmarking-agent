@@ -34,6 +34,27 @@
 #
 # Every token is additionally screened for shell metacharacters (defense in depth,
 # even though commands run with shell=False).
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# HOW TO ADD A NEW COMMAND (this is the ONLY file you edit to widen the agent)
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Add an entry under `executables:`.
+#      • Simple tool (no subcommand) → set `flat: true` + `mode:` + `flags:`/`positionals:`.
+#      • Tool with subcommands (git, kubectl, kind, llmdbenchmark) → add under `subcommands:`.
+#      • A vetted project-local script → `flat: true` + `runner: { invoke: project-script,
+#        script: <repo-relative path> }` (resolved against the agent project root).
+# 2. Constrain every value a user/LLM could influence: attach `value: {enum|regex|ref|
+#    ref_catalog}` to each flag/positional. Reuse or add a named entry under
+#    `value_constraints:` (refer to it with `{ ref: <name> }`).
+# 3. Pick the mode: `read_only` (auto-runs, no prompt) or `mutating` (requires the user to
+#    click Approve). If a *flag* makes an otherwise-mutating command safe to preview
+#    (e.g. `--dry-run`), mark that flag `read_only_trigger: true`.
+# 4. That's it — NO Python change. The agent reaches any allowlisted command through the
+#    generic `run_command` tool, and the pure validator (app/security/allowlist.py) and
+#    runner already handle the rest. Add a test case in tests/test_allowlist.py.
+# Worked examples: the `kind create cluster` / `kind delete cluster` subcommands and the
+# `install_prereqs.sh` script below were each added with nothing more than the lines you
+# see here — no new Python.
 
 version: 1
 default: deny
@@ -53,6 +74,9 @@ value_constraints:
     enum: [ns, namespace, namespaces, po, pod, pods, svc, service, services,
            deploy, deployment, deployments, ep, endpoints, events, nodes, node]
   git_ref:         { regex: "^[A-Za-z0-9._/-]+$" }
+  cluster_name:    { regex: "^[a-z0-9]([-a-z0-9]{0,40}[a-z0-9])?$" }   # kind cluster name
+  duration:        { regex: "^[0-9]+(s|m|h)?$" }                       # e.g. 120s, 5m
+  kind_version:    { regex: "^v[0-9]+\\.[0-9]+\\.[0-9]+$" }            # e.g. v0.31.0
 
 executables:
 
@@ -73,6 +97,21 @@ executables:
     subcommands:
       get: { mode: read_only, positionals: [ { value: { enum: [clusters, nodes] } } ] }
       version: { mode: read_only }
+      # The agent creates/deletes the local kind cluster itself (the upstream quickstart
+      # makes this a manual prereq; we let the agent do it, gated by approval).
+      create:
+        mode: mutating
+        positionals: [ { value: { enum: [cluster] } } ]
+        flags:
+          "--name": { takes_value: true, value: { ref: cluster_name } }
+          "--wait": { takes_value: true, value: { ref: duration } }
+          "-q": {}
+          "--quiet": {}
+      delete:
+        mode: mutating
+        positionals: [ { value: { enum: [cluster] } } ]
+        flags:
+          "--name": { takes_value: true, value: { ref: cluster_name } }
 
   kubectl:
     subcommands:
@@ -125,6 +164,25 @@ executables:
       "--no-uv": {}
       "-y": {}
       "noreset": {}
+      "-h": {}
+      "--help": {}
+
+  # Vetted, project-local prerequisite installer. install.sh (above) installs the
+  # framework toolchain (kubectl/helm/jq/…) but NOT the Docker daemon or the kind binary;
+  # this script does exactly that and nothing else. The agent invokes it via run_command
+  # (mutating → approval). The *only* commands it can run are the ones pinned inside the
+  # script — the allowlist does NOT grant raw apt-get/curl/sudo. Resolved against the
+  # agent project root by the runner's `project-script` invoke type.
+  install_prereqs.sh:
+    flat: true
+    mode: mutating
+    runner: { invoke: "project-script", script: "scripts/install_prereqs.sh" }
+    flags:
+      "--docker": {}
+      "--kind": {}
+      "--kubectl": {}
+      "--all": {}
+      "--kind-version": { takes_value: true, value: { ref: kind_version } }
       "-h": {}
       "--help": {}
 

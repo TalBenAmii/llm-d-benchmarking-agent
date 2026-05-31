@@ -1,0 +1,34 @@
+# Authoritative repo docs the agent must ground itself in — POINTERS, not copies.
+#
+# We hard-code WHICH files matter; the content is always fetched LIVE from the cloned
+# repos (via the `fetch_key_docs` tool, which reuses read_repo_doc). That keeps us from
+# vendoring a stale copy while still guaranteeing the agent reads the real procedure.
+#
+# Paths are repo-relative as "<repo-name>/<path>". Missing files are reported, not fatal
+# (the repo may not be cloned yet, or a guide may not exist on this checkout).
+#
+# To add context for a new task: add an entry under the matching `task:` and re-run.
+# No code change — `fetch_key_docs(task=...)` reads whatever is listed here.
+
+docs:
+  # The default, MVP-supported path. The agent MUST read these before proposing a
+  # SessionPlan for a kind deployment.
+  - path: llm-d-benchmark/docs/quickstart.md
+    task: quickstart
+    why: >
+      Canonical kind quickstart: exact prereqs, the manual-vs-automated steps, the
+      install.sh -> standup -> smoketest -> run -> teardown flow, and troubleshooting.
+  - path: llm-d-benchmark/config/scenarios/cicd/kind.yaml
+    task: quickstart
+    why: >
+      The cicd/kind scenario itself — model (facebook/opt-125m via inference-sim),
+      CPU-only sizing, namespace expectations, and the inference-perf/sanity_random harness.
+
+  # Real (GPU) deploys via guides — deferred, but read these when the user heads here so
+  # expectations and prerequisites are grounded in the actual guide.
+  - path: llm-d/guides/optimized-baseline/README.md
+    task: optimized_baseline
+    why: The optimized-baseline guide — what it deploys, prerequisites, and helm/kustomize flow.
+  - path: llm-d-benchmark/config/specification/guides/optimized-baseline.yaml.j2
+    task: optimized_baseline
+    why: The benchmark-side spec that targets the optimized-baseline guide stack.
