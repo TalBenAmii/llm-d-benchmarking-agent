@@ -61,8 +61,9 @@ async def compare_reports(
     reports: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     valid_entries: list[dict[str, Any]] = []
+    valid_orig: list[int] = []  # the input index each valid entry came from
 
-    for label, path in entries:
+    for orig_i, (label, path) in enumerate(entries):
         if path is None:
             skipped.append({"label": label, "reason": "no benchmark report found"})
             continue
@@ -78,6 +79,7 @@ async def compare_reports(
         })
         if validation.valid:
             valid_entries.append({"label": label, "summary": summary})
+            valid_orig.append(orig_i)
         else:
             skipped.append({"label": label, "reason": "report failed schema validation",
                             "errors": validation.errors[:5]})
@@ -90,7 +92,14 @@ async def compare_reports(
             "skipped": skipped,
         }
 
-    base = baseline_index if 0 <= baseline_index < len(valid_entries) else 0
+    # `baseline_index` indexes the inputs the caller passed; map it onto the surviving
+    # valid set so a skipped (missing/invalid) report before it doesn't silently shift
+    # the baseline to a different run. If the requested baseline was itself skipped, fall
+    # back to the first valid run.
+    try:
+        base = valid_orig.index(baseline_index)
+    except ValueError:
+        base = 0
     comparison = compare_summaries(valid_entries, baseline_index=base)
     return {
         "compared": True,

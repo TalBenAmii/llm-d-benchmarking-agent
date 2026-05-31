@@ -14,7 +14,7 @@ import yaml
 
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools import compare
-from app.tools.execute import build_argv
+from app.tools.execute import _result_location, build_argv
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import ExecuteInput
 from app.validation.report import ReportError, compare_summaries, find_reports, load_report
@@ -135,6 +135,40 @@ async def test_compare_reports_dispatch_requires_input(tool_ctx):
     assert out["compared"] is False
 
 
+async def test_compare_reports_baseline_survives_skipped_input(tool_ctx, br_example, tmp_path):
+    """`baseline_index` indexes the inputs; a skipped report *before* it must not shift it."""
+    base = load_report(br_example)
+    b, c = tmp_path / "B", tmp_path / "C"
+    _write_report(b, base, ttft=0.10, out_rate=100.0)
+    _write_report(c, base, ttft=0.40, out_rate=350.0)
+    # input 0 ("A") is missing -> skipped; the caller's baseline is input 1 ("B").
+    out = await compare.compare_reports(
+        tool_ctx,
+        sources=[str(tmp_path / "missing"), str(b), str(c)],
+        labels=["A", "B", "C"],
+        baseline_index=1,
+    )
+    assert out["compared"] is True and out["n"] == 2
+    assert out["baseline"] == "B"                       # not "C" (the old off-by-skip bug)
+    assert [s["label"] for s in out["skipped"]] == ["A"]
+
+
+async def test_compare_reports_baseline_falls_back_when_itself_skipped(tool_ctx, br_example, tmp_path):
+    """If the requested baseline is the one that gets skipped, fall back to the first valid run."""
+    base = load_report(br_example)
+    b, c = tmp_path / "B", tmp_path / "C"
+    _write_report(b, base, 0.1, 100.0)
+    _write_report(c, base, 0.4, 350.0)
+    out = await compare.compare_reports(
+        tool_ctx,
+        sources=[str(b), str(c), str(tmp_path / "missing")],
+        labels=["B", "C", "A"],
+        baseline_index=2,   # "A" is missing
+    )
+    assert out["compared"] is True
+    assert out["baseline"] == "B"                       # first surviving valid run
+
+
 def test_compare_reports_registered():
     assert "compare_reports" in {d["name"] for d in tool_definitions()}
 
@@ -162,6 +196,25 @@ def test_build_argv_run_unaffected_by_experiment_flags():
 def test_execute_schema_accepts_experiment():
     m = ExecuteInput(subcommand="experiment", spec="cicd/kind", flags={"experiments": "exp.yaml"})
     assert m.subcommand == "experiment"
+
+
+def test_result_location_experiment_returns_workspace():
+    """An experiment writes one report per treatment under the anchored workspace, so that
+    dir (not a scraped per-treatment path) is what compare_reports(experiment_dir=...) needs."""
+    flags = {"workspace": "/ws/sess/experiment", "experiments": "exp.yaml"}
+    assert _result_location("experiment", flags, None, "/ws/sess/results") == "/ws/sess/experiment"
+    # a stdout-scraped per-treatment path does NOT override the known experiment workspace
+    assert (
+        _result_location("experiment", flags, "/ws/sess/experiment/t1/results", "/ws/sess/results")
+        == "/ws/sess/experiment"
+    )
+
+
+def test_result_location_run_unchanged():
+    # run: a scraped path wins; otherwise the output dir; nothing without an output dir.
+    assert _result_location("run", {"output": "/o"}, "/scraped/results", "/o") == "/scraped/results"
+    assert _result_location("run", {"output": "/o"}, None, "/o") == "/o"
+    assert _result_location("run", {}, None, "/o") is None
 
 
 # ---- allowlist coverage ----------------------------------------------------

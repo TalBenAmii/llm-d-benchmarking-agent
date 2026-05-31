@@ -112,7 +112,9 @@ async def execute_llmdbenchmark(
         raise ToolError(f"command refused by allowlist: {decision.reason}\n  argv: {' '.join(argv)}")
 
     res = await ctx.run_command(argv, timeout=_TIMEOUTS.get(subcommand, 1800.0))
-    results_dir = _parse_results_dir(res.output) or (str(ctx.workspace / "results") if flags.get("output") else None)
+    results_dir = _result_location(
+        subcommand, flags, _parse_results_dir(res.output), str(ctx.workspace / "results")
+    )
     return {
         "argv": argv,
         "mode": decision.mode,
@@ -131,3 +133,22 @@ def _parse_results_dir(output: str) -> str | None:
     """Best-effort: pull a results directory path out of CLI output."""
     matches = _RESULTS_RE.findall(output or "")
     return matches[-1] if matches else None
+
+
+def _result_location(
+    subcommand: str, flags: dict[str, Any], parsed: str | None, run_output_dir: str
+) -> str | None:
+    """Where the agent can find the report(s) afterwards (this is fed straight into
+    ``compare_reports``).
+
+    A ``run`` writes a single report under its ``-r/--output`` dir. An ``experiment``
+    writes one report *per treatment*: its ``-r/--output`` is the per-treatment
+    destination, so the dir that contains them ALL is the ``--workspace`` we anchored in
+    ``execute_llmdbenchmark``. Returning that workspace lets
+    ``compare_reports(experiment_dir=...)`` recursively discover every treatment's report;
+    a stdout-scraped path (if any) would point at a single treatment's subdir, so it is
+    only a fallback here.
+    """
+    if subcommand == "experiment":
+        return flags.get("workspace") or parsed
+    return parsed or (run_output_dir if flags.get("output") else None)
