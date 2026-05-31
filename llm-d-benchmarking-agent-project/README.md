@@ -41,6 +41,15 @@ editable knowledge files under [`knowledge/`](knowledge/). Reliability comes fro
 4. Results are parsed from the repo's validated **Benchmark Report v0.2**, never from logs.
 
 ## Run it
+The quickest way — `run.sh` sets up the venv, installs the app, ensures a `.env`,
+and starts the server (reads `HOST`/`PORT` from `.env`; defaults to 127.0.0.1:8000):
+```bash
+./run.sh            # then open http://127.0.0.1:8000
+./run.sh --open     # ...and open it in a browser automatically
+# add your ANTHROPIC_API_KEY (or OpenAI-compatible creds) to .env to enable live sessions
+```
+
+Or do it manually:
 ```bash
 cp .env.example .env          # add your ANTHROPIC_API_KEY (or OpenAI-compatible creds)
 pip install -e .              # or: uv pip install -e .
