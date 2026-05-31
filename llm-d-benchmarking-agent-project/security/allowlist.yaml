@@ -44,7 +44,11 @@ value_constraints:
   output_dir:      { regex: "^[A-Za-z0-9._/-]+$" }
   endpoint_url:    { regex: "^https?://[A-Za-z0-9._:/-]+$" }
   output_format:   { enum: [json, yaml, wide, name] }
-  methods:         { enum: [standalone, modelservice, kustomize] }
+  methods:         { enum: [standalone, modelservice, kustomize, fma] }
+  # experiment (DoE) extras:
+  namespaces:      { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(,[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$" }  # one or two (deploy,bench)
+  overrides:       { regex: "^[A-Za-z0-9_.,=:/+-]+$" }   # param=value,param=value
+  positive_int:    { regex: "^[0-9]+$" }
   kubectl_resource:
     enum: [ns, namespace, namespaces, po, pod, pods, svc, service, services,
            deploy, deployment, deployments, ep, endpoints, events, nodes, node]
@@ -178,6 +182,9 @@ executables:
           "--endpoint-url": { takes_value: true, value: { ref: endpoint_url } }
           "-r": { takes_value: true, value: { ref: output_dir } }
           "--output": { takes_value: true, value: { ref: output_dir } }
+          # Sweep workload params (e.g. max-concurrency) across N runs against ONE standup.
+          "-e": { takes_value: true, value: { ref: output_dir } }
+          "--experiments": { takes_value: true, value: { ref: output_dir } }
           "--list-endpoints": { read_only_trigger: true }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
@@ -195,3 +202,32 @@ executables:
         flags:
           "-r": { takes_value: true, value: { ref: output_dir } }
           "--output": { takes_value: true, value: { ref: output_dir } }
+      # DoE sweep: standup+run+teardown for each treatment in the experiments YAML.
+      # Mutating (it deploys); --dry-run/-n previews it. Cloud output stores (gs://, s3://)
+      # are deliberately NOT permitted here — results go to a local dir for the MVP.
+      experiment:
+        mode: mutating
+        flags:
+          "-e": { takes_value: true, value: { ref: output_dir } }
+          "--experiments": { takes_value: true, value: { ref: output_dir } }
+          "-p": { takes_value: true, value: { ref: namespaces } }
+          "--namespace": { takes_value: true, value: { ref: namespaces } }
+          "-l": { takes_value: true, value: { ref_catalog: harnesses } }
+          "--harness": { takes_value: true, value: { ref_catalog: harnesses } }
+          "-w": { takes_value: true, value: { ref_catalog: workloads } }
+          "--workload": { takes_value: true, value: { ref_catalog: workloads } }
+          "-t": { takes_value: true, value: { ref: methods } }
+          "--methods": { takes_value: true, value: { ref: methods } }
+          "-r": { takes_value: true, value: { ref: output_dir } }
+          "--output": { takes_value: true, value: { ref: output_dir } }
+          "-o": { takes_value: true, value: { ref: overrides } }
+          "--overrides": { takes_value: true, value: { ref: overrides } }
+          "-j": { takes_value: true, value: { ref: positive_int } }
+          "--parallelism": { takes_value: true, value: { ref: positive_int } }
+          "--parallel": { takes_value: true, value: { ref: positive_int } }
+          "--wait-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--data-access-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--stop-on-error": {}
+          "--skip-teardown": {}
+          "-n": { read_only_trigger: true }
+          "--dry-run": { read_only_trigger: true }

@@ -13,7 +13,7 @@ def test_tool_definitions_complete():
     expected = {
         "probe_environment", "list_catalog", "read_repo_doc", "propose_session_plan",
         "ensure_repos", "run_setup", "write_and_validate_config",
-        "execute_llmdbenchmark", "locate_and_parse_report",
+        "execute_llmdbenchmark", "locate_and_parse_report", "compare_reports",
     }
     assert names == expected
     for d in defs:

@@ -156,3 +156,157 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     summary["latency"] = {k: v for k, v in summary["latency"].items() if v}
     summary["throughput"] = {k: v for k, v in summary["throughput"].items() if v}
     return summary
+
+
+# ---- multi-report discovery + comparison (sweeps / A-B) -------------------
+
+_REPORT_GLOBS = (
+    "**/benchmark_report_v0.2*.yaml",
+    "**/benchmark_report_v0.2*.yml",
+    "**/benchmark_report_v0.2*.json",
+)
+
+
+def find_reports(roots: list[str | Path], *, newest_only: bool = False) -> list[Path]:
+    """Locate Benchmark Report v0.2 files under the given roots (each a file or dir).
+
+    Returns paths sorted oldest→newest by mtime (stable run order for a sweep). With
+    ``newest_only`` returns just the most recent (the common "one report per run dir" case).
+    """
+    candidates: list[Path] = []
+    for root in roots:
+        p = Path(root)
+        if not p.exists():
+            continue
+        if p.is_file():
+            candidates.append(p)
+            continue
+        for pat in _REPORT_GLOBS:
+            candidates.extend(p.glob(pat))
+    uniq = sorted(set(candidates), key=lambda c: c.stat().st_mtime)
+    if not uniq:
+        return []
+    return [uniq[-1]] if newest_only else uniq
+
+
+# Comparable metrics: (dotted path into a summary, human name, direction).
+# "lower"/"higher" = which way is better; used to pick the winning run per metric.
+_COMPARE_METRICS: tuple[tuple[str, str, str], ...] = (
+    ("latency.ttft", "time to first token", "lower"),
+    ("latency.tpot", "time per output token", "lower"),
+    ("latency.itl", "inter-token latency", "lower"),
+    ("latency.request_latency", "end-to-end request latency", "lower"),
+    ("throughput.output_token_rate", "output token throughput", "higher"),
+    ("throughput.total_token_rate", "total token throughput", "higher"),
+    ("throughput.request_rate", "request throughput", "higher"),
+)
+_COMPARE_SCALARS: tuple[tuple[str, str, str], ...] = (
+    ("success_rate_pct", "success rate", "higher"),
+    ("requests_total", "total requests", "none"),
+)
+_STAT_PREFERENCE = ("mean", "p50", "p90", "p95", "p99")
+
+
+def _dig(summary: dict[str, Any], dotted: str) -> Any:
+    cur: Any = summary
+    for part in dotted.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _stat_value(metric_obj: Any) -> tuple[float | None, str | None, Any]:
+    """From a {units, mean, p50, ...} object, pick a representative stat (prefer mean)."""
+    if not isinstance(metric_obj, dict):
+        return None, None, None
+    for s in _STAT_PREFERENCE:
+        v = metric_obj.get(s)
+        if isinstance(v, (int, float)):
+            return float(v), s, metric_obj.get("units")
+    return None, None, None
+
+
+def _build_metric_row(
+    key: str, name: str, direction: str, stat: str | None, units: Any,
+    labels: list[str], values: list[float | None], baseline_index: int,
+) -> dict[str, Any]:
+    base = values[baseline_index]
+    per_run = []
+    for i, v in enumerate(values):
+        delta_abs = delta_pct = None
+        if v is not None and isinstance(base, (int, float)):
+            delta_abs = round(v - base, 6)
+            delta_pct = round(100.0 * (v - base) / base, 2) if base else None
+        per_run.append({"label": labels[i], "value": v, "delta_abs": delta_abs, "delta_pct": delta_pct})
+    best = None
+    present = [(labels[i], v) for i, v in enumerate(values) if v is not None]
+    if present and direction in ("lower", "higher"):
+        chooser = min if direction == "lower" else max
+        lbl, val = chooser(present, key=lambda t: t[1])
+        best = {"label": lbl, "value": val}
+    return {
+        "key": key, "name": name, "stat": stat, "units": units, "direction": direction,
+        "baseline_value": base, "per_run": per_run, "best": best,
+    }
+
+
+def compare_summaries(entries: list[dict[str, Any]], *, baseline_index: int = 0) -> dict[str, Any]:
+    """Compare N report summaries side by side, computing per-metric deltas vs a baseline.
+
+    ``entries`` is a list of ``{"label": str, "summary": <summarize_report output>}``.
+    Returns a structured comparison (labels, baseline, per-metric rows with deltas and the
+    winning run) plus a short factual headline. Prose is left to the agent; this is the math.
+    """
+    if len(entries) < 2:
+        raise ReportError("need at least two reports to compare")
+    if not 0 <= baseline_index < len(entries):
+        baseline_index = 0
+
+    labels = [e.get("label") or f"run{i + 1}" for i, e in enumerate(entries)]
+    summaries = [e.get("summary") or {} for e in entries]
+    rows: list[dict[str, Any]] = []
+
+    for dotted, name, direction in _COMPARE_METRICS:
+        values: list[float | None] = []
+        stat_used: str | None = None
+        units: Any = None
+        for s in summaries:
+            v, stat, u = _stat_value(_dig(s, dotted))
+            values.append(v)
+            if v is not None:
+                stat_used = stat_used or stat
+                units = units if units is not None else u
+        if sum(v is not None for v in values) < 2:
+            continue  # nothing to compare for this metric
+        rows.append(_build_metric_row(dotted, name, direction, stat_used, units, labels, values, baseline_index))
+
+    for dotted, name, direction in _COMPARE_SCALARS:
+        raw = [_dig(s, dotted) for s in summaries]
+        values = [float(v) if isinstance(v, (int, float)) else None for v in raw]
+        if sum(v is not None for v in values) < 2:
+            continue
+        rows.append(_build_metric_row(dotted, name, direction, "value", None, labels, values, baseline_index))
+
+    return {
+        "labels": labels,
+        "baseline": labels[baseline_index],
+        "entry_meta": [
+            {"label": labels[i], "model": s.get("model"),
+             "run_uid": s.get("run_uid"), "duration": s.get("duration")}
+            for i, s in enumerate(summaries)
+        ],
+        "metrics": rows,
+        "headline": _comparison_headline(rows, labels, baseline_index),
+    }
+
+
+def _comparison_headline(rows: list[dict[str, Any]], labels: list[str], baseline_index: int) -> str:
+    wins = [
+        f"best {r['name']}: {r['best']['label']} "
+        f"({r['best']['value']}{(' ' + str(r['units'])) if r.get('units') else ''})"
+        for r in rows
+        if r.get("best") and r["direction"] in ("lower", "higher")
+    ]
+    head = f"Compared {len(labels)} runs (baseline: {labels[baseline_index]})."
+    return f"{head} " + "; ".join(wins) + "." if wins else f"{head} No overlapping metrics to compare."

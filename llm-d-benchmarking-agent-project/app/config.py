@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +40,15 @@ class Settings(BaseSettings):
 
     # Optional secret, only for real (non-sim) gated models
     hf_token: str | None = None
+
+    @field_validator("repos_dir", "workspace_dir", mode="before")
+    @classmethod
+    def _blank_is_none(cls, v: object) -> object:
+        # An empty env var (e.g. ``REPOS_DIR=``) means "unset" (use the default),
+        # not ``Path('.')`` which would resolve repos to the current directory.
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
 
     # Server
     host: str = "127.0.0.1"

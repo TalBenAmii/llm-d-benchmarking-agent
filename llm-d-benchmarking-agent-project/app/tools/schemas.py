@@ -54,13 +54,37 @@ class WriteConfigInput(BaseModel):
 
 
 class ExecuteInput(BaseModel):
-    subcommand: Literal["plan", "standup", "smoketest", "run", "teardown", "results"]
+    subcommand: Literal["plan", "standup", "smoketest", "run", "teardown", "results", "experiment"]
     spec: str | None = Field(default=None, description="Spec name from the catalog, e.g. 'cicd/kind'")
     namespace: str | None = None
-    harness: str | None = Field(default=None, description="run only")
-    workload: str | None = Field(default=None, description="run only")
+    harness: str | None = Field(default=None, description="run/experiment only")
+    workload: str | None = Field(default=None, description="run/experiment only")
     flags: dict[str, Any] | None = Field(
         default=None,
-        description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, endpoint_url}",
+        description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "
+                    "endpoint_url}. For subcommand='experiment' (a DoE sweep over a treatments "
+                    "file): {experiments (path to the experiment YAML), workspace (dir for "
+                    "outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, skip_teardown}.",
     )
     extra: list[str] | None = None
+
+
+class CompareReportsInput(BaseModel):
+    sources: list[str] | None = Field(
+        default=None,
+        description="2+ report files OR run directories to compare; each directory uses its "
+                    "newest Benchmark Report. Use for an A/B of separate runs.",
+    )
+    experiment_dir: str | None = Field(
+        default=None,
+        description="A directory to scan for ALL Benchmark Reports under it (e.g. a DoE "
+                    "experiment output/workspace dir). Use instead of `sources` for a sweep.",
+    )
+    labels: list[str] | None = Field(
+        default=None,
+        description="Optional human labels parallel to `sources` (e.g. ['concurrency=1','concurrency=16']).",
+    )
+    baseline_index: int = Field(
+        default=0, ge=0,
+        description="Index of the baseline run (deltas are computed relative to it).",
+    )

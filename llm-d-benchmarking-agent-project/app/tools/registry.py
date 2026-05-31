@@ -12,9 +12,10 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
-from app.tools import config_artifact, execute, plan, probe, repos
+from app.tools import compare, config_artifact, execute, plan, probe, repos
 from app.tools.context import ToolContext
 from app.tools.schemas import (
+    CompareReportsInput,
     EnsureReposInput,
     ExecuteInput,
     ListCatalogInput,
@@ -71,13 +72,22 @@ _DESCRIPTIONS = {
     ),
     "execute_llmdbenchmark": (
         "Run the llmdbenchmark CLI: subcommand is one of plan/standup/smoketest/run/"
-        "teardown/results. plan and --dry-run/--list-endpoints are read-only and auto-run; "
-        "standup/run/teardown are mutating and require approval. Results from a 'run' are "
-        "written into the session workspace."
+        "teardown/results/experiment. plan and --dry-run/--list-endpoints are read-only and "
+        "auto-run; standup/run/teardown/experiment are mutating and require approval. "
+        "'experiment' runs a full DoE sweep (standup+run+teardown per treatment) over an "
+        "experiment YAML you pass via flags.experiments; its per-treatment reports land in "
+        "the session workspace. Results from a 'run' are written into the session workspace too."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "
         "repo schema, and return a plain-language metric summary. Read-only. Use after a run."
+    ),
+    "compare_reports": (
+        "Compare 2+ Benchmark Reports side by side (an A/B of separate runs, or every "
+        "report from a DoE 'experiment' sweep) and return per-metric deltas vs a baseline "
+        "plus the winning run for each metric (latency: lower is better; throughput: higher). "
+        "Read-only. Pass `sources` (run dirs/files, with optional `labels`) OR `experiment_dir` "
+        "(scans for all reports under it). Use after a sweep or to compare two configurations."
     ),
 }
 
@@ -93,6 +103,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("write_and_validate_config", _DESCRIPTIONS["write_and_validate_config"], WriteConfigInput, config_artifact.write_and_validate_config),
         ToolSpec("execute_llmdbenchmark", _DESCRIPTIONS["execute_llmdbenchmark"], ExecuteInput, execute.execute_llmdbenchmark),
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, probe.locate_and_parse_report),
+        ToolSpec("compare_reports", _DESCRIPTIONS["compare_reports"], CompareReportsInput, compare.compare_reports),
     ]
     return {s.name: s for s in specs}
 

@@ -11,9 +11,10 @@ from typing import Any
 
 from app.tools.context import ToolContext, ToolError
 
-_SUBCOMMANDS = {"plan", "standup", "smoketest", "run", "teardown", "results"}
+_SUBCOMMANDS = {"plan", "standup", "smoketest", "run", "teardown", "results", "experiment"}
 
-# Sensible per-subcommand timeouts (seconds).
+# Sensible per-subcommand timeouts (seconds). `experiment` runs standup+run+teardown for
+# every treatment in the sweep, so it gets the most generous budget.
 _TIMEOUTS = {
     "plan": 300.0,
     "standup": 3600.0,
@@ -21,6 +22,7 @@ _TIMEOUTS = {
     "run": 3600.0,
     "teardown": 900.0,
     "results": 300.0,
+    "experiment": 14400.0,
 }
 
 
@@ -34,11 +36,14 @@ def build_argv(
     flags: dict[str, Any] | None = None,
     extra: list[str] | None = None,
 ) -> list[str]:
-    """Assemble the logical argv. Global flags (``--spec``) precede the subcommand."""
+    """Assemble the logical argv. Global flags (``--spec``, ``--workspace``) precede the
+    subcommand; everything else follows it."""
     flags = flags or {}
     argv: list[str] = ["llmdbenchmark"]
     if spec:
         argv += ["--spec", spec]
+    if flags.get("workspace"):
+        argv += ["--workspace", str(flags["workspace"])]
     argv.append(subcommand)
     if namespace:
         argv += ["-p", namespace]
@@ -52,6 +57,17 @@ def build_argv(
         argv += ["-r", str(flags["output"])]
     if flags.get("endpoint_url"):
         argv += ["-U", str(flags["endpoint_url"])]
+    # experiment (DoE sweep) extras — emitted only when present, so other subcommands are unaffected.
+    if flags.get("experiments"):
+        argv += ["-e", str(flags["experiments"])]
+    if flags.get("overrides"):
+        argv += ["-o", str(flags["overrides"])]
+    if flags.get("parallelism") is not None:
+        argv += ["-j", str(flags["parallelism"])]
+    if flags.get("stop_on_error"):
+        argv.append("--stop-on-error")
+    if flags.get("skip_teardown"):
+        argv.append("--skip-teardown")
     if flags.get("skip_smoketest"):
         argv.append("--skip-smoketest")
     if flags.get("list_endpoints"):
@@ -80,6 +96,10 @@ async def execute_llmdbenchmark(
     # Default `run` output into the session workspace so the report is easy to locate.
     if subcommand == "run" and not flags.get("output") and not flags.get("list_endpoints") and not flags.get("dry_run"):
         flags["output"] = str(ctx.workspace / "results")
+    # A DoE `experiment` writes per-treatment reports under its workspace; anchor it to the
+    # session dir (unless previewing) so compare_reports(experiment_dir=...) can find them.
+    if subcommand == "experiment" and not flags.get("workspace") and not flags.get("dry_run"):
+        flags["workspace"] = str(ctx.workspace / "experiment")
 
     argv = build_argv(
         subcommand, spec=spec, namespace=namespace, harness=harness,
