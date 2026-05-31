@@ -1,21 +1,51 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>llm-d Benchmarking Assistant</title>
+
+  <!-- Brand mark favicon (hexagon, llm-d purple) -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 27 9.5 27 22.5 16 29 5 22.5 5 9.5Z' fill='none' stroke='%237f317f' stroke-width='3.2' stroke-linejoin='round'/%3E%3C/svg%3E" />
+
+  <!-- llm-d brand typeface: Red Hat Display / Red Hat Mono (falls back to system fonts offline) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700&family=Red+Hat+Mono:wght@400;500;600&display=swap" />
+
   <link rel="stylesheet" href="/static/styles.css" />
+
+  <!-- Apply the saved theme before first paint to avoid a flash. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("llmd-theme") || "dark";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <header>
     <div class="brand">
-      <span class="logo">⬡</span>
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 30 32" width="34" height="36" role="img" aria-label="llm-d">
+          <g fill="none" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
+            <path class="hx-p" d="M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z" />
+            <path class="hx-g" d="M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z" />
+            <path class="hx-p" d="M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z" />
+          </g>
+        </svg>
+      </span>
       <div>
         <h1>llm-d Benchmarking Assistant</h1>
         <p class="sub">Describe a use case — I'll deploy, benchmark, and explain the results.</p>
       </div>
     </div>
-    <div id="status" class="status" title="connection status">connecting…</div>
+    <div class="header-actions">
+      <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
+      <div id="status" class="status" title="connection status">connecting…</div>
+    </div>
   </header>
 
   <main id="transcript" aria-live="polite"></main>

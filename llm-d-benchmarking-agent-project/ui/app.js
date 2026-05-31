@@ -7,6 +7,26 @@ const statusEl = document.getElementById("status");
 const form = document.getElementById("composer");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("send");
+const themeBtn = document.getElementById("theme-toggle");
+
+// ---- theme (dark default, light optional; persisted) --------------------
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  // ☀ in dark mode invites switching to light; ☾ does the reverse.
+  themeBtn.textContent = theme === "dark" ? "☀" : "☾";
+  themeBtn.setAttribute("aria-label", theme === "dark" ? "Switch to light theme" : "Switch to dark theme");
+}
+function initTheme() {
+  let theme = "dark";
+  try { theme = localStorage.getItem("llmd-theme") || "dark"; } catch (e) {}
+  applyTheme(theme);
+}
+themeBtn.addEventListener("click", () => {
+  const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  try { localStorage.setItem("llmd-theme", next); } catch (e) {}
+  applyTheme(next);
+});
+initTheme();
 
 let ws = null;
 let busy = false;
