@@ -137,52 +137,129 @@ KIND_QUICKSTART = Flow(
 
 
 # =============================================================================
-# 2) optimized-baseline guide (llm-d guide, driven via the benchmark CLI spec)
+# 2) llm-d guide deploys (driven via the benchmark CLI spec — same flow, just a
+#    different --spec). One factory; one Flow(...) per guide.
 # =============================================================================
-OPTIMIZED_BASELINE = Flow(
+def _guide_deploy_flow(*, name, title, spec, namespace, harness, workload, summary,
+                       user_input, description=None, live_eval=False):
+    """Build the standard 'deploy + benchmark an llm-d guide' flow:
+    probe → plan → (confirm setup) → standup → smoketest → run → report.
+
+    Every guide is the SAME command shape as optimized-baseline; only the
+    --spec / harness / workload / namespace differ — so they're one-liners here.
+    GPU-requiring guides default to ``live_eval=False`` (a careful agent would refuse
+    to deploy them on a GPU-less env, which would make the live score misleading); the
+    deterministic command-shape check still runs for every one.
+    """
+    return Flow(
+        name=name,
+        title=title,
+        description=description or (
+            f"Deploy + benchmark the {spec} guide via its benchmark spec (same CLI, "
+            f"different --spec). Validated for command shape deterministically."
+        ),
+        repo_state="present_with_venv",
+        mock_user_input=user_input,
+        turns=[
+            _turn("Sensing the environment.",
+                  _tc("probe_environment", checks="all", namespace=namespace)),
+            _turn(f"Plan for the {spec} guide — please approve.",
+                  _tc("propose_session_plan",
+                      use_case_summary=summary, goal_metrics=["ttft", "throughput"],
+                      spec=spec, deploy_path="guide", namespace=namespace,
+                      harness=harness, workload=workload,
+                      expected_steps=["standup", "smoketest", "run", "report"])),
+            _turn("Confirming setup.", _tc("run_setup", use_uv=True)),
+            _turn("Standing up the guide stack.",
+                  _tc("execute_llmdbenchmark", subcommand="standup", spec=spec,
+                      namespace=namespace, flags={"skip_smoketest": True})),
+            _turn("Smoketesting.",
+                  _tc("execute_llmdbenchmark", subcommand="smoketest", spec=spec, namespace=namespace)),
+            _turn("Running the workload.",
+                  _tc("execute_llmdbenchmark", subcommand="run", spec=spec, namespace=namespace,
+                      harness=harness, workload=workload)),
+            _turn("Parsing the report.", _tc("locate_and_parse_report")),
+        ],
+        expected=[
+            ExpectedCommand(["llmdbenchmark", "--spec", spec, "standup", "-p", namespace, "--skip-smoketest"], MUTATING),
+            ExpectedCommand(["llmdbenchmark", "--spec", spec, "smoketest", "-p", namespace], MUTATING),
+            ExpectedCommand(["llmdbenchmark", "--spec", spec, "run", "-p", namespace,
+                             "-l", harness, "-w", workload, "-r", "*"], MUTATING),
+        ],
+        live_eval=live_eval,
+        required_subcommands=["standup", "run"],
+        required_spec=spec,
+    )
+
+
+OPTIMIZED_BASELINE = _guide_deploy_flow(
     name="optimized-baseline",
     title="optimized-baseline guide (guides/optimized-baseline)",
+    spec="guides/optimized-baseline", namespace="llm-d-optimized-baseline",
+    harness="inference-perf", workload="guide_optimized-baseline_1.yaml",
+    summary="Deploy + benchmark the optimized-baseline guide",
+    user_input="Deploy the llm-d optimized-baseline guide and benchmark it with the guide's standard workload.",
     description="Deploy + benchmark the llm-d optimized-baseline guide via its benchmark "
                 "spec (same CLI, different --spec). Assumes the repo/venv are already set up.",
-    repo_state="present_with_venv",
-    mock_user_input="Deploy the llm-d optimized-baseline guide and benchmark it with the "
-                    "guide's standard workload.",
-    turns=[
-        _turn("Sensing the environment.",
-              _tc("probe_environment", checks="all", namespace="llm-d-optimized-baseline")),
-        _turn("Plan for the optimized-baseline guide — please approve.",
-              _tc("propose_session_plan",
-                  use_case_summary="Deploy + benchmark the optimized-baseline guide",
-                  goal_metrics=["ttft", "throughput"],
-                  spec="guides/optimized-baseline", deploy_path="guide",
-                  namespace="llm-d-optimized-baseline",
-                  harness="inference-perf", workload="guide_optimized-baseline_1.yaml",
-                  expected_steps=["standup", "smoketest", "run", "report"])),
-        _turn("Confirming setup.", _tc("run_setup", use_uv=True)),
-        _turn("Standing up the guide stack.",
-              _tc("execute_llmdbenchmark", subcommand="standup", spec="guides/optimized-baseline",
-                  namespace="llm-d-optimized-baseline", flags={"skip_smoketest": True})),
-        _turn("Smoketesting.",
-              _tc("execute_llmdbenchmark", subcommand="smoketest", spec="guides/optimized-baseline",
-                  namespace="llm-d-optimized-baseline")),
-        _turn("Running the guide's standard workload.",
-              _tc("execute_llmdbenchmark", subcommand="run", spec="guides/optimized-baseline",
-                  namespace="llm-d-optimized-baseline", harness="inference-perf",
-                  workload="guide_optimized-baseline_1.yaml")),
-        _turn("Parsing the report.", _tc("locate_and_parse_report")),
-    ],
-    expected=[
-        ExpectedCommand(["llmdbenchmark", "--spec", "guides/optimized-baseline", "standup",
-                         "-p", "llm-d-optimized-baseline", "--skip-smoketest"], MUTATING),
-        ExpectedCommand(["llmdbenchmark", "--spec", "guides/optimized-baseline", "smoketest",
-                         "-p", "llm-d-optimized-baseline"], MUTATING),
-        ExpectedCommand(["llmdbenchmark", "--spec", "guides/optimized-baseline", "run",
-                         "-p", "llm-d-optimized-baseline", "-l", "inference-perf",
-                         "-w", "guide_optimized-baseline_1.yaml", "-r", "*"], MUTATING),
-    ],
-    required_subcommands=["standup", "run"],
-    required_spec="guides/optimized-baseline",
+    live_eval=True,   # downsizes onto a laptop kind cluster — kept in the live eval
 )
+
+# More guides — each is the optimized-baseline command shape with a different spec.
+PD_DISAGGREGATION = _guide_deploy_flow(
+    name="pd-disaggregation",
+    title="prefill/decode disaggregation guide (guides/pd-disaggregation)",
+    spec="guides/pd-disaggregation", namespace="llm-d-pd-disaggregation",
+    harness="inference-perf", workload="guide_pd-disaggregation_1.yaml",
+    summary="Deploy + benchmark the prefill/decode disaggregation guide",
+    user_input="Deploy the llm-d prefill/decode disaggregation (pd-disaggregation) guide and benchmark it.",
+)
+PRECISE_PREFIX_CACHE = _guide_deploy_flow(
+    name="precise-prefix-cache-routing",
+    title="precise prefix-cache routing guide (guides/precise-prefix-cache-routing)",
+    spec="guides/precise-prefix-cache-routing", namespace="llm-d-precise-prefix-cache-routing",
+    harness="inference-perf", workload="guide_precise-prefix-cache-routing_1.yaml",
+    summary="Deploy + benchmark the precise prefix-cache routing guide",
+    user_input="Set up the llm-d precise prefix-cache routing guide and run its benchmark.",
+)
+TIERED_PREFIX_CACHE = _guide_deploy_flow(
+    name="tiered-prefix-cache",
+    title="tiered prefix cache guide (guides/tiered-prefix-cache)",
+    spec="guides/tiered-prefix-cache", namespace="llm-d-tiered-prefix-cache",
+    # No dedicated guide workload exists; a shared-prefix workload exercises the cache tiers.
+    harness="inference-perf", workload="shared_prefix_synthetic.yaml",
+    summary="Deploy + benchmark the tiered prefix cache guide",
+    user_input="Deploy the llm-d tiered prefix cache guide and benchmark it with a shared-prefix workload.",
+)
+WIDE_EP_LWS = _guide_deploy_flow(
+    name="wide-ep-lws",
+    title="wide expert-parallelism + LeaderWorkerSet guide (guides/wide-ep-lws)",
+    spec="guides/wide-ep-lws", namespace="llm-d-wide-ep-lws",
+    harness="inference-perf", workload="guide_wide-ep-lws_1.yaml",
+    summary="Deploy + benchmark the wide expert-parallelism (LWS) guide",
+    user_input="Deploy the llm-d wide expert-parallelism (wide-ep-lws) guide and run its benchmark.",
+)
+WORKLOAD_AUTOSCALING = _guide_deploy_flow(
+    name="workload-autoscaling",
+    title="workload autoscaling guide (guides/workload-autoscaling)",
+    spec="guides/workload-autoscaling", namespace="llm-d-workload-autoscaling",
+    harness="guidellm", workload="guide_workload-autoscaling_1.yaml",
+    summary="Deploy + benchmark the workload autoscaling guide",
+    user_input="Deploy the llm-d workload autoscaling guide and benchmark it.",
+)
+PREDICTED_LATENCY_ROUTING = _guide_deploy_flow(
+    name="predicted-latency-routing",
+    title="predicted-latency routing guide (guides/predicted-latency-routing)",
+    spec="guides/predicted-latency-routing", namespace="llm-d-predicted-latency-routing",
+    # No dedicated guide workload exists; concurrent load exercises the latency-aware router.
+    harness="inference-perf", workload="random_concurrent.yaml",
+    summary="Deploy + benchmark the predicted-latency routing guide",
+    user_input="Deploy the llm-d predicted-latency routing guide and benchmark it under concurrent load.",
+)
+
+GUIDE_FLOWS = [
+    OPTIMIZED_BASELINE, PD_DISAGGREGATION, PRECISE_PREFIX_CACHE, TIERED_PREFIX_CACHE,
+    WIDE_EP_LWS, WORKLOAD_AUTOSCALING, PREDICTED_LATENCY_ROUTING,
+]
 
 
 # =============================================================================
@@ -347,7 +424,7 @@ SAFETY_REFUSAL = Flow(
 
 ALL_FLOWS: list[Flow] = [
     KIND_QUICKSTART,
-    OPTIMIZED_BASELINE,
+    *GUIDE_FLOWS,            # optimized-baseline + pd-disaggregation + 5 more guide deploys
     TEARDOWN,
     EXISTING_STACK,
     DRY_RUN_PREVIEW,

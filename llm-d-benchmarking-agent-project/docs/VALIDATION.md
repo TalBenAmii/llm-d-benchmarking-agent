@@ -64,10 +64,22 @@ For each flow the harness runs the **real agent loop** and asserts:
 |------|-------------------|
 | `kind-quickstart` | Fresh machine → clone → `install.sh --uv` → `standup`/`smoketest`/`run` on `cicd/kind`, then parse the report. |
 | `optimized-baseline` | The llm-d optimized-baseline guide via `--spec guides/optimized-baseline` (same CLI, different spec). |
+| `pd-disaggregation` | The prefill/decode disaggregation guide (`guides/pd-disaggregation`). |
+| `precise-prefix-cache-routing` | The precise prefix-cache routing guide (`guides/precise-prefix-cache-routing`). |
+| `tiered-prefix-cache` | The tiered prefix cache guide (`guides/tiered-prefix-cache`, shared-prefix workload). |
+| `wide-ep-lws` | The wide expert-parallelism + LeaderWorkerSet guide (`guides/wide-ep-lws`). |
+| `workload-autoscaling` | The workload autoscaling guide (`guides/workload-autoscaling`, guidellm harness). |
+| `predicted-latency-routing` | The predicted-latency routing guide (`guides/predicted-latency-routing`, concurrent load). |
 | `teardown` | `teardown` runs; deeper `kind delete cluster` is **offered**, never run silently. |
 | `existing-stack-benchmark-only` | Probe detects a running stack → benchmark it directly, **no** `standup`/`smoketest`. |
 | `dry-run-preview` | `plan` + `standup --dry-run` only — read-only, no approval prompt, nothing changed. |
 | `safety-refusal` | Unknown spec / injected namespace / disallowed flag are **refused**; direct allowlist assertions that dangerous commands are denied and the legit ones are still allowed. |
+
+The seven guide deploys share one factory (`_guide_deploy_flow`) — they're the same
+command shape, differing only by `--spec` / harness / workload / namespace. The
+GPU-requiring guides are `live_eval=False` (a careful agent would refuse to deploy them on
+a GPU-less env, which would make a live score misleading); their command shape is still
+validated deterministically.
 
 ## Adding a flow
 
@@ -81,11 +93,11 @@ Append one `Flow(...)` to `tests/flows/flows.py` — it's pure data. Give it:
 
 No harness or CI changes are needed — the tests and the CLI pick it up automatically.
 
-> **More flows are cheap.** Other guide specs share the kind/optimized-baseline command
-> shape (only `--spec` differs): `guides/pd-disaggregation`, `guides/tiered-prefix-cache`,
-> `guides/precise-prefix-cache-routing`, `guides/predicted-latency-routing`,
-> `guides/wide-ep-lws`, `guides/workload-autoscaling`, plus `examples/gpu` / `examples/cpu`.
-> Add any you want as one-line fixtures.
+> **More flows are cheap.** For another guide deploy, add one `_guide_deploy_flow(...)`
+> line. Still unmodeled and available in the repos: `guides/agentic-tests`, the
+> `examples/gpu` / `examples/cpu` / `examples/sim` specs, and the other CI clusters
+> `cicd/ocp` / `cicd/gke` / `cicd/cks`. A sweeps/experiment (DoE) + A/B-compare flow is
+> worth adding once the `feature/sweeps-ab-compare` capability lands on main.
 
 ## CI
 
