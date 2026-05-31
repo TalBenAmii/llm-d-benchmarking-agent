@@ -1,6 +1,10 @@
 // Chat UI client for the llm-d Benchmarking Assistant.
 // Talks to the backend over a WebSocket. Renders chat, streamed command output, and
 // Approve/Reject cards. No secrets or commands originate here.
+//
+// Chats are persisted server-side. The left sidebar lists recent chats; selecting one
+// reconnects with ?session=<id> so the backend replays its transcript (a "history"
+// event), Claude-web style. "New chat" starts a fresh session.
 
 const transcript = document.getElementById("transcript");
 const statusEl = document.getElementById("status");
@@ -8,11 +12,12 @@ const form = document.getElementById("composer");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("send");
 const themeBtn = document.getElementById("theme-toggle");
+const convList = document.getElementById("conv-list");
+const newChatBtn = document.getElementById("new-chat");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
-  // ☀ in dark mode invites switching to light; ☾ does the reverse.
   themeBtn.textContent = theme === "dark" ? "☀" : "☾";
   themeBtn.setAttribute("aria-label", theme === "dark" ? "Switch to light theme" : "Switch to dark theme");
 }
@@ -30,16 +35,45 @@ initTheme();
 
 let ws = null;
 let busy = false;
-let activeConsole = null; // <pre> for the currently-running command's output
+let activeConsole = null;     // <pre> for the currently-running command's output
+let currentSession = null;    // id of the chat we're attached to (null until "ready")
+let switching = false;        // true while intentionally closing to switch chats
 
-function connect() {
+const toolEls = {}; // id -> details element
+
+// ---- connection ---------------------------------------------------------
+
+function connect(sid) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  const qs = sid ? `?session=${encodeURIComponent(sid)}` : "";
+  ws = new WebSocket(`${proto}://${location.host}/ws${qs}`);
 
   ws.onopen = () => setStatus("connected", "ok");
-  ws.onclose = () => { setStatus("disconnected — retrying…", "down"); setEnabled(false); setTimeout(connect, 1500); };
+  ws.onclose = () => {
+    if (switching) { switching = false; return; }   // a deliberate switch opens its own socket
+    setStatus("disconnected — retrying…", "down");
+    setEnabled(false);
+    setTimeout(() => connect(currentSession), 1500); // reconnect resumes the same chat
+  };
   ws.onerror = () => setStatus("connection error", "down");
   ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+}
+
+function switchTo(sid) {
+  switching = true;
+  currentSession = sid || null;
+  try { if (ws) ws.close(); } catch (e) {}
+  resetTranscript();
+  connect(sid || null);
+}
+
+function newChat() { switchTo(null); }
+function openSession(sid) { if (sid !== currentSession) switchTo(sid); }
+
+function resetTranscript() {
+  transcript.innerHTML = "";
+  for (const k in toolEls) delete toolEls[k];
+  activeConsole = null;
 }
 
 function setStatus(text, cls) {
@@ -57,17 +91,74 @@ function setEnabled(on) {
 function handle(msg) {
   const { type, data } = msg;
   switch (type) {
-    case "ready": setEnabled(true); addNote(`Session ${data.session_id} ready. What would you like to benchmark?`); break;
+    case "ready":
+      currentSession = data.session_id;
+      setEnabled(true);
+      if (!data.resumed) addNote("Session ready. What would you like to benchmark?");
+      loadSessions();
+      break;
+    case "history": renderHistory(data.items || []); break;
     case "assistant_text": addBubble("assistant", data.text); break;
     case "tool_call": startTool(data); break;
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); break;
     case "approval_request": addApprovalCard(data); break;
     case "error": addBubble("error", data.message); break;
-    case "done": setEnabled(true); activeConsole = null; break;
+    case "done": setEnabled(true); activeConsole = null; loadSessions(); break;
     case "pong": break;
   }
   scroll();
+}
+
+// ---- recent-chats sidebar -----------------------------------------------
+
+async function loadSessions() {
+  try {
+    const r = await fetch("/api/sessions");
+    const j = await r.json();
+    renderSidebar(j.sessions || []);
+  } catch (e) { /* offline — keep whatever's shown */ }
+}
+
+function renderSidebar(sessions) {
+  convList.innerHTML = "";
+  if (!sessions.length) {
+    convList.appendChild(el("div", "conv-empty", "No conversations yet."));
+    return;
+  }
+  for (const s of sessions) {
+    const row = el("div", "conv" + (s.id === currentSession ? " active" : ""));
+    row.title = s.title || "New chat";
+    const main = el("div", "conv-main");
+    main.appendChild(el("div", "conv-title", s.title || "New chat"));
+    main.appendChild(el("div", "conv-time", relTime(s.updated_at)));
+    const del = el("button", "conv-del", "×");
+    del.type = "button";
+    del.title = "Delete conversation";
+    del.onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
+    row.appendChild(main);
+    row.appendChild(del);
+    row.onclick = () => openSession(s.id);
+    convList.appendChild(row);
+  }
+}
+
+async function deleteSession(sid) {
+  if (!confirm("Delete this conversation?")) return;
+  try { await fetch(`/api/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" }); } catch (e) {}
+  if (sid === currentSession) newChat();   // start fresh if we deleted the open one
+  else loadSessions();
+}
+
+function relTime(ts) {
+  if (!ts) return "";
+  const then = new Date(ts * 1000);
+  const diff = (Date.now() - then.getTime()) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  if (diff < 604800) return Math.floor(diff / 86400) + "d ago";
+  return then.toLocaleDateString();
 }
 
 // ---- rendering ----------------------------------------------------------
@@ -88,7 +179,26 @@ function addBubble(role, text) {
 
 function addNote(text) { addBubble("assistant", text); }
 
-const toolEls = {}; // id -> details element
+function renderHistory(items) {
+  for (const it of items) {
+    if (it.role === "user") addBubble("user", it.text);
+    else if (it.role === "assistant") addBubble("assistant", it.text);
+    else if (it.role === "tool_call") addHistoryTool(it);
+  }
+  scroll();
+}
+
+function addHistoryTool(it) {
+  const d = el("details", "tool");
+  const sum = el("summary");
+  sum.appendChild(el("span", "tname", it.name || "tool"));
+  sum.appendChild(el("span", null, "earlier"));
+  d.appendChild(sum);
+  const body = el("div", "body");
+  if (it.input && Object.keys(it.input).length) body.appendChild(prettyJson(it.input));
+  d.appendChild(body);
+  transcript.appendChild(d);
+}
 
 function startTool(data) {
   const d = el("details", "tool");
@@ -210,6 +320,7 @@ form.addEventListener("submit", (e) => {
   addBubble("user", text);
   ws.send(JSON.stringify({ type: "user_message", text }));
   input.value = "";
+  input.style.height = "auto";
   setEnabled(false);
   scroll();
 });
@@ -219,4 +330,8 @@ input.addEventListener("keydown", (e) => {
 });
 input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 160) + "px"; });
 
-connect();
+newChatBtn.addEventListener("click", newChat);
+
+// ---- boot ---------------------------------------------------------------
+loadSessions();
+connect(null);
