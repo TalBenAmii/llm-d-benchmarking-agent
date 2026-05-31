@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>llm-d Benchmarking Assistant</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">⬡</span>
+      <div>
+        <h1>llm-d Benchmarking Assistant</h1>
+        <p class="sub">Describe a use case — I'll deploy, benchmark, and explain the results.</p>
+      </div>
+    </div>
+    <div id="status" class="status" title="connection status">connecting…</div>
+  </header>
+
+  <main id="transcript" aria-live="polite"></main>
+
+  <footer>
+    <form id="composer" autocomplete="off">
+      <textarea id="input" rows="1" placeholder="e.g. Benchmark a small chat model on my laptop" disabled></textarea>
+      <button id="send" type="submit" disabled>Send</button>
+    </form>
+    <p class="hint">Read-only checks run automatically. Anything that changes your system waits for your approval.</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

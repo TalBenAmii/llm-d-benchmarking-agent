@@ -1,0 +1,29 @@
+# Secrets
+.env
+
+# Runtime scratch (per-session state, generated configs, captured logs, optional repo clones)
+workspace/
+!workspace/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

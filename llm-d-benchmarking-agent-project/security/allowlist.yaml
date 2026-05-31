@@ -1,0 +1,197 @@
+# Deny-by-default command allowlist.
+#
+# This file is the SINGLE source of truth for what the agent may execute.
+# app/security/allowlist.py is a pure validator over this data — it contains no
+# per-command knowledge. Widening the agent's powers = a reviewed edit here, not a
+# code change.
+#
+# Model:
+#   executables.<name>:
+#     flat: true|false              # true = no subcommand (e.g. install.sh)
+#     mode: read_only|mutating      # base mode (flat executables only)
+#     runner: {...}                 # hints used by runner.py, ignored by the validator
+#     cwd_must_be: "repo:<name>"    # hint for the runner
+#     global_flags: { <flag>: <flagspec> }     # flags allowed BEFORE the subcommand
+#     flags:        { <flag>: <flagspec> }     # flat executables only
+#     positionals:  [ <posspec>, ... ]         # flat executables only
+#     subcommands.<name>:
+#       mode: read_only|mutating
+#       flags: { <flag>: <flagspec> }
+#       positionals: [ <posspec>, ... ]
+#
+#   flagspec:
+#     takes_value: true|false       # default false (boolean flag)
+#     value: <constraint>           # validate the consumed value
+#     read_only_trigger: true       # presence downgrades effective mode to read_only
+#   posspec:
+#     value: <constraint>           # required positional, matched in order
+#
+#   constraint (one of):
+#     { enum: [a, b, ...] }
+#     { regex: "^...$" }
+#     { ref: <name> }               # -> value_constraints.<name>
+#     { ref_catalog: specs|harnesses|workloads }   # membership in the LIVE on-disk catalog
+#
+# Every token is additionally screened for shell metacharacters (defense in depth,
+# even though commands run with shell=False).
+
+version: 1
+default: deny
+
+value_constraints:
+  namespace:       { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" }   # RFC1123 label
+  llmd_clone_url:  { regex: "^https://github\\.com/llm-d/(llm-d|llm-d-benchmark)(\\.git)?$" }
+  output_dir:      { regex: "^[A-Za-z0-9._/-]+$" }
+  endpoint_url:    { regex: "^https?://[A-Za-z0-9._:/-]+$" }
+  output_format:   { enum: [json, yaml, wide, name] }
+  methods:         { enum: [standalone, modelservice, kustomize] }
+  kubectl_resource:
+    enum: [ns, namespace, namespaces, po, pod, pods, svc, service, services,
+           deploy, deployment, deployments, ep, endpoints, events, nodes, node]
+  git_ref:         { regex: "^[A-Za-z0-9._/-]+$" }
+
+executables:
+
+  # ---- read-only environment probes -------------------------------------
+  docker:
+    subcommands:
+      info:    { mode: read_only }
+      version: { mode: read_only }
+      ps:      { mode: read_only, flags: { "-a": {} } }
+
+  podman:
+    subcommands:
+      info:    { mode: read_only }
+      version: { mode: read_only }
+      ps:      { mode: read_only, flags: { "-a": {} } }
+
+  kind:
+    subcommands:
+      get: { mode: read_only, positionals: [ { value: { enum: [clusters, nodes] } } ] }
+      version: { mode: read_only }
+
+  kubectl:
+    subcommands:
+      config:
+        mode: read_only
+        positionals: [ { value: { enum: [current-context, view, get-contexts] } } ]
+        flags:
+          "-o": { takes_value: true, value: { ref: output_format } }
+          "--minify": {}
+      cluster-info: { mode: read_only }
+      version: { mode: read_only, flags: { "--output": { takes_value: true, value: { ref: output_format } }, "--client": {} } }
+      get:
+        mode: read_only
+        positionals: [ { value: { ref: kubectl_resource } } ]
+        flags:
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-A": {}
+          "--all-namespaces": {}
+          "-o": { takes_value: true, value: { ref: output_format } }
+          "-l": { takes_value: true }
+          "--selector": { takes_value: true }
+          "--field-selector": { takes_value: true }
+          "--no-headers": {}
+
+  git:
+    subcommands:
+      clone:
+        mode: mutating
+        positionals: [ { value: { ref: llmd_clone_url } } ]
+        flags:
+          "--depth": { takes_value: true, value: { regex: "^[0-9]+$" } }
+          "--branch": { takes_value: true, value: { ref: git_ref } }
+      status:    { mode: read_only, flags: { "-s": {}, "--porcelain": {} } }
+      rev-parse:
+        mode: read_only
+        positionals: [ { value: { ref: git_ref } } ]
+        flags:
+          "--is-inside-work-tree": {}
+          "--show-toplevel": {}
+
+  # ---- bootstrap --------------------------------------------------------
+  install.sh:
+    flat: true
+    mode: mutating
+    cwd_must_be: "repo:llm-d-benchmark"
+    runner: { invoke: "repo-script", script: "install.sh" }
+    flags:
+      "--uv": {}
+      "--no-uv": {}
+      "-y": {}
+      "noreset": {}
+      "-h": {}
+      "--help": {}
+
+  # ---- the benchmark CLI (the primary target) ---------------------------
+  llmdbenchmark:
+    cwd_must_be: "repo:llm-d-benchmark"
+    runner: { invoke: "venv-bin", venv: "repo:llm-d-benchmark/.venv", bin: "llmdbenchmark" }
+    global_flags:
+      "--spec": { takes_value: true, value: { ref_catalog: specs } }
+      "--specification_file": { takes_value: true, value: { ref_catalog: specs } }
+      "-v": {}
+      "--verbose": {}
+      "--version": { read_only_trigger: true }
+      "--workspace": { takes_value: true, value: { ref: output_dir } }
+      "--ws": { takes_value: true, value: { ref: output_dir } }
+    subcommands:
+      plan:
+        mode: read_only
+        flags:
+          "-p": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-n": { read_only_trigger: true }
+          "--dry-run": { read_only_trigger: true }
+      standup:
+        mode: mutating
+        flags:
+          "-p": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "--skip-smoketest": {}
+          "-t": { takes_value: true, value: { ref: methods } }
+          "--methods": { takes_value: true, value: { ref: methods } }
+          "-n": { read_only_trigger: true }
+          "--dry-run": { read_only_trigger: true }
+      smoketest:
+        mode: mutating
+        flags:
+          "-p": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-t": { takes_value: true, value: { ref: methods } }
+          "--methods": { takes_value: true, value: { ref: methods } }
+          "-n": { read_only_trigger: true }
+          "--dry-run": { read_only_trigger: true }
+      run:
+        mode: mutating
+        flags:
+          "-p": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-l": { takes_value: true, value: { ref_catalog: harnesses } }
+          "--harness": { takes_value: true, value: { ref_catalog: harnesses } }
+          "-w": { takes_value: true, value: { ref_catalog: workloads } }
+          "--workload": { takes_value: true, value: { ref_catalog: workloads } }
+          "-t": { takes_value: true, value: { ref: methods } }
+          "--methods": { takes_value: true, value: { ref: methods } }
+          "-U": { takes_value: true, value: { ref: endpoint_url } }
+          "--endpoint-url": { takes_value: true, value: { ref: endpoint_url } }
+          "-r": { takes_value: true, value: { ref: output_dir } }
+          "--output": { takes_value: true, value: { ref: output_dir } }
+          "--list-endpoints": { read_only_trigger: true }
+          "-n": { read_only_trigger: true }
+          "--dry-run": { read_only_trigger: true }
+      teardown:
+        mode: mutating
+        flags:
+          "-p": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-t": { takes_value: true, value: { ref: methods } }
+          "--methods": { takes_value: true, value: { ref: methods } }
+          "-n": { read_only_trigger: true }
+          "--dry-run": { read_only_trigger: true }
+      results:
+        mode: read_only
+        flags:
+          "-r": { takes_value: true, value: { ref: output_dir } }
+          "--output": { takes_value: true, value: { ref: output_dir } }
