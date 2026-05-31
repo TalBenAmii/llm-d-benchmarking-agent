@@ -26,6 +26,14 @@
   </script>
 </head>
 <body>
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-head">
+      <button id="new-chat" class="new-chat" type="button"><span aria-hidden="true">+</span> New chat</button>
+    </div>
+    <div class="sidebar-label">Recent</div>
+    <nav id="conv-list" class="conv-list" aria-label="Recent conversations"></nav>
+  </aside>
+  <div class="main-col">
   <header>
     <div class="brand">
       <span class="logo" aria-hidden="true">
@@ -57,6 +65,7 @@
     </form>
     <p class="hint">Read-only checks run automatically. Anything that changes your system waits for your approval.</p>
   </footer>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

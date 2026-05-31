@@ -10,7 +10,7 @@ import contextlib
 import uuid
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -60,13 +60,51 @@ async def healthz() -> JSONResponse:
     })
 
 
+@app.get("/api/sessions")
+async def list_sessions() -> JSONResponse:
+    """Recent chats for the sidebar (summaries only, newest first)."""
+    return JSONResponse({"sessions": app.state.sessions.list()})
+
+
+@app.delete("/api/sessions/{sid}")
+async def delete_session(sid: str) -> JSONResponse:
+    if not app.state.sessions.delete(sid):
+        raise HTTPException(status_code=404, detail="session not found")
+    return JSONResponse({"deleted": True, "id": sid})
+
+
+def _history_items(session) -> list[dict[str, Any]]:
+    """Render-friendly transcript for replaying a resumed chat in the UI.
+
+    The stored ``messages`` are in LLM wire-format; flatten them into the same
+    shape the live event stream produces so the client can reuse its renderers.
+    """
+    items: list[dict[str, Any]] = []
+    for m in session.messages:
+        role = m.get("role")
+        if role == "user":
+            items.append({"role": "user", "text": m.get("content") or ""})
+        elif role == "assistant":
+            if m.get("content"):
+                items.append({"role": "assistant", "text": m["content"]})
+            for tc in m.get("tool_calls") or []:
+                items.append({"role": "tool_call", "name": tc.get("name"), "input": tc.get("input")})
+    return items
+
+
 app.mount("/static", StaticFiles(directory=str(get_settings().ui_dir)), name="static")
 
 
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
     await websocket.accept()
-    session = app.state.sessions.create()
+    # ``/ws?session=<id>`` reattaches to a saved chat (page reload / sidebar click);
+    # an unknown or missing id just mints a fresh session.
+    requested = websocket.query_params.get("session")
+    session = app.state.sessions.get_or_load(requested) if requested else None
+    resumed = session is not None
+    if session is None:
+        session = app.state.sessions.create()
     loop = AgentLoop(app.state.provider) if app.state.provider else None
 
     pending: dict[str, asyncio.Future] = {}
@@ -90,6 +128,9 @@ async def ws(websocket: WebSocket) -> None:
         busy["value"] = True
         try:
             if loop is None:
+                # No LLM, but still record the turn so the chat persists / resumes.
+                session.messages.append({"role": "user", "content": text})
+                session.persist()
                 await emit("error", {"message": f"LLM provider not configured: {app.state.provider_error}"})
                 await emit("done", {})
                 return
@@ -100,7 +141,9 @@ async def ws(websocket: WebSocket) -> None:
         finally:
             busy["value"] = False
 
-    await emit("ready", {"session_id": session.id})
+    await emit("ready", {"session_id": session.id, "resumed": resumed})
+    if resumed:
+        await emit("history", {"items": _history_items(session)})
     turn_task: asyncio.Task | None = None
 
     try:
