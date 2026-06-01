@@ -93,10 +93,13 @@ class Session:
 
 
 class SessionManager:
-    def __init__(self, settings: Settings, allowlist: Allowlist, runner: CommandRunner):
+    def __init__(self, settings: Settings, allowlist: Allowlist, runner: CommandRunner,
+                 run_semaphore=None):
         self._settings = settings
         self._allowlist = allowlist
         self._runner = runner
+        # Shared cap on concurrent heavy runs across every session (None = unlimited).
+        self._run_semaphore = run_semaphore
         self._sessions: dict[str, Session] = {}
 
     @property
@@ -109,6 +112,7 @@ class SessionManager:
             allowlist=self._allowlist,
             runner=self._runner,
             workspace=self._root / sid,
+            run_semaphore=self._run_semaphore,
         )
 
     def create(self) -> Session:

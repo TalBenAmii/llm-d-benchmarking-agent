@@ -6,12 +6,13 @@ through the allowlist gate (defense in depth — nothing bypasses validation).
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.config import Settings
-from app.security.allowlist import READ_ONLY, Allowlist, Decision
+from app.security.allowlist import MUTATING, READ_ONLY, Allowlist, Decision
 from app.security.runner import CommandRunner, RunResult
 from app.tools.catalog import build_catalog, catalog_for_allowlist
 
@@ -44,6 +45,9 @@ class ToolContext:
     # Wired by the agent loop before each tool dispatch.
     request_approval: ApproveFn | None = field(default=None, repr=False)
     emit: EmitFn | None = field(default=None, repr=False)
+    # Shared across sessions: caps concurrent heavy (mutating) executions so parallel
+    # benchmark runs stay bounded. None = unlimited.
+    run_semaphore: asyncio.Semaphore | None = field(default=None, repr=False)
     _catalog: dict[str, Any] | None = field(default=None, repr=False)
 
     def catalog(self, *, refresh: bool = False) -> dict[str, Any]:
@@ -107,4 +111,8 @@ class ToolContext:
         # mutating command this fires only after approval, so it records what truly ran.
         await self._emit_command(decision, auto_run=not decision.requires_approval)
         on_line = self._emit_line if (stream and self.emit is not None) else None
+        # Bound concurrent heavy runs across sessions (read-only commands run uncapped).
+        if self.run_semaphore is not None and decision.mode == MUTATING:
+            async with self.run_semaphore:
+                return await self.runner.execute(argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)
         return await self.runner.execute(argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)
