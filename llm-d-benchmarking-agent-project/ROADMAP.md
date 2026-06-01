@@ -214,3 +214,15 @@ Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never
   Judgment in `knowledge/governance.md`.
 - Merged into `feature/roadmap-v2` (`--no-ff`); full suite **378 passed / 6 skipped / 0 failed**
   (+27 hermetic governance tests; prior baseline 351 passed / 6 skipped).
+
+## Phase 15 — WebSocket protocol hardening + live event buffer — DONE
+- The `/ws` boundary now validates every inbound frame against an explicit Pydantic tagged union
+  (`app/agent/ws_schemas.py`: `user_message`/`approval`/`ping`, `extra="forbid"`); a malformed or
+  non-dict frame is rejected with a structured `error` event of `kind="protocol_error"` and the
+  socket is KEPT alive instead of silently no-op'ing or crashing. The `Channel` gained a bounded
+  per-turn live ring buffer (`deque(maxlen=...)`): every emitted turn event is fanned out live AND
+  appended, so a client reconnecting mid-turn replays the missed live stream and continues live;
+  lifecycle frames (`ready`/`history`/`pong`) are excluded so reconnects don't replay stale
+  handshakes. Outbound envelope unified via `outbound()`; `ping` answered with `pong`.
+- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **384 passed / 6 skipped / 0 failed**
+  (+`tests/test_ws.py`, 280 lines; prior baseline 378 passed / 6 skipped).

@@ -8,6 +8,22 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-02 — Phase 15: WebSocket protocol hardening + live event buffer — DONE
+Branch `feature/roadmap-v2-p15-ws-protocol` → merged into `feature/roadmap-v2` (`--no-ff`). The
+phase branched off the current tip, so the merge applied with no code conflicts.
+- **Shipped:** the `/ws` boundary now validates every *inbound* frame against an explicit Pydantic
+  tagged union (`app/agent/ws_schemas.py` — `user_message`/`approval`/`ping`, `extra="forbid"`);
+  a malformed/non-dict frame is rejected with a structured `error` event of `kind="protocol_error"`
+  and the socket is KEPT ALIVE (no silent no-op / handler crash). The `Channel` gained a BOUNDED
+  per-turn live ring buffer (`deque(maxlen=...)`): each emitted turn event is fanned out to the live
+  socket AND appended, so a client reconnecting mid-turn replays the missed live stream and then
+  continues live. Connection-lifecycle frames (`ready`/`history`/`pong`) are excluded from the
+  buffer so a second reconnect doesn't replay stale handshake frames. Outbound serialization unified
+  through `outbound()`; `ping` is answered with a `pong` event.
+- **Tests:** full integration suite **384 passed / 6 skipped / 0 failed** (+`tests/test_ws.py`,
+  280 lines; prior baseline 378 passed / 6 skipped). Authoritative run from the integration worktree
+  with `PYTHONPATH=$PWD`, `REPOS_DIR` set, `timeout 600` — no hang (12s, exit 0).
+
 ## 2026-06-02 — Phase 13: Allowlist governance — per-command timeouts + quotas — DONE
 Branch `feature/roadmap-v2-p13-allowlist-gov` → merged into `feature/roadmap-v2` (`--no-ff`). The
 phase branched off the Phase-11 tip; its files (`allowlist.py`, `quota.py`, `context.py`,
