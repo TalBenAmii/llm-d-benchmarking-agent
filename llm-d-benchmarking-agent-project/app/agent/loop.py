@@ -61,7 +61,10 @@ class AgentLoop:
             tool_result_msgs = []
             for tc in turn.tool_calls:
                 await emit(events.TOOL_CALL, {"id": tc.id, "name": tc.name, "input": tc.input})
+                # Tie any approval gate raised inside this dispatch back to its tool call.
+                ctx.current_tool_call_id = tc.id
                 result = await self._invoke(ctx, tc.name, tc.input)
+                ctx.current_tool_call_id = None
 
                 if tc.name == "propose_session_plan" and isinstance(result, dict) and result.get("approved"):
                     session.approved_plan = result.get("plan")

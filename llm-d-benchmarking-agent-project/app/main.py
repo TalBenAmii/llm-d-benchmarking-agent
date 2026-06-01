@@ -7,13 +7,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import uuid
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.agent.channel import Channel
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
 from app.config import get_settings
@@ -41,6 +41,9 @@ async def lifespan(app: FastAPI):
     # the turn currently running per session (prevents two connections double-running one chat).
     app.state.background_tasks = set()
     app.state.running = {}
+    # Per-session Channel: routes a running turn's events + approval gates to whatever socket
+    # is currently attached, so a turn (incl. one parked at an approval) survives reconnects.
+    app.state.channels = {}
     app.state.sessions = SessionManager(
         settings, app.state.allowlist, app.state.runner, run_semaphore=app.state.run_semaphore
     )
@@ -94,6 +97,12 @@ async def list_sessions() -> JSONResponse:
 async def delete_session(sid: str) -> JSONResponse:
     if not app.state.sessions.delete(sid):
         raise HTTPException(status_code=404, detail="session not found")
+    # Tear down any live turn (e.g. one parked at an approval gate) + its channel so deleting
+    # a session doesn't leak a forever-blocked task.
+    task = app.state.running.pop(sid, None)
+    if task is not None and not task.done():
+        task.cancel()
+    app.state.channels.pop(sid, None)
     return JSONResponse({"deleted": True, "id": sid})
 
 
@@ -134,7 +143,14 @@ def _history_items(session) -> list[dict[str, Any]]:
 
     The stored ``messages`` are in LLM wire-format; flatten them into the same
     shape the live event stream produces so the client can reuse its renderers.
+    Decided approval gates (kept off the LLM stream, in ``session.approvals``) are
+    interleaved right after the tool call they belong to, so the resolved ✓/✗ cards
+    show up in their original place.
     """
+    approvals_by_tc: dict[str, list[dict[str, Any]]] = {}
+    for a in getattr(session, "approvals", []) or []:
+        approvals_by_tc.setdefault(a.get("tool_call_id"), []).append(a)
+
     items: list[dict[str, Any]] = []
     for m in session.messages:
         role = m.get("role")
@@ -145,6 +161,9 @@ def _history_items(session) -> list[dict[str, Any]]:
                 items.append({"role": "assistant", "text": m["content"]})
             for tc in m.get("tool_calls") or []:
                 items.append({"role": "tool_call", "name": tc.get("name"), "input": tc.get("input")})
+                for a in approvals_by_tc.get(tc.get("id"), []):
+                    items.append({"role": "approval_decision", "kind": a.get("kind"),
+                                  "payload": a.get("payload"), "approved": a.get("approved")})
     return items
 
 
@@ -163,31 +182,16 @@ async def ws(websocket: WebSocket) -> None:
         session = app.state.sessions.create()
     loop = AgentLoop(app.state.provider) if app.state.provider else None
 
-    pending: dict[str, asyncio.Future] = {}
+    # A per-session Channel decouples the running turn from this specific socket: events go to
+    # whatever socket is currently attached, and a turn parked at an approval gate stays parked
+    # (rather than auto-rejecting) when the socket drops — re-surfacing when the chat reopens.
+    channel = app.state.channels.get(session.id)
+    if channel is None:
+        channel = Channel(session)
+        app.state.channels[session.id] = channel
+    channel.ws = websocket  # last connection wins (single active tab, Claude-web style)
+
     busy = {"value": False}
-    connected = {"value": True}
-
-    async def emit(event_type: str, payload: dict[str, Any]) -> None:
-        # Record the executed-command trail on the session so a resumed chat can replay it
-        # in the command/debug view (kept out of the LLM message stream).
-        if event_type == "command":
-            session.record_command(payload)
-        with contextlib.suppress(Exception):
-            await websocket.send_json({"type": event_type, "data": payload})
-
-    async def request_approval(kind: str, payload: dict[str, Any]) -> bool:
-        # If the client has gone (navigated away mid-run), there's no one to approve —
-        # reject so a background turn can't hang forever holding a concurrency slot.
-        if not connected["value"]:
-            return False
-        rid = uuid.uuid4().hex[:8]
-        fut: asyncio.Future = asyncio.get_running_loop().create_future()
-        pending[rid] = fut
-        await emit("approval_request", {"request_id": rid, "kind": kind, "payload": payload})
-        try:
-            return bool(await fut)
-        finally:
-            pending.pop(rid, None)
 
     async def run_turn(text: str) -> None:
         busy["value"] = True
@@ -196,26 +200,34 @@ async def ws(websocket: WebSocket) -> None:
                 # No LLM, but still record the turn so the chat persists / resumes.
                 session.messages.append({"role": "user", "content": text})
                 session.persist()
-                await emit("error", {"message": f"LLM provider not configured: {app.state.provider_error}"})
-                await emit("done", {})
+                await channel.emit("error", {"message": f"LLM provider not configured: {app.state.provider_error}"})
+                await channel.emit("done", {})
                 return
-            await loop.run_turn(session, text, emit=emit, request_approval=request_approval)
+            await loop.run_turn(session, text, emit=channel.emit, request_approval=channel.request_approval)
         except Exception as exc:  # noqa: BLE001
-            await emit("error", {"message": f"agent error: {exc}"})
-            await emit("done", {})
+            await channel.emit("error", {"message": f"agent error: {exc}"})
+            await channel.emit("done", {})
         finally:
             busy["value"] = False
             if app.state.running.get(session.id) is asyncio.current_task():
                 app.state.running.pop(session.id, None)
+            # Forget the channel once its turn ends with nothing attached/pending, so a long-
+            # lived server doesn't accumulate one channel per chat ever opened.
+            if channel.ws is None and not channel.pending:
+                app.state.channels.pop(session.id, None)
 
     _running_task = app.state.running.get(session.id)
-    await emit("ready", {
+    await channel.emit("ready", {
         "session_id": session.id,
         "resumed": resumed,
         "running": bool(_running_task and not _running_task.done()),
     })
     if resumed:
-        await emit("history", {"items": _history_items(session), "commands": session.commands})
+        await channel.emit("history", {"items": _history_items(session), "commands": session.commands})
+    # Re-surface any still-undecided approval (a gate the turn parked on while you were away),
+    # AFTER history so the live card lands below the replayed transcript.
+    if channel.pending:
+        await channel.reemit_pending()
     turn_task: asyncio.Task | None = None
 
     try:
@@ -225,28 +237,29 @@ async def ws(websocket: WebSocket) -> None:
             if mtype == "user_message":
                 existing = app.state.running.get(session.id)
                 if busy["value"] or (existing is not None and not existing.done()):
-                    await emit("error", {"message": "still working on the previous request — please wait."})
+                    await channel.emit("error", {"message": "still working on the previous request — please wait."})
                     continue
                 turn_task = asyncio.create_task(run_turn(msg.get("text", "")))
                 app.state.running[session.id] = turn_task
             elif mtype == "approval":
-                rid = msg.get("request_id")
-                fut = pending.get(rid)
-                if fut and not fut.done():
-                    fut.set_result(bool(msg.get("approved")))
+                channel.resolve(msg.get("request_id"), bool(msg.get("approved")))
             elif mtype == "ping":
-                await emit("pong", {})
+                await channel.emit("pong", {})
     except WebSocketDisconnect:
         pass
     finally:
-        connected["value"] = False
-        for fut in pending.values():
-            if not fut.done():
-                fut.set_result(False)
-        # Don't kill an in-flight (already-approved) run on disconnect — let it finish in
-        # the background so a benchmark survives navigating away and several can run in
-        # parallel across chats. Further approval requests auto-reject (connected=False),
-        # so the detached turn can't hang. Its result is replayed from history on reconnect.
+        # Detach this socket unless a newer connection already took over — the identity guard
+        # is what makes the close->reconnect race safe. Pending approvals are NOT rejected: the
+        # turn stays parked and re-surfaces when the chat is reopened.
+        if channel.ws is websocket:
+            channel.ws = None
+        # Don't kill an in-flight (already-approved) run on disconnect — let it finish in the
+        # background so a benchmark survives navigating away and several can run in parallel
+        # across chats. A turn parked at an approval gate likewise survives (it holds no
+        # concurrency slot) and resumes when you reopen the chat.
         if turn_task and not turn_task.done():
             app.state.background_tasks.add(turn_task)
             turn_task.add_done_callback(app.state.background_tasks.discard)
+        running = app.state.running.get(session.id)
+        if channel.ws is None and not channel.pending and (running is None or running.done()):
+            app.state.channels.pop(session.id, None)

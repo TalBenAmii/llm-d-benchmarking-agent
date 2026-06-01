@@ -47,6 +47,9 @@ class ToolContext:
     # Wired by the agent loop before each tool dispatch.
     request_approval: ApproveFn | None = field(default=None, repr=False)
     emit: EmitFn | None = field(default=None, repr=False)
+    # Id of the tool call currently being dispatched; set by the loop so an approval gate
+    # raised mid-dispatch can be tied back to its tool call (for ordered history replay).
+    current_tool_call_id: str | None = field(default=None, repr=False)
     # Shared across sessions: caps concurrent heavy (mutating) executions so parallel
     # benchmark runs stay bounded. None = unlimited.
     run_semaphore: asyncio.Semaphore | None = field(default=None, repr=False)

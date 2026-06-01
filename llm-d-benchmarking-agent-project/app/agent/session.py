@@ -58,6 +58,10 @@ class Session:
     # included). Not part of the LLM message stream — purely for the UI's command/debug view,
     # replayed on resume. Bounded to the most recent _COMMANDS_MAX entries.
     commands: list[dict[str, Any]] = field(default_factory=list)
+    # Decided approval gates (Approve/Reject of a command or a session plan), keyed to the
+    # tool call they belong to. Not part of the LLM message stream — recorded so a resumed
+    # chat can replay the approval cards + their ✓/✗ outcome in the transcript.
+    approvals: list[dict[str, Any]] = field(default_factory=list)
     title: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -66,6 +70,11 @@ class Session:
         self.commands.append(payload)
         if len(self.commands) > _COMMANDS_MAX:
             del self.commands[: len(self.commands) - _COMMANDS_MAX]
+
+    def record_approval(self, entry: dict[str, Any]) -> None:
+        self.approvals.append(entry)
+        if len(self.approvals) > _COMMANDS_MAX:
+            del self.approvals[: len(self.approvals) - _COMMANDS_MAX]
 
     def persist(self) -> None:
         """Best-effort transcript snapshot for resumability/debugging."""
@@ -84,6 +93,7 @@ class Session:
                         "messages": self.messages,
                         "approved_plan": self.approved_plan,
                         "commands": self.commands[-_COMMANDS_MAX:],
+                        "approvals": self.approvals[-_COMMANDS_MAX:],
                     },
                     indent=2,
                 )
@@ -138,6 +148,7 @@ class SessionManager:
             messages=data.get("messages", []),
             approved_plan=data.get("approved_plan"),
             commands=data.get("commands", []),
+            approvals=data.get("approvals", []),
             title=data.get("title", ""),
             created_at=data.get("created_at") or time.time(),
             updated_at=data.get("updated_at") or time.time(),
