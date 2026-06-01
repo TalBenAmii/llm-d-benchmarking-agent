@@ -328,3 +328,14 @@ Branch `feature/roadmap-p1-transparency` → merged into `feature/roadmap`.
   checkout is `test_snapshot_matches_live` (catalog-drift guard) which deliberately skips when the
   bench repo isn't at the canonical sibling path — expected, benign.
 - Next: Phase 1 (command transparency, debug mode, UI/slider polish).
+
+## Phase 17 — Operability docs + alert rules — DONE
+Branch `feature/roadmap-v2-p17-ops-docs` → merged into `feature/roadmap-v2` (`--no-ff`).
+- Added `docs/SECURITY.md`, `docs/TROUBLESHOOTING.md`, `docs/CONTRIBUTING.md`, `docs/CHANGELOG.md`
+  (linked from `docs/README.md`) and `deploy/observability/alerts.rules.yaml` (5 alert rules over
+  the already-exported metrics). Docs + data only — no app behavior change.
+- New hermetic `tests/test_ops_docs.py` checks the docs/sections exist, the alert YAML is valid
+  Prometheus, and every metric the rules reference is actually exported (derived live from
+  `app.observability.instrument`, so it can't drift); an optional `promtool` lint skips when the
+  binary is absent.
+- **Tests:** full suite **424 passed / 7 skipped / 0 failed** (prior baseline 415 passed / 6 skipped).

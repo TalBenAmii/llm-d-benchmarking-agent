@@ -249,3 +249,17 @@ Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never
   `runner_ok` component. `knowledge/run_lifecycle.md` holds the JUDGMENT of *when* to cancel.
 - Merged into `feature/roadmap-v2` (`--no-ff`); full suite **415 passed / 6 skipped / 0 failed**
   (+`tests/test_run_lifecycle.py`, 384 lines; prior baseline 404 passed / 6 skipped).
+
+## Phase 17 — Operability docs + alert rules — DONE
+- Shipped the four operability docs under `docs/` (SECURITY: threat model, trust boundaries,
+  allowlist/approval model, secret scrubbing, network-exposure; TROUBLESHOOTING: symptom->fix
+  keyed to the structured logs/`corr_id` + `/healthz`//`readyz`//`metrics`; CONTRIBUTING:
+  thin-code + allowlist-as-data laws + the hermetic-test rule; a Keep-a-Changelog) linked from
+  the docs index, plus `deploy/observability/alerts.rules.yaml` (5 Prometheus rules over the
+  EXISTING exported metrics — slow commands, elevated run-failure/fault rates, stuck in-flight
+  runs, target down). Docs + data only; no app behavior change.
+- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **424 passed / 7 skipped / 0 failed**
+  (+`tests/test_ops_docs.py`, 224 lines — asserts docs/sections exist, the rule YAML is valid
+  Prometheus, and every referenced metric is one the app actually exports, derived live so it
+  can't drift; the +1 skip is an optional `promtool` check skipped when the binary is absent.
+  Prior baseline 415 passed / 6 skipped).
