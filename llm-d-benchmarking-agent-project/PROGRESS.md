@@ -8,6 +8,25 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-02 — Phase 12: API trust — auth + rate-limit + CORS — DONE
+Branch `feature/roadmap-v2-p12-authz` → merged into `feature/roadmap-v2` (`--no-ff`). The phase
+branched cleanly off the current v2 tip (single commit), so the merge applied with no conflicts in
+the additive-registration or structural-wiring files (`app/main.py`, `app/config.py` took the
+phase changes outright over an unchanged base).
+- **Shipped:** stdlib-only API-trust controls (NO new dependency), all defaulting OFF/open so
+  existing flows and tests are unchanged — `app/security/auth.py`: optional Bearer auth
+  (constant-time `secrets.compare_digest`, app-level dependency over a typed `HTTPConnection` that
+  guards every HTTP route, with the `/ws` handshake guarded in-handler via `Authorization` header
+  or `?token=` → 401 / WS close 1008) and a `TokenBucket`/`RateLimiter` with an injectable
+  monotonic clock (deterministic, sleepless tests) throttling the `/api/*` intake (empty bucket →
+  429; `/healthz` + `/metrics` never throttled). `app/main.py` wires `CORSMiddleware` only when
+  `CORS_ALLOW_ORIGINS` is set and the lifespan builds the shared limiter, failing loud if
+  `AUTH_ENABLED` is set with an empty `AUTH_TOKEN`. `app/config.py` adds the settings +
+  `cors_origins_list`; `.env.example` documents them. Judgment in `knowledge/api_trust.md`.
+- **Tests:** full integration suite **351 passed / 6 skipped / 0 failed** (+12 hermetic api-trust
+  tests; prior baseline 339 passed / 6 skipped). Authoritative run from the integration worktree
+  with `PYTHONPATH=$PWD`, `REPOS_DIR` set, `timeout 600` — no hang.
+
 ## 2026-06-02 — Phase 11: Structured logging + correlation IDs — DONE
 Branch `feature/roadmap-v2-p11-logging` → merged into `feature/roadmap-v2` (`--no-ff`). The phase
 branched cleanly off the current v2 tip (single commit), so the merge applied with no conflicts in

@@ -189,3 +189,15 @@ Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never
   runtime dependency. Judgment in `knowledge/logging.md`.
 - Merged into `feature/roadmap-v2` (`--no-ff`); full suite **339 passed / 6 skipped / 0 failed**
   (+7 hermetic logging tests; prior baseline 332 passed / 6 skipped).
+
+## Phase 12 — API trust: auth + rate-limit + CORS — DONE
+- Shipped stdlib-only, default-off API-trust controls (NO new dependency) so the FastAPI surface is
+  safe to expose while staying frictionless locally: optional Bearer auth (constant-time
+  `secrets.compare_digest`; an app-level dependency guards every HTTP route and the `/ws` handshake
+  is guarded in-handler — bad/missing token → 401 / WS close 1008) and a `TokenBucket`/`RateLimiter`
+  with an injectable monotonic clock guarding `/api/*` intake (empty bucket → 429; `/healthz` +
+  `/metrics` never throttled), plus `CORSMiddleware` wired only when `CORS_ALLOW_ORIGINS` is set.
+  `app/config.py` adds `AUTH_ENABLED`/`AUTH_TOKEN`/`RATE_LIMIT_*`/`CORS_ALLOW_ORIGINS`; lifespan
+  fails loud if `AUTH_ENABLED` with empty `AUTH_TOKEN`. Judgment in `knowledge/api_trust.md`.
+- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **351 passed / 6 skipped / 0 failed**
+  (+12 hermetic api-trust tests; prior baseline 339 passed / 6 skipped).
