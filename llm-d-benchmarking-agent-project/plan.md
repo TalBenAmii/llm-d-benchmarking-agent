@@ -1,11 +1,18 @@
 # Plan: llm-d Benchmarking Assistant Agent
 
-> **Status — MVP implemented & verified (2026-05-31).** All planned steps below are done;
-> 100 tests pass. See **[Implementation status](#implementation-status)** for what was built,
-> how it was verified, and what remains. The sections after that are the original design
-> reference (kept as written).
+> **Status — implemented & verified; grown well past the MVP.** All MVP steps below are
+> done, and the project has since landed the full roadmap feature set (see
+> [`ROADMAP.md`](ROADMAP.md) / [`PROGRESS.md`](PROGRESS.md)): a **Kubernetes-native
+> benchmark orchestrator** (Job lifecycle, fault classification, retry/dead-letter, parallel
+> sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
+> comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
+> **Prometheus/Grafana observability**, and a **hardened image + one-command Helm/Kustomize
+> deploy** with least-privilege RBAC. The agent now exposes **18 tools**, and the full
+> technical documentation suite lives under [`docs/`](docs/) (architecture, API reference,
+> deployment guide, user guide). See **[Implementation status](#implementation-status)** for
+> the MVP record; the sections after it are the original design reference (kept as written).
 >
-> **Increment — agent-owned host bootstrap.** The agent now installs the prerequisites
+> **Increment — agent-owned host bootstrap.** The agent installs the prerequisites
 > `install.sh` does not (the Docker daemon + the kind binary) via the vetted
 > `scripts/install_prereqs.sh`, creates/deletes the kind cluster (`kind create/delete
 > cluster`), and reaches any allowlisted command through a generic `run_command` tool plus
