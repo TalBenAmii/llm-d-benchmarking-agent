@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 from typing import Any
 
@@ -15,9 +16,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.agent import events as ws_events
 from app.agent.channel import Channel
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
+from app.agent.ws_schemas import (
+    ApprovalIn,
+    PingIn,
+    UserMessageIn,
+    ValidationError,
+    outbound,
+    parse_inbound,
+)
 from app.config import get_settings
 from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocket_authorized
 from app.llm.provider import get_provider
@@ -220,6 +230,17 @@ def _history_items(session) -> list[dict[str, Any]]:
 app.mount("/static", StaticFiles(directory=str(get_settings().ui_dir)), name="static")
 
 
+def _first_validation_message(exc: ValidationError) -> str:
+    """A short, human-readable reason from a Pydantic validation error for the protocol
+    `error` event — the field path + message of the first error, without leaking internals."""
+    errs = exc.errors()
+    if not errs:
+        return "invalid frame"
+    e = errs[0]
+    loc = ".".join(str(p) for p in e.get("loc", ())) or "frame"
+    return f"{loc}: {e.get('msg', 'invalid')}"
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
     # Auth (Phase 12): the app-level HTTP dependency does NOT cover WebSockets, so guard the
@@ -252,6 +273,10 @@ async def ws(websocket: WebSocket) -> None:
 
     async def run_turn(text: str) -> None:
         busy["value"] = True
+        # Open a fresh live-event buffer for this turn (Phase 15): every event emitted below is
+        # appended to the channel's bounded ring buffer so a client that reconnects mid-turn can
+        # replay what it missed and catch up to the LIVE stream.
+        channel.begin_turn()
         try:
             if loop is None:
                 # No LLM, but still record the turn so the chat persists / resumes.
@@ -265,6 +290,7 @@ async def ws(websocket: WebSocket) -> None:
             await channel.emit("error", {"message": f"agent error: {exc}"})
             await channel.emit("done", {})
         finally:
+            channel.end_turn()
             busy["value"] = False
             if app.state.running.get(session.id) is asyncio.current_task():
                 app.state.running.pop(session.id, None)
@@ -281,17 +307,64 @@ async def ws(websocket: WebSocket) -> None:
     })
     if resumed:
         await channel.emit("history", {"items": _history_items(session), "commands": session.commands})
+    # If a turn is still running on this session (the socket dropped mid-run), replay the
+    # buffered LIVE events for that turn so a reconnecting client catches up to the live stream
+    # — the events it missed, in order — then continues live, rather than waiting blind for the
+    # final result (resolves the Phase-2 deferral). AFTER history so it lands below the replayed
+    # transcript. Guarded by turn_active so we never replay a stale prior turn's tail.
+    if channel.turn_active:
+        await channel.replay_live()
     # Re-surface any still-undecided approval (a gate the turn parked on while you were away),
-    # AFTER history so the live card lands below the replayed transcript.
+    # AFTER the live replay so the live card lands at the bottom.
     if channel.pending:
         await channel.reemit_pending()
     turn_task: asyncio.Task | None = None
 
     try:
         while True:
-            msg = await websocket.receive_json()
-            mtype = msg.get("type")
-            if mtype == "user_message":
+            # Decode the inbound frame ourselves (rather than websocket.receive_json) so we can
+            # guard the JSON-decode layer too: a non-JSON text frame, or a binary frame in a
+            # text protocol, must be rejected with a structured `error` and the socket KEPT
+            # ALIVE — never crash the handler. receive_json() would raise json.JSONDecodeError
+            # (or KeyError on a binary frame) straight out of the loop and tear down the socket.
+            message = await websocket.receive()
+            # A control frame announcing disconnect surfaces here as a websocket.disconnect
+            # message; raise so the outer `except WebSocketDisconnect` handles teardown.
+            if message["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect(message.get("code", 1000), message.get("reason"))
+            text = message.get("text")
+            if text is None:
+                # No text payload (e.g. a binary frame): can't be a protocol frame.
+                await websocket.send_json(outbound(ws_events.ERROR, {
+                    "message": "malformed message: expected a JSON text frame",
+                    "kind": "protocol_error",
+                }))
+                continue
+            try:
+                raw = json.loads(text)
+            except (json.JSONDecodeError, ValueError) as exc:
+                # Non-JSON text frame — the most basic malformed frame. Reject structurally and
+                # keep the connection alive so a hostile/buggy client cannot crash the handler.
+                await websocket.send_json(outbound(ws_events.ERROR, {
+                    "message": "malformed message: invalid JSON: " + str(exc),
+                    "kind": "protocol_error",
+                }))
+                continue
+            # Validate the inbound frame against the WS wire protocol (Phase 15). A malformed
+            # frame (non-dict, unknown/missing type, wrong field shape, extra fields) is
+            # rejected with a structured `error` event and the socket is KEPT ALIVE — a bad or
+            # hostile frame must never crash the handler or silently no-op. The validated,
+            # typed message then drives the handler below.
+            try:
+                msg = parse_inbound(raw)
+            except ValidationError as exc:
+                # Send a structured, client-actionable error; do NOT close the connection.
+                await websocket.send_json(outbound(ws_events.ERROR, {
+                    "message": "malformed message: " + _first_validation_message(exc),
+                    "kind": "protocol_error",
+                }))
+                continue
+            if isinstance(msg, UserMessageIn):
                 existing = app.state.running.get(session.id)
                 if busy["value"] or (existing is not None and not existing.done()):
                     await channel.emit("error", {"message": "still working on the previous request — please wait."})
@@ -301,11 +374,11 @@ async def ws(websocket: WebSocket) -> None:
                 # current contextvars, so the corr_id + session_id ride into the loop, every
                 # tool dispatch, and the command runner automatically (Phase 11).
                 with log_bind(corr_id=new_corr_id(), session_id=session.id):
-                    turn_task = asyncio.create_task(run_turn(msg.get("text", "")))
+                    turn_task = asyncio.create_task(run_turn(msg.text))
                 app.state.running[session.id] = turn_task
-            elif mtype == "approval":
-                channel.resolve(msg.get("request_id"), bool(msg.get("approved")))
-            elif mtype == "ping":
+            elif isinstance(msg, ApprovalIn):
+                channel.resolve(msg.request_id, msg.approved)
+            elif isinstance(msg, PingIn):
                 await channel.emit("pong", {})
     except WebSocketDisconnect:
         pass
