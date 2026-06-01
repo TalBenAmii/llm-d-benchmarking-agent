@@ -9,15 +9,22 @@ benchmark, and explains the results.
 It does this by driving the real `llmdbenchmark` CLI on your behalf — inside a strict
 security sandbox, asking for your approval before anything that changes your system.
 
-> **Status: MVP implemented & verified (2026-05-31).** The end-to-end vertical works —
-> chat UI → agent loop → schema-validated, approval-gated tools → real `llmdbenchmark`
-> execution → validated Benchmark Report summary. **100 tests pass.** The supported path is
-> the `llm-d-benchmark` *quickstart* (local [kind](https://kind.sigs.k8s.io/) cluster,
-> CPU-only simulated engine). The agent can bootstrap the host end-to-end — install the
-> prerequisites `install.sh` doesn't (Docker + the kind binary, via a vetted installer),
-> create/delete the kind cluster, then deploy and benchmark — each step approval-gated. A
-> live LLM session needs an API key in `.env`; GPU / `llm-d` guide deploys come later. See
-> [`plan.md`](plan.md#implementation-status) for the full status.
+> **Status: implemented & verified.** The end-to-end vertical works — chat UI → agent loop
+> → schema-validated, approval-gated tools → real `llmdbenchmark` execution → validated
+> Benchmark Report summary — and has grown well past the MVP. Beyond the quickstart it now
+> includes a **Kubernetes-native benchmark orchestrator** (Job lifecycle, fault
+> classification, retry/dead-letter, parallel sweeps), a **results analyzer** (goodput, SLO
+> filtering, Pareto/DoE), **multi-harness comparison**, a **capacity pre-flight**,
+> **cross-session result history + trends**, **Prometheus/Grafana observability**, and a
+> **hardened image + one-command Helm/Kustomize deploy** with least-privilege RBAC. The
+> agent exposes **18 tools**. The headline supported path remains the `llm-d-benchmark`
+> *quickstart* (local [kind](https://kind.sigs.k8s.io/) cluster, CPU-only simulated engine),
+> which the agent can bootstrap end-to-end — install the prerequisites `install.sh` doesn't
+> (Docker + the kind binary, via a vetted installer), create/delete the kind cluster, then
+> deploy and benchmark — each step approval-gated. A live LLM session needs an API key in
+> `.env`. The full pytest suite is hermetic (no API key, Docker, kind, or live cluster
+> needed). See [`docs/`](docs/) for the full documentation suite and
+> [`plan.md`](plan.md#implementation-status) for the status record.
 
 ## Design in one line
 **Thin code, thick agent.** The Python here is only *mechanism* — a chat UI, an agent
@@ -125,7 +132,19 @@ and how to add a flow.
 | `workspace/` | Gitignored runtime scratch (sessions, configs, logs) |
 | `tests/` | pytest |
 
-See [`CLAUDE.md`](CLAUDE.md) for the full set of working rules and
+## Documentation
+
+The full technical documentation suite lives under [`docs/`](docs/):
+
+| Doc | For |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design: layers, components, the four determinism gates, trust boundaries |
+| [docs/API.md](docs/API.md) | The HTTP/WebSocket API + the 18-tool agent surface + the `SessionPlan` |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Running locally and in-cluster (Helm/Kustomize), config, secrets, RBAC, observability |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Using the agent end-to-end with no `llm-d-benchmark` expertise |
+| [docs/VALIDATION.md](docs/VALIDATION.md) | The flow-validation harness — does the agent run the *right* commands? |
+
+See also [`CLAUDE.md`](CLAUDE.md) for the full set of working rules and
 [`plan.md`](plan.md) for the implementation plan.
 
 ## Relationship to the repos
