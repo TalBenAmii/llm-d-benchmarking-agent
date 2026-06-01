@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # Structured logging (Phase 11). LOG_LEVEL is a stdlib level name (DEBUG/INFO/WARNING/...).
+    # LOG_FORMAT is "json" (one JSON object per line — the default, for log aggregation) or
+    # "text" (a compact human line, for local dev). Set via LOG_LEVEL / LOG_FORMAT in the env.
+    log_level: str = "INFO"
+    log_format: str = "json"
+
     # Max concurrent *heavy* (mutating) command executions across ALL sessions — bounds
     # how many benchmark runs proceed in parallel so they don't thrash the host. Read-only
     # probes are never capped. <= 0 means unlimited.

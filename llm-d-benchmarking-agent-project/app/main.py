@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -19,6 +20,9 @@ from app.agent.session import SessionManager
 from app.config import get_settings
 from app.llm.provider import get_provider
 from app.observability import instrument
+from app.observability.logctx import bind as log_bind
+from app.observability.logctx import new_corr_id
+from app.observability.logging import setup_logging
 from app.observability.metrics import render_prometheus
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
@@ -27,9 +31,15 @@ from app.storage.history import HistoryStore, available_metrics, trend
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
 _PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
+log = logging.getLogger("app.main")
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    # Initialize structured logging ONCE, before anything downstream logs (Phase 11).
+    setup_logging(level=settings.log_level, log_format=settings.log_format)
+    log.info("startup", extra={"log_format": settings.log_format, "provider": settings.llm_provider})
     app.state.settings = settings
     app.state.allowlist = Allowlist.from_file(settings.allowlist_path)
     app.state.runner = CommandRunner(settings.repo_paths, extra_env=settings.extra_subprocess_env)
@@ -239,7 +249,12 @@ async def ws(websocket: WebSocket) -> None:
                 if busy["value"] or (existing is not None and not existing.done()):
                     await channel.emit("error", {"message": "still working on the previous request — please wait."})
                     continue
-                turn_task = asyncio.create_task(run_turn(msg.get("text", "")))
+                # Mint a fresh correlation id at the WS boundary (one per connection/turn) and
+                # bind it before creating the turn task: asyncio.create_task snapshots the
+                # current contextvars, so the corr_id + session_id ride into the loop, every
+                # tool dispatch, and the command runner automatically (Phase 11).
+                with log_bind(corr_id=new_corr_id(), session_id=session.id):
+                    turn_task = asyncio.create_task(run_turn(msg.get("text", "")))
                 app.state.running[session.id] = turn_task
             elif mtype == "approval":
                 channel.resolve(msg.get("request_id"), bool(msg.get("approved")))
