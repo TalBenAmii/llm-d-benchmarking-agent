@@ -226,3 +226,14 @@ Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never
   handshakes. Outbound envelope unified via `outbound()`; `ping` answered with `pong`.
 - Merged into `feature/roadmap-v2` (`--no-ff`); full suite **384 passed / 6 skipped / 0 failed**
   (+`tests/test_ws.py`, 280 lines; prior baseline 378 passed / 6 skipped).
+
+## Phase 18 — Workspace lifecycle: retention/GC + startup self-check — DONE
+- Added `app/storage/retention.py`: a config-driven retention/GC over the workspace scratch areas
+  (sessions, history, orchestrator `workspace/jobs/*.yaml`) — policy as DATA in `config.py`
+  (`retention_max_age_days`/`max_items`/`max_bytes`, unlimited by default), walk/counter as the
+  mechanism. The FastAPI `lifespan` runs a one-shot GC at startup (`retention_gc_on_startup`, ON by
+  default, never blocks startup) that excludes any live/running session. Also a structured startup
+  `self_check` (workspace writable, provider coherent, repos resolvable, auth coherent) surfaced via
+  a new `/readyz` readiness probe (200/503 + structured reasons); liveness stays on `/healthz`.
+- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **404 passed / 6 skipped / 0 failed**
+  (+20 hermetic tests in `test_retention.py` + `test_readyz.py`; prior baseline 384 passed / 6 skipped).

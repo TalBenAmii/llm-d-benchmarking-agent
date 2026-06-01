@@ -8,6 +8,26 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-02 — Phase 18: Workspace lifecycle — retention/GC + startup self-check — DONE
+Branch `feature/roadmap-v2-p18-workspace` → merged into `feature/roadmap-v2` (`--no-ff`).
+- **Shipped:** `app/storage/retention.py` (446 lines) — a config-driven retention/GC mechanism
+  over the workspace scratch areas (sessions, history, orchestrator `workspace/jobs/*.yaml`), with
+  the policy as DATA in `config.py` (`retention_max_age_days` / `retention_max_items` /
+  `retention_max_bytes`, all unlimited by default) and the walk/counter as the mechanism. The
+  FastAPI `lifespan` runs a one-shot GC at startup (toggle `retention_gc_on_startup`, defaults ON,
+  never blocks startup) that is fed `_active_session_ids(app)` so a live/running session is never
+  pruned. Also added a structured startup `self_check(settings)` (workspace writable, provider
+  coherent, repos resolvable, auth coherent) surfaced through a new `/readyz` readiness probe
+  (200 ready / 503 not, with the structured reasons); liveness stays on `/healthz`.
+- **Merge composition:** the structural-wiring file `app/main.py` was reconciled into ONE coherent
+  `lifespan` running BOTH the prior wiring (logging/auth/rate-limit/allowlist/runner/sessions/
+  provider) and the new self-check + GC; `session.py` gained `active_ids()`; `config.py` got the
+  Phase 18 settings. No entries dropped. Other files were clean additions.
+- **Tests:** full integration suite **404 passed / 6 skipped / 0 failed** (+`tests/test_retention.py`
+  + `tests/test_readyz.py`, 20 new hermetic tests; prior baseline 384 passed / 6 skipped).
+  Authoritative run from the integration worktree (worktree app on `PYTHONPATH`, real venv + .env,
+  `REPOS_DIR` set, 600s timeout — exit 0, no hang).
+
 ## 2026-06-02 — Phase 15: WebSocket protocol hardening + live event buffer — DONE
 Branch `feature/roadmap-v2-p15-ws-protocol` → merged into `feature/roadmap-v2` (`--no-ff`). The
 phase branched off the current tip, so the merge applied with no code conflicts.
