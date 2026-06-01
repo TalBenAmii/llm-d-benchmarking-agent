@@ -54,6 +54,35 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # ---- API trust (Phase 12): optional auth + rate-limit + CORS ----------
+    # ALL THREE default OFF/open, so local use is unchanged and existing flows/tests pass.
+    # Turn them on only when exposing the API beyond localhost. Pure mechanism here; the
+    # operator's judgment about *when* to enable lives in knowledge/api_trust.md.
+    #
+    # Optional Bearer-token auth. When enabled, every HTTP route and the /ws endpoint require
+    # ``Authorization: Bearer <AUTH_TOKEN>`` (constant-time compared); missing/bad token -> 401.
+    # AUTH_TOKEN is a secret (backend-only, like the LLM keys) — never sent to the browser.
+    auth_enabled: bool = False
+    auth_token: str = ""
+
+    # In-memory token-bucket rate limiter on the HTTP message-intake surface. RPS is the
+    # steady-state refill rate (tokens/second); BURST is the bucket capacity (max instantaneous
+    # tokens). Empty bucket -> 429. Off by default; per-process, not distributed.
+    rate_limit_enabled: bool = False
+    rate_limit_rps: float = 5.0
+    rate_limit_burst: int = 10
+
+    # CORS allowed origins for the browser fetch surface. Empty (default) = today's behavior
+    # (no CORS middleware installed, so the response carries no CORS headers). Set a
+    # comma-separated origin list (e.g. ``https://app.example.com``) to allow those origins.
+    cors_allow_origins: str = ""
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Parse CORS_ALLOW_ORIGINS (comma-separated) into a clean origin list. Empty when
+        unset — the signal to NOT install the CORS middleware at all (today's default)."""
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
     # Structured logging (Phase 11). LOG_LEVEL is a stdlib level name (DEBUG/INFO/WARNING/...).
     # LOG_FORMAT is "json" (one JSON object per line — the default, for log aggregation) or
     # "text" (a compact human line, for local dev). Set via LOG_LEVEL / LOG_FORMAT in the env.
