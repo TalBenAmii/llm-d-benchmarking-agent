@@ -95,6 +95,11 @@ class FakeKubeClient:
         self.logs_text: dict[str, str] = {}
         self._runs: dict[tuple[str, str], dict[str, Any]] = {}
         self._pods: dict[tuple[str, str], list[dict]] = {}
+        # Optional concurrency probe: if apply_gate is an unset asyncio.Event, apply() blocks
+        # on it, so a test can observe how many applies run at once (the sweep's cap).
+        self.apply_gate = None
+        self.apply_active = 0
+        self.apply_peak = 0
 
     def program(self, run_id: str, *, namespace: str = "bench", phases: list[str] | None = None,
                 jobs: list[dict] | None = None, labels: dict | None = None,
@@ -112,6 +117,13 @@ class FakeKubeClient:
     async def apply(self, manifest_path, *, namespace: str) -> RunResult:
         manifest = yaml.safe_load(Path(manifest_path).read_text())
         self.applied.append((namespace, manifest))
+        self.apply_active += 1
+        self.apply_peak = max(self.apply_peak, self.apply_active)
+        try:
+            if self.apply_gate is not None:
+                await self.apply_gate.wait()
+        finally:
+            self.apply_active -= 1
         rid = (manifest.get("metadata", {}).get("labels", {}) or {}).get(LABEL_RUN)
         key = (namespace, rid)
         if rid and key not in self._runs:

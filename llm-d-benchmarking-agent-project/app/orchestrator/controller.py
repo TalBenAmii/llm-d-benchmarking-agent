@@ -54,6 +54,23 @@ class RunOutcome:
     final_failure: Failure | None = None
 
 
+@dataclass
+class SweepOutcome:
+    outcomes: list[RunOutcome] = field(default_factory=list)
+
+    @property
+    def succeeded(self) -> list[str]:
+        return [o.run_id for o in self.outcomes if o.succeeded]
+
+    @property
+    def dead_lettered(self) -> list[str]:
+        return [o.run_id for o in self.outcomes if o.dead_lettered]
+
+    @property
+    def all_succeeded(self) -> bool:
+        return bool(self.outcomes) and all(o.succeeded for o in self.outcomes)
+
+
 class BenchmarkOrchestrator:
     def __init__(self, kube: KubeClient, workspace: str | Path):
         self._kube = kube
@@ -173,3 +190,43 @@ class BenchmarkOrchestrator:
             return RunOutcome(base_spec.run_id, False, attempts, dead_lettered=True, final_failure=failure)
         return RunOutcome(base_spec.run_id, False, attempts, dead_lettered=True,
                           final_failure=attempts[-1].failure if attempts else None)
+
+    async def run_sweep(
+        self,
+        specs: list[JobSpec],
+        *,
+        max_parallel: int = 2,
+        max_attempts: int = 2,
+        retryable=DEFAULT_RETRYABLE,
+        poll_interval: float = 2.0,
+        max_wait: float = 7200.0,
+    ) -> SweepOutcome:
+        """Run a list of treatment specs as parallel Jobs under a concurrency cap, each with
+        its own retry/dead-letter budget. A persistently-failing treatment dead-letters
+        without sinking the rest of the sweep (the proposal's DoE parallel scheduling +
+        dead-letter). Returns a per-treatment outcome roll-up."""
+        sem = asyncio.Semaphore(max(1, max_parallel))
+
+        async def _one(spec: JobSpec) -> RunOutcome:
+            async with sem:
+                return await self.run_with_retries(
+                    spec, max_attempts=max_attempts, retryable=retryable,
+                    poll_interval=poll_interval, max_wait=max_wait,
+                )
+
+        outcomes = await asyncio.gather(*[_one(s) for s in specs])
+        return SweepOutcome(outcomes=list(outcomes))
+
+    async def cleanup(self, *, namespace: str, session_id: str | None = None,
+                      sweep_id: str | None = None, only_terminal: bool = True) -> list[str]:
+        """Reap the agent's Jobs (optionally scoped to a session/sweep). Only terminal Jobs
+        are removed by default, so an in-flight run is never killed. Deleting a Job does not
+        touch the results PVC, so benchmark artifacts are preserved. Returns deleted names."""
+        statuses = await self.reconstruct(namespace=namespace, session_id=session_id, sweep_id=sweep_id)
+        deleted: list[str] = []
+        for st in statuses:
+            if only_terminal and not st.terminal:
+                continue
+            await self._kube.delete_job(st.name, namespace=namespace)
+            deleted.append(st.name)
+        return deleted
