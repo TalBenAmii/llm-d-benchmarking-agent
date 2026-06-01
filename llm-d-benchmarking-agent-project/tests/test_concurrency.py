@@ -4,9 +4,9 @@ Three mechanisms:
   * a configurable, cross-session cap on concurrent *heavy* (mutating) executions, so several
     benchmark runs don't thrash the host (read-only probes are never capped);
   * SessionManager wires that shared cap + isolated workspaces into every session;
-  * an in-flight (already-approved) run is NOT cancelled when its WebSocket drops, so a
-    benchmark survives navigating away / running several chats in parallel — and a turn can't
-    hang after disconnect because further approvals auto-reject.
+  * an in-flight (already-approved) run is NOT cancelled when its WebSocket drops, and a turn
+    parked at an approval gate is NOT auto-rejected — both survive navigating away / running
+    several chats in parallel, and a parked approval re-surfaces when the chat is reopened.
 """
 from __future__ import annotations
 
@@ -228,10 +228,11 @@ def _tool_results_rejected(session) -> bool:
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
-def test_post_disconnect_approval_auto_rejects(tmp_path):
-    """A turn that requests a SECOND approval AFTER the socket dropped must not hang: the
-    backend auto-rejects (connected=False), so the detached turn ends cleanly instead of
-    holding a concurrency slot forever waiting for a user who is gone."""
+def test_post_disconnect_approval_stays_pending_and_reemits_on_reconnect(tmp_path):
+    """Switching chats must NOT reject a pending approval. A turn parked at a SECOND approval
+    when the socket drops stays parked (it holds no concurrency slot) rather than auto-
+    rejecting; reopening the chat re-surfaces the same approval so the user can decide and the
+    turn resumes — and nothing is ever recorded as rejected."""
     from app.main import app
 
     started, gate = threading.Event(), threading.Event()
@@ -256,15 +257,58 @@ def test_post_disconnect_approval_auto_rejects(tmp_path):
                     ws.send_json({"type": "approval", "request_id": ev["data"]["request_id"], "approved": True})
                     break
             assert started.wait(timeout=5)
-        gate.set()  # release the approved standup; the teardown approval now has no client
-        rejected = False
-        for _ in range(150):  # ~3s hard bound: a hang fails this test
-            s = app.state.sessions.get(sid)
-            if s and _tool_results_rejected(s):
-                rejected = True
+            gate.set()  # let the standup execute finish; the turn advances to the teardown gate
+
+            # The teardown approval must now be PARKED (pending), not auto-rejected.
+            pending_rid = None
+            for _ in range(250):
+                ch = app.state.channels.get(sid)
+                if ch and ch.pending:
+                    pending_rid = next(iter(ch.pending))
+                    break
+                time.sleep(0.02)
+            assert pending_rid, "teardown approval never parked as pending"
+            assert not _tool_results_rejected(app.state.sessions.get(sid)), \
+                "teardown was rejected while still parked"
+            running = app.state.running.get(sid)
+            assert running is not None and not running.done(), "turn should be parked, not finished"
+
+        # ws is now closed (chat switch). The parked approval must SURVIVE: the turn is detached
+        # to the background, the pending approval is intact, and nothing is recorded as rejected.
+        detached = None
+        for _ in range(250):
+            detached = next((t for t in app.state.background_tasks if not t.done()), None)
+            if detached is not None:
                 break
             time.sleep(0.02)
-        assert rejected, "second approval after disconnect did not auto-reject (turn hung?)"
+        assert detached is not None, "parked turn was not detached as a background task"
+        ch = app.state.channels.get(sid)
+        assert ch is not None and pending_rid in ch.pending, "pending approval did not survive disconnect"
+        assert not _tool_results_rejected(app.state.sessions.get(sid)), "disconnect rejected the parked approval"
+
+        # Reopen the chat: the same approval is re-emitted so the user can finally decide.
+        with client.websocket_connect(f"/ws?session={sid}") as ws2:
+            r2 = ws2.receive_json()
+            assert r2["type"] == "ready" and r2["data"]["running"] is True
+            reemitted = None
+            for _ in range(80):
+                ev = ws2.receive_json()
+                if ev["type"] == "approval_request":
+                    reemitted = ev["data"]["request_id"]
+                    break
+            assert reemitted == pending_rid, "the parked approval was not re-emitted on reconnect"
+            ws2.send_json({"type": "approval", "request_id": reemitted, "approved": True})
+            # gate is already set, so the teardown execute completes and the turn finishes.
+            for _ in range(250):
+                if detached.done():
+                    break
+                time.sleep(0.02)
+            assert detached.done() and not detached.cancelled(), "resumed turn did not run to completion"
+
+        s = app.state.sessions.get(sid)
+        assert not _tool_results_rejected(s), "the resumed approval was recorded as rejected"
+        # Both the standup (c1) and the teardown (c2) produced real (non-rejected) tool_results.
+        assert sum(1 for m in s.messages if m.get("role") == "tool_results") >= 2
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")

@@ -324,10 +324,80 @@ function el(tag, cls, text) {
   return e;
 }
 
+// ---- minimal, XSS-safe markdown -> HTML for assistant bubbles ------------
+// We escape the text FIRST, then apply a bounded set of transforms, so the only
+// HTML tags that ever reach the DOM are the ones we generate here — never raw
+// markup from the model.
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Inline spans on an already-escaped string: `code`, [text](url), **bold**, *italic*/_italic_.
+function mdInline(s) {
+  const codes = [];
+  s = s.replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return "\uE000" + (codes.length - 1) + "\uE000"; });
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, url) => {
+    if (!/^(https?:\/\/|\/|#)/i.test(url)) return m;      // only safe schemes / relative
+    return `<a href="${url.replace(/"/g, "%22")}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  });
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+  s = s.replace(/(^|[^\w])_([^_\s][^_]*)_/g, "$1<em>$2</em>");
+  return s.replace(/\uE000(\d+)\uE000/g, (_, i) => `<code>${codes[+i]}</code>`);
+}
+
+const _MD_SPECIAL = [/^```/, /^(#{1,3})\s+/, /^\s*[-*]\s+/, /^\s*\d+\.\s+/, /^\s*$/];
+
+function renderMarkdown(text) {
+  const lines = escapeHtml(text).split("\n");
+  let html = "", i = 0, listType = null;
+  const closeList = () => { if (listType) { html += `</${listType}>`; listType = null; } };
+  while (i < lines.length) {
+    const line = lines[i];
+    let m;
+    if (/^```/.test(line)) {                                  // fenced code block
+      closeList();
+      const buf = []; i++;
+      while (i < lines.length && !/^```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
+      i++;                                                    // skip the closing fence
+      html += `<pre class="md-code"><code>${buf.join("\n")}</code></pre>`;
+    } else if ((m = line.match(/^(#{1,3})\s+(.*)$/))) {       // heading (#..###)
+      closeList();
+      const lvl = m[1].length + 2;
+      html += `<h${lvl} class="md-h">${mdInline(m[2])}</h${lvl}>`; i++;
+    } else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) {        // unordered list item
+      if (listType !== "ul") { closeList(); html += "<ul>"; listType = "ul"; }
+      html += `<li>${mdInline(m[1])}</li>`; i++;
+    } else if ((m = line.match(/^\s*(\d+)\.\s+(.*)$/))) {     // ordered list item
+      // Start each run at its explicit number, so items split by blank lines (1. … 2. …)
+      // keep their numbering instead of every block restarting at 1.
+      if (listType !== "ol") { closeList(); html += `<ol start="${m[1]}">`; listType = "ol"; }
+      html += `<li>${mdInline(m[2])}</li>`; i++;
+    } else if (/^\s*$/.test(line)) {                          // blank -> block break
+      closeList(); i++;
+    } else {                                                  // paragraph (joins soft-wrapped lines)
+      closeList();
+      const para = [line]; i++;
+      while (i < lines.length && !_MD_SPECIAL.some((re) => re.test(lines[i]))) { para.push(lines[i]); i++; }
+      html += `<p>${mdInline(para.join("<br>"))}</p>`;
+    }
+  }
+  closeList();
+  return html;
+}
+
 function addBubble(role, text) {
   const wrap = el("div", `msg ${role}`);
   wrap.appendChild(el("div", "who", role === "user" ? "you" : role));
-  wrap.appendChild(el("div", "bubble", text || ""));
+  if (role === "assistant") {
+    // The agent writes markdown; render it. User/error text stays literal (so a user's
+    // own `**` is never interpreted and errors show raw).
+    const bubble = el("div", "bubble markdown");
+    bubble.innerHTML = renderMarkdown(text || "");
+    wrap.appendChild(bubble);
+  } else {
+    wrap.appendChild(el("div", "bubble", text || ""));
+  }
   transcript.appendChild(wrap);
 }
 
@@ -338,6 +408,7 @@ function renderHistory(items, commands) {
     if (it.role === "user") addBubble("user", it.text);
     else if (it.role === "assistant") addBubble("assistant", it.text);
     else if (it.role === "tool_call") addHistoryTool(it);
+    else if (it.role === "approval_decision") addDecisionCard(it);
   }
   if (commands && commands.length) {
     clearCmdlog();
@@ -450,11 +521,11 @@ function prettyJson(obj) {
   return pre;
 }
 
-function addApprovalCard(data) {
-  const { request_id, kind, payload } = data;
-  const card = el("div", "card");
+// Build the body (heading + command/plan detail) shared by the live approval card and the
+// resolved decision card replayed from history. `heading` is the card's title text.
+function approvalCardBody(card, kind, payload, heading) {
   if (kind === "session_plan") {
-    card.appendChild(el("h3", null, "Review the plan before we start"));
+    card.appendChild(el("h3", null, heading));
     const dl = el("dl", "plan");
     const row = (k, v) => { if (v == null || v === "") return; dl.appendChild(el("dt", null, k)); dl.appendChild(el("dd", null, typeof v === "object" ? JSON.stringify(v) : String(v))); };
     row("use case", payload.use_case_summary);
@@ -468,11 +539,17 @@ function addApprovalCard(data) {
     card.appendChild(dl);
   } else {
     const h = el("h3");
-    h.appendChild(el("span", null, "Approve this command "));
+    h.appendChild(el("span", null, heading));
     h.appendChild(el("span", "badge mut", "mutating"));
     card.appendChild(h);
     card.appendChild(el("div", "cmd", payload.command || (payload.argv || []).join(" ")));
   }
+}
+
+function addApprovalCard(data) {
+  const { request_id, kind, payload } = data;
+  const card = el("div", "card");
+  approvalCardBody(card, kind, payload, kind === "session_plan" ? "Review the plan before we start" : "Approve this command ");
   const actions = el("div", "actions");
   const approve = el("button", "approve", "Approve");
   const reject = el("button", "reject", "Reject");
@@ -488,6 +565,15 @@ function addApprovalCard(data) {
   };
   approve.onclick = () => resolve(true);
   reject.onclick = () => resolve(false);
+}
+
+// A resolved approval replayed from a reopened chat: same card, no buttons, just the outcome.
+function addDecisionCard(it) {
+  const { kind, payload, approved } = it;
+  const card = el("div", "card");
+  approvalCardBody(card, kind || "command", payload || {}, kind === "session_plan" ? "Plan" : "Command ");
+  card.appendChild(el("div", "resolved", approved ? "✓ approved" : "✗ rejected"));
+  transcript.appendChild(card);
 }
 
 function scroll() { transcript.scrollTop = transcript.scrollHeight; }
@@ -509,7 +595,7 @@ form.addEventListener("submit", (e) => {
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
 });
-input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 160) + "px"; });
+input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; });
 
 newChatBtn.addEventListener("click", newChat);
 
