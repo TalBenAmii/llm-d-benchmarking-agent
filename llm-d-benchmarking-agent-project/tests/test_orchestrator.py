@@ -7,6 +7,7 @@ output) so we assert exact commands + JSON parsing + workspace confinement with 
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -110,6 +111,43 @@ async def test_apply_refuses_manifest_outside_workspace(tmp_path):
     with pytest.raises(KubeError):
         await kube.apply("/etc/evil.yaml", namespace="bench")
     assert runner.calls == []  # nothing ran
+
+
+async def test_apply_refuses_symlink_escape(tmp_path):
+    # A symlink INSIDE the workspace pointing OUTSIDE must be refused (resolve() follows it).
+    ctx, runner = _ctx(tmp_path)
+    kube = RealKubeClient(ctx)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "evil.yaml").write_text("kind: Job\n")
+    ctx.workspace.mkdir(parents=True, exist_ok=True)
+    link = ctx.workspace / "link.yaml"
+    os.symlink(outside / "evil.yaml", link)
+    with pytest.raises(KubeError):
+        await kube.apply(link, namespace="bench")
+    assert runner.calls == []
+
+
+async def test_apply_refuses_dotdot_escape(tmp_path):
+    ctx, runner = _ctx(tmp_path)
+    kube = RealKubeClient(ctx)
+    escape = ctx.workspace / ".." / ".." / ".." / ".." / "evil.yaml"  # resolves above the workspace
+    with pytest.raises(KubeError):
+        await kube.apply(escape, namespace="bench")
+    assert runner.calls == []
+
+
+async def test_apply_allows_symlink_within_workspace(tmp_path):
+    # Positive control: a symlink resolving to a real manifest INSIDE the workspace is fine.
+    ctx, runner = _ctx(tmp_path)
+    kube = RealKubeClient(ctx)
+    real = ctx.workspace / "real" / "m.yaml"
+    real.parent.mkdir(parents=True, exist_ok=True)
+    real.write_text("kind: Job\n")
+    link = ctx.workspace / "good.yaml"
+    os.symlink(real, link)
+    res = await kube.apply(link, namespace="bench")
+    assert res.exit_code == 0 and runner.calls  # it ran
 
 
 async def test_list_jobs_parses_and_passes_selector(tmp_path):

@@ -2,12 +2,16 @@
 log streaming, and cluster-only reconstruction. Hermetic (FakeKubeClient, no cluster)."""
 from __future__ import annotations
 
+import pytest
+
 from app.orchestrator.controller import BenchmarkOrchestrator
 from app.orchestrator.job import (
+    ABSENT,
     ACTIVE,
     FAILED,
     LABEL_RUN,
     LABEL_SESSION,
+    LABEL_SWEEP,
     PENDING,
     SUCCEEDED,
     JobSpec,
@@ -57,6 +61,21 @@ def test_classify_phases():
     assert classify_job_status(make_job("r", "active")).terminal is False
 
 
+def test_classify_edge_cases():
+    # failed count set but the Failed condition not yet written -> still terminal FAILED
+    # (a real, brief K8s window; with backoffLimit:0 the single attempt has failed).
+    assert classify_job_status({"metadata": {"name": "j"}, "status": {"failed": 1}}).phase == FAILED
+    # both Complete and Failed conditions True -> Complete wins (locks the precedence).
+    both = {"metadata": {"name": "j"}, "status": {"succeeded": 1, "conditions": [
+        {"type": "Complete", "status": "True"}, {"type": "Failed", "status": "True"}]}}
+    assert classify_job_status(both).phase == SUCCEEDED
+    # succeeded count, no condition, not active -> SUCCEEDED.
+    assert classify_job_status({"metadata": {}, "status": {"succeeded": 1}}).phase == SUCCEEDED
+    # a Failed condition with status "False" must NOT count as failed.
+    notfailed = {"metadata": {}, "status": {"active": 1, "conditions": [{"type": "Failed", "status": "False"}]}}
+    assert classify_job_status(notfailed).phase == ACTIVE
+
+
 # ---- submit ---------------------------------------------------------------
 
 async def test_submit_writes_manifest_and_applies(tmp_path):
@@ -100,6 +119,42 @@ async def test_watch_absent_run_times_out(tmp_path):
     orch = BenchmarkOrchestrator(kube, workspace=tmp_path)
     final = await orch.watch("ghost", namespace="bench", poll_interval=0, max_wait=0)
     assert final.phase == "absent"
+
+
+async def test_watch_returns_when_seen_then_deleted(tmp_path):
+    # A run that was ACTIVE then gets deleted out from under us must terminate via the
+    # seen-then-gone branch — NOT the (large) max_wait timeout.
+    kube = FakeKubeClient()
+    kube.program("r1", phases=["active", "active"])
+    orch = BenchmarkOrchestrator(kube, workspace=tmp_path)
+    state = {"deleted": False}
+
+    async def on_status(st):
+        if st.phase == ACTIVE and not state["deleted"]:
+            state["deleted"] = True
+            await kube.delete_job(job_name("r1"), namespace="bench")  # vanish before next poll
+
+    final = await orch.watch("r1", namespace="bench", poll_interval=0, max_wait=100, on_status=on_status)
+    assert final.phase == ABSENT and state["deleted"]
+
+
+async def test_reconstruct_scoped_by_sweep_id(tmp_path):
+    kube = FakeKubeClient()
+    kube.program("t1", phases=["active"], labels={LABEL_SWEEP: "sw1"})
+    kube.program("t2", phases=["succeeded"], labels={LABEL_SWEEP: "sw1"})
+    kube.program("t3", phases=["active"], labels={LABEL_SWEEP: "sw2"})
+    orch = BenchmarkOrchestrator(kube, workspace=tmp_path)
+    statuses = await orch.reconstruct(namespace="bench", sweep_id="sw1")
+    assert {s.name for s in statuses} == {job_name("t1"), job_name("t2")}
+
+
+async def test_reconstruct_ands_session_and_sweep(tmp_path):
+    kube = FakeKubeClient()
+    kube.program("t1", phases=["active"], labels={LABEL_SWEEP: "sw1", LABEL_SESSION: "sessA"})
+    kube.program("t2", phases=["active"], labels={LABEL_SWEEP: "sw1", LABEL_SESSION: "sessB"})
+    orch = BenchmarkOrchestrator(kube, workspace=tmp_path)
+    statuses = await orch.reconstruct(namespace="bench", session_id="sessA", sweep_id="sw1")
+    assert {s.name for s in statuses} == {job_name("t1")}   # both labels ANDed
 
 
 # ---- logs + reconstruction ------------------------------------------------

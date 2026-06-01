@@ -61,11 +61,38 @@ async def test_cleanup_removes_terminal_jobs_only(tmp_path):
     assert ("bench", job_name("r2")) not in kube.deleted        # the active run is preserved
 
 
-async def test_cleanup_can_remove_all_when_not_only_terminal(tmp_path):
+async def test_cleanup_only_terminal_false_reaps_active(tmp_path):
+    # only_terminal=False reaps even an ACTIVE run (distinct from the default, which preserves it).
     kube = FakeKubeClient()
     kube.program("r1", phases=["succeeded"], labels={LABEL_SESSION: "sessA"})
-    kube.program("r2", phases=["failed"], labels={LABEL_SESSION: "sessA"})
+    kube.program("r2", phases=["active"], labels={LABEL_SESSION: "sessA"})
     orch = BenchmarkOrchestrator(kube, workspace=tmp_path)
 
-    deleted = await orch.cleanup(namespace="bench", session_id="sessA", only_terminal=True)
-    assert sorted(deleted) == sorted([job_name("r1"), job_name("r2")])  # both terminal
+    deleted = await orch.cleanup(namespace="bench", session_id="sessA", only_terminal=False)
+    assert sorted(deleted) == sorted([job_name("r1"), job_name("r2")])
+    assert ("bench", job_name("r2")) in kube.deleted   # the ACTIVE job WAS reaped
+
+
+async def test_sweep_isolates_a_raising_treatment(tmp_path):
+    # If a treatment RAISES (not just fails), the others must still complete — the sweep's
+    # gather is exception-isolated per treatment.
+    from pathlib import Path
+
+    import yaml as _yaml
+
+    class _RaisingApply(FakeKubeClient):
+        async def apply(self, manifest_path, *, namespace):
+            m = _yaml.safe_load(Path(manifest_path).read_text())
+            if "t2" in m["metadata"]["labels"]["llmd-bench/run-id"]:
+                raise RuntimeError("simulated apply failure for t2")
+            return await super().apply(manifest_path, namespace=namespace)
+
+    kube = _RaisingApply()
+    kube.program("t1-a1", phases=["succeeded"])
+    kube.program("t3-a1", phases=["succeeded"])
+    orch = BenchmarkOrchestrator(kube, workspace=tmp_path)
+
+    out = await orch.run_sweep([_spec("t1"), _spec("t2"), _spec("t3")],
+                               max_parallel=3, max_attempts=1, poll_interval=0)
+    assert sorted(out.succeeded) == ["t1", "t3"]      # survivors
+    assert out.dead_lettered == ["t2"]                # the raiser was isolated + dead-lettered

@@ -11,6 +11,7 @@ eviction / unschedulable) and retry/dead-letter build on this in later sub-phase
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -19,6 +20,7 @@ import yaml
 
 from app.orchestrator.job import (
     ABSENT,
+    FAILED,
     LABEL_RUN,
     SUCCEEDED,
     JobSpec,
@@ -27,7 +29,7 @@ from app.orchestrator.job import (
     classify_job_status,
     job_name,
 )
-from app.orchestrator.faults import EVICTED, UNKNOWN, Failure, classify_failure
+from app.orchestrator.faults import EVICTED, TIMEOUT, UNKNOWN, Failure, classify_failure
 from app.orchestrator.kube import KubeClient
 
 OnStatus = Callable[[JobStatus], Awaitable[None]]
@@ -36,6 +38,10 @@ OnStatus = Callable[[JobStatus], Awaitable[None]]
 # unschedulable / image / timeout are deterministic — retrying changes nothing, so they
 # dead-letter immediately (the agent must adjust resources/spec/workload instead).
 DEFAULT_RETRYABLE = frozenset({EVICTED, UNKNOWN})
+
+# Floor for the status-poll sleep so poll_interval=0 (a schema-allowed value used in tests)
+# can't busy-loop and hammer the cluster; max_wait is bounded on wall-clock independently.
+_MIN_POLL_INTERVAL = 0.05
 
 
 @dataclass
@@ -108,7 +114,7 @@ class BenchmarkOrchestrator:
         """Poll until the Job reaches a terminal phase (succeeded/failed), vanishes after
         having existed (deleted out from under us), or ``max_wait`` elapses. Emits each
         observed status to ``on_status``. Never holds local state — the cluster is truth."""
-        waited = 0.0
+        start = time.monotonic()
         seen = False
         last: JobStatus | None = None
         while True:
@@ -122,10 +128,10 @@ class BenchmarkOrchestrator:
                 return st
             if st.phase == ABSENT and seen:
                 return st  # the Job existed and is now gone — treat as terminal
-            if waited >= max_wait:
-                return st
-            await asyncio.sleep(poll_interval)
-            waited += poll_interval
+            if time.monotonic() - start >= max_wait:
+                return st  # client-side watch timeout (bounded on wall-clock, not on poll sum)
+            # Floor the sleep so poll_interval=0 can't busy-loop and hammer the cluster.
+            await asyncio.sleep(poll_interval if poll_interval > 0 else _MIN_POLL_INTERVAL)
 
     async def diagnose(self, run_id: str, *, namespace: str,
                        job_status: JobStatus | None = None) -> Failure:
@@ -183,7 +189,15 @@ class BenchmarkOrchestrator:
             if st.phase == SUCCEEDED:
                 attempts.append(AttemptResult(spec_i.run_id, st, None))
                 return RunOutcome(base_spec.run_id, True, attempts)
-            failure = await self.diagnose(spec_i.run_id, namespace=spec_i.namespace, job_status=st)
+            # Only a genuinely FAILED Job warrants pod-level diagnosis. A watch that returned
+            # ABSENT (Job vanished) or non-terminal (our max_wait elapsed while it ran) is its
+            # own outcome, not a pod fault.
+            if st.phase == FAILED:
+                failure = await self.diagnose(spec_i.run_id, namespace=spec_i.namespace, job_status=st)
+            elif st.phase == ABSENT:
+                failure = Failure(UNKNOWN, message="job vanished from the cluster before completing")
+            else:  # active/pending after max_wait — client-side watch timeout (Job may still run)
+                failure = Failure(TIMEOUT, message="watch timed out while the job was still running")
             attempts.append(AttemptResult(spec_i.run_id, st, failure))
             if i < max_attempts and failure.kind in retryable:
                 continue  # transient — try again as a fresh Job
@@ -209,10 +223,14 @@ class BenchmarkOrchestrator:
 
         async def _one(spec: JobSpec) -> RunOutcome:
             async with sem:
-                return await self.run_with_retries(
-                    spec, max_attempts=max_attempts, retryable=retryable,
-                    poll_interval=poll_interval, max_wait=max_wait,
-                )
+                try:
+                    return await self.run_with_retries(
+                        spec, max_attempts=max_attempts, retryable=retryable,
+                        poll_interval=poll_interval, max_wait=max_wait,
+                    )
+                except Exception as exc:  # isolate: one treatment's error must not sink the sweep
+                    return RunOutcome(spec.run_id, succeeded=False, dead_lettered=True,
+                                      final_failure=Failure(UNKNOWN, message=f"orchestration error: {exc}"))
 
         outcomes = await asyncio.gather(*[_one(s) for s in specs])
         return SweepOutcome(outcomes=list(outcomes))

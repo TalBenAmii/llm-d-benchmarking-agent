@@ -12,6 +12,7 @@ Pure functions only — no cluster access (that's :mod:`app.orchestrator.kube`).
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -39,6 +40,20 @@ ABSENT = "absent"
 
 def job_name(run_id: str) -> str:
     return f"llmd-bench-{run_id}"
+
+
+_DNS1123 = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
+
+
+def validate_job_name(name: str) -> None:
+    """Fail early with a clear error if the Job name isn't a DNS-1123 label (<=63 chars,
+    lowercase alphanumeric + '-'), rather than letting kubectl reject the manifest opaquely.
+    Note run_with_retries appends a '-aN' suffix, which counts toward the 63-char budget."""
+    if len(name) > 63 or not _DNS1123.fullmatch(name):
+        raise ValueError(
+            f"invalid Job name {name!r}: must be a DNS-1123 label "
+            f"(lowercase alphanumeric/'-', <=63 chars). Use a short, lowercase run_id."
+        )
 
 
 @dataclass
@@ -87,10 +102,21 @@ def build_job_manifest(spec: JobSpec) -> dict[str, Any]:
     """Render a :class:`JobSpec` into a Kubernetes Job manifest (a plain dict, ready to
     YAML-dump). Pod template carries the same labels so ``kubectl logs -l run-id=<id>`` and
     pod fault inspection select this run's pods."""
+    name = job_name(spec.run_id)
+    validate_job_name(name)
+
     container: dict[str, Any] = {
         "name": "benchmark",
         "image": spec.image,
         "command": list(spec.command),
+        # Baseline, non-breaking hardening for the agent-chosen workload (it runs in-cluster):
+        # no privilege escalation, drop all Linux caps, default seccomp. The in-cluster RBAC /
+        # ServiceAccount + image pinning are defined by the packaging phase.
+        "securityContext": {
+            "allowPrivilegeEscalation": False,
+            "capabilities": {"drop": ["ALL"]},
+            "seccompProfile": {"type": "RuntimeDefault"},
+        },
         "resources": {
             "requests": {"cpu": spec.cpu, "memory": spec.memory},
             "limits": {"cpu": spec.cpu, "memory": spec.memory},
@@ -114,7 +140,7 @@ def build_job_manifest(spec: JobSpec) -> dict[str, Any]:
         "apiVersion": "batch/v1",
         "kind": "Job",
         "metadata": {
-            "name": job_name(spec.run_id),
+            "name": name,
             "namespace": spec.namespace,
             "labels": spec.labels(),
             "annotations": spec.annotations(),
@@ -165,6 +191,12 @@ def classify_job_status(job_obj: dict[str, Any]) -> JobStatus:
         return JobStatus(name=name, phase=FAILED, active=active, succeeded=succeeded, failed=failed,
                          reason=failed_cond.get("reason", ""), message=failed_cond.get("message", ""),
                          raw=job_obj)
+    if failed > 0 and active == 0:
+        # failed count is set but the Failed condition isn't written yet (a real, brief K8s
+        # window). With backoffLimit:0 the single attempt has failed — it IS terminal, so
+        # don't misreport it as pending (which would make watch() poll forever).
+        return JobStatus(name=name, phase=FAILED, active=active, succeeded=succeeded, failed=failed,
+                         message="job failed", raw=job_obj)
     if active > 0:
         return JobStatus(name=name, phase=ACTIVE, active=active, succeeded=succeeded, failed=failed, raw=job_obj)
     return JobStatus(name=name, phase=PENDING, active=active, succeeded=succeeded, failed=failed, raw=job_obj)
