@@ -1,0 +1,125 @@
+# Prometheus alert rules for the llm-d Benchmarking Agent.
+#
+# This is DATA, not code. Load it into Prometheus via the `rule_files:` key, e.g.
+#   rule_files:
+#     - alerts.rules.yaml
+# and pair it with the scrape job in deploy/observability/prometheus-scrape.yaml (job
+# `llmd-benchmarking-agent`, target's `service` label = `llmd-benchmarking-agent`). The
+# companion dashboard is deploy/observability/grafana-dashboard.json.
+#
+# Every expression below references a metric the agent ACTUALLY exports from
+# app/observability/instrument.py (see knowledge/observability.md):
+#   - llmdbench_agent_commands_total{exe,mode,auto_run}           (counter)
+#   - llmdbench_agent_command_duration_seconds{exe,mode}          (histogram → _bucket/_sum/_count)
+#   - llmdbench_orchestrator_runs_submitted_total                 (counter)
+#   - llmdbench_orchestrator_run_attempts_total{phase}            (counter)
+#   - llmdbench_orchestrator_runs_terminal_total{outcome}         (counter; outcome=succeeded|dead_lettered)
+#   - llmdbench_orchestrator_run_faults_total{kind}               (counter)
+#   - llmdbench_orchestrator_runs_in_flight                       (gauge)
+# plus the standard `up` series Prometheus synthesizes per scrape target.
+#
+# These counters are PROCESS-LIFETIME (they reset to 0 when the backend restarts), so every
+# rate/increase below is taken over a window — never an absolute total — and a restart shows
+# up only as a brief gap, not a false spike.
+
+groups:
+  - name: llmd-benchmarking-agent.availability
+    rules:
+      # The /metrics endpoint stopped responding to scrapes (crash, OOM, or networking).
+      - alert: AgentDown
+        expr: up{job="llmd-benchmarking-agent"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Benchmarking agent target is down"
+          description: >-
+            Prometheus has failed to scrape the agent's /metrics endpoint for >2m
+            (up == 0 for job=llmd-benchmarking-agent). Check the backend process /
+            pod, its logs, and the Service/network path.
+
+  - name: llmd-benchmarking-agent.latency
+    rules:
+      # Slow command execution: P95 of the command-duration histogram is high. This is the
+      # closest real signal to "slow agent turns" — every command the agent runs (read-only
+      # probes and approved mutating commands alike) is timed into this histogram.
+      # 60s P95 is generous: read-only probes are sub-second; only genuinely heavy work
+      # (standup/run) should approach this, and a sustained P95 here means commands are
+      # dragging (a saturated host, a stuck kubectl, a hung child).
+      - alert: AgentSlowCommandsP95
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(llmdbench_agent_command_duration_seconds_bucket[10m]))
+          ) > 60
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent command P95 latency is high (>60s for 15m)"
+          description: >-
+            The 95th-percentile command duration over the last 10m has exceeded 60s
+            for 15m. Inspect the structured logs (grep a turn's corr_id; see
+            knowledge/logging.md) and host/cluster load. Read-only probes are normally
+            sub-second, so a high P95 points at heavy or stuck commands.
+
+  - name: llmd-benchmarking-agent.errors
+    rules:
+      # Elevated benchmark-run failure rate: of the runs that reached a terminal outcome,
+      # too many were dead-lettered (exhausted retries) rather than succeeding. Guarded by a
+      # small absolute floor so a single failure in a quiet period can't trip a ratio alert.
+      - alert: AgentElevatedRunFailureRate
+        expr: >-
+          (
+            sum(rate(llmdbench_orchestrator_runs_terminal_total{outcome="dead_lettered"}[30m]))
+            /
+            clamp_min(sum(rate(llmdbench_orchestrator_runs_terminal_total[30m])), 1e-9)
+          ) > 0.25
+          and
+          sum(increase(llmdbench_orchestrator_runs_terminal_total{outcome="dead_lettered"}[30m])) >= 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Over 25% of terminal benchmark runs are dead-lettered"
+          description: >-
+            More than 25% of benchmark runs that finished in the last 30m were
+            dead-lettered (>=2 in absolute terms). Check
+            llmdbench_orchestrator_run_faults_total{kind} for the dominant fault and
+            see knowledge/orchestrator.md for remediation.
+
+      # Elevated classified-fault rate: faults are accumulating quickly regardless of whether
+      # a retry eventually rescued the run. A persistent fault stream (oom/unschedulable/...)
+      # is worth surfacing even when the terminal success rate still looks acceptable.
+      - alert: AgentElevatedRunFaults
+        expr: sum(rate(llmdbench_orchestrator_run_faults_total[15m])) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Benchmark run faults are accumulating"
+          description: >-
+            Classified run faults are arriving at >0.2/s (>~3/min) over the last 15m.
+            Break down by kind (oom|timeout|unschedulable|evicted|image_error|
+            run_error|unknown) via llmdbench_orchestrator_run_faults_total{kind}. For
+            oom/unschedulable/evicted, check cluster capacity (observe_run_metrics,
+            scope=nodes).
+
+  - name: llmd-benchmarking-agent.saturation
+    rules:
+      # A run has been in-flight (being watched to completion) for a long time without the
+      # in-flight gauge draining — a benchmark Job that is stuck/hung rather than progressing.
+      # in_flight is bounded by max_concurrent_runs, so a sustained pin also means the
+      # concurrency slots are held and new runs will queue.
+      - alert: AgentRunsStuckInFlight
+        expr: llmdbench_orchestrator_runs_in_flight > 0
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Benchmark run(s) in-flight for over 2h"
+          description: >-
+            llmdbench_orchestrator_runs_in_flight has stayed above 0 for 2h. A
+            benchmark Job may be hung (holding a concurrency slot). Check the run's pod
+            and the agent logs (corr_id / run_id); consider whether the per-command
+            timeout (security/allowlist.yaml) is firing.
