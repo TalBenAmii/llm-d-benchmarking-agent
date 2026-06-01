@@ -8,6 +8,21 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-01 — Phase 5: Historical result storage + trends UI — DONE
+Branch `feature/roadmap-p5-storage` → merged into `feature/roadmap` (`--no-ff`, `60d356d`).
+Clean merge — no conflicts in the shared registration files (the branch was based on a recent
+`feature/roadmap`, so registry/schemas/prompt/allowlist additions merged cleanly).
+- **Shipped:** a cross-session history store (`app/storage/history.py`) and a single
+  `result_history` tool (`app/tools/history.py`, schema `ResultHistoryInput`) with actions
+  store/list/get/trend/delete — persist a validated Benchmark Report's summary, browse stored
+  results newest-first, fetch one record, and read a time-series for one metric across results.
+  Wired into `main.py`; new `knowledge/history.md`. UI gained a results-browser / trends view
+  (`ui/app.js`, `ui/index.html`, `ui/styles.css`).
+- **Tests:** worktree suite **297 passed / 6 skipped / 0 failed** (+`test_history.py`, 361 lines;
+  +1 assert in `test_schemas.py`). Run with `REPOS_DIR=/home/tal/kind-quickstart-guide` against
+  the worktree venv + .env, 420s timeout — no hang (exit 0). Prior baseline was 269 passed / 6 skipped.
+- Note: phases landed out of numeric order; Phase 5 was the last of the stalled-run branches to integrate.
+
 ## 2026-06-01 — Phase 7: Observability — Prometheus /metrics, instrumentation, live run metrics — DONE
 Branch `feature/roadmap-p7-observability` → merged into `feature/roadmap` (`--no-ff`). Conflicts
 in the shared registration files (`registry.py`, `schemas.py`, `tests/test_schemas.py`,

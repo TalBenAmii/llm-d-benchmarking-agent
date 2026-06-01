@@ -110,9 +110,12 @@ differentiators, then stretch goals and packaging/docs deliverables.
 - Identify **Pareto-optimal** configs across a sweep matrix; richer comparison + plain-language
   explanation tied to `knowledge/analysis.md`.
 
-## Phase 5 — Historical result storage + trends UI — **TODO**
+## Phase 5 — Historical result storage + trends UI — **DONE**
 *Proposal stretch "historical storage + trend visualization".*
 - Persist validated reports across sessions; results-browser / trends view in the UI.
+- **Result:** validated reports persisted to a cross-session history store via a single
+  `result_history` tool (store/list/get/trend/delete) plus a UI results-browser/trends view;
+  merged into `feature/roadmap`, full suite **297 passed / 6 skipped / 0 failed**.
 
 ## Phase 6 — Configuration Explorer / Capacity Planner pre-flight — **DONE**
 *Proposal §2.2 stretch.*
