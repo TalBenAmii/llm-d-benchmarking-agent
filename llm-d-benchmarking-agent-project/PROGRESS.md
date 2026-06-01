@@ -8,6 +8,31 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-01 — Phase 6: Configuration Explorer / Capacity Planner pre-flight — DONE
+Branch `feature/roadmap-p6-capacity` → merged into `feature/roadmap` (`--no-ff`). Conflicts
+in the shared registration files (`registry.py`, `schemas.py`, `tests/test_schemas.py`) were
+resolved by keeping BOTH sides' additions — Phase 4's `analyze_results` and Phase 6's
+`check_capacity` now coexist in the imports, REGISTRY, schema models, and the expected
+tool-name set. `prompt.py` + `allowlist.yaml` auto-merged cleanly.
+- **Shipped:** read-only `check_capacity` tool (`app/tools/capacity.py`) called at the plan
+  gate (after a SessionPlan is approved, before standup) to answer "will this fit?" before a
+  ~10-minute standup fails opaquely with OOM/won't-load. It renders the spec's scenario
+  (model/accelerator/parallelism) merged over repo defaults, applies conversation-derived
+  `overrides` (bigger model, longer context, a real GPU), and runs the BENCHMARK REPO's OWN
+  capacity planner via a vetted `scripts/capacity_check.py` bridge (the planner package lives
+  only in that repo's venv) — weights + activation + KV-cache vs accelerator memory arithmetic
+  plus a HuggingFace model-config lookup. Pure feasibility math + diagnostic classification
+  live in `app/capacity/planner.py`; the verdict-interpretation judgment lives in
+  `knowledge/capacity.md` (thin-code/thick-agent). `enforce=True` tags shortfalls as
+  deployment-halting ERRORs (the strict read), else advisory WARNINGs.
+- **Allowlist:** the `capacity_check.py` bridge is a vetted project script run through the
+  allowlisted runner with a workspace-confined JSON request file (read-only -> auto-runs, no
+  approval prompt); `runner.py` extended accordingly. It never touches the cluster.
+- **Tests:** worktree suite **245 passed / 6 skipped / 0 failed** (+`test_capacity.py`, +
+  updated `test_schemas.py`; authoritative run in the integration worktree with the real
+  venv + .env). Prior baseline was 219 passed / 6 skipped.
+- Next: Phase 5 (historical result storage + trends UI) / Phase 7 (observability).
+
 ## 2026-06-01 — Phase 4: Results Analyzer (goodput, SLO filtering, Pareto/DoE) — DONE
 Branch `feature/roadmap-p4-analyzer` → merged into `feature/roadmap` (`--no-ff`, no conflicts).
 - **Shipped:** read-only `analyze_results` tool (`app/tools/analyze.py`) + pure math in

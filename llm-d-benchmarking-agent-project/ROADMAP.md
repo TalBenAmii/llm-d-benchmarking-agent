@@ -114,10 +114,13 @@ differentiators, then stretch goals and packaging/docs deliverables.
 *Proposal stretch "historical storage + trend visualization".*
 - Persist validated reports across sessions; results-browser / trends view in the UI.
 
-## Phase 6 — Configuration Explorer / Capacity Planner pre-flight — **TODO**
+## Phase 6 — Configuration Explorer / Capacity Planner pre-flight — **DONE**
 *Proposal §2.2 stretch.*
 - Use the repo's capacity planner to pre-validate feasibility before a run (surface
   "will this fit?" at the plan gate); reduces OOM failures.
+- **Result:** `check_capacity` tool runs a memory/feasibility pre-flight (KV + weights +
+  activation vs accelerator memory) over the rendered spec at the plan gate, advisory or
+  enforced; merged into `feature/roadmap`, full suite **245 passed / 6 skipped / 0 failed**.
 
 ## Phase 7 — Observability: Prometheus/Grafana — **TODO**
 *Proposal stretch + Observability dimension.*
