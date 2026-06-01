@@ -8,6 +8,27 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-02 — Phase 11: Structured logging + correlation IDs — DONE
+Branch `feature/roadmap-v2-p11-logging` → merged into `feature/roadmap-v2` (`--no-ff`). The phase
+branched cleanly off the current v2 tip (single commit), so the merge applied with no conflicts in
+the additive-registration or structural-wiring files.
+- **Shipped:** stdlib-only structured logging — `app/observability/logging.py` (JSON formatter, one
+  JSON object per line; a `logging.Filter` that injects the per-turn correlation context) +
+  `app/observability/logctx.py` (contextvars carrier for `corr_id`/`session_id`/`run_id`/`tool`). A
+  fresh `corr_id` is minted at the WebSocket handshake (one per connection/turn) and bound before
+  `create_task`, so it propagates via `contextvars` into the agent loop (`turn.start/end`,
+  `tool.call.start/result`), every tool dispatch (`tool=<name>`), and the command runner
+  (`command.exec`, `runner.exec.start/timeout/launch_failed`). Trace one turn end-to-end by grepping
+  its `corr_id`; one chat by `session_id`. `LOG_LEVEL` (default INFO) + `LOG_FORMAT` (json default /
+  text dev) added to `config`; `setup_logging()` wired once in the lifespan. Secrets never logged —
+  the exec record carries `exe` (argv[0]) only, never full argv/env. No new runtime dependency;
+  judgment in `knowledge/logging.md`.
+- **Tests:** worktree suite **339 passed / 6 skipped / 0 failed** (+7 hermetic tests in
+  `test_logging.py`: JSON formatter keys + valid JSON, one `corr_id` bound at the WS boundary appears
+  on records from the loop + a tool + the runner within one turn via a real read-only `git status -s`,
+  the text path, idempotent setup). Run with `REPOS_DIR=/home/tal/kind-quickstart-guide` against the
+  worktree venv + .env, 600s timeout — no hang (exit 0). Prior baseline 332 passed / 6 skipped.
+
 ## 2026-06-01 — Phase 9: Documentation suite + upstream-PR readiness — DONE
 Branch `feature/roadmap-p9-docs` → merged into `feature/roadmap` (`--no-ff`). Docs-only phase: no
 conflicts in the shared registration files (no code touched), so the merge applied clean.

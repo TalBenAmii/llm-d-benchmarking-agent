@@ -177,3 +177,15 @@ differentiators, then stretch goals and packaging/docs deliverables.
 ## Roadmap v2 — production operability, trust & quality (Phases 11-18)
 
 Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never `main`); each phase merges in after its full-suite gate is green.
+
+## Phase 11 — Structured logging + correlation IDs — DONE
+- Shipped stdlib-only structured logging (`app/observability/logging.py` JSON formatter — one
+  JSON object per line — + `logctx.py` contextvars carrier). A fresh `corr_id` is minted at the
+  WebSocket boundary and rides via `contextvars` (snapshotted by `create_task`) into the agent
+  loop (`turn.start/end`, `tool.call.start/result`), every tool dispatch (`tool=<name>`), and the
+  command runner (`command.exec`, `runner.exec.*`) — so one turn is traceable end-to-end by
+  grepping its `corr_id`. `LOG_LEVEL`/`LOG_FORMAT` (json default, text for dev) added to config;
+  `setup_logging()` wired once in the lifespan. Secrets never logged (exe = argv[0] only). No new
+  runtime dependency. Judgment in `knowledge/logging.md`.
+- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **339 passed / 6 skipped / 0 failed**
+  (+7 hermetic logging tests; prior baseline 332 passed / 6 skipped).
