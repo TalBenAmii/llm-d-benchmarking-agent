@@ -187,6 +187,52 @@ class ObserveRunMetricsInput(BaseModel):
     )
 
 
+class ResultHistoryInput(BaseModel):
+    action: Literal["store", "list", "get", "trend", "delete"] = Field(
+        ...,
+        description="store = persist a validated Benchmark Report's summary for the long "
+                    "term; list = show stored results (newest first); get = one record's full "
+                    "summary; trend = the time-series of ONE metric across stored results; "
+                    "delete = forget one record. All actions auto-run (none touches the "
+                    "cluster or the repos).",
+    )
+    source: str | None = Field(
+        default=None,
+        description="action=store: a Benchmark Report file OR a run directory (its newest "
+                    "report is used). The report is schema-validated before it is stored.",
+    )
+    label: str | None = Field(
+        default=None,
+        description="action=store: a short human label for this result, e.g. "
+                    "'8B baseline, concurrency=16'.",
+    )
+    tags: list[str] | None = Field(
+        default=None,
+        description="action=store: free-form tags to group related results "
+                    "(e.g. ['8B','baseline']); filter by one later with filter_tag.",
+    )
+    spec: str | None = Field(default=None, description="action=store: spec used (provenance).")
+    harness: str | None = Field(default=None, description="action=store: harness used (provenance).")
+    workload: str | None = Field(default=None, description="action=store: workload used (provenance).")
+    namespace: str | None = Field(default=None, description="action=store: namespace used (provenance).")
+    session_id: str | None = Field(default=None, description="action=store: originating chat id (provenance).")
+    record_id: str | None = Field(
+        default=None, description="action=get/delete: the stored record's id (from a prior list).",
+    )
+    metric: str | None = Field(
+        default=None,
+        description="action=trend: which metric to trend. One of ttft / tpot / itl / "
+                    "request_latency / output_token_rate / total_token_rate / request_rate / "
+                    "success_rate_pct.",
+    )
+    filter_tag: str | None = Field(
+        default=None, description="action=list/trend: only include results carrying this tag.",
+    )
+    filter_model: str | None = Field(
+        default=None, description="action=list/trend: only include results for this model name.",
+    )
+
+
 class CompareReportsInput(BaseModel):
     sources: list[str] | None = Field(
         default=None,

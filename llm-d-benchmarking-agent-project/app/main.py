@@ -22,6 +22,7 @@ from app.observability import instrument
 from app.observability.metrics import render_prometheus
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
+from app.storage.history import HistoryStore, available_metrics, trend
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
 _PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -94,6 +95,38 @@ async def delete_session(sid: str) -> JSONResponse:
     if not app.state.sessions.delete(sid):
         raise HTTPException(status_code=404, detail="session not found")
     return JSONResponse({"deleted": True, "id": sid})
+
+
+def _history_store() -> HistoryStore:
+    """The cross-session result store, rooted at the same shared workspace the agent's
+    ``result_history`` tool writes to (so the UI browser sees what the agent stored)."""
+    return HistoryStore(get_settings().resolved_workspace_dir)
+
+
+def _history_record_view(rec) -> dict[str, Any]:
+    return {
+        "id": rec.id, "stored_at": rec.stored_at, "label": rec.label, "tags": rec.tags,
+        "model": rec.model, "run_uid": rec.run_uid, "spec": rec.spec,
+        "harness": rec.harness, "workload": rec.workload, "namespace": rec.namespace,
+    }
+
+
+@app.get("/api/history")
+async def list_history(tag: str | None = None, model: str | None = None) -> JSONResponse:
+    """Stored historical results for the results-browser (newest first, summaries only)."""
+    records = _history_store().list(tag=tag, model=model)
+    return JSONResponse({
+        "records": [_history_record_view(r) for r in records],
+        "metrics": available_metrics(),
+    })
+
+
+@app.get("/api/history/trend")
+async def history_trend(metric: str, tag: str | None = None, model: str | None = None) -> JSONResponse:
+    """Time-series of one metric across stored results, for the trends view. Facts only —
+    the value series + the metric's better-direction; no regression verdict (that's the agent)."""
+    records = _history_store().list(tag=tag, model=model)
+    return JSONResponse(trend(records, metric))
 
 
 def _history_items(session) -> list[dict[str, Any]]:

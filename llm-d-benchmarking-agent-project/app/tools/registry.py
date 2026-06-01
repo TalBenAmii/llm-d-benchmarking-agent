@@ -19,6 +19,7 @@ from app.tools import (
     compare,
     config_artifact,
     execute,
+    history,
     observe,
     orchestrate,
     plan,
@@ -39,6 +40,7 @@ from app.tools.schemas import (
     OrchestrateBenchmarkInput,
     ProbeEnvironmentInput,
     ReadRepoDocInput,
+    ResultHistoryInput,
     RunCommandInput,
     RunSetupInput,
     WriteConfigInput,
@@ -154,6 +156,20 @@ _DESCRIPTIONS = {
         "reports that and changes nothing. Distinct from /metrics, which exposes the agent's "
         "OWN Prometheus counters. Interpret the numbers per knowledge/observability.md."
     ),
+    "result_history": (
+        "Historical result storage + trends. Persist a VALIDATED Benchmark Report's summary "
+        "across sessions and read trends over time. action='store' saves a report (pass "
+        "`source` = a report file or run dir, plus optional `label`/`tags`/`spec`/`harness`/"
+        "`workload`); it validates the report first and is idempotent (storing the same report "
+        "twice keeps one record). action='list' shows stored results (newest first; filter by "
+        "`filter_tag`/`filter_model`); 'get' returns one record's full summary by `record_id`; "
+        "'trend' returns the time-series of ONE `metric` (ttft/tpot/itl/request_latency/"
+        "output_token_rate/total_token_rate/request_rate/success_rate_pct) across stored runs; "
+        "'delete' forgets a record. All actions auto-run (nothing here touches the cluster or "
+        "the repos). Store a result the user wants to keep AFTER you've parsed/analyzed it; use "
+        "'trend' to answer 'has performance regressed over time?'. Interpret trends with "
+        "knowledge/history.md — the tool returns facts (values + direction), you give the verdict."
+    ),
     "orchestrate_benchmark_run": (
         "Run a benchmark as a Kubernetes Job the orchestrator manages end-to-end: submit "
         "(approval-gated `kubectl apply`), watch the Job to completion, stream logs, and on "
@@ -183,6 +199,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, probe.locate_and_parse_report),
         ToolSpec("compare_reports", _DESCRIPTIONS["compare_reports"], CompareReportsInput, compare.compare_reports),
         ToolSpec("analyze_results", _DESCRIPTIONS["analyze_results"], AnalyzeResultsInput, analyze.analyze_results),
+        ToolSpec("result_history", _DESCRIPTIONS["result_history"], ResultHistoryInput, history.result_history),
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
         ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
     ]
