@@ -58,6 +58,18 @@ class ToolContext:
         if self.emit is not None:
             await self.emit("output", {"line": line})
 
+    async def _emit_command(self, decision: Decision, *, auto_run: bool) -> None:
+        """Announce a command the instant before it runs — for EVERY execution, not just
+        the approval-gated ones, so the UI can show the full executed-command trail and a
+        debug view. ``auto_run`` is True for read-only commands that ran without a prompt."""
+        if self.emit is not None:
+            await self.emit("command", {
+                "argv": list(decision.argv),
+                "text": " ".join(decision.argv),
+                "mode": decision.mode,
+                "auto_run": auto_run,
+            })
+
     async def run_readonly(self, argv: list[str], *, timeout: float = 20.0) -> RunResult:
         """Validate + run a command that MUST be read-only. Raises if the allowlist
         would not classify it read-only (these are trusted probes, but we still gate)."""
@@ -67,6 +79,7 @@ class ToolContext:
         if decision.mode != READ_ONLY:
             raise ToolError(f"probe command is not read-only: {' '.join(argv)}")
         entry = self.allowlist.executable(argv[0])
+        await self._emit_command(decision, auto_run=True)
         return await self.runner.execute(argv, entry, timeout=timeout)
 
     async def run_command(
@@ -90,5 +103,8 @@ class ToolContext:
             if not await self.request_approval("command", payload):
                 raise ApprovalRejected(argv)
         entry = self.allowlist.executable(argv[0])
+        # Announce the command for the full executed-command trail / debug view. For a
+        # mutating command this fires only after approval, so it records what truly ran.
+        await self._emit_command(decision, auto_run=not decision.requires_approval)
         on_line = self._emit_line if (stream and self.emit is not None) else None
         return await self.runner.execute(argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)

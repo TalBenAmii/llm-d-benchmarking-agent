@@ -44,15 +44,28 @@ def derive_title(messages: list[dict[str, Any]]) -> str:
     return "New chat"
 
 
+# Keep the executed-command trail bounded so a long session's snapshot stays small.
+_COMMANDS_MAX = 500
+
+
 @dataclass
 class Session:
     id: str
     ctx: ToolContext
     messages: list[dict[str, Any]] = field(default_factory=list)
     approved_plan: dict[str, Any] | None = None
+    # Chronological trail of every command actually executed this session (read-only probes
+    # included). Not part of the LLM message stream — purely for the UI's command/debug view,
+    # replayed on resume. Bounded to the most recent _COMMANDS_MAX entries.
+    commands: list[dict[str, Any]] = field(default_factory=list)
     title: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+
+    def record_command(self, payload: dict[str, Any]) -> None:
+        self.commands.append(payload)
+        if len(self.commands) > _COMMANDS_MAX:
+            del self.commands[: len(self.commands) - _COMMANDS_MAX]
 
     def persist(self) -> None:
         """Best-effort transcript snapshot for resumability/debugging."""
@@ -70,6 +83,7 @@ class Session:
                         "updated_at": self.updated_at,
                         "messages": self.messages,
                         "approved_plan": self.approved_plan,
+                        "commands": self.commands[-_COMMANDS_MAX:],
                     },
                     indent=2,
                 )
@@ -119,6 +133,7 @@ class SessionManager:
             ctx=self._ctx_for(data.get("id", sid)),
             messages=data.get("messages", []),
             approved_plan=data.get("approved_plan"),
+            commands=data.get("commands", []),
             title=data.get("title", ""),
             created_at=data.get("created_at") or time.time(),
             updated_at=data.get("updated_at") or time.time(),

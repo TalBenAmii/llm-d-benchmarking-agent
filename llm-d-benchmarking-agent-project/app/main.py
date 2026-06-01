@@ -111,6 +111,10 @@ async def ws(websocket: WebSocket) -> None:
     busy = {"value": False}
 
     async def emit(event_type: str, payload: dict[str, Any]) -> None:
+        # Record the executed-command trail on the session so a resumed chat can replay it
+        # in the command/debug view (kept out of the LLM message stream).
+        if event_type == "command":
+            session.record_command(payload)
         with contextlib.suppress(Exception):
             await websocket.send_json({"type": event_type, "data": payload})
 
@@ -143,7 +147,7 @@ async def ws(websocket: WebSocket) -> None:
 
     await emit("ready", {"session_id": session.id, "resumed": resumed})
     if resumed:
-        await emit("history", {"items": _history_items(session)})
+        await emit("history", {"items": _history_items(session), "commands": session.commands})
     turn_task: asyncio.Task | None = None
 
     try:
