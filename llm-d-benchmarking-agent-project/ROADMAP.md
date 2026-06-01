@@ -76,18 +76,28 @@ differentiators, then stretch goals and packaging/docs deliverables.
   cancel/reattach path or operator visibility; (b) a reconnecting client only sees the result
   replayed at the end, not the live stream — needs a per-session pub/sub event buffer.
 
-## Phase 3 — Kubernetes-native Benchmark Orchestrator — **TODO**  *(the 40% centerpiece)*
-*Proposal §3.3 · grade dimension 1. Split into sub-phases.*
-- 3a. Submit benchmark runs as **K8s Jobs** (wrap CLI/harness), labeled/annotated for
-      reconstruction. First: audit how `llmdbenchmark run` executes the harness today.
-- 3b. **Watch-API** monitoring + real-time pod-log streaming to the UI.
-- 3c. **Fault tolerance**: detect OOM / timeout / pod eviction; retry policy; dead-letter for
-      persistently-failing sweep treatments.
-- 3d. **Stateless reconstruction**: zero local state — rebuild session/run state from K8s
-      labels/annotations/ConfigMaps after a restart; checkpoint/resume for long DoE sweeps.
-- 3e. **Cleanup**: reap completed Jobs/ConfigMaps; preserve artifacts.
-- Tested hermetically against a **fake kube client** + the existing CaptureRunner pattern —
-  no GPU, no long real runs.
+## Phase 3 — Kubernetes-native Benchmark Orchestrator — **DONE**  *(the 40% centerpiece)*
+*Proposal §3.3 · grade dimension 1. Built in `app/orchestrator/` + the `orchestrate_benchmark_run` tool.*
+- [x] 3a. **KubeClient** abstraction over the allowlisted `kubectl` runner (NOT the Python
+      client — keeps the deny-by-default + approval + env-scrub model). Allowlist gained
+      `kubectl apply/logs/delete job` (tight: delete is job-by-name-only, `-f` is `.yaml` +
+      no `..` + workspace-confined). Research confirmed `llmdbenchmark run` submits the harness
+      as a bare Pod via `kubectl apply` and shells out for everything.
+- [x] 3b. Job model + controller: submit (write manifest → apply), **poll-based watch** to
+      terminal (wall-clock bounded), pod-log streaming, cluster-only **reconstruction** from
+      labels.
+- [x] 3c. **Fault classification**: OOM / timeout / eviction / unschedulable / image / run
+      error, priority-ordered, facts-only (remediation lives in `knowledge/orchestrator.md`).
+- [x] 3d. **Retry + dead-letter**: transient faults retry as fresh distinct Jobs (`-aN`);
+      deterministic faults dead-letter immediately. Stateless reconstruction = source of truth.
+- [x] 3e. **Parallel sweep** (concurrency-capped, per-treatment dead-letter) + **cleanup**
+      (terminal-only by default; preserves the results PVC). Wired as the agent tool
+      `orchestrate_benchmark_run` (+ `knowledge/orchestrator.md`).
+- [x] 3-agent adversarial review; fixed a watch busy-loop, sweep exception-isolation, a
+      classify gap, + security hardening. Tested hermetically (FakeKubeClient + CaptureRunner),
+      no GPU/live runs. Suite: **190 passed / 6 skipped**.
+- **Deferred to Phase 8 (packaging):** the in-cluster benchmark image + a least-privilege
+  ServiceAccount/RBAC (so an orchestrated Job actually runs live); image pinning.
 
 ## Phase 4 — Results Analyzer: goodput, SLO filtering, Pareto/DoE analysis — **TODO**
 *Proposal §3.4 · grade dimension 3.*
