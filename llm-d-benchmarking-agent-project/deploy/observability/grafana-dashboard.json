@@ -1,0 +1,89 @@
+{
+  "__comment": "Grafana dashboard for the llm-d Benchmarking Agent. DATA, not code. Import via Grafana > Dashboards > Import; select your Prometheus datasource. Metrics are scraped from the agent's /metrics endpoint (see prometheus-scrape.yaml).",
+  "title": "llm-d Benchmarking Agent",
+  "uid": "llmd-bench-agent",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "",
+  "refresh": "15s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Runs in flight",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 } ] } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(llmdbench_orchestrator_runs_in_flight)", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Runs by outcome (total since start)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 9, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (llmdbench_orchestrator_runs_terminal_total)", "legendFormat": "{{outcome}}", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "piechart",
+      "title": "Faults by kind",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 9, "x": 15, "y": 0 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (kind) (llmdbench_orchestrator_run_faults_total)", "legendFormat": "{{kind}}", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Command rate (per second, by mode)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (mode) (rate(llmdbench_agent_commands_total[5m]))", "legendFormat": "{{mode}}", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Command duration p95 (seconds, by exe)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (exe, le) (rate(llmdbench_agent_command_duration_seconds_bucket[5m])))", "legendFormat": "{{exe}}", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Run attempts by phase (rate)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (phase) (rate(llmdbench_orchestrator_run_attempts_total[5m]))", "legendFormat": "{{phase}}", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+      ]
+    }
+  ]
+}

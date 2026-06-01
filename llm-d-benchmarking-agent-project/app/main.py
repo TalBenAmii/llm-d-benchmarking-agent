@@ -11,15 +11,20 @@ import uuid
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
 from app.config import get_settings
 from app.llm.provider import get_provider
+from app.observability import instrument
+from app.observability.metrics import render_prometheus
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
+
+# Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
+_PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -68,6 +73,14 @@ async def healthz() -> JSONResponse:
         "repos_present": cat.get("present"),
         "specs": cat.get("specs", [])[:5],
     })
+
+
+@app.get("/metrics")
+async def metrics() -> PlainTextResponse:
+    """Prometheus scrape endpoint: agent + orchestrator metrics in the text exposition format.
+    Point a Prometheus scrape at this path (see deploy/observability/prometheus-scrape.yaml)
+    and import deploy/observability/grafana-dashboard.json to visualize them."""
+    return PlainTextResponse(render_prometheus(instrument.REGISTRY), media_type=_PROM_CONTENT_TYPE)
 
 
 @app.get("/api/sessions")

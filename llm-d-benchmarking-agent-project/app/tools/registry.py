@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
-from app.tools import command, compare, config_artifact, execute, orchestrate, plan, probe, repos
+from app.tools import command, compare, config_artifact, execute, observe, orchestrate, plan, probe, repos
 from app.tools.context import ToolContext
 from app.tools.schemas import (
     CompareReportsInput,
@@ -21,6 +21,7 @@ from app.tools.schemas import (
     FetchKeyDocsInput,
     ListCatalogInput,
     LocateReportInput,
+    ObserveRunMetricsInput,
     OrchestrateBenchmarkInput,
     ProbeEnvironmentInput,
     ReadRepoDocInput,
@@ -107,6 +108,16 @@ _DESCRIPTIONS = {
         "Read-only. Pass `sources` (run dirs/files, with optional `labels`) OR `experiment_dir` "
         "(scans for all reports under it). Use after a sweep or to compare two configurations."
     ),
+    "observe_run_metrics": (
+        "Read LIVE cluster resource usage (CPU/memory) during a run via `kubectl top`. "
+        "scope='pods' shows pod usage in a namespace (optionally narrowed to one orchestrated "
+        "run by run_id, or per-container); scope='nodes' shows node usage. Read-only "
+        "(auto-runs). Use it WHILE a benchmark is running to see if the model server / harness "
+        "is near its CPU or memory limit (a leading indicator of an OOM/throttle). Requires the "
+        "in-cluster metrics-server (present in the cicd/kind spec); if it is missing the tool "
+        "reports that and changes nothing. Distinct from /metrics, which exposes the agent's "
+        "OWN Prometheus counters. Interpret the numbers per knowledge/observability.md."
+    ),
     "orchestrate_benchmark_run": (
         "Run a benchmark as a Kubernetes Job the orchestrator manages end-to-end: submit "
         "(approval-gated `kubectl apply`), watch the Job to completion, stream logs, and on "
@@ -135,6 +146,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, probe.locate_and_parse_report),
         ToolSpec("compare_reports", _DESCRIPTIONS["compare_reports"], CompareReportsInput, compare.compare_reports),
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
+        ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
     ]
     return {s.name: s for s in specs}
 
