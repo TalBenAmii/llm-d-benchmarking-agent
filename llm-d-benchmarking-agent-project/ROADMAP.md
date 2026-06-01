@@ -146,10 +146,13 @@ differentiators, then stretch goals and packaging/docs deliverables.
 - Architecture doc, API reference, deployment & user guides; polish toward the upstream
   `llm-d-benchmark` PR path.
 
-## Phase 10 — Multi-harness orchestration in one session — **TODO**
+## Phase 10 — Multi-harness orchestration in one session — **DONE**
 *Proposal stretch.*
 - Agent recommends + runs both inference-perf (SLO validation) and guidellm (throughput sweep)
   in one session, then compares.
+- **Result:** new read-only `compare_harness_runs` tool + pure `compare_across_harnesses()` group
+  runs by detected harness, cross-validate shared metrics (no cross-harness winner), backed by
+  `knowledge/multi_harness.md`; `summarize_report` now surfaces producing harness + load point.
 
 ---
 

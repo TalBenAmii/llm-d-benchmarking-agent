@@ -8,6 +8,27 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-01 — Phase 10: Multi-harness orchestration in one session — DONE
+Branch `feature/roadmap-p10-multiharness` → merged into `feature/roadmap` (`--no-ff`, `60546f4`).
+Conflicts in the shared registration files were resolved by keeping BOTH sides' additions:
+`app/tools/registry.py` (`history` + `multiharness` imports/registrations) and `tests/test_schemas.py`
+(expected tool set kept both `result_history` and `compare_harness_runs`); `app/tools/schemas.py`
+auto-merged.
+- **Shipped:** a cross-harness comparison path so the agent can recommend + run BOTH inference-perf
+  (SLO/latency validation) and guidellm (throughput sweep) against the same stack in one session,
+  then contrast them. New read-only `compare_harness_runs` tool (`app/tools/multiharness.py`, schema
+  `CompareHarnessRunsInput`) backed by a pure `compare_across_harnesses()` in `validation/report.py`:
+  groups runs by detected harness, reports which metrics ≥2 harnesses both measured (cross-validate)
+  vs only one did, shows per-harness values side by side with NO cross-harness winner, flags
+  multi-model contrasts as not meaningful, and refuses unless ≥2 distinct harnesses are present.
+  `summarize_report` now surfaces the producing harness + load point from the report's own
+  `scenario.load.standardized.tool`. Judgment in `knowledge/multi_harness.md` (cross-linked from
+  `sweep_playbook.md`); registry now exposes 17 tools.
+- **Tests:** worktree suite **329 passed / 6 skipped / 0 failed** (+`test_multiharness.py`, 14
+  hermetic tests on real BR v0.2 reports on disk + pure math; +1 assert in `test_schemas.py`). Run
+  with `REPOS_DIR=/home/tal/kind-quickstart-guide` against the worktree venv + .env, 420s timeout —
+  no hang (exit 0). Prior baseline was 315 passed / 6 skipped.
+
 ## 2026-06-01 — Phase 8: Packaging — container image + Helm/Kustomize one-command deploy — DONE
 Branch `feature/roadmap-p8-packaging` → merged into `feature/roadmap` (`--no-ff`, `742e20d`).
 Only conflict was `pyproject.toml`'s `[tool.setuptools] packages` list — resolved by keeping BOTH
