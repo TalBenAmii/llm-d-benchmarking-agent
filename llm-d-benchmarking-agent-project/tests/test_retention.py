@@ -69,6 +69,16 @@ def _seed_history(ws: Path, hid: str, *, age_days: float, size: int = 100) -> Pa
     return f
 
 
+def _seed_job(ws: Path, rid: str, *, age_days: float, size: int = 100) -> Path:
+    """Mirror what app/orchestrator/controller.py writes: workspace/jobs/<run_id>.yaml (a FILE)."""
+    d = ws / "jobs"
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / f"{rid}.yaml"
+    f.write_text("kind: Job\n# " + "x" * size + "\n")
+    _set_mtime(f, NOW - age_days * DAY)
+    return f
+
+
 def _names(ws: Path, area: str, kind: str = "dir") -> set[str]:
     base = ws / area
     if not base.is_dir():
@@ -189,6 +199,51 @@ def test_gc_covers_runs_and_history_independently(tmp_path):
     assert len(by_area["history"].removed) == 2
     # active-session ids must not affect non-session areas.
     assert by_area["runs"].protected_active == 0
+
+
+def test_gc_prunes_orchestrator_job_manifests(tmp_path):
+    """The orchestrator's per-run scratch is workspace/jobs/<run_id>.yaml — FILES, not dirs.
+    GC must enumerate and prune them per policy (regression: a dir/file kind mismatch once made
+    the jobs area scan 0 items and prune nothing, leaving per-run scratch to grow unbounded)."""
+    ws = tmp_path / "ws"
+    # 5 job manifests, ages 1..5 days. Keep newest 1 -> the 4 oldest must go.
+    for i in range(5):
+        _seed_job(ws, f"run-{i}", age_days=float(i + 1))
+    s = _settings(tmp_path, retention_max_items=1)
+
+    res = run_gc(s, active_session_ids=set(), now=NOW)
+
+    survivors = _names(ws, "jobs", kind="file")
+    assert survivors == {"run-0"}  # newest manifest (1 day old) kept
+    jobs_area = next(a for a in res.areas if a.area == "jobs")
+    assert jobs_area.scanned == 5, "the jobs area must actually enumerate the .yaml FILES"
+    assert set(jobs_area.removed) == {"run-1", "run-2", "run-3", "run-4"}
+    assert jobs_area.kept == 1
+    # active-session ids must not protect anything in the jobs area (no live owner).
+    assert jobs_area.protected_active == 0
+
+
+def test_gc_job_manifests_age_and_bytes(tmp_path):
+    """Age + bytes caps also apply to the jobs file area, independently and oldest-first."""
+    ws = tmp_path / "ws"
+    _seed_job(ws, "fresh", age_days=1.0)
+    _seed_job(ws, "edge", age_days=7.0)    # exactly the cap -> kept (strict older-than)
+    _seed_job(ws, "stale", age_days=7.5)   # strictly older -> pruned
+    s = _settings(tmp_path, retention_max_age_days=7.0, retention_max_items=0)
+
+    run_gc(s, active_session_ids=set(), now=NOW)
+    assert _names(ws, "jobs", kind="file") == {"fresh", "edge"}
+
+    # Fresh workspace for the bytes cap: ~1000-byte manifests, survivors must fit under 2500.
+    ws2 = tmp_path / "ws2"
+    s2 = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=ws2,
+                  retention_max_bytes=2500, retention_max_items=0)
+    for i in range(4):
+        _seed_job(ws2, f"j{i}", age_days=float(i + 1), size=1000)
+    run_gc(s2, active_session_ids=set(), now=NOW)
+    survivors = _names(ws2, "jobs", kind="file")
+    assert "j0" in survivors and "j3" not in survivors  # newest fit, oldest dropped
+    assert len(survivors) <= 2
 
 
 def test_gc_missing_areas_are_noops(tmp_path):

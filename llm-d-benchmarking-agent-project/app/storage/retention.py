@@ -32,10 +32,15 @@ from app.config import Settings
 # ---------------------------------------------------------------------------
 # Managed scratch areas. Each is (logical-name, subpath-under-workspace, item-kind).
 # ``item-kind`` selects how an area's items are enumerated:
-#   "dir"  -> each immediate child DIRECTORY is one item (sessions/, runs/, jobs/)
-#   "file" -> each immediate child FILE is one item        (history/*.json)
+#   "dir"  -> each immediate child DIRECTORY is one item (sessions/, runs/)
+#   "file" -> each immediate child FILE is one item        (jobs/*.yaml, history/*.json)
 # The active-session guard only applies to the "sessions" area (only sessions can be "running").
 # This is DATA describing WHERE scratch lives — not decision logic; the walk below is uniform.
+#
+# ``jobs`` is the orchestrator's per-run scratch: app/orchestrator/controller.py writes the
+# rendered Job manifest to workspace/jobs/<run_id>.yaml (one FILE per run), so the area is
+# file-kind. ``runs`` is reserved for any future per-run directory scratch (no code creates it
+# today); keeping it declared means it's GC'd the moment something starts using it.
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class ManagedArea:
@@ -48,7 +53,7 @@ class ManagedArea:
 MANAGED_AREAS: tuple[ManagedArea, ...] = (
     ManagedArea("sessions", "sessions", "dir", is_sessions=True),
     ManagedArea("runs", "runs", "dir"),
-    ManagedArea("jobs", "jobs", "dir"),
+    ManagedArea("jobs", "jobs", "file"),
     ManagedArea("history", "history", "file"),
 )
 
