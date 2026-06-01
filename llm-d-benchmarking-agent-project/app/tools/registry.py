@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
-from app.tools import command, compare, config_artifact, execute, plan, probe, repos
+from app.tools import command, compare, config_artifact, execute, orchestrate, plan, probe, repos
 from app.tools.context import ToolContext
 from app.tools.schemas import (
     CompareReportsInput,
@@ -21,6 +21,7 @@ from app.tools.schemas import (
     FetchKeyDocsInput,
     ListCatalogInput,
     LocateReportInput,
+    OrchestrateBenchmarkInput,
     ProbeEnvironmentInput,
     ReadRepoDocInput,
     RunCommandInput,
@@ -106,6 +107,16 @@ _DESCRIPTIONS = {
         "Read-only. Pass `sources` (run dirs/files, with optional `labels`) OR `experiment_dir` "
         "(scans for all reports under it). Use after a sweep or to compare two configurations."
     ),
+    "orchestrate_benchmark_run": (
+        "Run a benchmark as a Kubernetes Job the orchestrator manages end-to-end: submit "
+        "(approval-gated `kubectl apply`), watch the Job to completion, stream logs, and on "
+        "failure classify the cause (OOM / timeout / eviction / unschedulable / image / run "
+        "error). With max_attempts>1, a TRANSIENT fault (eviction) retries as a fresh, distinct "
+        "Job; deterministic faults never retry. Distinct from execute_llmdbenchmark (which runs "
+        "the CLI locally as a blocking subprocess): use this for K8s-native, restart-resilient, "
+        "individually-retryable runs. Needs the orchestrator container image (config "
+        "ORCHESTRATOR_IMAGE or `image`)."
+    ),
 }
 
 
@@ -123,6 +134,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("run_command", _DESCRIPTIONS["run_command"], RunCommandInput, command.run_command),
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, probe.locate_and_parse_report),
         ToolSpec("compare_reports", _DESCRIPTIONS["compare_reports"], CompareReportsInput, compare.compare_reports),
+        ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
     ]
     return {s.name: s for s in specs}
 

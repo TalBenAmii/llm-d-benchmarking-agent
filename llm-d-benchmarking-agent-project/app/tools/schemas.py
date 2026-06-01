@@ -91,6 +91,36 @@ class ExecuteInput(BaseModel):
     extra: list[str] | None = None
 
 
+class OrchestrateBenchmarkInput(BaseModel):
+    namespace: str = Field(..., description="Kubernetes namespace to run the benchmark Job in")
+    spec: str | None = Field(default=None, description="llm-d spec from the catalog, e.g. 'cicd/kind'")
+    harness: str | None = Field(default=None, description="Harness name from the catalog")
+    workload: str | None = Field(default=None, description="Workload profile from the catalog")
+    image: str | None = Field(
+        default=None,
+        description="Container image for the Job; defaults to the configured orchestrator image. "
+                    "Required (here or in config) — an orchestrated run is a real K8s Job.",
+    )
+    command: list[str] | None = Field(
+        default=None,
+        description="Override the in-Job argv; default runs 'llmdbenchmark run' with the given "
+                    "spec/harness/workload/namespace.",
+    )
+    cpu: str = Field(default="1", description="CPU request/limit for the Job pod")
+    memory: str = Field(default="1Gi", description="Memory request/limit for the Job pod")
+    active_deadline_seconds: int | None = Field(
+        default=None, description="Job timeout; exceeding it is classified as a timeout failure",
+    )
+    max_attempts: int = Field(
+        default=1, ge=1, le=5,
+        description="Retry budget for TRANSIENT faults (eviction). Each attempt is a fresh, "
+                    "distinct Job. Deterministic faults (OOM/unschedulable/image) never retry.",
+    )
+    watch: bool = Field(default=True, description="Watch the Job to completion + diagnose failures (vs submit-and-return)")
+    poll_interval: float = Field(default=3.0, ge=0, description="Seconds between status polls while watching")
+    max_wait: float = Field(default=3600.0, ge=0, description="Max seconds to watch before giving up")
+
+
 class CompareReportsInput(BaseModel):
     sources: list[str] | None = Field(
         default=None,

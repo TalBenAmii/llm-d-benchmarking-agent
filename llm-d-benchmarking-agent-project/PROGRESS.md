@@ -8,6 +8,33 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-01 — Phase 3: Kubernetes-native Benchmark Orchestrator — DONE  (the 40% centerpiece)
+Branch `feature/roadmap-p3-orchestrator` → merged into `feature/roadmap`. Built in
+`app/orchestrator/` (kube.py, job.py, controller.py, faults.py) + tool `orchestrate_benchmark_run`.
+- **Research first** (2-agent workflow): `llmdbenchmark run` submits the harness as a bare K8s
+  Pod via `kubectl apply` and shells out to kubectl for everything (no Python client in the run
+  path). Verdict: the orchestrator shells allowlisted kubectl too (security-model-consistent).
+- **3a** (`0d1106c`): KubeClient (Real over ToolContext + Fake for tests). Allowlist: kubectl
+  apply/logs/delete-job + value constraints; delete is job-by-name-only; `-f` is .yaml-only,
+  no `..`, workspace-confined. **3b** (`8ab5697`): Job manifest (backoffLimit:0, deadline,
+  labels on pod template), submit/watch/logs/reconstruct. **3c+3d** (`a77b165`): fault
+  classification (6 kinds, priority-ordered) + retry/dead-letter (distinct `-aN` Jobs;
+  transient retries, deterministic dead-letters). **3e** (`9cc48a3`): parallel sweep
+  (concurrency-capped, per-treatment dead-letter) + cleanup; tool wiring (`a68cde5`) +
+  `knowledge/orchestrator.md` (the remediation judgment, kept out of faults.py).
+- **3-agent adversarial review** (`ed731f1`) found + fixed real bugs: watch() busy-looped with
+  poll_interval=0 (now wall-clock bounded + floored sleep); run_sweep's bare gather let one
+  raising treatment sink the sweep (now per-treatment try/except); classify mapped a
+  failed-count-no-condition Job to PENDING (now FAILED); run_with_retries collapsed ABSENT/
+  timeout into a bogus Failure(NONE). Hardening: manifest_path forbids `..`; Job name DNS-1123
+  validation; non-breaking pod securityContext. +9 review-driven tests.
+- **Tested hermetically** (FakeKubeClient + CaptureRunner) — no GPU, no live cluster runs.
+- **Deferred to Phase 8 (packaging):** the in-cluster benchmark image + least-privilege
+  ServiceAccount/RBAC + image pinning (so an orchestrated Job runs live). Until then the tool
+  refuses without an image; `execute_llmdbenchmark` remains the live local path.
+- **Tests:** worktree suite **190 passed / 6 skipped / 0 failed**.
+- Next: Phase 4 (Results Analyzer — goodput, SLO filtering, Pareto/DoE analysis).
+
 ## 2026-06-01 — Phase 2: Parallel sessions & parallel benchmark runs — DONE
 Branch `feature/roadmap-p2-parallel` → merged into `feature/roadmap`.
 - **Concurrency cap** (`config.max_concurrent_runs`, default 2): a shared `asyncio.Semaphore`

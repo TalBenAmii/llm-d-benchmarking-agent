@@ -72,11 +72,16 @@ value_constraints:
   positive_int:    { regex: "^[0-9]+$" }
   kubectl_resource:
     enum: [ns, namespace, namespaces, po, pod, pods, svc, service, services,
-           deploy, deployment, deployments, ep, endpoints, events, nodes, node]
+           deploy, deployment, deployments, ep, endpoints, events, nodes, node,
+           job, jobs]   # job/jobs: the orchestrator submits benchmark runs as K8s Jobs
   git_ref:         { regex: "^[A-Za-z0-9._/-]+$" }
   cluster_name:    { regex: "^[a-z0-9]([-a-z0-9]{0,40}[a-z0-9])?$" }   # kind cluster name
   duration:        { regex: "^[0-9]+(s|m|h)?$" }                       # e.g. 120s, 5m
   kind_version:    { regex: "^v[0-9]+\\.[0-9]+\\.[0-9]+$" }            # e.g. v0.31.0
+  # ---- orchestrator (Phase 3): K8s Job lifecycle via kubectl ----
+  manifest_path:   { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.ya?ml$" }  # a .yaml/.yml file; no '..' traversal
+  resource_name:   { regex: "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$" }  # RFC1123 object name
+  label_selector:  { regex: "^[A-Za-z0-9._/=,-]+$" }                   # e.g. run-id=abc,function=load_generator
 
 executables:
 
@@ -136,6 +141,52 @@ executables:
           "--selector": { takes_value: true }
           "--field-selector": { takes_value: true }
           "--no-headers": {}
+          # Observe-only watch (stays read_only): the orchestrator can stream Job status.
+          "-w": {}
+          "--watch": {}
+      # ---- orchestrator (Phase 3): the agent submits benchmark runs as K8s Jobs and
+      # manages their lifecycle. apply/delete are mutating (approval-gated); logs is
+      # observe-only (read_only, streams). -f is constrained to a .yaml the agent wrote
+      # into its workspace; delete is restricted to jobs by name so it can't remove
+      # arbitrary cluster objects. Pod fault inspection reuses the read-only `get` above.
+      apply:
+        mode: mutating
+        flags:
+          "-f": { takes_value: true, value: { ref: manifest_path } }
+          "--filename": { takes_value: true, value: { ref: manifest_path } }
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-o": { takes_value: true, value: { ref: output_format } }
+          "--server-side": {}
+          "--wait": {}
+      logs:
+        mode: read_only
+        positionals: [ ]   # by label selector, not a positional pod name
+        flags:
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-l": { takes_value: true, value: { ref: label_selector } }
+          "--selector": { takes_value: true, value: { ref: label_selector } }
+          "-f": {}
+          "--follow": {}
+          "-p": {}
+          "--previous": {}
+          "-c": { takes_value: true, value: { ref: resource_name } }
+          "--container": { takes_value: true, value: { ref: resource_name } }
+          "--tail": { takes_value: true, value: { ref: positive_int } }
+          "--since": { takes_value: true, value: { ref: duration } }
+          "--timestamps": {}
+          "--all-containers": {}
+      delete:
+        mode: mutating
+        positionals:
+          - { value: { enum: [job, jobs] } }
+          - { value: { ref: resource_name } }
+        flags:
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "--ignore-not-found": {}
+          "--wait": {}
 
   git:
     subcommands:

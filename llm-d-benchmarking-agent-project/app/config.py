@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     # probes are never capped. <= 0 means unlimited.
     max_concurrent_runs: int = 2
 
+    # Container image for orchestrator-submitted benchmark Jobs (the in-cluster image that
+    # carries the llmdbenchmark CLI + kubectl). Empty until built/published in the packaging
+    # phase; the orchestrate tool then refuses rather than submitting an unrunnable Job.
+    orchestrator_image: str = ""
+
     # ---- derived locations ------------------------------------------------
     @property
     def resolved_repos_dir(self) -> Path:
