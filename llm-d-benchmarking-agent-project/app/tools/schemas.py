@@ -206,3 +206,21 @@ class CompareReportsInput(BaseModel):
         default=0, ge=0,
         description="Index of the baseline run (deltas are computed relative to it).",
     )
+
+
+class CompareHarnessRunsInput(BaseModel):
+    sources: list[str] = Field(
+        ...,
+        description="2+ report files OR run directories produced by DIFFERENT harnesses in "
+                    "this session (e.g. an inference-perf SLO-validation run dir and a "
+                    "guidellm throughput-sweep dir). Each directory uses its newest Benchmark "
+                    "Report; the harness that produced each is read from the report itself "
+                    "(scenario.load.standardized.tool) — do not guess it.",
+        min_length=2,
+    )
+    labels: list[str] | None = Field(
+        default=None,
+        description="Optional human labels parallel to `sources` (e.g. "
+                    "['inference-perf SLO','guidellm sweep']). If omitted, the harness "
+                    "name + run dir is used.",
+    )

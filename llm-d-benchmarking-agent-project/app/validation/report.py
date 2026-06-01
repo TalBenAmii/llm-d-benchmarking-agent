@@ -136,6 +136,15 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
             model = name
             break
 
+    # Which workload generator (harness) produced this report, read straight from the
+    # report's own scenario.load.standardized.tool — e.g. "inference-perf" or "guidellm".
+    # This is the authoritative provenance used to group/contrast a multi-harness session.
+    load = scenario.get("load", {}) if isinstance(scenario, dict) else {}
+    load_std = load.get("standardized", {}) if isinstance(load, dict) else {}
+    harness = load_std.get("tool") if isinstance(load_std, dict) else None
+    load_rate_qps = load_std.get("rate_qps") if isinstance(load_std, dict) else None
+    load_concurrency = load_std.get("concurrency") if isinstance(load_std, dict) else None
+
     requests = agg.get("requests", {}) if isinstance(agg, dict) else {}
     total = requests.get("total")
     failures = requests.get("failures")
@@ -148,6 +157,8 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
 
     summary: dict[str, Any] = {
         "model": model,
+        "harness": harness,
+        "load": {k: v for k, v in (("rate_qps", load_rate_qps), ("concurrency", load_concurrency)) if v is not None} or None,
         "run_uid": run.get("uid"),
         "duration": run.get("time", {}).get("duration"),
         "requests_total": total,
@@ -323,3 +334,139 @@ def _comparison_headline(rows: list[dict[str, Any]], labels: list[str], baseline
     ]
     head = f"Compared {len(labels)} runs (baseline: {labels[baseline_index]})."
     return f"{head} " + "; ".join(wins) + "." if wins else f"{head} No overlapping metrics to compare."
+
+
+# ---- cross-harness comparison (Phase 10: multi-harness in one session) -----
+#
+# ``compare_summaries`` answers "config A vs config B on the SAME harness". This answers
+# a different question: a session that ran TWO harnesses (e.g. inference-perf for SLO /
+# latency validation and guidellm for a throughput sweep) and wants them contrasted by
+# harness. It is still pure mechanism over already-validated report summaries — which
+# harness is "for" which job, and how to reconcile their differing methodologies, is the
+# agent's judgment (knowledge/multi_harness.md). Here we only:
+#   * group the runs by the harness that produced each (summary["harness"]),
+#   * surface each harness's headline metrics + which objective fields it actually carries,
+#   * note which metrics are measured by MORE THAN ONE harness (so the agent can cross-
+#     validate them) vs by only one (so it must report them from that harness alone),
+#   * for a metric two harnesses both measured on the same model, expose the per-harness
+#     values side by side WITHOUT picking a "winner" (different load generators are not
+#     directly comparable — see the knowledge file).
+
+# Headline objective fields, by family, used to characterise what each harness measured.
+_HARNESS_LATENCY = ("latency.ttft", "latency.tpot", "latency.itl", "latency.request_latency")
+_HARNESS_THROUGHPUT = ("throughput.output_token_rate", "throughput.total_token_rate", "throughput.request_rate")
+
+
+def _present_metrics(summary: dict[str, Any], paths: tuple[str, ...]) -> list[str]:
+    out = []
+    for p in paths:
+        val, _, _ = _stat_value(_dig(summary, p))
+        if val is not None:
+            out.append(p)
+    return out
+
+
+def compare_across_harnesses(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """Contrast benchmark reports produced by DIFFERENT harnesses in one session.
+
+    ``entries`` is ``[{"label": str, "summary": <summarize_report output>}, ...]``. Each
+    summary carries the harness that produced it (``summary["harness"]``). Returns:
+      * ``harnesses``: per detected harness, the runs it produced and the metric families
+        it measured (latency fields / throughput fields),
+      * ``shared_metrics`` / ``unique_metrics``: which objective fields ≥2 harnesses both
+        measured vs only one did,
+      * ``cross_metrics``: for each shared metric, the per-harness value (representative
+        stat + units) laid side by side — facts only, no winner (cross-harness numbers
+        aren't directly comparable).
+      * ``models``: distinct models across the runs (a cross-harness contrast is only
+        meaningful when the SAME model/stack was benchmarked by both harnesses).
+    Raises ``ReportError`` unless at least two DISTINCT harnesses are present.
+    """
+    labels = [e.get("label") or f"run{i + 1}" for i, e in enumerate(entries)]
+    summaries = [e.get("summary") or {} for e in entries]
+
+    # Group runs by the harness the report names. Runs whose report doesn't declare a
+    # harness are grouped under "unknown" so they're visible, never silently dropped.
+    by_harness: dict[str, list[dict[str, Any]]] = {}
+    for label, s in zip(labels, summaries):
+        h = s.get("harness") or "unknown"
+        by_harness.setdefault(h, []).append({"label": label, "summary": s})
+
+    distinct = [h for h in by_harness if h != "unknown"]
+    if len(distinct) < 2:
+        raise ReportError(
+            "need reports from at least two DIFFERENT harnesses to contrast "
+            f"(saw: {sorted(by_harness)})"
+        )
+
+    # Per-harness view: its runs, and which objective fields it measured (union over its runs).
+    harness_view: dict[str, dict[str, Any]] = {}
+    measured_by: dict[str, set[str]] = {}  # metric path -> set of harnesses that measured it
+    for h, runs in by_harness.items():
+        lat: set[str] = set()
+        thr: set[str] = set()
+        for r in runs:
+            lat.update(_present_metrics(r["summary"], _HARNESS_LATENCY))
+            thr.update(_present_metrics(r["summary"], _HARNESS_THROUGHPUT))
+        for m in lat | thr:
+            measured_by.setdefault(m, set()).add(h)
+        harness_view[h] = {
+            "runs": [
+                {"label": r["label"], "model": r["summary"].get("model"),
+                 "load": r["summary"].get("load"), "run_uid": r["summary"].get("run_uid")}
+                for r in runs
+            ],
+            "latency_metrics": sorted(lat),
+            "throughput_metrics": sorted(thr),
+        }
+
+    shared = sorted(m for m, hs in measured_by.items() if len(hs) >= 2)
+    unique = {m: sorted(hs)[0] for m, hs in measured_by.items() if len(hs) == 1}
+
+    # For each shared metric, the per-harness representative value (no winner picked).
+    cross_metrics: list[dict[str, Any]] = []
+    for m in shared:
+        name = next((nm for k, nm, _ in (_COMPARE_METRICS) if k == m), m)
+        per_harness = []
+        for h in sorted(measured_by[m]):
+            # representative = first run of that harness that carries the metric.
+            for r in by_harness[h]:
+                val, stat, units = _stat_value(_dig(r["summary"], m))
+                if val is not None:
+                    per_harness.append({"harness": h, "label": r["label"], "value": val,
+                                        "stat": stat, "units": units})
+                    break
+        cross_metrics.append({"key": m, "name": name, "per_harness": per_harness})
+
+    models = sorted({s.get("model") for s in summaries if s.get("model")})
+    return {
+        "n": len(entries),
+        "harnesses": harness_view,
+        "harness_names": sorted(by_harness),
+        "models": models,
+        "same_model": len(models) <= 1,
+        "shared_metrics": shared,
+        "unique_metrics": unique,
+        "cross_metrics": cross_metrics,
+        "headline": _cross_harness_headline(harness_view, shared, unique, models),
+    }
+
+
+def _cross_harness_headline(
+    harness_view: dict[str, dict[str, Any]],
+    shared: list[str],
+    unique: dict[str, str],
+    models: list[str],
+) -> str:
+    real = [h for h in harness_view if h != "unknown"]
+    parts = [f"Ran {len(real)} harnesses: {', '.join(sorted(real))}."]
+    if len(models) > 1:
+        parts.append(
+            f"WARNING: {len(models)} different models across the runs — a cross-harness "
+            "contrast is only meaningful on the same model/stack."
+        )
+    parts.append(
+        f"{len(shared)} metric(s) measured by both; {len(unique)} measured by only one."
+        if shared or unique else "No overlapping objective metrics."
+    )
+    return " ".join(parts)

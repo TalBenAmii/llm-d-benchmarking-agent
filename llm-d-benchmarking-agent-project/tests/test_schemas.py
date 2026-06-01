@@ -14,8 +14,8 @@ def test_tool_definitions_complete():
         "probe_environment", "list_catalog", "read_repo_doc", "fetch_key_docs",
         "propose_session_plan", "check_capacity", "ensure_repos", "run_setup",
         "write_and_validate_config", "execute_llmdbenchmark", "run_command",
-        "locate_and_parse_report", "compare_reports", "analyze_results",
-        "orchestrate_benchmark_run", "observe_run_metrics",
+        "locate_and_parse_report", "compare_reports", "compare_harness_runs",
+        "analyze_results", "orchestrate_benchmark_run", "observe_run_metrics",
     }
     assert names == expected
     for d in defs:
