@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 from typing import Any
 
@@ -321,7 +322,34 @@ async def ws(websocket: WebSocket) -> None:
 
     try:
         while True:
-            raw = await websocket.receive_json()
+            # Decode the inbound frame ourselves (rather than websocket.receive_json) so we can
+            # guard the JSON-decode layer too: a non-JSON text frame, or a binary frame in a
+            # text protocol, must be rejected with a structured `error` and the socket KEPT
+            # ALIVE — never crash the handler. receive_json() would raise json.JSONDecodeError
+            # (or KeyError on a binary frame) straight out of the loop and tear down the socket.
+            message = await websocket.receive()
+            # A control frame announcing disconnect surfaces here as a websocket.disconnect
+            # message; raise so the outer `except WebSocketDisconnect` handles teardown.
+            if message["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect(message.get("code", 1000), message.get("reason"))
+            text = message.get("text")
+            if text is None:
+                # No text payload (e.g. a binary frame): can't be a protocol frame.
+                await websocket.send_json(outbound(ws_events.ERROR, {
+                    "message": "malformed message: expected a JSON text frame",
+                    "kind": "protocol_error",
+                }))
+                continue
+            try:
+                raw = json.loads(text)
+            except (json.JSONDecodeError, ValueError) as exc:
+                # Non-JSON text frame — the most basic malformed frame. Reject structurally and
+                # keep the connection alive so a hostile/buggy client cannot crash the handler.
+                await websocket.send_json(outbound(ws_events.ERROR, {
+                    "message": "malformed message: invalid JSON: " + str(exc),
+                    "kind": "protocol_error",
+                }))
+                continue
             # Validate the inbound frame against the WS wire protocol (Phase 15). A malformed
             # frame (non-dict, unknown/missing type, wrong field shape, extra fields) is
             # rejected with a structured `error` event and the socket is KEPT ALIVE — a bad or

@@ -36,3 +36,16 @@ TOOL_RESULT = "tool_result"
 SESSION_PLAN = "session_plan"
 ERROR = "error"
 DONE = "done"
+
+# Connection-lifecycle frames: emitted by the /ws handler on (re)connect, NOT part of any
+# turn's live stream. They must be excluded from the per-turn live buffer (Phase 15) so a
+# second mid-turn reconnect doesn't replay a stale `ready`/`history`/`pong` interleaved before
+# the real missed turn events.
+READY = "ready"
+HISTORY = "history"
+PONG = "pong"
+
+# Event types that are NOT buffered into the per-turn live ring (lifecycle frames above). The
+# buffer holds only in-flight TURN events so replay_live reproduces the missed live stream
+# faithfully, without re-sending handshake/keep-alive frames.
+NON_TURN_EVENTS = frozenset({READY, HISTORY, PONG})

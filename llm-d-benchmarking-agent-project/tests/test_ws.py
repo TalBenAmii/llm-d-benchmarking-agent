@@ -153,6 +153,28 @@ def test_ws_malformed_frame_rejected_socket_survives():
             assert err["data"].get("kind") == "protocol_error"
             assert "malformed message" in err["data"]["message"]
 
+            # (1b) a raw NON-JSON text frame (the most basic malformed frame) -> structured
+            # protocol error, socket KEPT ALIVE. This guards the JSON-decode layer itself:
+            # `receive_json()` would raise json.JSONDecodeError straight out of the handler and
+            # tear the socket down, violating the spec's "do NOT crash the handler" requirement.
+            ws.send_text("this is not json {{{")
+            err_nonjson = ws.receive_json()
+            assert err_nonjson["type"] == "error"
+            assert err_nonjson["data"].get("kind") == "protocol_error"
+            assert "malformed message" in err_nonjson["data"]["message"]
+
+            # (1c) an empty text frame is likewise non-JSON -> structured error, still alive.
+            ws.send_text("")
+            err_empty = ws.receive_json()
+            assert err_empty["type"] == "error"
+            assert err_empty["data"].get("kind") == "protocol_error"
+
+            # (1d) a binary frame carries no JSON text payload -> structured error, still alive.
+            ws.send_bytes(b"\x00\x01\x02 not a frame")
+            err_bin = ws.receive_json()
+            assert err_bin["type"] == "error"
+            assert err_bin["data"].get("kind") == "protocol_error"
+
             # (2) a non-dict JSON frame (a bare list) -> structured error, still alive.
             ws.send_json(["not", "an", "object"])
             err2 = ws.receive_json()
@@ -351,3 +373,37 @@ def test_channel_begin_turn_resets_buffer():
     ch = asyncio.run(_drive())
     texts = [f["data"]["text"] for f in ch.buffered_events]
     assert texts == ["turn-2"], "old turn's events must not linger after begin_turn()"
+
+
+def test_channel_buffer_excludes_lifecycle_frames():
+    """Connection-lifecycle frames (ready/history/pong) the handler emits on every (re)connect
+    are NOT buffered into the per-turn live ring — only true turn events are. Otherwise a SECOND
+    mid-turn reconnect would replay a stale ready/history/pong interleaved before the real missed
+    turn events. The buffer holds 'only the in-flight turn's events', as its docstring promises."""
+    import asyncio
+
+    from app.agent import events
+    from app.agent.channel import Channel
+
+    class _Sess:
+        id = "lifecycletest"
+
+    async def _drive():
+        ch = Channel(_Sess(), buffer_max=50)
+        ch.begin_turn()
+        # A real turn event, then the lifecycle frames the /ws handler emits on a mid-turn
+        # reconnect (ready + history), and a pong for a keep-alive ping, then another turn event.
+        await ch.emit(events.ASSISTANT_TEXT, {"text": "missed-1"})
+        await ch.emit(events.READY, {"session_id": "lifecycletest"})
+        await ch.emit(events.HISTORY, {"items": [], "commands": []})
+        await ch.emit(events.PONG, {})
+        await ch.emit(events.TOOL_CALL, {"id": "t1", "name": "x", "input": {}})
+        return ch
+
+    ch = asyncio.run(_drive())
+    types = [f["type"] for f in ch.buffered_events]
+    # Only the turn events are buffered; lifecycle frames are excluded.
+    assert types == [events.ASSISTANT_TEXT, events.TOOL_CALL]
+    assert events.READY not in types
+    assert events.HISTORY not in types
+    assert events.PONG not in types

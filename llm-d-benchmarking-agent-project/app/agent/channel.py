@@ -85,9 +85,14 @@ class Channel:
         if event_type == events.COMMAND:
             self.session.record_command(payload)
         # Append to the bounded live buffer FIRST so a client that reattaches mid-turn can
-        # replay this event even if the send below finds no socket attached right now.
+        # replay this event even if the send below finds no socket attached right now. Skip
+        # connection-lifecycle frames (ready/history/pong): the handler emits those on every
+        # (re)connect, and buffering them would make a SECOND mid-turn reconnect replay a stale
+        # handshake interleaved before the real missed turn events. The buffer holds only the
+        # in-flight turn's events, exactly as the docstring promises.
         frame = outbound(event_type, payload)
-        self._buffer.append(frame)
+        if event_type not in events.NON_TURN_EVENTS:
+            self._buffer.append(frame)
         ws = self.ws
         if ws is not None:
             with contextlib.suppress(Exception):
