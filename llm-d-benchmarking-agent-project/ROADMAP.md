@@ -237,3 +237,15 @@ Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never
   a new `/readyz` readiness probe (200/503 + structured reasons); liveness stays on `/healthz`.
 - Merged into `feature/roadmap-v2` (`--no-ff`); full suite **404 passed / 6 skipped / 0 failed**
   (+20 hermetic tests in `test_retention.py` + `test_readyz.py`; prior baseline 384 passed / 6 skipped).
+
+## Phase 16 — Run lifecycle & readiness — DONE
+- Closes Phase 2's two deferrals with pure mechanism (`app/agent/lifecycle.py`: a `RunRegistry`
+  of in-flight turn tasks). A new `cancel_run` tool (`app/tools/cancel.py`) cancels another
+  session's running turn from OUTSIDE itself — `asyncio` unwinds the concurrency-cap semaphore so
+  the slot is freed, and the runner reaps the child process group on `CancelledError` so no K8s
+  Job / subprocess is orphaned. The `lifespan` now installs a SIGTERM graceful-shutdown that
+  cancels every in-flight run (composed with Phase 18's startup self-check + retention GC); a
+  `cancelled` event + a cancel control message round out the surface, and `/readyz` gains a
+  `runner_ok` component. `knowledge/run_lifecycle.md` holds the JUDGMENT of *when* to cancel.
+- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **415 passed / 6 skipped / 0 failed**
+  (+`tests/test_run_lifecycle.py`, 384 lines; prior baseline 404 passed / 6 skipped).

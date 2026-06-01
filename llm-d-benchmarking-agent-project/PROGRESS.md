@@ -8,6 +8,23 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-02 — Phase 16: Run lifecycle & readiness — DONE
+Branch `feature/roadmap-v2-p16-run-lifecycle` → merged into `feature/roadmap-v2` (`--no-ff`).
+- **Shipped:** `app/agent/lifecycle.py` (a `RunRegistry` tracking each session's in-flight turn
+  task) + a `cancel_run` tool (`app/tools/cancel.py`) that cancels a DIFFERENT session's run from
+  outside itself — `asyncio` unwinds the concurrency-cap semaphore (freeing the slot) and the
+  runner reaps the child process group on `CancelledError` (no orphaned K8s Job / subprocess). The
+  `lifespan` installs a SIGTERM graceful-shutdown cancelling every in-flight run, composed into one
+  coherent startup/shutdown with Phase 18's self-check + retention GC. A `cancelled` event + cancel
+  control message + a `runner_ok` component on `/readyz` round out the surface; `knowledge/run_lifecycle.md`
+  carries the JUDGMENT of *when* to cancel (thick agent / thin code).
+- **Merge note:** the v2 hot files (`app/main.py` lifespan, `session.py`, `ws_schemas.py`,
+  `runner.py`, `retention.py`, `registry.py`/`schemas.py`) auto-merged cleanly under `ort`; verified
+  the result is a deliberate union (lifespan runs BOTH Phase 16 shutdown AND Phase 18 GC; `cancel_run`
+  registered alongside all prior tools) rather than a blind concatenation. No conflict markers.
+- **Tests:** worktree full suite **415 passed / 6 skipped / 0 failed** (15.6s, no hang;
+  +`tests/test_run_lifecycle.py`, 384 lines; prior baseline 404 passed / 6 skipped).
+
 ## 2026-06-02 — Phase 18: Workspace lifecycle — retention/GC + startup self-check — DONE
 Branch `feature/roadmap-v2-p18-workspace` → merged into `feature/roadmap-v2` (`--no-ff`).
 - **Shipped:** `app/storage/retention.py` (446 lines) — a config-driven retention/GC mechanism
