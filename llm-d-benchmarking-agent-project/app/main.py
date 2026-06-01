@@ -10,7 +10,8 @@ import contextlib
 import logging
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -18,6 +19,7 @@ from app.agent.channel import Channel
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
 from app.config import get_settings
+from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocket_authorized
 from app.llm.provider import get_provider
 from app.observability import instrument
 from app.observability.logctx import bind as log_bind
@@ -41,6 +43,17 @@ async def lifespan(app: FastAPI):
     setup_logging(level=settings.log_level, log_format=settings.log_format)
     log.info("startup", extra={"log_format": settings.log_format, "provider": settings.llm_provider})
     app.state.settings = settings
+    # API trust (Phase 12): a misconfigured auth toggle (enabled but no token) would silently
+    # reject every request — fail loudly at startup instead, per the project's fail-loud rule.
+    if settings.auth_enabled and not settings.auth_token:
+        raise RuntimeError("AUTH_ENABLED is set but AUTH_TOKEN is empty — refusing to start")
+    # Build the rate limiter ONCE (shared process-wide bucket) so the per-request dependency
+    # doesn't reconstruct it. Off by default -> a no-op limiter.
+    app.state.rate_limiter = RateLimiter.from_settings(settings)
+    if settings.auth_enabled:
+        log.info("auth.enabled")
+    if settings.rate_limit_enabled:
+        log.info("ratelimit.enabled", extra={"rps": settings.rate_limit_rps, "burst": settings.rate_limit_burst})
     app.state.allowlist = Allowlist.from_file(settings.allowlist_path)
     app.state.runner = CommandRunner(settings.repo_paths, extra_env=settings.extra_subprocess_env)
     # Cross-session cap on concurrent heavy runs (None = unlimited).
@@ -67,7 +80,30 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="llm-d Benchmarking Assistant", lifespan=lifespan)
+def install_cors(target: FastAPI, origins: list[str]) -> None:
+    """Wire CORS (Phase 12) onto ``target`` — but ONLY when ``origins`` is non-empty, so the
+    default (empty CORS_ALLOW_ORIGINS) keeps today's behavior: no CORS middleware, no CORS
+    headers on responses. Factored out so the wiring can be exercised on a throwaway app in a
+    test without reloading this module (a reload would rebind the shared ``app`` and leak)."""
+    if origins:
+        target.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+
+# Auth (Phase 12) guards EVERY HTTP route via an app-level dependency: a single registration
+# point (thin code) rather than per-route annotations that could be forgotten. It's a no-op
+# when AUTH_ENABLED is False (the default), so the API is open exactly as today.
+app = FastAPI(
+    title="llm-d Benchmarking Assistant",
+    lifespan=lifespan,
+    dependencies=[Depends(check_http_auth)],
+)
+install_cors(app, get_settings().cors_origins_list)
 
 
 @app.get("/")
@@ -97,13 +133,17 @@ async def metrics() -> PlainTextResponse:
     return PlainTextResponse(render_prometheus(instrument.REGISTRY), media_type=_PROM_CONTENT_TYPE)
 
 
-@app.get("/api/sessions")
+# The /api/* routes are the HTTP message-intake surface the browser drives, so the rate
+# limiter (Phase 12) guards them: an empty bucket -> 429. /healthz + /metrics are deliberately
+# NOT throttled (liveness probes / Prometheus scrapes must never be rate-limited away). The
+# limiter is a no-op when RATE_LIMIT_ENABLED is False (the default).
+@app.get("/api/sessions", dependencies=[Depends(rate_limit)])
 async def list_sessions() -> JSONResponse:
     """Recent chats for the sidebar (summaries only, newest first)."""
     return JSONResponse({"sessions": app.state.sessions.list()})
 
 
-@app.delete("/api/sessions/{sid}")
+@app.delete("/api/sessions/{sid}", dependencies=[Depends(rate_limit)])
 async def delete_session(sid: str) -> JSONResponse:
     if not app.state.sessions.delete(sid):
         raise HTTPException(status_code=404, detail="session not found")
@@ -130,7 +170,7 @@ def _history_record_view(rec) -> dict[str, Any]:
     }
 
 
-@app.get("/api/history")
+@app.get("/api/history", dependencies=[Depends(rate_limit)])
 async def list_history(tag: str | None = None, model: str | None = None) -> JSONResponse:
     """Stored historical results for the results-browser (newest first, summaries only)."""
     records = _history_store().list(tag=tag, model=model)
@@ -140,7 +180,7 @@ async def list_history(tag: str | None = None, model: str | None = None) -> JSON
     })
 
 
-@app.get("/api/history/trend")
+@app.get("/api/history/trend", dependencies=[Depends(rate_limit)])
 async def history_trend(metric: str, tag: str | None = None, model: str | None = None) -> JSONResponse:
     """Time-series of one metric across stored results, for the trends view. Facts only —
     the value series + the metric's better-direction; no regression verdict (that's the agent)."""
@@ -182,7 +222,14 @@ app.mount("/static", StaticFiles(directory=str(get_settings().ui_dir)), name="st
 
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
+    # Auth (Phase 12): the app-level HTTP dependency does NOT cover WebSockets, so guard the
+    # handshake here. Accept first so the client receives a clean 1008 (policy-violation) close
+    # rather than a bare network drop; closed immediately when the token is missing/bad. No-op
+    # when AUTH_ENABLED is False (the default) -> /ws is open exactly as today.
     await websocket.accept()
+    if not websocket_authorized(websocket, get_settings()):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     # ``/ws?session=<id>`` reattaches to a saved chat (page reload / sidebar click);
     # an unknown or missing id just mints a fresh session.
     requested = websocket.query_params.get("session")
