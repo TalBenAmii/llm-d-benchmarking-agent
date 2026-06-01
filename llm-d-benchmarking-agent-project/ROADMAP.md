@@ -122,9 +122,13 @@ differentiators, then stretch goals and packaging/docs deliverables.
   activation vs accelerator memory) over the rendered spec at the plan gate, advisory or
   enforced; merged into `feature/roadmap`, full suite **245 passed / 6 skipped / 0 failed**.
 
-## Phase 7 — Observability: Prometheus/Grafana — **TODO**
+## Phase 7 — Observability: Prometheus/Grafana — **DONE**
 *Proposal stretch + Observability dimension.*
 - Export agent/orchestrator metrics; optional Grafana dashboard; live system metrics during runs.
+- **Result:** Prometheus `/metrics` endpoint + instrumentation across the agent/orchestrator,
+  a new read-only `observe_run_metrics` tool (live `kubectl top` pod/node usage during a run),
+  Grafana dashboard + scrape config under `deploy/observability/`; merged into `feature/roadmap`,
+  full suite **269 passed / 6 skipped / 0 failed**.
 
 ## Phase 8 — Packaging: container image + Helm/Kustomize single-command deploy — **TODO**
 *Proposal §5.3 deliverable.*

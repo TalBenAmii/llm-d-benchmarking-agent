@@ -8,6 +8,29 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-01 — Phase 7: Observability — Prometheus /metrics, instrumentation, live run metrics — DONE
+Branch `feature/roadmap-p7-observability` → merged into `feature/roadmap` (`--no-ff`). Conflicts
+in the shared registration files (`registry.py`, `schemas.py`, `tests/test_schemas.py`,
+`pyproject.toml`) were resolved by keeping BOTH sides' additions — Phase 6's `check_capacity` /
+Phase 4's `analyze_results` and Phase 7's `observe_run_metrics` now coexist in the imports,
+REGISTRY, schema models, expected tool-name set, and `[tool.setuptools].packages` (which now
+lists `app.observability` alongside `app.orchestrator`/`app.capacity`). `allowlist.yaml`
+auto-merged cleanly.
+- **Shipped:** a hand-rolled, dependency-free metrics registry (`app/observability/metrics.py`)
+  with Prometheus text-format exposition; metric definitions + instrumentation hooks in
+  `app/observability/instrument.py`, wired through `ToolContext` and the orchestrator
+  `controller.py` so tool calls, commands, and orchestrated runs are counted/timed. `app/main.py`
+  exposes a `GET /metrics` scrape endpoint. A new read-only `observe_run_metrics` tool
+  (`app/tools/observe.py`) reads LIVE cluster CPU/memory via `kubectl top` (pods in a namespace,
+  optionally narrowed to one run by run_id or per-container; or nodes) — distinct from `/metrics`
+  (the agent's own counters). Ops assets under `deploy/observability/` (Grafana dashboard +
+  Prometheus scrape config); interpretation guidance in `knowledge/observability.md`.
+- **Allowlist:** `kubectl top` (read-only -> auto-runs, no approval) added for `observe_run_metrics`.
+- **Tests:** worktree suite **269 passed / 6 skipped / 0 failed** (+`test_metrics.py`,
+  +`test_observability.py`, +updated `test_schemas.py`; authoritative run in the integration
+  worktree with the real venv + .env). Prior baseline was 245 passed / 6 skipped.
+- Next: Phase 5 (historical result storage + trends UI) / Phase 8 (packaging).
+
 ## 2026-06-01 — Phase 6: Configuration Explorer / Capacity Planner pre-flight — DONE
 Branch `feature/roadmap-p6-capacity` → merged into `feature/roadmap` (`--no-ff`). Conflicts
 in the shared registration files (`registry.py`, `schemas.py`, `tests/test_schemas.py`) were
