@@ -244,6 +244,10 @@ async def run_flow(
         events.append((t, p))
         if t == "tool_call":
             tool_calls.append({"name": p["name"], "input": p["input"]})
+        elif t == "command":
+            # Mirror production (app/main.py): record the executed-command trail on the
+            # session so the persist -> reload -> replay path is exercised end-to-end.
+            session.record_command(p)
 
     async def request_approval(kind, payload):
         decision = bool(approve(kind, payload))

@@ -67,12 +67,15 @@ async def test_run_readonly_emits_command_auto_run(tmp_path):
 
 async def test_run_command_readonly_emits_command_auto_run(tmp_path):
     events, emit = _collector()
-    ctx, _ = _ctx(tmp_path, emit=emit)
+    ctx, runner = _ctx(tmp_path, emit=emit)
 
     await ctx.run_command(RO)
 
     cmds = _commands(events)
-    assert len(cmds) == 1 and cmds[0]["auto_run"] is True and cmds[0]["mode"] == "read_only"
+    assert len(cmds) == 1
+    assert cmds[0]["argv"] == RO and cmds[0]["text"] == "kind get clusters"
+    assert cmds[0]["auto_run"] is True and cmds[0]["mode"] == "read_only"
+    assert len(runner.calls) == 1  # the read-only command really ran (no approval skip)
 
 
 async def test_run_command_mutating_emits_after_approval(tmp_path):
@@ -117,6 +120,50 @@ async def test_no_emit_wired_is_safe(tmp_path):
     ctx, runner = _ctx(tmp_path, emit=None)
     await ctx.run_readonly(RO)
     assert len(runner.calls) == 1
+
+
+async def test_probe_environment_emits_command_per_probe(tmp_path):
+    """The headline Phase-1 behavior: read-only probes are now visible. With all tools
+    present and a namespace, probe_environment runs exactly 6 read-only commands and each
+    is announced (auto_run) — proving probe-emit/exec parity."""
+    from unittest.mock import patch
+
+    from app.tools.probe import probe_environment
+
+    events, emit = _collector()
+    ctx, runner = _ctx(tmp_path, emit=emit)
+
+    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+        await probe_environment(ctx, namespace="llmd-quickstart")
+
+    cmds = _commands(events)
+    assert len(cmds) == 6, [c["text"] for c in cmds]
+    assert all(c["mode"] == "read_only" and c["auto_run"] is True for c in cmds)
+    assert len(runner.calls) == 6  # one announcement per real execution
+    exes = {c["argv"][0] for c in cmds}
+    assert exes == {"docker", "kind", "kubectl"}
+
+
+async def test_deploy_flow_surfaces_every_command(tmp_path):
+    """Driven through the REAL agent loop: a full quickstart deploy surfaces every executed
+    command as a `command` event, including each llmdbenchmark subcommand (standup/smoketest/run)."""
+    from tests.flows.flows import FLOWS_BY_NAME
+    from tests.flows.harness import run_flow
+
+    run = await run_flow(FLOWS_BY_NAME["kind-quickstart"], tmp_path=tmp_path)
+    cmd_argvs = [p["argv"] for (t, p) in run.events if t == "command"]
+
+    # Every significant command (llmdbenchmark/install.sh/git/helm) is announced.
+    for c in run.significant:
+        assert c.argv in cmd_argvs, f"significant command never announced: {c.argv}"
+
+    # The three llmdbenchmark lifecycle subcommands each appear in a command event.
+    llmd_subs = {
+        s
+        for a in cmd_argvs if a and a[0] == "llmdbenchmark"
+        for s in ("standup", "smoketest", "run") if s in a
+    }
+    assert {"standup", "smoketest", "run"} <= llmd_subs, f"missing lifecycle subcommands: saw {llmd_subs}"
 
 
 def test_session_records_and_caps_commands():
