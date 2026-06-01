@@ -244,11 +244,15 @@ def test_experiment_two_namespaces_allowed(allowlist, catalog):
     assert d.allowed
 
 
-def test_experiment_unknown_flag_denied(allowlist, catalog):
-    d = allowlist.validate(
+def test_experiment_unknown_flag_now_allowed(allowlist, catalog):
+    # Relaxed policy: an unrecognized flag on an allowlisted subcommand is accepted...
+    assert allowlist.validate(
         ["llmdbenchmark", "--spec", "cicd/kind", "experiment", "--bogus"], catalog=catalog
-    )
-    assert not d.allowed
+    ).allowed
+    # ...but a metachar-laden value is still rejected by the screen.
+    assert not allowlist.validate(
+        ["llmdbenchmark", "--spec", "cicd/kind", "experiment", "--bogus", "a;b"], catalog=catalog
+    ).allowed
 
 
 def test_run_experiments_flag_allowed(allowlist, catalog):

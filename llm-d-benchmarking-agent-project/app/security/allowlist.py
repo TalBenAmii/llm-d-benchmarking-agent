@@ -7,6 +7,15 @@ a :class:`Decision` saying whether the command is permitted and whether it is
 ``read_only`` (auto-runnable) or ``mutating`` (requires user approval).
 
 It never runs anything — see ``app/security/runner.py`` for execution.
+
+Flag policy: the allowlist gates *which* executables and subcommands may run, whether a
+command is read-only or mutating (and thus approval-gated), and screens every token for
+shell metacharacters. It does **not** reject unrecognized *flags* — once an executable +
+subcommand are allowlisted, any additional flag is accepted (its value is still
+metachar-screened, but not checked against ``value_constraints``). Values consumed by
+*known* flags are still validated against their declared constraint, and unknown flags
+never downgrade a mutating command's mode. Positionals and subcommands remain
+strictly validated.
 """
 from __future__ import annotations
 
@@ -147,7 +156,11 @@ class Allowlist:
             if tok.startswith("-"):
                 spec = global_flags.get(tok)
                 if spec is None:
-                    raise _Reject(f"unknown global flag {tok!r}")
+                    # Unknown global flag: accepted (policy allows any flag once the
+                    # executable is allowlisted). Treat as boolean so we don't swallow
+                    # what might be the subcommand token.
+                    i += 1
+                    continue
                 i += 2 if spec.get("takes_value") else 1
                 continue
             return i
@@ -173,7 +186,18 @@ class Allowlist:
             if tok.startswith("-"):
                 spec = flags.get(tok)
                 if spec is None:
-                    raise _Reject(f"flag {tok!r} is not allowlisted here")
+                    # Policy: any flag is accepted once the executable + subcommand are
+                    # allowlisted. The unknown flag's arity is unknown, so greedily consume
+                    # a following non-option token as its value (handles `-l inference-perf`);
+                    # `--flag=value` is self-contained. Every token is already metachar-screened
+                    # in validate(), and unknown flags never downgrade the mode — so mutating
+                    # commands keep their approval gate. (Unknown-flag VALUES are not checked
+                    # against value_constraints; known flags still are.)
+                    if "=" not in tok and i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
+                        i += 2
+                    else:
+                        i += 1
+                    continue
                 if spec.get("read_only_trigger"):
                     read_only_triggered = True
                 if spec.get("takes_value"):

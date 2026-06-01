@@ -118,12 +118,34 @@ def test_kubectl_delete_denied(allowlist):
     assert not allowlist.validate(["kubectl", "delete", "ns", "llmd-quickstart"]).allowed
 
 
-def test_unknown_flag_denied(allowlist, catalog):
+def test_unknown_flag_now_allowed(allowlist, catalog):
+    # Relaxed flag policy: an unrecognized flag on an allowlisted subcommand is accepted
+    # (its value is consumed + metachar-screened), and the mutating mode is preserved.
     d = allowlist.validate(
         ["llmdbenchmark", "--spec", "cicd/kind", "standup", "-p", "ns", "--exec", "evil"],
         catalog=catalog,
     )
+    assert d.allowed and d.mode == MUTATING and d.requires_approval
+
+
+def test_unknown_flag_value_still_metachar_screened(allowlist, catalog):
+    # Even an accepted unknown flag's value cannot smuggle shell metacharacters.
+    d = allowlist.validate(
+        ["llmdbenchmark", "--spec", "cicd/kind", "standup", "-p", "ns", "--exec", "$(whoami)"],
+        catalog=catalog,
+    )
     assert not d.allowed
+
+
+def test_reported_plan_with_l_and_w_flags_allowed(allowlist, catalog):
+    # The exact command from the bug report: plan does not declare -l/-w, but they are now
+    # accepted; --dry-run keeps it read-only.
+    d = allowlist.validate(
+        ["llmdbenchmark", "--spec", "cicd/kind", "plan", "-p", "llmd-quickstart",
+         "-l", "inference-perf", "-w", "sanity_random.yaml", "--dry-run"],
+        catalog=catalog,
+    )
+    assert d.allowed and d.mode == READ_ONLY
 
 
 def test_shell_metacharacter_denied(allowlist, catalog):
@@ -156,8 +178,11 @@ def test_harness_not_in_catalog_denied(allowlist, catalog):
     assert not d.allowed
 
 
-def test_install_sh_unknown_flag_denied(allowlist):
-    assert not allowlist.validate(["install.sh", "--rm-rf"]).allowed
+def test_install_sh_unknown_flag_now_allowed(allowlist):
+    # Relaxed policy: unknown flags are accepted on an allowlisted executable. The script
+    # still only acts on its own pinned flags; metachar-laden args remain denied.
+    assert allowlist.validate(["install.sh", "--rm-rf"]).allowed
+    assert not allowlist.validate(["install.sh", "--x", "$(evil)"]).allowed
 
 
 def test_empty_argv_denied(allowlist):
@@ -191,9 +216,11 @@ def test_kind_unknown_subcommand_denied(allowlist):
     assert not allowlist.validate(["kind", "load", "docker-image", "x"]).allowed
 
 
-def test_install_prereqs_unknown_flag_denied(allowlist):
-    # only the pinned flags are allowed — no arbitrary args reach the script
-    assert not allowlist.validate(["install_prereqs.sh", "--rm-rf"]).allowed
+def test_install_prereqs_unknown_flag_now_allowed(allowlist):
+    # Relaxed policy: unknown flags are accepted; the script ignores anything outside its
+    # pinned set. Metachar-laden args are still rejected by the screen.
+    assert allowlist.validate(["install_prereqs.sh", "--rm-rf"]).allowed
+    assert not allowlist.validate(["install_prereqs.sh", "--x", "a;b"]).allowed
 
 
 def test_install_prereqs_bad_kind_version_denied(allowlist):

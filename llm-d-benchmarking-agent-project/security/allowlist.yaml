@@ -35,6 +35,14 @@
 # Every token is additionally screened for shell metacharacters (defense in depth,
 # even though commands run with shell=False).
 #
+# FLAG POLICY (relaxed): once an executable + subcommand are allowlisted, ANY additional
+# flag is accepted — unrecognized flags are NOT rejected. The flagspecs below still matter:
+# a KNOWN flag's value is validated against its `value` constraint, and `read_only_trigger`
+# still downgrades the effective mode. Unknown flags are accepted with their value
+# metachar-screened (but not constraint-checked) and never change the mode. What stays
+# strict: which executables/subcommands may run, positionals, value constraints on known
+# flags, the metacharacter screen, and the mutating→approval gate.
+#
 # ─────────────────────────────────────────────────────────────────────────────
 # HOW TO ADD A NEW COMMAND (this is the ONLY file you edit to widen the agent)
 # ─────────────────────────────────────────────────────────────────────────────
