@@ -134,6 +134,11 @@ class SessionManager:
     def get(self, sid: str | None) -> Session | None:
         return self._sessions.get(sid) if sid else None
 
+    def active_ids(self) -> set[str]:
+        """Ids of sessions currently held in memory (loaded/live). Retention GC treats these
+        as active and never prunes their on-disk scratch (Phase 18 active-run safety)."""
+        return set(self._sessions)
+
     def load(self, sid: str | None) -> Session | None:
         """Reconstruct a session from its on-disk snapshot, or None if absent."""
         if not _is_valid_id(sid):

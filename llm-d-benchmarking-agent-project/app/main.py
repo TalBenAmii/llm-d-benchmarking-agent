@@ -29,6 +29,7 @@ from app.observability.metrics import render_prometheus
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
 from app.storage.history import HistoryStore, available_metrics, trend
+from app.storage.retention import readiness, run_gc, self_check
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
 _PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -77,7 +78,30 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         app.state.provider = None
         app.state.provider_error = str(exc)
+    # Workspace lifecycle (Phase 18): run the startup configuration self-check (structured
+    # pass/fail folded into /readyz) and a one-shot retention GC over scratch. Both honor their
+    # toggles + the DATA caps; GC never prunes a session that is currently live/running.
+    app.state.self_check = self_check(settings)
+    if not app.state.self_check.ok:
+        log.warning("selfcheck.failed", extra={"reasons": app.state.self_check.reasons})
+    if settings.retention_gc_on_startup:
+        try:
+            gc = run_gc(settings, active_session_ids=_active_session_ids(app))
+            log.info("retention.gc", extra={
+                "removed": gc.total_removed, "reclaimed_bytes": gc.total_reclaimed_bytes,
+            })
+        except Exception as exc:  # noqa: BLE001 — GC must never block startup
+            log.warning("retention.gc.failed", extra={"error": str(exc)})
     yield
+
+
+def _active_session_ids(app: FastAPI) -> set[str]:
+    """Sessions the retention GC must NOT prune: any held in memory by the SessionManager plus
+    any with a turn currently running (background benchmark) — the active-run safety (Phase 18)."""
+    sessions = getattr(app.state, "sessions", None)
+    ids: set[str] = sessions.active_ids() if sessions is not None else set()
+    ids |= set(getattr(app.state, "running", {}) or {})
+    return ids
 
 
 def install_cors(target: FastAPI, origins: list[str]) -> None:
@@ -123,6 +147,18 @@ async def healthz() -> JSONResponse:
         "repos_present": cat.get("present"),
         "specs": cat.get("specs", [])[:5],
     })
+
+
+@app.get("/readyz")
+async def readyz() -> JSONResponse:
+    """Readiness probe (Phase 16 seam): reports whether the startup configuration self-check
+    passed (workspace writable, provider coherent, repos resolvable, auth coherent). Returns 200
+    when ready, 503 when not, with the STRUCTURED self-check reasons so an operator/orchestrator
+    can see *why*. Phase 16 (if/when it lands its own /readyz) can compose this contribution.
+    Liveness stays on /healthz; this is the readiness gate."""
+    contrib = readiness(get_settings())
+    code = status.HTTP_200_OK if contrib.get("ready") else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(contrib, status_code=code)
 
 
 @app.get("/metrics")

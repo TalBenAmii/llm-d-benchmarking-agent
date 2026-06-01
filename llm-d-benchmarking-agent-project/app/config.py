@@ -105,6 +105,32 @@ class Settings(BaseSettings):
     # SA. Set via ORCHESTRATOR_SERVICE_ACCOUNT in the backend env / the deploy manifest.
     orchestrator_service_account: str = ""
 
+    # ---- Workspace lifecycle (Phase 18): retention/GC caps + startup self-check ----------
+    # Bound the unbounded growth of per-session/run scratch and the history store. These are
+    # DATA (the caps); the GC walk + counter in app/storage/retention.py is the MECHANISM —
+    # no decision logic in Python. Each cap is applied INDEPENDENTLY to each managed area
+    # (sessions/, runs/, history/), removing the OLDEST items first (by mtime) until the area
+    # is within the cap. An ACTIVE/running session is NEVER pruned regardless of caps.
+    #
+    # 0 (or unset/None) means UNLIMITED for that dimension — so the DEFAULTS BELOW DO NOT
+    # SURPRISE EXISTING USERS: max-age and max-bytes default to unlimited (no time-based or
+    # size-based deletion out of the box). Only a generous per-area item count is enforced by
+    # default, purely to stop truly unbounded file-count growth on a long-lived server.
+    # Tighten any of these via the env vars below when you want active reclamation.
+    retention_max_age_days: float = 0.0     # delete items older than N days (0 = unlimited)
+    retention_max_items: int = 500          # keep at most N items per area    (0 = unlimited)
+    retention_max_bytes: int = 0            # keep area under N bytes total     (0 = unlimited)
+
+    # Run the retention GC pass once at startup (in the FastAPI lifespan). Defaults ON, but it
+    # is a no-op under the default caps above except the generous item-count ceiling — so a
+    # fresh install reclaims nothing surprising. Set RETENTION_GC_ON_STARTUP=false to disable.
+    retention_gc_on_startup: bool = True
+
+    # Run the startup configuration self-check (workspace writable, provider config coherent,
+    # repos resolvable) and fold its result into readiness. Defaults ON; it only OBSERVES (it
+    # never mutates), so leaving it on is safe. Set STARTUP_SELF_CHECK=false to skip it.
+    startup_self_check: bool = True
+
     # ---- derived locations ------------------------------------------------
     @property
     def resolved_repos_dir(self) -> Path:
