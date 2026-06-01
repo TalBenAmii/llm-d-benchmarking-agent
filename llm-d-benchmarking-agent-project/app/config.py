@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     # phase; the orchestrate tool then refuses rather than submitting an unrunnable Job.
     orchestrator_image: str = ""
 
+    # ServiceAccount the orchestrator-submitted benchmark Jobs run under. When the agent runs
+    # in-cluster (the packaging deploy), this is the least-privilege SA the Helm chart /
+    # Kustomize base create; an empty value (local dev) leaves the pod on the namespace default
+    # SA. Set via ORCHESTRATOR_SERVICE_ACCOUNT in the backend env / the deploy manifest.
+    orchestrator_service_account: str = ""
+
     # ---- derived locations ------------------------------------------------
     @property
     def resolved_repos_dir(self) -> Path:

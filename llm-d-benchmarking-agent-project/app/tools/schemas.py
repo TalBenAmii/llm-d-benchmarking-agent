@@ -101,6 +101,12 @@ class OrchestrateBenchmarkInput(BaseModel):
         description="Container image for the Job; defaults to the configured orchestrator image. "
                     "Required (here or in config) — an orchestrated run is a real K8s Job.",
     )
+    service_account: str | None = Field(
+        default=None,
+        description="ServiceAccount the Job pod runs under; defaults to the configured "
+                    "orchestrator service account (the least-privilege SA the deploy creates). "
+                    "Leave unset to use the namespace default SA.",
+    )
     command: list[str] | None = Field(
         default=None,
         description="Override the in-Job argv; default runs 'llmdbenchmark run' with the given "

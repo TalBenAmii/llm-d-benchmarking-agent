@@ -1,0 +1,88 @@
+# Default values for the llm-d-benchmarking-agent chart.
+# Override with `helm install ... -f my-values.yaml` or `--set key=value`.
+
+# --- container image --------------------------------------------------------------------
+# IMAGE PINNING: prefer pinning by digest (image.digest) over a mutable tag in production so
+# every rollout is reproducible. If digest is set it wins over tag.
+image:
+  repository: ghcr.io/llm-d/llm-d-benchmarking-agent
+  tag: "0.1.0"
+  digest: ""            # e.g. sha256:abc... — when set, the Deployment uses repository@digest
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# How many agent replicas. The agent keeps in-memory per-session state, so >1 replica needs a
+# sticky/affinity ingress (out of scope here); default to a single replica.
+replicaCount: 1
+
+# --- the agent's own config (non-secret) — surfaced as env on the container ---------------
+config:
+  llmProvider: anthropic
+  anthropicModel: claude-opus-4-8
+  openaiBaseUrl: https://api.openai.com/v1
+  openaiModel: gpt-4o
+  maxConcurrentRuns: 2
+  # Container image used for ORCHESTRATED (K8s Job) benchmark runs. Empty by default → the
+  # orchestrate_benchmark_run tool refuses rather than submitting an unrunnable Job, and the
+  # agent falls back to the local CLI path. Set this to an image carrying the llmdbenchmark
+  # CLI to enable in-cluster orchestrated runs.
+  orchestratorImage: ""
+
+# --- secrets ----------------------------------------------------------------------------
+# By default the chart creates a Secret from the values below. To use a pre-existing Secret
+# instead (recommended for real deployments), set secret.create=false and secret.existingSecret
+# to its name; it must contain the same keys (ANTHROPIC_API_KEY / OPENAI_API_KEY / HF_TOKEN).
+secret:
+  create: true
+  existingSecret: ""
+  anthropicApiKey: ""
+  openaiApiKey: ""
+  hfToken: ""
+
+# --- RBAC / ServiceAccount --------------------------------------------------------------
+# The agent orchestrates benchmark runs as Kubernetes Jobs. rbac.create grants a namespaced
+# Role with EXACTLY the least-privilege verbs the orchestrator uses (jobs: create/get/list/
+# watch/patch/delete; pods: get/list/watch; pods/log: get) — nothing cluster-wide.
+serviceAccount:
+  create: true
+  name: ""              # defaults to the release fullname
+rbac:
+  create: true
+
+# --- networking -------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 8000
+
+# --- pod / container hardening ----------------------------------------------------------
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "256Mi"
+  limits:
+    cpu: "1"
+    memory: "512Mi"
+
+# --- observability ----------------------------------------------------------------------
+# When true, annotate the pod for Prometheus scraping of the agent's /metrics endpoint.
+metrics:
+  podAnnotations: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

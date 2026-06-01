@@ -58,6 +58,7 @@ async def orchestrate_benchmark_run(
     harness: str | None = None,
     workload: str | None = None,
     image: str | None = None,
+    service_account: str | None = None,
     command: list[str] | None = None,
     cpu: str = "1",
     memory: str = "1Gi",
@@ -76,6 +77,10 @@ async def orchestrate_benchmark_run(
             "packaging phase; until then, use execute_llmdbenchmark for the local CLI path.)"
         )
 
+    # Run the Job under the least-privilege ServiceAccount the packaging deploy creates (so an
+    # in-cluster orchestrated run has exactly the RBAC it needs); empty → namespace default SA.
+    sa = service_account if service_account is not None else (ctx.settings.orchestrator_service_account or None)
+
     run_id = uuid.uuid4().hex[:8]
     spec_obj = JobSpec(
         run_id=run_id,
@@ -89,6 +94,7 @@ async def orchestrate_benchmark_run(
         active_deadline_seconds=active_deadline_seconds,
         cpu=cpu,
         memory=memory,
+        service_account=sa,
     )
 
     orch = BenchmarkOrchestrator(RealKubeClient(ctx), ctx.workspace)
