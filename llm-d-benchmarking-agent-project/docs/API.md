@@ -27,6 +27,16 @@ the LLM as JSON Schema); the registry + descriptions live in
 Connect to `/ws` for a fresh chat, or `/ws?session=<id>` to **resume** a saved one (an
 unknown id mints a new session). All frames are JSON `{ "type": <event>, "data": {...} }`.
 
+Every **inbound** frame is validated against an explicit schema (`app/agent/ws_schemas.py`)
+before the handler acts on it. A malformed frame (non-object, unknown/missing `type`, wrong
+field shape, or extra fields) is rejected with an `error` event of `kind: "protocol_error"`
+and **the connection is kept alive** — a bad frame never crashes the handler.
+
+If you **reconnect while a turn is still running** on that session (e.g. the socket dropped
+mid-benchmark), the server replays the in-flight turn's buffered **live** events (a bounded
+per-turn ring buffer) so the client catches up to the live stream — the events it missed, in
+order — and then continues live, rather than waiting blind for only the final result.
+
 **Server → client events** (`app/agent/events.py`):
 
 | Event | Payload | Meaning |
@@ -40,7 +50,7 @@ unknown id mints a new session). All frames are JSON `{ "type": <event>, "data":
 | `approval_request` | `{request_id, kind, payload}` | A mutating command (or a `session_plan`) needs Approve/Reject. |
 | `tool_result` | `{id, name, result}` | A tool finished. |
 | `session_plan` | `{plan}` | A proposed plan (also an approval request). |
-| `error` | `{message}` | A recoverable error. |
+| `error` | `{message[, kind]}` | A recoverable error. `kind: "protocol_error"` marks a rejected malformed inbound frame. |
 | `done` | `{}` | The agent finished this turn. |
 | `pong` | `{}` | Reply to a `ping`. |
 

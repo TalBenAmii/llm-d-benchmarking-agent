@@ -127,3 +127,227 @@ def test_ws_approval_decisions_persist_and_replay():
             if it["role"] == "approval_decision":
                 assert i > 0 and items[i - 1]["role"] == "tool_call", \
                     "decision must replay directly after its tool_call"
+
+
+# --- Phase 15: WS protocol hardening + live event buffer -------------------------------
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_malformed_frame_rejected_socket_survives():
+    """A malformed inbound frame is rejected with a structured `error` (kind=protocol_error)
+    and the connection stays alive: a well-formed `ping` immediately after still gets a
+    `pong`. The handler must never crash on a bad/hostile frame."""
+    from app.main import app
+
+    # Bind a real (fake) provider BEFORE connecting: the /ws handler snapshots app.state.provider
+    # into its AgentLoop at handshake, so step (5)'s user_message drives a real turn.
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider([AssistantTurn(text="hi there", tool_calls=[])])
+        with client.websocket_connect("/ws") as ws:
+            assert ws.receive_json()["type"] == "ready"
+
+            # (1) unknown message type -> structured protocol error, socket alive.
+            ws.send_json({"type": "totally_bogus", "text": "x"})
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert err["data"].get("kind") == "protocol_error"
+            assert "malformed message" in err["data"]["message"]
+
+            # (2) a non-dict JSON frame (a bare list) -> structured error, still alive.
+            ws.send_json(["not", "an", "object"])
+            err2 = ws.receive_json()
+            assert err2["type"] == "error" and err2["data"].get("kind") == "protocol_error"
+
+            # (3) right type but a malformed body (missing required `request_id`) -> error.
+            ws.send_json({"type": "approval", "approved": True})
+            err3 = ws.receive_json()
+            assert err3["type"] == "error" and err3["data"].get("kind") == "protocol_error"
+            assert "request_id" in err3["data"]["message"]
+
+            # (4) the socket is STILL usable: a valid ping is answered with a pong.
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
+
+            # (5) and a valid user_message still drives a real turn afterwards.
+            ws.send_json({"type": "user_message", "text": "hello"})
+            seen = []
+            for _ in range(20):
+                ev = ws.receive_json()
+                seen.append(ev["type"])
+                if ev["type"] == "done":
+                    break
+            assert "assistant_text" in seen and seen[-1] == "done"
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_reconnect_midturn_replays_live_events():
+    """A client that disconnects mid-turn (while the turn is parked at the plan-approval gate)
+    and reconnects with `?session=<id>` receives the LIVE events it missed — the assistant
+    text + the tool_call that streamed before it dropped — replayed from the per-turn buffer,
+    plus the still-pending approval card re-surfaced. It can then answer the approval and the
+    SAME turn continues to `done` (not a replayed end-state)."""
+    from app.main import app
+
+    turns = [
+        AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+        })]),
+        AssistantTurn(text="Plan approved — all set.", tool_calls=[]),
+    ]
+
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider(turns)
+
+        # Connection #1: start the turn, drive it until it parks at the approval gate, then
+        # DISCONNECT without answering (leave the context manager) — the turn stays parked.
+        with client.websocket_connect("/ws") as ws1:
+            ready = ws1.receive_json()
+            assert ready["type"] == "ready"
+            sid = ready["data"]["session_id"]
+            ws1.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
+            saw_text = saw_tool = False
+            for _ in range(40):
+                ev = ws1.receive_json()
+                if ev["type"] == "assistant_text" and ev["data"]["text"] == "Here is the plan.":
+                    saw_text = True
+                if ev["type"] == "tool_call" and ev["data"]["name"] == "propose_session_plan":
+                    saw_tool = True
+                if ev["type"] == "approval_request":
+                    # Parked at the gate. Drop the connection WITHOUT answering.
+                    break
+            assert saw_text and saw_tool, "did not stream the live events before disconnect"
+
+        # The turn is still running (parked at the approval), so it's in app.state.running.
+        running = app.state.running.get(sid)
+        assert running is not None and not running.done(), "turn should still be parked, not finished"
+
+        # Connection #2: reconnect to the same session mid-turn. We must REPLAY the live events
+        # the dropped client missed (the assistant text + the tool_call), then re-surface the
+        # pending approval card — NOT just wait for the final result.
+        with client.websocket_connect(f"/ws?session={sid}") as ws2:
+            replayed_text = replayed_tool = re_approval = False
+            approval_rid = None
+            for _ in range(40):
+                ev = ws2.receive_json()
+                if ev["type"] == "assistant_text" and ev["data"]["text"] == "Here is the plan.":
+                    replayed_text = True
+                if ev["type"] == "tool_call" and ev["data"]["name"] == "propose_session_plan":
+                    replayed_tool = True
+                if ev["type"] == "approval_request":
+                    re_approval = True
+                    approval_rid = ev["data"]["request_id"]
+                    break
+            assert replayed_text, "missed live assistant_text was not replayed on reconnect"
+            assert replayed_tool, "missed live tool_call was not replayed on reconnect"
+            assert re_approval, "pending approval was not re-surfaced on reconnect"
+
+            # Answer the re-surfaced approval; the SAME parked turn continues live to done.
+            ws2.send_json({"type": "approval", "request_id": approval_rid, "approved": True})
+            seen_after = []
+            for _ in range(40):
+                ev = ws2.receive_json()
+                seen_after.append(ev["type"])
+                if ev["type"] == "done":
+                    break
+            assert "tool_result" in seen_after, "turn did not continue live after the approval"
+            assert seen_after[-1] == "done", "the same turn must run to completion live"
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_reconnect_does_not_double_send_approval():
+    """Regression for the buffer/pending interplay: on reconnect mid-turn the live replay must
+    skip buffered approval_request frames (they're owned by reemit_pending), so the client sees
+    exactly ONE approval card for the single pending gate, not a duplicate."""
+    from app.main import app
+
+    turns = [
+        AssistantTurn(text="Plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+        })]),
+        AssistantTurn(text="done.", tool_calls=[]),
+    ]
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider(turns)
+        with client.websocket_connect("/ws") as ws1:
+            sid = ws1.receive_json()["data"]["session_id"]
+            ws1.send_json({"type": "user_message", "text": "go"})
+            for _ in range(40):
+                if ws1.receive_json()["type"] == "approval_request":
+                    break
+        with client.websocket_connect(f"/ws?session={sid}") as ws2:
+            approvals = 0
+            rid = None
+            # Drain everything the server pushes on reconnect (history + live replay + pending).
+            for _ in range(40):
+                ev = ws2.receive_json()
+                if ev["type"] == "approval_request":
+                    approvals += 1
+                    rid = ev["data"]["request_id"]
+                    break
+            assert approvals == 1, "exactly one approval card expected on reconnect, got %d" % approvals
+            # Finish cleanly so no background task is left parked.
+            ws2.send_json({"type": "approval", "request_id": rid, "approved": True})
+            for _ in range(40):
+                if ws2.receive_json()["type"] == "done":
+                    break
+
+
+def test_channel_live_buffer_is_bounded():
+    """The per-turn live buffer is a BOUNDED ring: appending more events than its cap keeps
+    only the most recent `buffer_max`, so a long, chatty turn can't grow memory without limit.
+    Driven directly against the Channel (no cluster, no TestClient)."""
+    import asyncio
+
+    from app.agent.channel import Channel
+
+    class _Sess:
+        # Minimal stand-in: emit() only touches record_command for `command` events, which we
+        # don't emit here, so a bare object with an id is enough for the buffer mechanism.
+        id = "buftest"
+
+    async def _drive() -> Channel:
+        ch = Channel(_Sess(), buffer_max=10)
+        ch.begin_turn()
+        # Emit far more than the cap; ch.ws is None so nothing is sent — pure buffering.
+        for i in range(100):
+            await ch.emit("output", {"line": f"line-{i}"})
+        return ch
+
+    ch = asyncio.run(_drive())
+    buffered = ch.buffered_events
+    assert len(buffered) == 10, "buffer must be capped at buffer_max, not grow unbounded"
+    # It keeps the MOST RECENT events (oldest fall off the ring).
+    lines = [f["data"]["line"] for f in buffered]
+    assert lines == [f"line-{i}" for i in range(90, 100)]
+    # Every buffered frame is the canonical outbound envelope.
+    assert all(set(f) == {"type", "data"} and f["type"] == "output" for f in buffered)
+
+
+def test_channel_begin_turn_resets_buffer():
+    """begin_turn() clears the buffer so a reconnecting client replays only the CURRENT turn,
+    never a stale prior turn's tail; end_turn() flips the live flag off."""
+    import asyncio
+
+    from app.agent.channel import Channel
+
+    class _Sess:
+        id = "resettest"
+
+    async def _drive():
+        ch = Channel(_Sess(), buffer_max=50)
+        ch.begin_turn()
+        await ch.emit("assistant_text", {"text": "turn-1"})
+        assert ch.turn_active is True
+        ch.end_turn()
+        assert ch.turn_active is False
+        # A new turn must start from an empty buffer.
+        ch.begin_turn()
+        assert ch.buffered_events == []
+        await ch.emit("assistant_text", {"text": "turn-2"})
+        return ch
+
+    ch = asyncio.run(_drive())
+    texts = [f["data"]["text"] for f in ch.buffered_events]
+    assert texts == ["turn-2"], "old turn's events must not linger after begin_turn()"
