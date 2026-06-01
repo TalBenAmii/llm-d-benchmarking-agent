@@ -121,6 +121,32 @@ class OrchestrateBenchmarkInput(BaseModel):
     max_wait: float = Field(default=3600.0, ge=0, description="Max seconds to watch before giving up")
 
 
+class AnalyzeResultsInput(BaseModel):
+    slo: dict[str, Any] | None = Field(
+        default=None,
+        description="QoS targets to filter results and estimate goodput. Keys (all optional, "
+                    "at least one required): ttft_ms / tpot_ms / itl_ms / request_latency_ms "
+                    "(max latency in ms), throughput_floor_tok_s (min output tokens/s), "
+                    "min_success_rate_pct, percentile (which statistic latency SLOs are judged "
+                    "at: mean/p50/p90/p95/p99/p99p9, default p99). Pass the SLOTargets captured "
+                    "in the approved SessionPlan. Omit for a frontier-only sweep analysis.",
+    )
+    sources: list[str] | None = Field(
+        default=None,
+        description="1+ report files OR run directories to analyze (each dir uses its newest "
+                    "Benchmark Report). For a single run, pass one; for an A/B, pass two.",
+    )
+    experiment_dir: str | None = Field(
+        default=None,
+        description="A DoE/sweep output dir to scan for ALL Benchmark Reports under it; use "
+                    "instead of `sources` for a sweep (enables Pareto-frontier analysis).",
+    )
+    labels: list[str] | None = Field(
+        default=None,
+        description="Optional human labels parallel to `sources` (e.g. ['concurrency=1','concurrency=16']).",
+    )
+
+
 class CompareReportsInput(BaseModel):
     sources: list[str] | None = Field(
         default=None,

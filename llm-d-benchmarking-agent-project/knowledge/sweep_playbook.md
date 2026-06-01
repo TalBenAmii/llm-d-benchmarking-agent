@@ -55,6 +55,12 @@ After the sweep, call **`compare_reports`**:
 It validates each report against the BR v0.2 schema and returns per-metric **deltas vs a
 baseline** plus the winning run for each metric.
 
+For SLO-aware analysis — **goodput**, SLO pass/fail filtering, and **Pareto-optimal**
+config selection across the sweep — use **`analyze_results`** instead (same `sources` /
+`experiment_dir` shapes, plus the `slo` targets from the approved plan). See
+`knowledge/analysis.md`. Rule of thumb: `compare_reports` for raw side-by-side deltas;
+`analyze_results` when the user has QoS targets or wants "the best config".
+
 ## Reading the deltas (what to tell the user)
 
 `compare_reports` marks each metric's direction:

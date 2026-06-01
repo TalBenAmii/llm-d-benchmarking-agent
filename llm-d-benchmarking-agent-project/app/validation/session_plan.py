@@ -9,12 +9,21 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.validation.analysis import SLOTargets
+
 _RFC1123 = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
 
 
 class SessionPlan(BaseModel):
     use_case_summary: str = Field(..., description="Restated user intent, e.g. 'chat app, ~500 concurrent users'")
     goal_metrics: list[str] = Field(default_factory=list, description="e.g. ['ttft','throughput']")
+    slo: SLOTargets | None = Field(
+        default=None,
+        description="Optional QoS targets captured during the interview (max TTFT/TPOT/ITL/"
+                    "request-latency in ms, min throughput floor in tokens/s, success-rate "
+                    "floor). Used later by analyze_results to filter results and estimate "
+                    "goodput — the proposal's key differentiator. Omit if the user has none.",
+    )
     spec: str = Field(..., description="A spec name from the live catalog, e.g. 'cicd/kind'")
     deploy_path: Literal["kind_sim", "guide", "gpu"] = "kind_sim"
     namespace: str = Field(..., description="RFC1123 label, e.g. 'llmd-quickstart'")
