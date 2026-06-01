@@ -231,6 +231,43 @@ def fetch_key_docs(
     }
 
 
+def _knowledge_files(ctx: ToolContext) -> list[Path]:
+    """Every knowledge file (basename order), or empty if the dir is missing."""
+    kdir = ctx.settings.knowledge_dir
+    if not kdir.is_dir():
+        return []
+    files = list(kdir.glob("*.md")) + list(kdir.glob("*.yaml")) + list(kdir.glob("*.yml"))
+    return sorted(files, key=lambda p: p.name)
+
+
+def read_knowledge(ctx: ToolContext, *, name: str) -> dict[str, Any]:
+    """Return the FULL text of ONE knowledge guide by its basename (e.g. 'capacity' or
+    'capacity.md'). The system prompt inlines the core guides and indexes the rest; call
+    this to load an on-demand guide BEFORE interpreting that kind of result. Read-only,
+    auto-runs. Strictly validated: no path traversal, no absolute paths, no '..'."""
+    files = _knowledge_files(ctx)
+    valid = [f.name for f in files]
+    requested = (name or "").strip()
+    if not requested:
+        return {"error": "missing 'name'", "valid_topics": valid}
+
+    # Reject any path-bearing or traversal input outright — only a bare basename is allowed.
+    if "/" in requested or "\\" in requested or ".." in requested or Path(requested).is_absolute():
+        return {"error": f"invalid knowledge name {name!r}: pass a bare topic basename, "
+                         f"not a path", "valid_topics": valid}
+
+    # Match on exact basename, or on the stem (so 'capacity' -> 'capacity.md').
+    match: Path | None = None
+    for f in files:
+        if f.name == requested or f.stem == requested:
+            match = f
+            break
+    if match is None:
+        return {"error": f"unknown knowledge topic {name!r}", "valid_topics": valid}
+
+    return {"name": match.name, "topic": match.stem, "content": match.read_text()}
+
+
 def locate_and_parse_report(
     ctx: ToolContext,
     *,

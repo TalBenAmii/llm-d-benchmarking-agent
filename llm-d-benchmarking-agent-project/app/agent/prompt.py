@@ -61,6 +61,24 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
 """
 
 
+# Knowledge partition. CORE files are inlined into every system prompt — they cover the
+# phases the model reaches BEFORE it would know to ask for a specific guide (interview /
+# plan / deploy / basic results). The rest are interpretation guides tied to a specific
+# later-phase tool; they are listed in a compact INDEX and the model pulls the one it needs
+# with read_knowledge("<topic>") when that tool's description points at it. This is
+# mechanism only — the "what to load when" lives in the index text and the tool
+# descriptions (the agent's reasoning), not in any decision branch here.
+CORE_KNOWLEDGE = (
+    "glossary.md",
+    "preconditions.md",
+    "deploy_path_playbook.md",
+    "usecase_to_profile.yaml",
+    "quickstart_playbook.md",
+    "results_interpretation.md",
+    "key_docs.yaml",
+)
+
+
 def build_system_prompt(ctx: ToolContext) -> str:
     parts = [ROLE, HARD_RULES]
     parts.extend(_knowledge_sections(ctx))
@@ -72,13 +90,53 @@ def _knowledge_sections(ctx: ToolContext) -> list[str]:
     kdir = ctx.settings.knowledge_dir
     if not kdir.is_dir():
         return []
-    sections = []
-    for f in sorted(kdir.glob("*.md")) + sorted(kdir.glob("*.yaml")) + sorted(kdir.glob("*.yml")):
+    all_files = sorted(kdir.glob("*.md")) + sorted(kdir.glob("*.yaml")) + sorted(kdir.glob("*.yml"))
+    core_set = set(CORE_KNOWLEDGE)
+
+    sections: list[str] = []
+    # (a) Inline the CORE guides, in the declared CORE_KNOWLEDGE order (with any other file
+    # that happens to be marked core appended), so the always-needed material is verbatim.
+    inlined: set[str] = set()
+    ordered_core = [f for n in CORE_KNOWLEDGE for f in all_files if f.name == n]
+    ordered_core += [f for f in all_files if f.name in core_set and f not in ordered_core]
+    for f in ordered_core:
         try:
             sections.append(f"# Knowledge: {f.name}\n{f.read_text()}")
+            inlined.add(f.name)
         except OSError:
             continue
+
+    # (b) Index the rest (on-demand). Each line = topic + filename + one-line purpose
+    # (its first heading). The model loads the relevant guide with read_knowledge("<topic>")
+    # BEFORE interpreting that kind of result — the tool descriptions point here.
+    index_lines: list[str] = []
+    for f in all_files:
+        if f.name in inlined:
+            continue
+        index_lines.append(f"- {f.stem} ({f.name}) — {_one_line_purpose(f)}")
+    if index_lines:
+        sections.append(
+            "# Knowledge index (on-demand — load with read_knowledge(\"<topic>\"))\n"
+            "These deeper guides are NOT inlined to save space. Each is tied to a specific "
+            "later-phase tool (that tool's description tells you when to consult it). BEFORE "
+            "you interpret that kind of result or make that decision, call "
+            "read_knowledge(\"<topic>\") to load the full guide — do not act on memory.\n"
+            + "\n".join(index_lines)
+        )
     return sections
+
+
+def _one_line_purpose(f) -> str:
+    """The file's first non-empty line (its heading), stripped of leading '#', as a
+    one-line purpose for the on-demand index."""
+    try:
+        for line in f.read_text().splitlines():
+            s = line.strip()
+            if s:
+                return s.lstrip("#").strip()
+    except OSError:
+        pass
+    return f.stem
 
 
 def _catalog_brief(cat: dict[str, Any]) -> str:

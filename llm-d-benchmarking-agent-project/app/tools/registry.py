@@ -41,6 +41,7 @@ from app.tools.schemas import (
     ObserveRunMetricsInput,
     OrchestrateBenchmarkInput,
     ProbeEnvironmentInput,
+    ReadKnowledgeInput,
     ReadRepoDocInput,
     ResultHistoryInput,
     RunCommandInput,
@@ -70,6 +71,13 @@ _DESCRIPTIONS = {
         "actually exist in the llm-d-benchmark repo on disk. Use this to ground every "
         "choice — never invent a spec/harness/workload name."
     ),
+    "read_knowledge": (
+        "Load the FULL text of ONE of the agent's on-demand knowledge guides by topic name "
+        "(e.g. read_knowledge('capacity')). The system prompt inlines the core guides and "
+        "lists the rest in a knowledge index with their topics; call this to pull in the "
+        "relevant guide BEFORE interpreting that kind of result or making that decision. "
+        "Read-only; auto-runs. On an unknown name it returns the valid topics."
+    ),
     "read_repo_doc": (
         "Read a documentation or spec file from inside the (read-only) repos, e.g. the "
         "quickstart guide. Use to confirm the authoritative flow/flags before acting."
@@ -91,9 +99,9 @@ _DESCRIPTIONS = {
     ),
     "propose_session_plan": (
         "Propose a structured SessionPlan (use case, spec, namespace, harness, workload, "
-        "flags, steps) for the user to APPROVE before any deployment. Enum fields are "
-        "checked against the live catalog. You MUST get a plan approved before any "
-        "mutating step (ensure_repos/run_setup/standup/run/teardown)."
+        "flags, steps) for the user to APPROVE. Enum fields are checked against the live "
+        "catalog. Required and approved before any mutating step "
+        "(ensure_repos/run_setup/standup/run/teardown)."
     ),
     "check_capacity": (
         "Capacity PRE-FLIGHT: will this deployment fit? Runs the benchmark repo's OWN "
@@ -103,8 +111,8 @@ _DESCRIPTIONS = {
         "Pass `overrides` to reflect what the user actually asked for (a bigger model, "
         "longer context, a real GPU). Call this right after propose_session_plan and BEFORE "
         "standing anything up — it catches OOM / won't-load / can't-serve cases before a "
-        "long standup fails opaquely. Interpret the verdict with knowledge/capacity.md. "
-        "(Needs the benchmark venv: run_setup installs it.)"
+        "long standup fails opaquely. Call read_knowledge('capacity') to interpret the "
+        "verdict. (Needs the benchmark venv: run_setup installs it.)"
     ),
     "ensure_repos": (
         "Clone the llm-d-benchmark and/or llm-d repos if missing (mutating; needs approval). "
@@ -147,7 +155,8 @@ _DESCRIPTIONS = {
         "can cross-validate) vs only one did, and the per-harness values side by side WITHOUT "
         "a winner (different load generators aren't directly comparable). Use this AFTER "
         "running both harnesses in one session. compare_reports contrasts configs of the "
-        "SAME harness; this contrasts the harnesses. Interpret it via knowledge/multi_harness.md."
+        "SAME harness; this contrasts the harnesses. Call read_knowledge('multi_harness') "
+        "to interpret it."
     ),
     "analyze_results": (
         "Results Analyzer: SLO-aware filtering, goodput estimation, and Pareto/DoE analysis "
@@ -158,7 +167,9 @@ _DESCRIPTIONS = {
         "differentiator; estimated from aggregate percentiles, flagged as such); for a sweep it "
         "also returns the Pareto-optimal configs and the SLO-feasible frontier (best trade-off "
         "subject to the constraints). Use after a run or sweep when the user has QoS targets or "
-        "wants the best config. compare_reports gives raw deltas; this adds SLO/goodput/Pareto."
+        "wants the best config. compare_reports gives raw deltas; this adds SLO/goodput/Pareto. "
+        "Call read_knowledge('analysis') to interpret it (and read_knowledge('sweep_playbook') "
+        "when designing or reading a sweep/A-B)."
     ),
     "observe_run_metrics": (
         "Read LIVE cluster resource usage (CPU/memory) during a run via `kubectl top`. "
@@ -168,31 +179,32 @@ _DESCRIPTIONS = {
         "is near its CPU or memory limit (a leading indicator of an OOM/throttle). Requires the "
         "in-cluster metrics-server (present in the cicd/kind spec); if it is missing the tool "
         "reports that and changes nothing. Distinct from /metrics, which exposes the agent's "
-        "OWN Prometheus counters. Interpret the numbers per knowledge/observability.md."
+        "OWN Prometheus counters. Call read_knowledge('observability') to interpret the numbers."
     ),
     "result_history": (
-        "Historical result storage + trends. Persist a VALIDATED Benchmark Report's summary "
-        "across sessions and read trends over time. action='store' saves a report (pass "
-        "`source` = a report file or run dir, plus optional `label`/`tags`/`spec`/`harness`/"
-        "`workload`); it validates the report first and is idempotent (storing the same report "
-        "twice keeps one record). action='list' shows stored results (newest first; filter by "
-        "`filter_tag`/`filter_model`); 'get' returns one record's full summary by `record_id`; "
-        "'trend' returns the time-series of ONE `metric` (ttft/tpot/itl/request_latency/"
-        "output_token_rate/total_token_rate/request_rate/success_rate_pct) across stored runs; "
-        "'delete' forgets a record. All actions auto-run (nothing here touches the cluster or "
-        "the repos). Store a result the user wants to keep AFTER you've parsed/analyzed it; use "
-        "'trend' to answer 'has performance regressed over time?'. Interpret trends with "
-        "knowledge/history.md — the tool returns facts (values + direction), you give the verdict."
+        "Persist VALIDATED Benchmark Report summaries across sessions and read trends over "
+        "time. All actions auto-run (nothing here touches the cluster or the repos). "
+        "action='store' saves a report (pass `source` = a report file or run dir, plus "
+        "optional `label`/`tags`/`spec`/`harness`/`workload`); it validates the report first "
+        "and is idempotent (storing the same report twice keeps one record). 'list' shows "
+        "stored results newest first (filter by `filter_tag`/`filter_model`); 'get' returns "
+        "one record's full summary by `record_id`; 'trend' returns the time-series of ONE "
+        "`metric` (ttft/tpot/itl/request_latency/output_token_rate/total_token_rate/"
+        "request_rate/success_rate_pct) across stored runs; 'delete' forgets a record. Store "
+        "a result the user wants to keep AFTER you've parsed/analyzed it; use 'trend' to "
+        "answer 'has performance regressed over time?'. The tool returns facts (values + "
+        "direction); call read_knowledge('history') to interpret trends and give the verdict."
     ),
     "orchestrate_benchmark_run": (
         "Run a benchmark as a Kubernetes Job the orchestrator manages end-to-end: submit "
-        "(approval-gated `kubectl apply`), watch the Job to completion, stream logs, and on "
-        "failure classify the cause (OOM / timeout / eviction / unschedulable / image / run "
-        "error). With max_attempts>1, a TRANSIENT fault (eviction) retries as a fresh, distinct "
-        "Job; deterministic faults never retry. Distinct from execute_llmdbenchmark (which runs "
-        "the CLI locally as a blocking subprocess): use this for K8s-native, restart-resilient, "
+        "(approval-gated `kubectl apply`), watch to completion, stream logs, and on failure "
+        "classify the cause (OOM / timeout / eviction / unschedulable / image / run error). "
+        "With max_attempts>1 a TRANSIENT fault (eviction) retries as a fresh, distinct Job; "
+        "deterministic faults never retry. Unlike execute_llmdbenchmark (which runs the CLI "
+        "locally as a blocking subprocess), use this for K8s-native, restart-resilient, "
         "individually-retryable runs. Needs the orchestrator container image (config "
-        "ORCHESTRATOR_IMAGE or `image`)."
+        "ORCHESTRATOR_IMAGE or `image`). Call read_knowledge('orchestrator') to choose "
+        "between this and execute_llmdbenchmark and to interpret a failure classification."
     ),
 }
 
@@ -201,6 +213,7 @@ def build_registry() -> dict[str, ToolSpec]:
     specs = [
         ToolSpec("probe_environment", _DESCRIPTIONS["probe_environment"], ProbeEnvironmentInput, probe.probe_environment),
         ToolSpec("list_catalog", _DESCRIPTIONS["list_catalog"], ListCatalogInput, probe.list_catalog),
+        ToolSpec("read_knowledge", _DESCRIPTIONS["read_knowledge"], ReadKnowledgeInput, probe.read_knowledge),
         ToolSpec("read_repo_doc", _DESCRIPTIONS["read_repo_doc"], ReadRepoDocInput, probe.read_repo_doc),
         ToolSpec("fetch_key_docs", _DESCRIPTIONS["fetch_key_docs"], FetchKeyDocsInput, probe.fetch_key_docs),
         ToolSpec("propose_session_plan", _DESCRIPTIONS["propose_session_plan"], SessionPlan, plan.propose_session_plan),
@@ -224,11 +237,24 @@ def build_registry() -> dict[str, ToolSpec]:
 REGISTRY = build_registry()
 
 
+def _strip_titles(node: Any) -> Any:
+    """Recursively drop Pydantic's auto-generated ``title`` keys from a JSON Schema.
+    Titles carry no behavioral meaning for the LLM (the field NAME is the key and the
+    ``description`` carries the intent), so removing them cuts tokens with zero semantic
+    change. Everything else (description/type/enum/properties/required/$ref/$defs/anyOf/
+    items/default/…) is preserved verbatim."""
+    if isinstance(node, dict):
+        return {k: _strip_titles(v) for k, v in node.items() if k != "title"}
+    if isinstance(node, list):
+        return [_strip_titles(v) for v in node]
+    return node
+
+
 def tool_definitions() -> list[dict[str, Any]]:
     """Export {name, description, input_schema} for the LLM providers."""
     out = []
     for spec in REGISTRY.values():
-        schema = spec.input_model.model_json_schema()
+        schema = _strip_titles(spec.input_model.model_json_schema())
         out.append({"name": spec.name, "description": spec.description, "input_schema": schema})
     return out
 

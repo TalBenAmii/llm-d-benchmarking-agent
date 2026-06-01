@@ -41,6 +41,16 @@ class FetchKeyDocsInput(BaseModel):
     max_bytes_each: int = Field(default=20_000, ge=1, le=80_000)
 
 
+class ReadKnowledgeInput(BaseModel):
+    name: str = Field(
+        ...,
+        description="The knowledge topic to load, by its basename (with or without "
+                    "extension), e.g. 'capacity', 'analysis', 'multi_harness'. Must be one "
+                    "of the on-demand topics listed in the system prompt's knowledge index. "
+                    "No paths, no '..', no absolute paths.",
+    )
+
+
 class RunCommandInput(BaseModel):
     argv: list[str] = Field(
         ...,

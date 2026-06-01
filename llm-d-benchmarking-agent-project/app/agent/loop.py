@@ -14,7 +14,7 @@ from app.tools.context import ApprovalRejected, ToolError
 from app.tools.registry import dispatch, tool_definitions
 
 MAX_STEPS = 24
-_TOOL_RESULT_BUDGET = 20_000  # chars of a tool result fed back to the model
+_TOOL_RESULT_BUDGET = 6_000  # chars of a tool result fed back to the model
 
 EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 ApproveFn = Callable[[str, dict[str, Any]], Awaitable[bool]]
