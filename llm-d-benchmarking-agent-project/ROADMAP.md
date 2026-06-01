@@ -41,15 +41,21 @@ differentiators, then stretch goals and packaging/docs deliverables.
       isn't at the canonical sibling path).
 - [x] `ROADMAP.md` + `PROGRESS.md` living docs; status headers refreshed.
 
-## Phase 1 — Command transparency, debug mode, UI polish — **TODO**
+## Phase 1 — Command transparency, debug mode, UI polish — **DONE**
 *User todos #2/#3/#4 · proposal "Observability".*
-- Emit a structured event for **every** runner invocation (including auto-run read-only probes,
-  not just approval-gated mutating commands) so the UI can show the full executed-command log.
-- **Debug mode** toggle: a view showing only the executed `argv` timeline (per the `todo`
-  "look at cicd feature" note) — useful for demos and trust.
-- Audit & fix slider styling; wire scale-parameter sliders (concurrency / QPS / token lengths)
-  into the SessionPlan interview where appropriate.
-- Tests: hermetic event/UI-contract tests. No live runs.
+- [x] `command` event emitted for **every** executed command (centralized in ToolContext, so
+      auto-run read-only probes are no longer invisible); for mutating commands it fires only
+      after approval (records what truly ran). Persisted on the session + replayed on resume.
+- [x] UI: inline `$ cmd` lines in each tool console + a global "Executed commands" log with
+      read-only/mutating badges; a **Debug-mode** toggle showing only the executed-command
+      trail (persisted, pre-paint, aria-live). (#2, #3)
+- [x] Slider audit (#4): no slider elements exist in the UI (confirmed in tree + git history).
+      Rather than invent parameter sliders that embed judgment in the UI (against thin-code),
+      added a reusable styled range-input foundation; real sliders land where they genuinely fit
+      (Phase 2 concurrency cap / Phase 4 SLO targets the agent proposes and the user fine-tunes).
+- [x] Tests: 3-agent adversarial review; command-event/exec parity asserted across all 12 flows,
+      probe-visibility (6 read-only probes), full-deploy command surfacing, persist/replay path.
+      Suite: **119 passed / 6 skipped**.
 
 ## Phase 2 — Parallel sessions & parallel benchmark runs — **TODO**
 *User todo #1 · proposal "parallel treatments w/ configurable concurrency", Distributed Coordination.*

@@ -14,6 +14,8 @@ const sendBtn = document.getElementById("send");
 const themeBtn = document.getElementById("theme-toggle");
 const convList = document.getElementById("conv-list");
 const newChatBtn = document.getElementById("new-chat");
+const debugBtn = document.getElementById("debug-toggle");
+const cmdlogList = document.getElementById("cmdlog-list");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -32,6 +34,26 @@ themeBtn.addEventListener("click", () => {
   applyTheme(next);
 });
 initTheme();
+
+// ---- debug view (show only executed commands; persisted) ----------------
+function applyDebug(on) {
+  document.documentElement.setAttribute("data-debug", on ? "on" : "off");
+  debugBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  debugBtn.title = on
+    ? "Hide debug view — back to chat"
+    : "Toggle debug view — show only the commands the agent executed";
+}
+function initDebug() {
+  let on = false;
+  try { on = localStorage.getItem("llmd-debug") === "on"; } catch (e) {}
+  applyDebug(on);
+}
+debugBtn.addEventListener("click", () => {
+  const on = document.documentElement.getAttribute("data-debug") !== "on";
+  try { localStorage.setItem("llmd-debug", on ? "on" : "off"); } catch (e) {}
+  applyDebug(on);
+});
+initDebug();
 
 let ws = null;
 let busy = false;
@@ -74,6 +96,13 @@ function resetTranscript() {
   transcript.innerHTML = "";
   for (const k in toolEls) delete toolEls[k];
   activeConsole = null;
+  clearCmdlog();
+}
+
+function clearCmdlog() {
+  if (!cmdlogList) return;
+  cmdlogList.innerHTML = "";
+  cmdlogList.appendChild(el("div", "cmdlog-empty", "No commands executed yet."));
 }
 
 function setStatus(text, cls) {
@@ -97,9 +126,10 @@ function handle(msg) {
       if (!data.resumed) addNote("Session ready. What would you like to benchmark?");
       loadSessions();
       break;
-    case "history": renderHistory(data.items || []); break;
+    case "history": renderHistory(data.items || [], data.commands || []); break;
     case "assistant_text": addBubble("assistant", data.text); break;
     case "tool_call": startTool(data); break;
+    case "command": onCommand(data); break;
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); break;
     case "approval_request": addApprovalCard(data); break;
@@ -179,11 +209,15 @@ function addBubble(role, text) {
 
 function addNote(text) { addBubble("assistant", text); }
 
-function renderHistory(items) {
+function renderHistory(items, commands) {
   for (const it of items) {
     if (it.role === "user") addBubble("user", it.text);
     else if (it.role === "assistant") addBubble("assistant", it.text);
     else if (it.role === "tool_call") addHistoryTool(it);
+  }
+  if (commands && commands.length) {
+    clearCmdlog();
+    for (const c of commands) addCmdRow(c);
   }
   scroll();
 }
@@ -219,10 +253,33 @@ function startTool(data) {
   body.appendChild(activeConsole);
 }
 
-function appendConsole(line) {
+function consoleLine(text, cls) {
   if (!activeConsole) return;
-  activeConsole.textContent += (activeConsole.textContent ? "\n" : "") + line;
+  if (activeConsole.childNodes.length) activeConsole.appendChild(document.createTextNode("\n"));
+  activeConsole.appendChild(cls ? el("span", cls, text) : document.createTextNode(text));
   activeConsole.scrollTop = activeConsole.scrollHeight;
+}
+
+function appendConsole(line) { consoleLine(line, null); }
+
+// A command the agent actually executed — show it inline (so even silent read-only
+// probes are visible in the tool's console) and add a row to the debug command log.
+function onCommand(data) {
+  consoleLine("$ " + (data.text || (data.argv || []).join(" ")), "cmd-line");
+  addCmdRow(data);
+}
+
+function addCmdRow(data) {
+  if (!cmdlogList) return;
+  const empty = cmdlogList.querySelector(".cmdlog-empty");
+  if (empty) empty.remove();
+  const mutating = data.mode && data.mode !== "read_only";
+  const row = el("div", "cmd-row");
+  row.appendChild(el("span", "badge " + (mutating ? "mut" : "ro"), mutating ? "mutating" : "read-only"));
+  row.appendChild(el("span", "cmd-text", data.text || (data.argv || []).join(" ")));
+  row.appendChild(el("span", "cmd-tag", data.auto_run ? "auto" : "approved"));
+  cmdlogList.appendChild(row);
+  cmdlogList.scrollTop = cmdlogList.scrollHeight;
 }
 
 function finishTool(data) {

@@ -38,6 +38,9 @@ editable knowledge files under [`knowledge/`](knowledge/). Reliability comes fro
 - **Per-action approval.** Read-only probes run automatically; every *mutating* command
   (installing Docker/kind, creating/deleting the cluster, standup, run, teardown) shows you
   the exact command and waits for you to click Approve.
+- **Full command transparency.** The UI shows *every* command the agent runs — including the
+  read-only probes that run automatically — and a one-click **Debug view** lists just the
+  executed-command trail (with read-only/mutating badges). Nothing runs off-screen.
 - **Secrets stay server-side.** Your LLM API key never reaches the browser.
 
 ## The four determinism gates
