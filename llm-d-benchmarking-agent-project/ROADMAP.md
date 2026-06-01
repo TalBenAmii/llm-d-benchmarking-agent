@@ -171,3 +171,9 @@ differentiators, then stretch goals and packaging/docs deliverables.
 - **Context hygiene:** after each phase commit, if context > 150k tokens, document first, then
   compact (if context still needed) or clear (if not).
 - **Thin code, thick agent** stays the law: mechanism in Python, judgment in `knowledge/`.
+
+---
+
+## Roadmap v2 — production operability, trust & quality (Phases 11-18)
+
+Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never `main`); each phase merges in after its full-suite gate is green.
