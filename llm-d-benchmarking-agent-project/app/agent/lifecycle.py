@@ -21,12 +21,24 @@ This module embeds no decision logic in ``if/elif`` branches: it tracks tasks an
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 log = logging.getLogger("app.agent.lifecycle")
+
+
+async def _await_quietly(task: asyncio.Task) -> None:
+    """Wait for ``task`` to finish and ABSORB its outcome (the expected ``CancelledError`` from a
+    successful cancel, or any other exception it raised) WITHOUT re-raising. This lets the caller
+    await a cancelled task purely to observe that it has unwound — and freed its semaphore slot —
+    without that task's own ``CancelledError`` cancelling the caller.
+
+    ``asyncio.wait`` is used deliberately: unlike ``await task`` it does not surface the task's
+    exception, and unlike ``asyncio.shield`` it does not protect the task from the cancel we just
+    issued. If the enclosing ``asyncio.wait_for`` times out it cancels THIS waiter (which
+    ``asyncio.wait`` lets propagate) — NOT the underlying task, which keeps unwinding."""
+    await asyncio.wait({task})
 
 
 @dataclass
@@ -86,12 +98,15 @@ class RunRegistry:
     # ---- cancel ------------------------------------------------------------
     async def cancel(self, session_id: str, *, timeout: float = 5.0) -> bool:
         """Cancel the in-flight turn for ``session_id`` and AWAIT its unwind so the caller can
-        rely on the concurrency slot being freed on return. Returns True if a live run was
-        cancelled, False if there was no active run for that session (idempotent).
+        rely on the concurrency slot being freed on return. Returns True ONLY when a live run was
+        cancelled AND its task has finished unwinding (so the slot is provably released); False if
+        there was no active run (idempotent) OR — the rare bad case — the task refused to unwind
+        within ``timeout`` so we cannot honestly claim the slot was freed.
 
         Awaiting the task here is what makes the spec's acceptance hold deterministically: the
-        semaphore slot is released as the ``CancelledError`` unwinds the ``async with`` inside
-        the runner call, and we don't return until that has happened (bounded by ``timeout``)."""
+        semaphore slot is released as the ``CancelledError`` unwinds the ``async with`` inside the
+        runner call, and a ``True`` return guarantees that has happened (bounded by ``timeout``).
+        We never report success on a still-running task (no false-positive slot-release)."""
         handle = self._runs.get(session_id)
         if handle is None or handle.task.done():
             return False
@@ -101,13 +116,37 @@ class RunRegistry:
 
     @staticmethod
     async def _cancel_handle(handle: RunHandle, *, timeout: float) -> bool:
-        handle.task.cancel()
-        # Await the task so we KNOW the slot has been released by the time we return. A
-        # well-behaved turn task swallows CancelledError in its own finally and completes; if it
-        # somehow doesn't unwind in time we still return (best-effort, never block shutdown).
-        with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError, Exception):
-            await asyncio.wait_for(asyncio.shield(handle.task), timeout=timeout)
-        return True
+        """Cancel the task and AWAIT it directly so the slot is provably released on return.
+
+        Returns True ONLY once the task has actually finished unwinding (``task.done()``). We do
+        NOT shield the task (we WANT the cancellation to take, and shielding the cancel-awaited
+        task is what made this racy) and we do NOT swallow a timeout into a false-positive: a
+        ``True`` from this method is a real guarantee that the ``async with run_semaphore`` in
+        ``ToolContext.run_command`` has unwound and the slot is free.
+
+        A well-behaved turn task re-raises ``CancelledError`` from its own ``finally`` and is done
+        almost immediately. If a task is misbehaving (catches the cancel, or is genuinely slow to
+        unwind), we re-issue ``cancel()`` and keep awaiting in bounded slices until it is done or
+        the overall budget runs out — never blocking forever, but never lying about the outcome.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(timeout, 0.0)
+        # First pass uses the whole remaining budget; if the task ignored the cancel we loop and
+        # re-cancel with progressively smaller slices until the deadline.
+        while not handle.task.done():
+            handle.task.cancel()
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            try:
+                # Await the task itself (no shield): the slot is released as CancelledError
+                # unwinds the `async with run_semaphore`, and `await` returns once that's done.
+                await asyncio.wait_for(_await_quietly(handle.task), timeout=remaining)
+            except asyncio.TimeoutError:
+                # The task didn't finish unwinding within the slice; loop to re-cancel/await
+                # until the overall deadline. wait_for cancelled the wrapper, not handle.task.
+                continue
+        return handle.task.done()
 
     async def shutdown(self, *, timeout: float = 5.0) -> dict[str, Any]:
         """Graceful-shutdown handler (Phase 16): cancel EVERY in-flight turn so a SIGTERM
