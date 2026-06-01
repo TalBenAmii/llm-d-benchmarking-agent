@@ -8,6 +8,22 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-01 — Phase 4: Results Analyzer (goodput, SLO filtering, Pareto/DoE) — DONE
+Branch `feature/roadmap-p4-analyzer` → merged into `feature/roadmap` (`--no-ff`, no conflicts).
+- **Shipped:** read-only `analyze_results` tool (`app/tools/analyze.py`) + pure math in
+  `app/validation/analysis.py` (`SLOTargets`, `evaluate_slo`, `pareto_analysis`). Given user SLO
+  targets and one-or-more Benchmark Reports (single run, A/B pair, or a whole DoE sweep dir), it
+  schema-validates each report (BR v0.2, never scrapes logs), computes a per-run SLO verdict over
+  the full percentile ladder + an honest goodput *estimate* (the proposal's key differentiator),
+  and for a sweep identifies the Pareto-optimal configs and the SLO-feasible frontier.
+- **SessionPlan** now captures optional `slo` targets (max TTFT/TPOT/ITL/request-latency ms,
+  min throughput floor tokens/s, success-rate). Registry/schemas/prompt updated; analysis
+  judgment lives in the new `knowledge/analysis.md` (thin-code/thick-agent), with a
+  `knowledge/sweep_playbook.md` cross-link. Goodput correctness fix carries the full ladder.
+- **Tests:** worktree suite **219 passed / 6 skipped / 0 failed** (+386-line `test_analyze.py`;
+  authoritative run in the integration worktree with the real venv + .env).
+- Next: Phase 5 (historical result storage + trends UI).
+
 ## 2026-06-01 — Phase 3: Kubernetes-native Benchmark Orchestrator — DONE  (the 40% centerpiece)
 Branch `feature/roadmap-p3-orchestrator` → merged into `feature/roadmap`. Built in
 `app/orchestrator/` (kube.py, job.py, controller.py, faults.py) + tool `orchestrate_benchmark_run`.

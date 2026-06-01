@@ -99,12 +99,16 @@ differentiators, then stretch goals and packaging/docs deliverables.
 - **Deferred to Phase 8 (packaging):** the in-cluster benchmark image + a least-privilege
   ServiceAccount/RBAC (so an orchestrated Job actually runs live); image pinning.
 
-## Phase 4 — Results Analyzer: goodput, SLO filtering, Pareto/DoE analysis — **TODO**
+## Phase 4 — Results Analyzer: goodput, SLO filtering, Pareto/DoE analysis — **DONE**
 *Proposal §3.4 · grade dimension 3.*
+- **Result:** `analyze_results` tool + `app/validation/analysis.py` (SLOTargets captured in
+  the SessionPlan; per-run SLO verdict over the full percentile ladder; honest goodput estimate;
+  Pareto-optimal config selection + SLO-feasible frontier across a DoE sweep), grounded in the
+  new `knowledge/analysis.md`. Read-only, schema-validated (BR v0.2), never scrapes logs.
 - Capture SLO targets (TTFT / TBT / P99 / throughput floor) in the SessionPlan.
 - Compute **goodput** (proposal's "key differentiator").
 - Identify **Pareto-optimal** configs across a sweep matrix; richer comparison + plain-language
-  explanation tied to `knowledge/results_interpretation.md`.
+  explanation tied to `knowledge/analysis.md`.
 
 ## Phase 5 — Historical result storage + trends UI — **TODO**
 *Proposal stretch "historical storage + trend visualization".*
