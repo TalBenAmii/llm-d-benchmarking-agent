@@ -20,6 +20,7 @@ from app.tools import (
     config_artifact,
     execute,
     history,
+    multiharness,
     observe,
     orchestrate,
     plan,
@@ -30,6 +31,7 @@ from app.tools.context import ToolContext
 from app.tools.schemas import (
     AnalyzeResultsInput,
     CheckCapacityInput,
+    CompareHarnessRunsInput,
     CompareReportsInput,
     EnsureReposInput,
     ExecuteInput,
@@ -135,6 +137,18 @@ _DESCRIPTIONS = {
         "Read-only. Pass `sources` (run dirs/files, with optional `labels`) OR `experiment_dir` "
         "(scans for all reports under it). Use after a sweep or to compare two configurations."
     ),
+    "compare_harness_runs": (
+        "Cross-harness comparison for a MULTI-HARNESS session: contrast Benchmark Reports "
+        "produced by DIFFERENT harnesses (e.g. an inference-perf SLO/latency-validation run "
+        "and a guidellm throughput-sweep run) against the SAME stack. Read-only. Pass "
+        "`sources` (2+ run dirs/files, one or more per harness); the harness that produced "
+        "each is read from the report itself (never guessed). Returns each harness's runs + "
+        "the metric families it measured, which metrics ≥2 harnesses both measured (so you "
+        "can cross-validate) vs only one did, and the per-harness values side by side WITHOUT "
+        "a winner (different load generators aren't directly comparable). Use this AFTER "
+        "running both harnesses in one session. compare_reports contrasts configs of the "
+        "SAME harness; this contrasts the harnesses. Interpret it via knowledge/multi_harness.md."
+    ),
     "analyze_results": (
         "Results Analyzer: SLO-aware filtering, goodput estimation, and Pareto/DoE analysis "
         "over one or more validated Benchmark Reports. Read-only. Pass the SLO targets from the "
@@ -198,6 +212,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("run_command", _DESCRIPTIONS["run_command"], RunCommandInput, command.run_command),
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, probe.locate_and_parse_report),
         ToolSpec("compare_reports", _DESCRIPTIONS["compare_reports"], CompareReportsInput, compare.compare_reports),
+        ToolSpec("compare_harness_runs", _DESCRIPTIONS["compare_harness_runs"], CompareHarnessRunsInput, multiharness.compare_harness_runs),
         ToolSpec("analyze_results", _DESCRIPTIONS["analyze_results"], AnalyzeResultsInput, analyze.analyze_results),
         ToolSpec("result_history", _DESCRIPTIONS["result_history"], ResultHistoryInput, history.result_history),
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
