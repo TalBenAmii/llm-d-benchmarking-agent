@@ -31,6 +31,7 @@ from app.orchestrator.job import (
 )
 from app.orchestrator.faults import EVICTED, TIMEOUT, UNKNOWN, Failure, classify_failure
 from app.orchestrator.kube import KubeClient
+from app.observability import instrument
 
 OnStatus = Callable[[JobStatus], Awaitable[None]]
 
@@ -42,6 +43,14 @@ DEFAULT_RETRYABLE = frozenset({EVICTED, UNKNOWN})
 # Floor for the status-poll sleep so poll_interval=0 (a schema-allowed value used in tests)
 # can't busy-loop and hammer the cluster; max_wait is bounded on wall-clock independently.
 _MIN_POLL_INTERVAL = 0.05
+
+
+def _safe_metric(fn, *args, **kwargs) -> None:
+    """Record a metric without ever letting observability disrupt the Job lifecycle."""
+    try:
+        fn(*args, **kwargs)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @dataclass
@@ -94,6 +103,7 @@ class BenchmarkOrchestrator:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(yaml.safe_dump(manifest, sort_keys=False))
         await self._kube.apply(path, namespace=spec.namespace)
+        _safe_metric(instrument.record_run_submitted)
         return job_name(spec.run_id)
 
     async def status(self, run_id: str, *, namespace: str) -> JobStatus:
@@ -181,29 +191,48 @@ class BenchmarkOrchestrator:
         exhausted budget dead-letters the run. Every attempt is its own inspectable Job
         (``<run_id>-a<N>``), so failed attempts remain in the cluster for diagnosis."""
         attempts: list[AttemptResult] = []
-        for i in range(1, max_attempts + 1):
-            spec_i = replace(base_spec, run_id=f"{base_spec.run_id}-a{i}", attempt=i)
-            await self.submit(spec_i)
-            st = await self.watch(spec_i.run_id, namespace=spec_i.namespace,
-                                  poll_interval=poll_interval, max_wait=max_wait, on_status=on_status)
-            if st.phase == SUCCEEDED:
-                attempts.append(AttemptResult(spec_i.run_id, st, None))
-                return RunOutcome(base_spec.run_id, True, attempts)
-            # Only a genuinely FAILED Job warrants pod-level diagnosis. A watch that returned
-            # ABSENT (Job vanished) or non-terminal (our max_wait elapsed while it ran) is its
-            # own outcome, not a pod fault.
-            if st.phase == FAILED:
-                failure = await self.diagnose(spec_i.run_id, namespace=spec_i.namespace, job_status=st)
-            elif st.phase == ABSENT:
-                failure = Failure(UNKNOWN, message="job vanished from the cluster before completing")
-            else:  # active/pending after max_wait — client-side watch timeout (Job may still run)
-                failure = Failure(TIMEOUT, message="watch timed out while the job was still running")
-            attempts.append(AttemptResult(spec_i.run_id, st, failure))
-            if i < max_attempts and failure.kind in retryable:
-                continue  # transient — try again as a fresh Job
-            return RunOutcome(base_spec.run_id, False, attempts, dead_lettered=True, final_failure=failure)
-        return RunOutcome(base_spec.run_id, False, attempts, dead_lettered=True,
-                          final_failure=attempts[-1].failure if attempts else None)
+        outcome: RunOutcome | None = None
+        # A run is "in flight" while the orchestrator is watching its attempts (a live gauge
+        # the dashboard can show during a benchmark); always decremented in finally.
+        _safe_metric(instrument.runs_in_flight.inc)
+        try:
+            for i in range(1, max_attempts + 1):
+                spec_i = replace(base_spec, run_id=f"{base_spec.run_id}-a{i}", attempt=i)
+                await self.submit(spec_i)
+                st = await self.watch(spec_i.run_id, namespace=spec_i.namespace,
+                                      poll_interval=poll_interval, max_wait=max_wait, on_status=on_status)
+                _safe_metric(instrument.record_attempt, st.phase)
+                if st.phase == SUCCEEDED:
+                    attempts.append(AttemptResult(spec_i.run_id, st, None))
+                    outcome = RunOutcome(base_spec.run_id, True, attempts)
+                    break
+                # Only a genuinely FAILED Job warrants pod-level diagnosis. A watch that returned
+                # ABSENT (Job vanished) or non-terminal (our max_wait elapsed while it ran) is its
+                # own outcome, not a pod fault.
+                if st.phase == FAILED:
+                    failure = await self.diagnose(spec_i.run_id, namespace=spec_i.namespace, job_status=st)
+                elif st.phase == ABSENT:
+                    failure = Failure(UNKNOWN, message="job vanished from the cluster before completing")
+                else:  # active/pending after max_wait — client-side watch timeout (Job may still run)
+                    failure = Failure(TIMEOUT, message="watch timed out while the job was still running")
+                attempts.append(AttemptResult(spec_i.run_id, st, failure))
+                if i < max_attempts and failure.kind in retryable:
+                    continue  # transient — try again as a fresh Job
+                outcome = RunOutcome(base_spec.run_id, False, attempts, dead_lettered=True,
+                                     final_failure=failure)
+                break
+            if outcome is None:
+                outcome = RunOutcome(base_spec.run_id, False, attempts, dead_lettered=True,
+                                     final_failure=attempts[-1].failure if attempts else None)
+        finally:
+            _safe_metric(instrument.runs_in_flight.dec)
+        _safe_metric(
+            instrument.record_run_outcome,
+            succeeded=outcome.succeeded,
+            dead_lettered=outcome.dead_lettered,
+            fault_kind=outcome.final_failure.kind if outcome.final_failure else None,
+        )
+        return outcome
 
     async def run_sweep(
         self,
@@ -229,6 +258,10 @@ class BenchmarkOrchestrator:
                         poll_interval=poll_interval, max_wait=max_wait,
                     )
                 except Exception as exc:  # isolate: one treatment's error must not sink the sweep
+                    # run_with_retries didn't reach its own outcome-recording, so count this
+                    # dead-letter here too (keeps the terminal/fault metrics complete).
+                    _safe_metric(instrument.record_run_outcome, succeeded=False,
+                                 dead_lettered=True, fault_kind=UNKNOWN)
                     return RunOutcome(spec.run_id, succeeded=False, dead_lettered=True,
                                       final_failure=Failure(UNKNOWN, message=f"orchestration error: {exc}"))
 

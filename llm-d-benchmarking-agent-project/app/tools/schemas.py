@@ -169,6 +169,24 @@ class CheckCapacityInput(BaseModel):
     )
 
 
+class ObserveRunMetricsInput(BaseModel):
+    namespace: str = Field(..., description="Kubernetes namespace to read pod usage from "
+                                            "(ignored for scope='nodes').")
+    scope: Literal["pods", "nodes"] = Field(
+        default="pods",
+        description="'pods' = live CPU/memory of pods in the namespace; 'nodes' = node usage.",
+    )
+    run_id: str | None = Field(
+        default=None,
+        description="Narrow pod usage to ONE orchestrated run by its run-id label "
+                    "(scope='pods' only). Omit to see all pods in the namespace.",
+    )
+    containers: bool = Field(
+        default=False,
+        description="Break pod usage down per-container (scope='pods' only).",
+    )
+
+
 class CompareReportsInput(BaseModel):
     sources: list[str] | None = Field(
         default=None,

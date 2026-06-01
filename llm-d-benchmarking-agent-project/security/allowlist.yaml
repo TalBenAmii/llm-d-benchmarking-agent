@@ -130,6 +130,23 @@ executables:
           "--minify": {}
       cluster-info: { mode: read_only }
       version: { mode: read_only, flags: { "--output": { takes_value: true, value: { ref: output_format } }, "--client": {} } }
+      # Live resource usage (CPU/memory) for pods/nodes — read_only, observe-only. Powers the
+      # observe_run_metrics tool's "live system metrics during a run" view. Requires the
+      # metrics-server in-cluster (kind enables it via the cicd/kind spec); if it's absent the
+      # command fails read-only and the agent relays that — it never mutates anything.
+      top:
+        mode: read_only
+        positionals: [ { value: { enum: [pod, pods, node, nodes] } } ]
+        flags:
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-A": {}
+          "--all-namespaces": {}
+          "-l": { takes_value: true, value: { ref: label_selector } }
+          "--selector": { takes_value: true, value: { ref: label_selector } }
+          "--no-headers": {}
+          "--sort-by": { takes_value: true, value: { enum: [cpu, memory] } }
+          "--containers": {}
       get:
         mode: read_only
         positionals: [ { value: { ref: kubectl_resource } } ]

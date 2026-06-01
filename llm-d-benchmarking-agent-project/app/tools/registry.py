@@ -19,6 +19,7 @@ from app.tools import (
     compare,
     config_artifact,
     execute,
+    observe,
     orchestrate,
     plan,
     probe,
@@ -34,6 +35,7 @@ from app.tools.schemas import (
     FetchKeyDocsInput,
     ListCatalogInput,
     LocateReportInput,
+    ObserveRunMetricsInput,
     OrchestrateBenchmarkInput,
     ProbeEnvironmentInput,
     ReadRepoDocInput,
@@ -142,6 +144,16 @@ _DESCRIPTIONS = {
         "subject to the constraints). Use after a run or sweep when the user has QoS targets or "
         "wants the best config. compare_reports gives raw deltas; this adds SLO/goodput/Pareto."
     ),
+    "observe_run_metrics": (
+        "Read LIVE cluster resource usage (CPU/memory) during a run via `kubectl top`. "
+        "scope='pods' shows pod usage in a namespace (optionally narrowed to one orchestrated "
+        "run by run_id, or per-container); scope='nodes' shows node usage. Read-only "
+        "(auto-runs). Use it WHILE a benchmark is running to see if the model server / harness "
+        "is near its CPU or memory limit (a leading indicator of an OOM/throttle). Requires the "
+        "in-cluster metrics-server (present in the cicd/kind spec); if it is missing the tool "
+        "reports that and changes nothing. Distinct from /metrics, which exposes the agent's "
+        "OWN Prometheus counters. Interpret the numbers per knowledge/observability.md."
+    ),
     "orchestrate_benchmark_run": (
         "Run a benchmark as a Kubernetes Job the orchestrator manages end-to-end: submit "
         "(approval-gated `kubectl apply`), watch the Job to completion, stream logs, and on "
@@ -172,6 +184,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("compare_reports", _DESCRIPTIONS["compare_reports"], CompareReportsInput, compare.compare_reports),
         ToolSpec("analyze_results", _DESCRIPTIONS["analyze_results"], AnalyzeResultsInput, analyze.analyze_results),
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
+        ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
     ]
     return {s.name: s for s in specs}
 

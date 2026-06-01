@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.config import Settings
+from app.observability import instrument
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist, Decision
 from app.security.runner import CommandRunner, RunResult
 from app.tools.catalog import build_catalog, catalog_for_allowlist
@@ -74,6 +75,20 @@ class ToolContext:
                 "auto_run": auto_run,
             })
 
+    def _record_metric(self, decision: Decision, *, auto_run: bool, result: RunResult) -> None:
+        """File the executed-command fact into the metrics registry. Best-effort: observability
+        must never break command execution, so any error here is swallowed. ``exe`` is argv[0]
+        only (bounded cardinality — never the full argv, which would explode the label space)."""
+        try:
+            instrument.record_command(
+                exe=decision.argv[0] if decision.argv else "",
+                mode=decision.mode,
+                auto_run=auto_run,
+                duration_s=result.duration_s,
+            )
+        except Exception:  # noqa: BLE001 — metrics must not affect the run
+            pass
+
     async def run_readonly(self, argv: list[str], *, timeout: float = 20.0) -> RunResult:
         """Validate + run a command that MUST be read-only. Raises if the allowlist
         would not classify it read-only (these are trusted probes, but we still gate)."""
@@ -84,7 +99,9 @@ class ToolContext:
             raise ToolError(f"probe command is not read-only: {' '.join(argv)}")
         entry = self.allowlist.executable(argv[0])
         await self._emit_command(decision, auto_run=True)
-        return await self.runner.execute(argv, entry, timeout=timeout)
+        result = await self.runner.execute(argv, entry, timeout=timeout)
+        self._record_metric(decision, auto_run=True, result=result)
+        return result
 
     async def run_command(
         self,
@@ -111,8 +128,12 @@ class ToolContext:
         # mutating command this fires only after approval, so it records what truly ran.
         await self._emit_command(decision, auto_run=not decision.requires_approval)
         on_line = self._emit_line if (stream and self.emit is not None) else None
+        auto_run = not decision.requires_approval
         # Bound concurrent heavy runs across sessions (read-only commands run uncapped).
         if self.run_semaphore is not None and decision.mode == MUTATING:
             async with self.run_semaphore:
-                return await self.runner.execute(argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)
-        return await self.runner.execute(argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)
+                result = await self.runner.execute(argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)
+        else:
+            result = await self.runner.execute(argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)
+        self._record_metric(decision, auto_run=auto_run, result=result)
+        return result
