@@ -11,7 +11,7 @@ def test_tool_definitions_complete():
     defs = tool_definitions()
     names = {d["name"] for d in defs}
     expected = {
-        "probe_environment", "list_catalog", "read_repo_doc", "fetch_key_docs",
+        "probe_environment", "list_catalog", "read_knowledge", "read_repo_doc", "fetch_key_docs",
         "propose_session_plan", "check_capacity", "ensure_repos", "run_setup",
         "write_and_validate_config", "execute_llmdbenchmark", "run_command",
         "locate_and_parse_report", "compare_reports", "compare_harness_runs",
@@ -21,6 +21,27 @@ def test_tool_definitions_complete():
     assert names == expected
     for d in defs:
         assert d["description"] and d["input_schema"]["type"] == "object"
+
+
+def test_tool_definitions_have_no_title_keys():
+    """Pydantic auto-adds 'title' keys; tool_definitions() strips them recursively to
+    save tokens with zero behavioral change. Assert none survive anywhere in the schema
+    (top-level, properties, $defs, anyOf/items, …)."""
+    def find_titles(node) -> bool:
+        if isinstance(node, dict):
+            return "title" in node or any(find_titles(v) for v in node.values())
+        if isinstance(node, list):
+            return any(find_titles(v) for v in node)
+        return False
+
+    defs = tool_definitions()
+    assert defs  # non-empty
+    for d in defs:
+        assert not find_titles(d["input_schema"]), f"{d['name']} still has a title key"
+    # Structural keys the LLM DOES need must survive the strip.
+    by_name = {d["name"]: d for d in defs}
+    plan_schema = by_name["propose_session_plan"]["input_schema"]
+    assert plan_schema["type"] == "object" and "properties" in plan_schema
 
 
 async def test_dispatch_rejects_bad_args(tool_ctx):
