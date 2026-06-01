@@ -141,10 +141,12 @@ differentiators, then stretch goals and packaging/docs deliverables.
   kubectl verbs RealKubeClient uses), resolving the Phase-3 RBAC deferral; orchestrated Jobs now
   run under the deploy's SA. Suite 315 passed / 6 skipped / 0 failed.
 
-## Phase 9 — Documentation suite + upstream-PR readiness — **TODO**
+## Phase 9 — Documentation suite + upstream-PR readiness — **DONE**
 *Grade dimension 4 · §10.*
 - Architecture doc, API reference, deployment & user guides; polish toward the upstream
   `llm-d-benchmark` PR path.
+- **Result:** added `docs/` suite (ARCHITECTURE, API, DEPLOYMENT, USER_GUIDE, README index) plus
+  refreshed root README/CLAUDE.md; docs-only, no code changes — suite stays green at 329 passed / 6 skipped.
 
 ## Phase 10 — Multi-harness orchestration in one session — **DONE**
 *Proposal stretch.*

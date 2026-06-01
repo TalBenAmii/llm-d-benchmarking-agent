@@ -8,6 +8,16 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-01 — Phase 9: Documentation suite + upstream-PR readiness — DONE
+Branch `feature/roadmap-p9-docs` → merged into `feature/roadmap` (`--no-ff`). Docs-only phase: no
+conflicts in the shared registration files (no code touched), so the merge applied clean.
+- **Shipped:** a `docs/` suite — `ARCHITECTURE.md`, `API.md`, `DEPLOYMENT.md`, `USER_GUIDE.md`, and a
+  `docs/README.md` index — plus refreshed root `README.md`, `CLAUDE.md`, and `plan.md` to polish
+  toward the upstream `llm-d-benchmark` PR path.
+- **Tests:** worktree suite **329 passed / 6 skipped / 0 failed** (against the worktree venv + .env,
+  420s timeout — no hang, exit 0). Prior baseline was 315 passed / 6 skipped; docs-only change so the
+  delta vs baseline reflects tests already integrated from later phases, not new tests here.
+
 ## 2026-06-01 — Phase 10: Multi-harness orchestration in one session — DONE
 Branch `feature/roadmap-p10-multiharness` → merged into `feature/roadmap` (`--no-ff`, `60546f4`).
 Conflicts in the shared registration files were resolved by keeping BOTH sides' additions:
