@@ -7,6 +7,7 @@ through the allowlist gate (defense in depth — nothing bypasses validation).
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -17,6 +18,8 @@ from app.security.allowlist import MUTATING, READ_ONLY, Allowlist, Decision
 from app.security.runner import CommandRunner, RunResult
 from app.storage.history import HistoryStore
 from app.tools.catalog import build_catalog, catalog_for_allowlist
+
+log = logging.getLogger("app.tools.context")
 
 
 class ToolError(RuntimeError):
@@ -90,17 +93,32 @@ class ToolContext:
             })
 
     def _record_metric(self, decision: Decision, *, auto_run: bool, result: RunResult) -> None:
-        """File the executed-command fact into the metrics registry. Best-effort: observability
-        must never break command execution, so any error here is swallowed. ``exe`` is argv[0]
-        only (bounded cardinality — never the full argv, which would explode the label space)."""
+        """File the executed-command fact into the metrics registry AND the structured log.
+        Best-effort: observability must never break command execution, so any error here is
+        swallowed. ``exe`` is argv[0] only (bounded cardinality — never the full argv, which
+        would explode the metric label space and bloat the log line). The log line carries
+        mode + exe + duration + exit code (per Phase 11) and — via the contextvars filter —
+        the turn's corr_id/session_id/tool automatically."""
+        exe = decision.argv[0] if decision.argv else ""
         try:
             instrument.record_command(
-                exe=decision.argv[0] if decision.argv else "",
+                exe=exe,
                 mode=decision.mode,
                 auto_run=auto_run,
                 duration_s=result.duration_s,
             )
         except Exception:  # noqa: BLE001 — metrics must not affect the run
+            pass
+        try:
+            log.info("command.exec", extra={
+                "exe": exe,
+                "mode": decision.mode,
+                "auto_run": auto_run,
+                "duration_s": result.duration_s,
+                "exit_code": result.exit_code,
+                "timed_out": result.timed_out,
+            })
+        except Exception:  # noqa: BLE001 — logging must not affect the run
             pass
 
     async def run_readonly(self, argv: list[str], *, timeout: float = 20.0) -> RunResult:

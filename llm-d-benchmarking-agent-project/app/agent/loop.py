@@ -4,14 +4,18 @@ execution -> feed results back, until the model stops calling tools.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Awaitable, Callable
 
 from app.agent import events
 from app.agent.prompt import build_system_prompt
 from app.agent.session import Session
 from app.llm.provider import LLMProvider
+from app.observability.logctx import bind as log_bind
 from app.tools.context import ApprovalRejected, ToolError
 from app.tools.registry import dispatch, tool_definitions
+
+log = logging.getLogger("app.agent.loop")
 
 MAX_STEPS = 24
 _TOOL_RESULT_BUDGET = 20_000  # chars of a tool result fed back to the model
@@ -37,8 +41,11 @@ class AgentLoop:
         ctx.request_approval = request_approval
         session.messages.append({"role": "user", "content": user_text})
 
+        log.info("turn.start", extra={"session_id": session.id, "user_chars": len(user_text)})
+
         system = build_system_prompt(ctx)
         tools = tool_definitions()
+        tool_calls_made = 0
 
         for _ in range(MAX_STEPS):
             try:
@@ -60,16 +67,26 @@ class AgentLoop:
 
             tool_result_msgs = []
             for tc in turn.tool_calls:
-                await emit(events.TOOL_CALL, {"id": tc.id, "name": tc.name, "input": tc.input})
-                # Tie any approval gate raised inside this dispatch back to its tool call.
-                ctx.current_tool_call_id = tc.id
-                result = await self._invoke(ctx, tc.name, tc.input)
-                ctx.current_tool_call_id = None
+                tool_calls_made += 1
+                # Bind the tool name into the log context so every record emitted while this
+                # tool runs (incl. the command runner's exec line) carries `tool` alongside
+                # the turn's corr_id + session_id.
+                with log_bind(tool=tc.name):
+                    log.info("tool.call.start", extra={"tool_call_id": tc.id})
+                    await emit(events.TOOL_CALL, {"id": tc.id, "name": tc.name, "input": tc.input})
+                    # Tie any approval gate raised inside this dispatch back to its tool call.
+                    ctx.current_tool_call_id = tc.id
+                    result = await self._invoke(ctx, tc.name, tc.input)
+                    ctx.current_tool_call_id = None
 
-                if tc.name == "propose_session_plan" and isinstance(result, dict) and result.get("approved"):
-                    session.approved_plan = result.get("plan")
+                    if tc.name == "propose_session_plan" and isinstance(result, dict) and result.get("approved"):
+                        session.approved_plan = result.get("plan")
 
-                await emit(events.TOOL_RESULT, {"id": tc.id, "name": tc.name, "result": result})
+                    log.info("tool.call.result", extra={
+                        "tool_call_id": tc.id,
+                        "ok": not (isinstance(result, dict) and ("error" in result or result.get("rejected"))),
+                    })
+                    await emit(events.TOOL_RESULT, {"id": tc.id, "name": tc.name, "result": result})
                 tool_result_msgs.append({
                     "tool_call_id": tc.id,
                     "name": tc.name,
@@ -79,7 +96,9 @@ class AgentLoop:
             session.messages.append({"role": "tool_results", "results": tool_result_msgs})
         else:
             await emit(events.ERROR, {"message": f"reached the step limit ({MAX_STEPS}); pausing."})
+            log.warning("turn.step_limit", extra={"max_steps": MAX_STEPS})
 
+        log.info("turn.end", extra={"session_id": session.id, "tool_calls": tool_calls_made})
         session.persist()
         await emit(events.DONE, {})
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import shutil
 import signal
@@ -18,6 +19,10 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from app.config import PROJECT_ROOT
+
+# Records emitted here automatically carry the turn's corr_id/session_id/tool via the
+# logging ContextFilter installed at startup — no need to thread anything through (Phase 11).
+log = logging.getLogger("app.security.runner")
 
 # Environment keys allowed through to child processes. Notably EXCLUDES
 # ANTHROPIC_API_KEY / OPENAI_API_KEY and anything else secret.
@@ -181,6 +186,7 @@ class CommandRunner:
         deadline = timeout if timeout is not None else self._default_timeout
 
         start = time.monotonic()
+        log.info("runner.exec.start", extra={"exe": real_argv[0] if real_argv else "", "cwd": cwd})
         try:
             proc = await asyncio.create_subprocess_exec(
                 *real_argv,
@@ -191,6 +197,7 @@ class CommandRunner:
                 start_new_session=True,  # own process group → we can reap grandchildren on timeout
             )
         except FileNotFoundError as exc:
+            log.error("runner.exec.launch_failed", extra={"exe": real_argv[0] if real_argv else ""})
             raise RunnerError(f"failed to launch {real_argv[0]!r}: {exc}") from exc
 
         captured: list[str] = []
@@ -216,6 +223,8 @@ class CommandRunner:
             await asyncio.wait_for(asyncio.gather(_pump(), proc.wait()), timeout=deadline)
         except asyncio.TimeoutError:
             timed_out = True
+            log.warning("runner.exec.timeout", extra={
+                "exe": real_argv[0] if real_argv else "", "deadline_s": deadline})
             _kill_process_group(proc)
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(proc.wait(), timeout=5.0)  # brief grace to reap
