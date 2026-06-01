@@ -138,6 +138,41 @@ def test_goodput_none_without_percentiles():
     assert out["goodput"]["estimate_fraction"] is None
 
 
+def test_goodput_uses_low_percentiles_for_sub_p50_target():
+    # A target between the LOW percentiles (p25 and p50) must interpolate within that band,
+    # not floor to 0% because p0p1..p25 were dropped from the summary. This is the
+    # correctness defect: dropping the low ladder makes any sub-p50 target read as 0%.
+    s = _summary(
+        ttft_ms=50,
+        ttft_ladder={
+            "p0p1": 27.3, "p1": 27.9, "p5": 30.2, "p10": 31.2, "p25": 33.4,
+            "p50": 36.2, "p75": 39.9, "p90": 42.6, "p95": 45.2, "p99": 50.3, "p99p9": 57.0,
+        },
+    )
+    # target 34.8ms sits midway between p25=33.4 and p50=36.2 -> ~37.5% of requests meet it.
+    out = evaluate_slo(s, SLOTargets(ttft_ms=34.8, percentile="p99"))
+    gp = out["goodput"]["estimate_fraction"]
+    assert gp is not None and gp > 0.0
+    # linear interp: 0.25 + (34.8-33.4)/(36.2-33.4) * (0.50-0.25) = 0.375
+    assert gp == pytest.approx(0.375, abs=0.01)
+    assert out["goodput"]["estimate_pct"] == pytest.approx(37.5, abs=1.0)
+
+
+def test_slo_percentile_p99p9_is_evaluable():
+    # p99.9 is advertised in the SLOTargets.percentile Literal; it must actually be a
+    # usable statistic, not silently yield observed=None / met=None for every metric.
+    s = _summary(
+        ttft_ms=50,
+        ttft_ladder={"p50": 36.2, "p90": 42.6, "p99": 50.3, "p99p9": 57.0},
+    )
+    out = evaluate_slo(s, SLOTargets(ttft_ms=60, percentile="p99p9"))
+    v = next(v for v in out["verdicts"] if v["metric"] == "ttft")
+    assert v["statistic"] == "p99p9"
+    assert v["observed"] == pytest.approx(57.0)   # read off p99p9, not None
+    assert v["met"] is True
+    assert out["overall_met"] is True
+
+
 # ---- pareto / DoE analysis -------------------------------------------------
 
 def test_pareto_frontier_excludes_dominated_run():
@@ -242,6 +277,41 @@ async def test_analyze_results_sweep_pareto(tool_ctx, br_example, tmp_path):
     assert set(par["frontier"]) == {"c1", "c8", "c16"}
     # ttft p99: c1=100ms, c8=200ms feasible (<=250); c16=400ms not
     assert set(par["slo_feasible"]) == {"c1", "c8"}
+
+
+async def test_analyze_results_sub_p50_target_is_not_floored_to_zero(tool_ctx, br_example, tmp_path):
+    # End-to-end on the REAL BR v0.2 example: its TTFT ladder has p25~33.4ms and p50~36.2ms.
+    # A 34.8ms target sits between them, so ~25-50% of requests meet it. The headline goodput
+    # estimate must reflect that, NOT 0% — which is what happened when the summary dropped the
+    # sub-p50 percentiles. (Example reports TTFT in seconds, so this also exercises conversion.)
+    base = load_report(br_example)
+    run = tmp_path / "run"
+    run.mkdir(parents=True, exist_ok=True)
+    (run / "benchmark_report_v0.2.yaml").write_text(yaml.safe_dump(base, sort_keys=False))
+    out = await analyze.analyze_results(
+        tool_ctx, slo={"ttft_ms": 34.8, "percentile": "p99"}, sources=[str(run)]
+    )
+    assert out["analyzed"] is True
+    gp = out["runs"][0]["slo"]["goodput"]["estimate_pct"]
+    assert gp is not None
+    assert 20.0 < gp < 55.0, f"sub-p50 target floored/misestimated: got {gp}%"
+
+
+async def test_analyze_results_p99p9_percentile_evaluable(tool_ctx, br_example, tmp_path):
+    # Setting the common p99.9 tail SLO must actually evaluate the latency metrics through
+    # the full disk path, not silently leave them met=None.
+    base = load_report(br_example)
+    run = tmp_path / "run"
+    run.mkdir(parents=True, exist_ok=True)
+    (run / "benchmark_report_v0.2.yaml").write_text(yaml.safe_dump(base, sort_keys=False))
+    out = await analyze.analyze_results(
+        tool_ctx, slo={"ttft_ms": 100, "percentile": "p99p9"}, sources=[str(run)]
+    )
+    assert out["analyzed"] is True
+    v = next(v for v in out["runs"][0]["slo"]["verdicts"] if v["metric"] == "ttft")
+    assert v["statistic"] == "p99p9"
+    assert v["observed"] is not None   # p99p9 ~57ms (from 0.057s) -> read off, not None
+    assert v["met"] is True
 
 
 async def test_analyze_results_skips_invalid_report(tool_ctx, tmp_path):

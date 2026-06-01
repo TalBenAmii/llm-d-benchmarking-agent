@@ -40,7 +40,16 @@ class ReportValidation:
     deviations: list[str] = field(default_factory=list)    # non-fatal (schema lags repo)
 
 
-_PCTL_KEYS = ("mean", "p50", "p90", "p95", "p99")
+# The full aggregate-statistics ladder carried by a BR v0.2 Statistics object. We keep
+# the ENTIRE percentile ladder (not just the round-number ones) so the analyzer's goodput
+# interpolation has the resolution it needs: a sub-p50 latency target must land between the
+# real low percentiles (p0p1..p25), not get floored to 0% because everything below p50 was
+# dropped. ``mean`` is kept for throughput floors and headline comparison; the percentiles
+# feed SLO verdicts (any percentile, incl. p99p9) and goodput estimation.
+_PCTL_KEYS = (
+    "mean",
+    "p0p1", "p1", "p5", "p10", "p25", "p50", "p75", "p90", "p95", "p99", "p99p9",
+)
 
 
 def load_report(path: str | Path) -> dict[str, Any]:
@@ -88,7 +97,11 @@ def validate_report(report: dict[str, Any], schema_path: str | Path) -> ReportVa
 
 
 def _stat(metric: Any) -> dict[str, Any] | None:
-    """Extract {units, mean, p50, p90, p95, p99} from a metric object, if present."""
+    """Extract {units, mean, full percentile ladder} from a metric object, if present.
+
+    Carries the whole ladder (``_PCTL_KEYS``) so downstream SLO evaluation and goodput
+    interpolation see every reported percentile, not a lossy subset.
+    """
     if not isinstance(metric, dict):
         return None
     out: dict[str, Any] = {}
