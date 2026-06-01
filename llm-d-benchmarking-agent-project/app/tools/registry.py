@@ -12,9 +12,10 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
-from app.tools import command, compare, config_artifact, execute, orchestrate, plan, probe, repos
+from app.tools import analyze, command, compare, config_artifact, execute, orchestrate, plan, probe, repos
 from app.tools.context import ToolContext
 from app.tools.schemas import (
+    AnalyzeResultsInput,
     CompareReportsInput,
     EnsureReposInput,
     ExecuteInput,
@@ -107,6 +108,17 @@ _DESCRIPTIONS = {
         "Read-only. Pass `sources` (run dirs/files, with optional `labels`) OR `experiment_dir` "
         "(scans for all reports under it). Use after a sweep or to compare two configurations."
     ),
+    "analyze_results": (
+        "Results Analyzer: SLO-aware filtering, goodput estimation, and Pareto/DoE analysis "
+        "over one or more validated Benchmark Reports. Read-only. Pass the SLO targets from the "
+        "approved SessionPlan (`slo`) plus either `sources` (1+ run dirs/files) or "
+        "`experiment_dir` (a whole sweep). Returns, per run, whether it MEETS the SLOs and an "
+        "honest goodput ESTIMATE (fraction of requests meeting the SLOs — the proposal's key "
+        "differentiator; estimated from aggregate percentiles, flagged as such); for a sweep it "
+        "also returns the Pareto-optimal configs and the SLO-feasible frontier (best trade-off "
+        "subject to the constraints). Use after a run or sweep when the user has QoS targets or "
+        "wants the best config. compare_reports gives raw deltas; this adds SLO/goodput/Pareto."
+    ),
     "orchestrate_benchmark_run": (
         "Run a benchmark as a Kubernetes Job the orchestrator manages end-to-end: submit "
         "(approval-gated `kubectl apply`), watch the Job to completion, stream logs, and on "
@@ -134,6 +146,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("run_command", _DESCRIPTIONS["run_command"], RunCommandInput, command.run_command),
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, probe.locate_and_parse_report),
         ToolSpec("compare_reports", _DESCRIPTIONS["compare_reports"], CompareReportsInput, compare.compare_reports),
+        ToolSpec("analyze_results", _DESCRIPTIONS["analyze_results"], AnalyzeResultsInput, analyze.analyze_results),
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
     ]
     return {s.name: s for s in specs}
