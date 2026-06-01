@@ -201,3 +201,16 @@ Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never
   fails loud if `AUTH_ENABLED` with empty `AUTH_TOKEN`. Judgment in `knowledge/api_trust.md`.
 - Merged into `feature/roadmap-v2` (`--no-ff`); full suite **351 passed / 6 skipped / 0 failed**
   (+12 hermetic api-trust tests; prior baseline 339 passed / 6 skipped).
+
+## Phase 13 — Allowlist governance: per-command timeouts + quotas — DONE
+- Moved execution limits out of Python and into `security/allowlist.yaml` as data: optional
+  `timeout_s` and `quota {per_session, per_day}` on an executable and/or subcommand (subcommand
+  overrides executable). `allowlist.py` schema-validates both fields at startup (malformed
+  allowlist → clear load-time error) and rides the resolved limits on the `Decision`. The runner
+  now sources its per-command deadline from `Decision.timeout_s`, REMOVING the parallel
+  `app/tools/execute.py::_TIMEOUTS` table (one mechanism, not two; a sane global default remains).
+  New `app/security/quota.py` is a pure per-session/per-day usage counter; `ToolContext` refuses an
+  over-quota command with a structured `QuotaError` BEFORE execution/approval and the loop relays it.
+  Judgment in `knowledge/governance.md`.
+- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **378 passed / 6 skipped / 0 failed**
+  (+27 hermetic governance tests; prior baseline 351 passed / 6 skipped).

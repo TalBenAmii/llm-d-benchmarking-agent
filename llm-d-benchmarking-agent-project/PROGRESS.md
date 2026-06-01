@@ -8,6 +8,24 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-02 — Phase 13: Allowlist governance — per-command timeouts + quotas — DONE
+Branch `feature/roadmap-v2-p13-allowlist-gov` → merged into `feature/roadmap-v2` (`--no-ff`). The
+phase branched off the Phase-11 tip; its files (`allowlist.py`, `quota.py`, `context.py`,
+`execute.py`, `loop.py`, `allowlist.yaml`) are disjoint from Phase 12's (`auth.py`, `main.py`,
+`config.py`), so the merge applied with no code conflicts.
+- **Shipped:** execution limits moved out of Python into `security/allowlist.yaml` as data —
+  optional `timeout_s` and `quota {per_session, per_day}` on an executable and/or subcommand
+  (subcommand overrides executable). `allowlist.py` schema-validates both AT STARTUP (malformed
+  allowlist → clear load-time error) and rides the resolved limits on the `Decision`. The runner
+  sources its per-command deadline from `Decision.timeout_s`, REMOVING the parallel
+  `execute.py::_TIMEOUTS` table (one mechanism, not two; a sane global default remains). New
+  `app/security/quota.py` is a pure per-session/per-day usage counter; `ToolContext` refuses an
+  over-quota command with a structured `QuotaError` BEFORE execution/approval and the loop relays
+  it. Judgment in `knowledge/governance.md`.
+- **Tests:** full integration suite **378 passed / 6 skipped / 0 failed** (+27 hermetic governance
+  tests; prior baseline 351 passed / 6 skipped). Authoritative run from the integration worktree
+  with `PYTHONPATH=$PWD`, `REPOS_DIR` set, `timeout 600` — no hang (12s, exit 0).
+
 ## 2026-06-02 — Phase 12: API trust — auth + rate-limit + CORS — DONE
 Branch `feature/roadmap-v2-p12-authz` → merged into `feature/roadmap-v2` (`--no-ff`). The phase
 branched cleanly off the current v2 tip (single commit), so the merge applied with no conflicts in
