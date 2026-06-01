@@ -27,7 +27,17 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.allowlist = Allowlist.from_file(settings.allowlist_path)
     app.state.runner = CommandRunner(settings.repo_paths, extra_env=settings.extra_subprocess_env)
-    app.state.sessions = SessionManager(settings, app.state.allowlist, app.state.runner)
+    # Cross-session cap on concurrent heavy runs (None = unlimited).
+    app.state.run_semaphore = (
+        asyncio.Semaphore(settings.max_concurrent_runs) if settings.max_concurrent_runs > 0 else None
+    )
+    # In-flight turns kept alive after their socket drops (background benchmark runs), and
+    # the turn currently running per session (prevents two connections double-running one chat).
+    app.state.background_tasks = set()
+    app.state.running = {}
+    app.state.sessions = SessionManager(
+        settings, app.state.allowlist, app.state.runner, run_semaphore=app.state.run_semaphore
+    )
     # Build the provider tolerantly: a missing key shouldn't crash the server.
     try:
         app.state.provider = get_provider(settings)
@@ -109,6 +119,7 @@ async def ws(websocket: WebSocket) -> None:
 
     pending: dict[str, asyncio.Future] = {}
     busy = {"value": False}
+    connected = {"value": True}
 
     async def emit(event_type: str, payload: dict[str, Any]) -> None:
         # Record the executed-command trail on the session so a resumed chat can replay it
@@ -119,8 +130,12 @@ async def ws(websocket: WebSocket) -> None:
             await websocket.send_json({"type": event_type, "data": payload})
 
     async def request_approval(kind: str, payload: dict[str, Any]) -> bool:
+        # If the client has gone (navigated away mid-run), there's no one to approve —
+        # reject so a background turn can't hang forever holding a concurrency slot.
+        if not connected["value"]:
+            return False
         rid = uuid.uuid4().hex[:8]
-        fut: asyncio.Future = asyncio.get_event_loop().create_future()
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
         pending[rid] = fut
         await emit("approval_request", {"request_id": rid, "kind": kind, "payload": payload})
         try:
@@ -144,8 +159,15 @@ async def ws(websocket: WebSocket) -> None:
             await emit("done", {})
         finally:
             busy["value"] = False
+            if app.state.running.get(session.id) is asyncio.current_task():
+                app.state.running.pop(session.id, None)
 
-    await emit("ready", {"session_id": session.id, "resumed": resumed})
+    _running_task = app.state.running.get(session.id)
+    await emit("ready", {
+        "session_id": session.id,
+        "resumed": resumed,
+        "running": bool(_running_task and not _running_task.done()),
+    })
     if resumed:
         await emit("history", {"items": _history_items(session), "commands": session.commands})
     turn_task: asyncio.Task | None = None
@@ -155,10 +177,12 @@ async def ws(websocket: WebSocket) -> None:
             msg = await websocket.receive_json()
             mtype = msg.get("type")
             if mtype == "user_message":
-                if busy["value"]:
+                existing = app.state.running.get(session.id)
+                if busy["value"] or (existing is not None and not existing.done()):
                     await emit("error", {"message": "still working on the previous request — please wait."})
                     continue
                 turn_task = asyncio.create_task(run_turn(msg.get("text", "")))
+                app.state.running[session.id] = turn_task
             elif mtype == "approval":
                 rid = msg.get("request_id")
                 fut = pending.get(rid)
@@ -169,10 +193,14 @@ async def ws(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        connected["value"] = False
         for fut in pending.values():
             if not fut.done():
                 fut.set_result(False)
+        # Don't kill an in-flight (already-approved) run on disconnect — let it finish in
+        # the background so a benchmark survives navigating away and several can run in
+        # parallel across chats. Further approval requests auto-reject (connected=False),
+        # so the detached turn can't hang. Its result is replayed from history on reconnect.
         if turn_task and not turn_task.done():
-            turn_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await turn_task
+            app.state.background_tasks.add(turn_task)
+            turn_task.add_done_callback(app.state.background_tasks.discard)

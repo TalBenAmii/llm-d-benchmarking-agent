@@ -123,7 +123,8 @@ function handle(msg) {
     case "ready":
       currentSession = data.session_id;
       setEnabled(true);
-      if (!data.resumed) addNote("Session ready. What would you like to benchmark?");
+      if (data.running) addNote("⏳ A benchmark is still running in this chat in the background. Reopen this chat once it finishes to see the results.");
+      else if (!data.resumed) addNote("Session ready. What would you like to benchmark?");
       loadSessions();
       break;
     case "history": renderHistory(data.items || [], data.commands || []); break;

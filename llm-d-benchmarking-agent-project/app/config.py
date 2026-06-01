@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # Max concurrent *heavy* (mutating) command executions across ALL sessions — bounds
+    # how many benchmark runs proceed in parallel so they don't thrash the host. Read-only
+    # probes are never capped. <= 0 means unlimited.
+    max_concurrent_runs: int = 2
+
     # ---- derived locations ------------------------------------------------
     @property
     def resolved_repos_dir(self) -> Path:

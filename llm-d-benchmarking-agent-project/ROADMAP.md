@@ -57,11 +57,24 @@ differentiators, then stretch goals and packaging/docs deliverables.
       probe-visibility (6 read-only probes), full-deploy command surfacing, persist/replay path.
       Suite: **119 passed / 6 skipped**.
 
-## Phase 2 — Parallel sessions & parallel benchmark runs — **TODO**
+## Phase 2 — Parallel sessions & parallel benchmark runs — **DONE**
 *User todo #1 · proposal "parallel treatments w/ configurable concurrency", Distributed Coordination.*
-- Concurrency-safe runner; run multiple sessions and multiple DoE treatments concurrently under
-  a configurable concurrency cap.
-- Tests with fakes/CaptureRunner — no live runs.
+- [x] Configurable cross-session concurrency cap (`settings.max_concurrent_runs`, default 2):
+      a shared `asyncio.Semaphore` wraps only MUTATING executions; read-only probes never capped.
+      `SessionManager` wires the shared cap + isolated per-session workspaces into every session.
+- [x] Background-safe runs: an approved in-flight turn is no longer cancelled on WS disconnect —
+      it finishes server-side; result replayed from history on reconnect. A `connected` gate
+      auto-rejects post-disconnect approvals (no hang); a per-session running-turn registry blocks
+      a 2nd connection's concurrent turn (prevents transcript corruption); `ready.running` drives
+      a UI note.
+- [x] Review fix (real latent bug): the runner now bounds the **whole** process lifecycle under
+      the deadline (was: `proc.wait()` ran after the stdout-pump timeout → a stdout-closing daemon
+      could hang forever and pin a slot); SIGKILLs the process group on timeout.
+- [x] Tests: 8 hermetic concurrency tests. Suite: **127 passed / 6 skipped**.
+- **Deferred to Phase 3** (orchestrator territory): (a) an abandoned long run (e.g. a 4h
+  `experiment` the user navigated away from) holds a cap slot until its timeout — needs a
+  cancel/reattach path or operator visibility; (b) a reconnecting client only sees the result
+  replayed at the end, not the live stream — needs a per-session pub/sub event buffer.
 
 ## Phase 3 — Kubernetes-native Benchmark Orchestrator — **TODO**  *(the 40% centerpiece)*
 *Proposal §3.3 · grade dimension 1. Split into sub-phases.*
