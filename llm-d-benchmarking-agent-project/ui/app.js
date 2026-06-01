@@ -14,6 +14,12 @@ const sendBtn = document.getElementById("send");
 const themeBtn = document.getElementById("theme-toggle");
 const convList = document.getElementById("conv-list");
 const newChatBtn = document.getElementById("new-chat");
+const debugBtn = document.getElementById("debug-toggle");
+const cmdlogList = document.getElementById("cmdlog-list");
+const historyList = document.getElementById("history-list");
+const historyRefresh = document.getElementById("history-refresh");
+const trendMetric = document.getElementById("trend-metric");
+const trendView = document.getElementById("trend-view");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -32,6 +38,26 @@ themeBtn.addEventListener("click", () => {
   applyTheme(next);
 });
 initTheme();
+
+// ---- debug view (show only executed commands; persisted) ----------------
+function applyDebug(on) {
+  document.documentElement.setAttribute("data-debug", on ? "on" : "off");
+  debugBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  debugBtn.title = on
+    ? "Hide debug view — back to chat"
+    : "Toggle debug view — show only the commands the agent executed";
+}
+function initDebug() {
+  let on = false;
+  try { on = localStorage.getItem("llmd-debug") === "on"; } catch (e) {}
+  applyDebug(on);
+}
+debugBtn.addEventListener("click", () => {
+  const on = document.documentElement.getAttribute("data-debug") !== "on";
+  try { localStorage.setItem("llmd-debug", on ? "on" : "off"); } catch (e) {}
+  applyDebug(on);
+});
+initDebug();
 
 let ws = null;
 let busy = false;
@@ -74,6 +100,13 @@ function resetTranscript() {
   transcript.innerHTML = "";
   for (const k in toolEls) delete toolEls[k];
   activeConsole = null;
+  clearCmdlog();
+}
+
+function clearCmdlog() {
+  if (!cmdlogList) return;
+  cmdlogList.innerHTML = "";
+  cmdlogList.appendChild(el("div", "cmdlog-empty", "No commands executed yet."));
 }
 
 function setStatus(text, cls) {
@@ -94,17 +127,19 @@ function handle(msg) {
     case "ready":
       currentSession = data.session_id;
       setEnabled(true);
-      if (!data.resumed) addNote("Session ready. What would you like to benchmark?");
+      if (data.running) addNote("⏳ A benchmark is still running in this chat in the background. Reopen this chat once it finishes to see the results.");
+      else if (!data.resumed) addNote("Session ready. What would you like to benchmark?");
       loadSessions();
       break;
-    case "history": renderHistory(data.items || []); break;
+    case "history": renderHistory(data.items || [], data.commands || []); break;
     case "assistant_text": addBubble("assistant", data.text); break;
     case "tool_call": startTool(data); break;
+    case "command": onCommand(data); break;
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); break;
     case "approval_request": addApprovalCard(data); break;
     case "error": addBubble("error", data.message); break;
-    case "done": setEnabled(true); activeConsole = null; loadSessions(); break;
+    case "done": setEnabled(true); activeConsole = null; loadSessions(); loadHistory(); break;
     case "pong": break;
   }
   scroll();
@@ -161,6 +196,125 @@ function relTime(ts) {
   return then.toLocaleDateString();
 }
 
+// ---- stored results browser + trends ------------------------------------
+// Read-only views of what the agent persisted via the result_history tool. The
+// backend returns facts only (values + the metric's better-direction); we render
+// them — the regression verdict is the agent's job in chat.
+
+let trendMetricsLoaded = false;
+
+async function loadHistory() {
+  try {
+    const r = await fetch("/api/history");
+    const j = await r.json();
+    renderHistory_(j.records || []);
+    populateTrendMetrics(j.metrics || []);
+    if (trendMetric && trendMetric.value) loadTrend(trendMetric.value);
+  } catch (e) { /* offline — keep whatever's shown */ }
+}
+
+function populateTrendMetrics(metrics) {
+  if (!trendMetric || trendMetricsLoaded || !metrics.length) return;
+  for (const m of metrics) {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m;
+    trendMetric.appendChild(opt);
+  }
+  trendMetricsLoaded = true;
+}
+
+function renderHistory_(records) {
+  if (!historyList) return;
+  historyList.innerHTML = "";
+  if (!records.length) {
+    historyList.appendChild(el("div", "history-empty", "No stored results yet."));
+    return;
+  }
+  for (const rec of records) {
+    const row = el("div", "history-row");
+    row.title = [rec.spec, rec.harness, rec.workload].filter(Boolean).join(" · ") || rec.run_uid || "";
+    const top = el("div", "history-title", rec.label || rec.model || rec.run_uid || rec.id);
+    row.appendChild(top);
+    const meta = el("div", "history-meta");
+    if (rec.model) meta.appendChild(el("span", "history-model", rec.model));
+    meta.appendChild(el("span", "history-time", relTime(rec.stored_at)));
+    row.appendChild(meta);
+    if (rec.tags && rec.tags.length) {
+      const tagWrap = el("div", "history-tags");
+      for (const t of rec.tags) tagWrap.appendChild(el("span", "history-tag", t));
+      row.appendChild(tagWrap);
+    }
+    historyList.appendChild(row);
+  }
+}
+
+async function loadTrend(metric) {
+  if (!trendView) return;
+  if (!metric) { trendView.innerHTML = ""; return; }
+  try {
+    const r = await fetch(`/api/history/trend?metric=${encodeURIComponent(metric)}`);
+    const t = await r.json();
+    renderTrend(t);
+  } catch (e) { trendView.innerHTML = ""; }
+}
+
+function renderTrend(t) {
+  trendView.innerHTML = "";
+  if (t.error) { trendView.appendChild(el("div", "history-empty", t.error)); return; }
+  const points = t.points || [];
+  if (points.length < 2) {
+    trendView.appendChild(el("div", "history-empty", `Not enough stored results to trend ${t.metric} yet.`));
+    return;
+  }
+  const wrap = el("div", "trend-card");
+  const units = t.units ? ` (${t.units})` : "";
+  const better = t.better === "lower" ? "lower is better" : "higher is better";
+  wrap.appendChild(el("div", "trend-title", `${t.metric}${units} — ${better}`));
+  wrap.appendChild(sparkline(points, t.better));
+  // Factual first→last delta; the chat agent gives the verdict, not the UI.
+  const d = t.first_to_last || {};
+  if (d.delta_pct != null) {
+    const improved = (t.better === "lower") ? (d.delta_pct < 0) : (d.delta_pct > 0);
+    const cls = d.delta_pct === 0 ? "flat" : (improved ? "good" : "bad");
+    const sign = d.delta_pct > 0 ? "+" : "";
+    wrap.appendChild(el("div", "trend-delta " + cls, `first → last: ${sign}${d.delta_pct}%`));
+  }
+  trendView.appendChild(wrap);
+}
+
+// Tiny inline SVG sparkline of the value series (oldest → newest).
+function sparkline(points, better) {
+  const W = 220, H = 46, pad = 4;
+  const vals = points.map((p) => p.value);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = (max - min) || 1;
+  const n = points.length;
+  const x = (i) => pad + (i * (W - 2 * pad)) / (n - 1);
+  const y = (v) => H - pad - ((v - min) / span) * (H - 2 * pad);
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("class", "spark");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `${n} points trend`);
+  const path = document.createElementNS(svgNS, "polyline");
+  path.setAttribute("points", points.map((p, i) => `${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" "));
+  path.setAttribute("class", "spark-line");
+  svg.appendChild(path);
+  // Mark the latest point.
+  const last = document.createElementNS(svgNS, "circle");
+  last.setAttribute("cx", x(n - 1).toFixed(1));
+  last.setAttribute("cy", y(points[n - 1].value).toFixed(1));
+  last.setAttribute("r", "2.6");
+  last.setAttribute("class", "spark-dot");
+  svg.appendChild(last);
+  return svg;
+}
+
+if (trendMetric) trendMetric.addEventListener("change", () => loadTrend(trendMetric.value));
+if (historyRefresh) historyRefresh.addEventListener("click", loadHistory);
+
 // ---- rendering ----------------------------------------------------------
 
 function el(tag, cls, text) {
@@ -179,11 +333,15 @@ function addBubble(role, text) {
 
 function addNote(text) { addBubble("assistant", text); }
 
-function renderHistory(items) {
+function renderHistory(items, commands) {
   for (const it of items) {
     if (it.role === "user") addBubble("user", it.text);
     else if (it.role === "assistant") addBubble("assistant", it.text);
     else if (it.role === "tool_call") addHistoryTool(it);
+  }
+  if (commands && commands.length) {
+    clearCmdlog();
+    for (const c of commands) addCmdRow(c);
   }
   scroll();
 }
@@ -219,10 +377,33 @@ function startTool(data) {
   body.appendChild(activeConsole);
 }
 
-function appendConsole(line) {
+function consoleLine(text, cls) {
   if (!activeConsole) return;
-  activeConsole.textContent += (activeConsole.textContent ? "\n" : "") + line;
+  if (activeConsole.childNodes.length) activeConsole.appendChild(document.createTextNode("\n"));
+  activeConsole.appendChild(cls ? el("span", cls, text) : document.createTextNode(text));
   activeConsole.scrollTop = activeConsole.scrollHeight;
+}
+
+function appendConsole(line) { consoleLine(line, null); }
+
+// A command the agent actually executed — show it inline (so even silent read-only
+// probes are visible in the tool's console) and add a row to the debug command log.
+function onCommand(data) {
+  consoleLine("$ " + (data.text || (data.argv || []).join(" ")), "cmd-line");
+  addCmdRow(data);
+}
+
+function addCmdRow(data) {
+  if (!cmdlogList) return;
+  const empty = cmdlogList.querySelector(".cmdlog-empty");
+  if (empty) empty.remove();
+  const mutating = data.mode && data.mode !== "read_only";
+  const row = el("div", "cmd-row");
+  row.appendChild(el("span", "badge " + (mutating ? "mut" : "ro"), mutating ? "mutating" : "read-only"));
+  row.appendChild(el("span", "cmd-text", data.text || (data.argv || []).join(" ")));
+  row.appendChild(el("span", "cmd-tag", data.auto_run ? "auto" : "approved"));
+  cmdlogList.appendChild(row);
+  cmdlogList.scrollTop = cmdlogList.scrollHeight;
 }
 
 function finishTool(data) {
@@ -334,4 +515,5 @@ newChatBtn.addEventListener("click", newChat);
 
 // ---- boot ---------------------------------------------------------------
 loadSessions();
+loadHistory();
 connect(null);

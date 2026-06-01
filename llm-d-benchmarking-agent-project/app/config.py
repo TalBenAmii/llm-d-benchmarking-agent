@@ -54,6 +54,22 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # Max concurrent *heavy* (mutating) command executions across ALL sessions — bounds
+    # how many benchmark runs proceed in parallel so they don't thrash the host. Read-only
+    # probes are never capped. <= 0 means unlimited.
+    max_concurrent_runs: int = 2
+
+    # Container image for orchestrator-submitted benchmark Jobs (the in-cluster image that
+    # carries the llmdbenchmark CLI + kubectl). Empty until built/published in the packaging
+    # phase; the orchestrate tool then refuses rather than submitting an unrunnable Job.
+    orchestrator_image: str = ""
+
+    # ServiceAccount the orchestrator-submitted benchmark Jobs run under. When the agent runs
+    # in-cluster (the packaging deploy), this is the least-privilege SA the Helm chart /
+    # Kustomize base create; an empty value (local dev) leaves the pod on the namespace default
+    # SA. Set via ORCHESTRATOR_SERVICE_ACCOUNT in the backend env / the deploy manifest.
+    orchestrator_service_account: str = ""
+
     # ---- derived locations ------------------------------------------------
     @property
     def resolved_repos_dir(self) -> Path:

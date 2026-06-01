@@ -1,0 +1,83 @@
+# Packaging & deployment (the production image + one-command K8s deploy)
+
+This is the *judgment* layer for how the agent is packaged and deployed. The mechanism — the
+`Dockerfile`, the Helm chart (`deploy/helm/llm-d-benchmarking-agent/`), and the Kustomize base
+(`deploy/kustomize/base/`) — is data; this file is how to reason about using it.
+
+## Two distinct ways to run the agent
+
+1. **Local (the default for the quickstart / a laptop demo).** `./run.sh` or
+   `uvicorn app.main:app`. The agent drives the *local* `llmdbenchmark` CLI
+   (`execute_llmdbenchmark`) and shells out to your local `kubectl`/`kind`. No container, no
+   in-cluster RBAC. This remains the simplest path and the one the kind/sim quickstart uses.
+
+2. **In-cluster (the packaging deploy).** The agent service runs as a Deployment in the
+   cluster, reachable via its Service (port 8000). Use this when you want the agent itself to
+   live next to the workloads it benchmarks, or to expose it to a team. Deploy it with **one
+   command** via Helm or Kustomize (below).
+
+## Deploying
+
+Helm (templated, values-driven):
+
+```
+helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
+  --namespace llmd-bench --create-namespace \
+  --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
+```
+
+Kustomize (Helm-free):
+
+```
+kubectl apply -k deploy/kustomize/base                      # plain, default values
+# or, with a namespace + API-key Secret + pinned image:
+kubectl apply -k deploy/kustomize/overlays/example
+```
+
+Then `kubectl -n <ns> port-forward svc/llm-d-benchmarking-agent 8000:8000` and open the UI.
+
+## Image pinning (prefer digests)
+
+The image tag (`image.tag`, default = the chart's `appVersion`) is convenient but **mutable**.
+For reproducible rollouts pin by **digest**: set `image.digest: sha256:...` in Helm values
+(it wins over the tag), or `kustomize edit set image .../agent@sha256:...` for Kustomize. Tell
+the user this when they ask about production hardening; for a demo a tag is fine.
+
+## RBAC: least privilege, and why an orchestrated run needs it
+
+`orchestrate_benchmark_run` submits a benchmark as a **Kubernetes Job** and then watches it,
+reads pods, and streams logs — all by shelling out to `kubectl` (see
+`app/orchestrator/kube.py`). When the agent runs *in-cluster*, those `kubectl` calls
+authenticate as the pod's ServiceAccount, so that SA must be allowed to do exactly those
+things. The chart/base create a **namespaced Role** granting only:
+
+- `batch`/`jobs`: create, get, list, watch, patch, delete
+- `pods`: get, list, watch
+- `pods/log`: get
+
+and nothing else — no ClusterRole, no secrets/exec/portforward, no write to anything but the
+benchmark Jobs in its own namespace. This is what lets an orchestrated Job actually run live
+(the capability Phase 3 deferred to packaging) without handing the agent broad cluster power.
+
+Set `ORCHESTRATOR_SERVICE_ACCOUNT` (the deploy does this) so the benchmark Jobs the agent
+submits also run under that least-privilege SA rather than the namespace default. If it isn't
+set (local dev), the Job uses the namespace default SA — fine for kind/sim.
+
+## Enabling in-cluster orchestrated runs
+
+`orchestrate_benchmark_run` refuses unless an `ORCHESTRATOR_IMAGE` is configured (or `image` is
+passed): an orchestrated run is a real Job and needs an image carrying the `llmdbenchmark` CLI.
+Set `config.orchestratorImage` (Helm) / the `ORCHESTRATOR_IMAGE` env (Kustomize) to that image.
+Until it's set, the agent correctly falls back to the local CLI path (`execute_llmdbenchmark`).
+
+## Security posture baked into the deploy
+
+- **Non-root, hardened pod:** `runAsNonRoot` (uid 10001), `readOnlyRootFilesystem`, all Linux
+  capabilities dropped, `RuntimeDefault` seccomp, no privilege escalation. Writable scratch
+  (`/workspace`, `/tmp`) is an `emptyDir`, so session state never persists on the image layer.
+- **Secrets stay server-side:** LLM/HF keys come from a Kubernetes Secret (chart-managed or a
+  pre-existing one you point at via `secret.existingSecret`), surfaced as env to the backend
+  only. They are never baked into the image (`.dockerignore` excludes `.env`) and never reach
+  the browser.
+- **Health & metrics:** liveness/readiness probe `/healthz`; Prometheus scrapes `/metrics`
+  (pods are annotated `prometheus.io/scrape`). Both match `app/main.py`.

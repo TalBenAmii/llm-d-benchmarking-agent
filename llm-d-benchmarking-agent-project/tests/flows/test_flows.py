@@ -38,6 +38,18 @@ async def test_flow_runs_the_right_commands(flow, tmp_path):
     # The universal safety invariant: mutating ⇒ approval-gated; read-only ⇒ auto-run.
     assert not (g := gating_problems(run)), f"[{flow.name}] gating violations:\n" + "\n".join(g)
 
+    # Phase-1 invariant: a `command` event is emitted for EVERY executed command (read-only
+    # probes included), in order — and the same trail is recorded on the session for replay.
+    cmd_events = [p for (t, p) in run.events if t == "command"]
+    assert [c["argv"] for c in cmd_events] == [c.argv for c in run.commands], (
+        f"[{flow.name}] command-event/exec mismatch:\n"
+        f"  events: {[c['argv'] for c in cmd_events]}\n"
+        f"  ran:    {[c.argv for c in run.commands]}"
+    )
+    assert [c["argv"] for c in run.session.commands] == [c.argv for c in run.commands], (
+        f"[{flow.name}] session.commands trail does not match executed commands"
+    )
+
     # The right commands, in order (significant = llmdbenchmark/install.sh/git/helm).
     if flow.expect_no_significant:
         assert not run.significant, (

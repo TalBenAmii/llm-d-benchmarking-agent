@@ -1,0 +1,23 @@
+# Prometheus scrape config for the llm-d Benchmarking Agent's /metrics endpoint.
+#
+# This is DATA, not code. Drop it into your Prometheus config (or merge the job into an
+# existing prometheus.yml) to scrape the agent's self-reported metrics. The companion
+# dashboard is deploy/observability/grafana-dashboard.json.
+#
+# Local (agent run via `uvicorn app.main:app`):
+#   target = host.docker.internal:8000 (from a containerized Prometheus) or 127.0.0.1:8000.
+# In-cluster (after the Phase 8 packaging deploy): point at the agent Service, e.g.
+#   llmd-benchmarking-agent.<ns>.svc.cluster.local:8000.
+#
+# The endpoint emits the standard Prometheus text exposition format
+# (text/plain; version=0.0.4); no extra params are needed.
+
+scrape_configs:
+  - job_name: llmd-benchmarking-agent
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - 127.0.0.1:8000
+        labels:
+          service: llmd-benchmarking-agent

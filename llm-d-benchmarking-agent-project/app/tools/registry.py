@@ -12,17 +12,37 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
-from app.tools import command, compare, config_artifact, execute, plan, probe, repos
+from app.tools import (
+    analyze,
+    capacity,
+    command,
+    compare,
+    config_artifact,
+    execute,
+    history,
+    multiharness,
+    observe,
+    orchestrate,
+    plan,
+    probe,
+    repos,
+)
 from app.tools.context import ToolContext
 from app.tools.schemas import (
+    AnalyzeResultsInput,
+    CheckCapacityInput,
+    CompareHarnessRunsInput,
     CompareReportsInput,
     EnsureReposInput,
     ExecuteInput,
     FetchKeyDocsInput,
     ListCatalogInput,
     LocateReportInput,
+    ObserveRunMetricsInput,
+    OrchestrateBenchmarkInput,
     ProbeEnvironmentInput,
     ReadRepoDocInput,
+    ResultHistoryInput,
     RunCommandInput,
     RunSetupInput,
     WriteConfigInput,
@@ -75,6 +95,17 @@ _DESCRIPTIONS = {
         "checked against the live catalog. You MUST get a plan approved before any "
         "mutating step (ensure_repos/run_setup/standup/run/teardown)."
     ),
+    "check_capacity": (
+        "Capacity PRE-FLIGHT: will this deployment fit? Runs the benchmark repo's OWN "
+        "capacity planner over the spec's rendered config (model weights + activation + KV "
+        "cache vs GPU memory, valid tensor-parallelism, max-context limits) and returns a "
+        "feasible/infeasible verdict with the planner's diagnostics. Read-only; auto-runs. "
+        "Pass `overrides` to reflect what the user actually asked for (a bigger model, "
+        "longer context, a real GPU). Call this right after propose_session_plan and BEFORE "
+        "standing anything up — it catches OOM / won't-load / can't-serve cases before a "
+        "long standup fails opaquely. Interpret the verdict with knowledge/capacity.md. "
+        "(Needs the benchmark venv: run_setup installs it.)"
+    ),
     "ensure_repos": (
         "Clone the llm-d-benchmark and/or llm-d repos if missing (mutating; needs approval). "
         "Idempotent; never overwrites an existing directory."
@@ -106,6 +137,63 @@ _DESCRIPTIONS = {
         "Read-only. Pass `sources` (run dirs/files, with optional `labels`) OR `experiment_dir` "
         "(scans for all reports under it). Use after a sweep or to compare two configurations."
     ),
+    "compare_harness_runs": (
+        "Cross-harness comparison for a MULTI-HARNESS session: contrast Benchmark Reports "
+        "produced by DIFFERENT harnesses (e.g. an inference-perf SLO/latency-validation run "
+        "and a guidellm throughput-sweep run) against the SAME stack. Read-only. Pass "
+        "`sources` (2+ run dirs/files, one or more per harness); the harness that produced "
+        "each is read from the report itself (never guessed). Returns each harness's runs + "
+        "the metric families it measured, which metrics ≥2 harnesses both measured (so you "
+        "can cross-validate) vs only one did, and the per-harness values side by side WITHOUT "
+        "a winner (different load generators aren't directly comparable). Use this AFTER "
+        "running both harnesses in one session. compare_reports contrasts configs of the "
+        "SAME harness; this contrasts the harnesses. Interpret it via knowledge/multi_harness.md."
+    ),
+    "analyze_results": (
+        "Results Analyzer: SLO-aware filtering, goodput estimation, and Pareto/DoE analysis "
+        "over one or more validated Benchmark Reports. Read-only. Pass the SLO targets from the "
+        "approved SessionPlan (`slo`) plus either `sources` (1+ run dirs/files) or "
+        "`experiment_dir` (a whole sweep). Returns, per run, whether it MEETS the SLOs and an "
+        "honest goodput ESTIMATE (fraction of requests meeting the SLOs — the proposal's key "
+        "differentiator; estimated from aggregate percentiles, flagged as such); for a sweep it "
+        "also returns the Pareto-optimal configs and the SLO-feasible frontier (best trade-off "
+        "subject to the constraints). Use after a run or sweep when the user has QoS targets or "
+        "wants the best config. compare_reports gives raw deltas; this adds SLO/goodput/Pareto."
+    ),
+    "observe_run_metrics": (
+        "Read LIVE cluster resource usage (CPU/memory) during a run via `kubectl top`. "
+        "scope='pods' shows pod usage in a namespace (optionally narrowed to one orchestrated "
+        "run by run_id, or per-container); scope='nodes' shows node usage. Read-only "
+        "(auto-runs). Use it WHILE a benchmark is running to see if the model server / harness "
+        "is near its CPU or memory limit (a leading indicator of an OOM/throttle). Requires the "
+        "in-cluster metrics-server (present in the cicd/kind spec); if it is missing the tool "
+        "reports that and changes nothing. Distinct from /metrics, which exposes the agent's "
+        "OWN Prometheus counters. Interpret the numbers per knowledge/observability.md."
+    ),
+    "result_history": (
+        "Historical result storage + trends. Persist a VALIDATED Benchmark Report's summary "
+        "across sessions and read trends over time. action='store' saves a report (pass "
+        "`source` = a report file or run dir, plus optional `label`/`tags`/`spec`/`harness`/"
+        "`workload`); it validates the report first and is idempotent (storing the same report "
+        "twice keeps one record). action='list' shows stored results (newest first; filter by "
+        "`filter_tag`/`filter_model`); 'get' returns one record's full summary by `record_id`; "
+        "'trend' returns the time-series of ONE `metric` (ttft/tpot/itl/request_latency/"
+        "output_token_rate/total_token_rate/request_rate/success_rate_pct) across stored runs; "
+        "'delete' forgets a record. All actions auto-run (nothing here touches the cluster or "
+        "the repos). Store a result the user wants to keep AFTER you've parsed/analyzed it; use "
+        "'trend' to answer 'has performance regressed over time?'. Interpret trends with "
+        "knowledge/history.md — the tool returns facts (values + direction), you give the verdict."
+    ),
+    "orchestrate_benchmark_run": (
+        "Run a benchmark as a Kubernetes Job the orchestrator manages end-to-end: submit "
+        "(approval-gated `kubectl apply`), watch the Job to completion, stream logs, and on "
+        "failure classify the cause (OOM / timeout / eviction / unschedulable / image / run "
+        "error). With max_attempts>1, a TRANSIENT fault (eviction) retries as a fresh, distinct "
+        "Job; deterministic faults never retry. Distinct from execute_llmdbenchmark (which runs "
+        "the CLI locally as a blocking subprocess): use this for K8s-native, restart-resilient, "
+        "individually-retryable runs. Needs the orchestrator container image (config "
+        "ORCHESTRATOR_IMAGE or `image`)."
+    ),
 }
 
 
@@ -116,6 +204,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("read_repo_doc", _DESCRIPTIONS["read_repo_doc"], ReadRepoDocInput, probe.read_repo_doc),
         ToolSpec("fetch_key_docs", _DESCRIPTIONS["fetch_key_docs"], FetchKeyDocsInput, probe.fetch_key_docs),
         ToolSpec("propose_session_plan", _DESCRIPTIONS["propose_session_plan"], SessionPlan, plan.propose_session_plan),
+        ToolSpec("check_capacity", _DESCRIPTIONS["check_capacity"], CheckCapacityInput, capacity.check_capacity),
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),
         ToolSpec("run_setup", _DESCRIPTIONS["run_setup"], RunSetupInput, repos.run_setup),
         ToolSpec("write_and_validate_config", _DESCRIPTIONS["write_and_validate_config"], WriteConfigInput, config_artifact.write_and_validate_config),
@@ -123,6 +212,11 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("run_command", _DESCRIPTIONS["run_command"], RunCommandInput, command.run_command),
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, probe.locate_and_parse_report),
         ToolSpec("compare_reports", _DESCRIPTIONS["compare_reports"], CompareReportsInput, compare.compare_reports),
+        ToolSpec("compare_harness_runs", _DESCRIPTIONS["compare_harness_runs"], CompareHarnessRunsInput, multiharness.compare_harness_runs),
+        ToolSpec("analyze_results", _DESCRIPTIONS["analyze_results"], AnalyzeResultsInput, analyze.analyze_results),
+        ToolSpec("result_history", _DESCRIPTIONS["result_history"], ResultHistoryInput, history.result_history),
+        ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
+        ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
     ]
     return {s.name: s for s in specs}
 

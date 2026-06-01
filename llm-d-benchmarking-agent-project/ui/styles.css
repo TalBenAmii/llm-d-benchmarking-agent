@@ -117,6 +117,57 @@ body {
 .conv-del:hover { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
 .conv-empty { color: var(--muted); font-size: 12.5px; padding: 10px 12px; }
 
+/* ── Stored results browser + trends (sidebar) ──────────────────────────── */
+.conv-list { max-height: 40%; }
+.history {
+  flex: 1; min-height: 120px; display: flex; flex-direction: column;
+  border-top: 1px solid var(--border); overflow: hidden;
+}
+.history-head { display: flex; align-items: center; justify-content: space-between; }
+.icon-btn-sm { width: 24px; height: 24px; font-size: 13px; border-radius: 7px; }
+.history-controls { padding: 2px 12px 6px; }
+.trend-metric {
+  width: 100%; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;
+  font: 12px var(--mono);
+}
+.trend-metric:hover { border-color: var(--accent); }
+.trend-view { padding: 0 12px; }
+.trend-card {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 9px 11px; margin-bottom: 8px;
+}
+.trend-title { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+.spark { width: 100%; height: auto; display: block; }
+.spark-line { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.spark-dot { fill: var(--accent); }
+.trend-delta { font: 600 11px var(--mono); margin-top: 5px; }
+.trend-delta.good { color: var(--green); }
+.trend-delta.bad { color: var(--red); }
+.trend-delta.flat { color: var(--muted); }
+.history-list { flex: 1; overflow-y: auto; padding: 2px 8px 12px; }
+.history-empty { color: var(--muted); font-size: 12px; padding: 8px 12px; }
+.history-row {
+  padding: 8px 10px; border-radius: 9px; margin-bottom: 2px; cursor: default;
+}
+.history-row:hover { background: var(--panel-2); }
+.history-title {
+  font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.history-meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.history-model { font: 11px var(--mono); color: var(--accent); }
+.history-time { font-size: 11px; color: var(--muted); }
+.history-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.history-tag {
+  font: 500 10px var(--mono); color: var(--muted);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 6px; padding: 1px 6px;
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
 @media (max-width: 760px) {
   .sidebar { width: 200px; }
 }
@@ -263,6 +314,57 @@ footer {
 #send:hover { filter: brightness(1.1); }
 #send:disabled { box-shadow: none; }
 .hint { max-width: 900px; margin: 9px auto 0; color: var(--muted); font-size: 12px; }
+
+/* ── Executed-command line inside a tool console ──────────────────────── */
+/* A streamed command is prefixed with "$ " so read-only probes (which emit no
+   output) are still visible in the tool's console. */
+pre.console .cmd-line { color: var(--accent); font-weight: 600; }
+
+/* ── Debug view: the executed-command log ─────────────────────────────── */
+/* Hidden until debug mode is on (toggled via html[data-debug="on"]). When on,
+   the chat transcript is hidden so the view shows ONLY executed commands. */
+.cmdlog { display: none; }
+html[data-debug="on"] #transcript { display: none; }
+html[data-debug="on"] .cmdlog {
+  display: flex; flex-direction: column; flex: 1; overflow: hidden;
+  max-width: 900px; width: 100%; margin: 0 auto;
+}
+.cmdlog-head {
+  padding: 18px 22px 10px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
+  font: 600 13px/1.3 var(--serif); color: var(--text);
+}
+.cmdlog-hint { font: 400 12px/1.3 var(--serif); color: var(--muted); }
+.cmdlog-list { flex: 1; overflow-y: auto; padding: 0 22px 22px; }
+.cmd-row {
+  display: flex; align-items: center; gap: 10px; padding: 7px 11px; margin-bottom: 5px;
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+}
+.cmd-row .badge { flex: none; }
+.cmd-row .cmd-text { font: 12.5px/1.5 var(--mono); color: var(--code-text); white-space: pre-wrap; word-break: break-all; flex: 1; }
+.cmd-row .cmd-text::before { content: "$ "; color: var(--accent); font-weight: 600; }
+.cmd-row .cmd-tag { flex: none; font: 500 10.5px/1 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.cmdlog-empty { color: var(--muted); font-size: 12.5px; padding: 8px 2px; }
+.icon-btn[aria-pressed="true"] {
+  border-color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, var(--panel-2));
+  font-family: var(--mono); font-size: 13px;
+}
+#debug-toggle { font-family: var(--mono); font-size: 13px; }
+
+/* ── Range slider (shared style for any future scale/SLO controls) ──────── */
+input[type="range"].slider {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+  background: var(--border-strong); border-radius: 999px; outline: none; margin: 8px 0;
+}
+input[type="range"].slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent-strong); border: 2px solid var(--on-accent); cursor: pointer;
+  box-shadow: 0 1px 4px rgba(127, 49, 127, .4);
+}
+input[type="range"].slider::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent-strong); border: 2px solid var(--on-accent); cursor: pointer;
+}
+input[type="range"].slider:focus { box-shadow: 0 0 0 3px rgba(165, 64, 165, .18); }
 
 /* ── Report summary ───────────────────────────────────────────────────── */
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 9px; margin-top: 10px; }

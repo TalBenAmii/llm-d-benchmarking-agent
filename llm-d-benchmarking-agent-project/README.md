@@ -9,15 +9,22 @@ benchmark, and explains the results.
 It does this by driving the real `llmdbenchmark` CLI on your behalf — inside a strict
 security sandbox, asking for your approval before anything that changes your system.
 
-> **Status: MVP implemented & verified (2026-05-31).** The end-to-end vertical works —
-> chat UI → agent loop → schema-validated, approval-gated tools → real `llmdbenchmark`
-> execution → validated Benchmark Report summary. **100 tests pass.** The supported path is
-> the `llm-d-benchmark` *quickstart* (local [kind](https://kind.sigs.k8s.io/) cluster,
-> CPU-only simulated engine). The agent can bootstrap the host end-to-end — install the
-> prerequisites `install.sh` doesn't (Docker + the kind binary, via a vetted installer),
-> create/delete the kind cluster, then deploy and benchmark — each step approval-gated. A
-> live LLM session needs an API key in `.env`; GPU / `llm-d` guide deploys come later. See
-> [`plan.md`](plan.md#implementation-status) for the full status.
+> **Status: implemented & verified.** The end-to-end vertical works — chat UI → agent loop
+> → schema-validated, approval-gated tools → real `llmdbenchmark` execution → validated
+> Benchmark Report summary — and has grown well past the MVP. Beyond the quickstart it now
+> includes a **Kubernetes-native benchmark orchestrator** (Job lifecycle, fault
+> classification, retry/dead-letter, parallel sweeps), a **results analyzer** (goodput, SLO
+> filtering, Pareto/DoE), **multi-harness comparison**, a **capacity pre-flight**,
+> **cross-session result history + trends**, **Prometheus/Grafana observability**, and a
+> **hardened image + one-command Helm/Kustomize deploy** with least-privilege RBAC. The
+> agent exposes **18 tools**. The headline supported path remains the `llm-d-benchmark`
+> *quickstart* (local [kind](https://kind.sigs.k8s.io/) cluster, CPU-only simulated engine),
+> which the agent can bootstrap end-to-end — install the prerequisites `install.sh` doesn't
+> (Docker + the kind binary, via a vetted installer), create/delete the kind cluster, then
+> deploy and benchmark — each step approval-gated. A live LLM session needs an API key in
+> `.env`. The full pytest suite is hermetic (no API key, Docker, kind, or live cluster
+> needed). See [`docs/`](docs/) for the full documentation suite and
+> [`plan.md`](plan.md#implementation-status) for the status record.
 
 ## Design in one line
 **Thin code, thick agent.** The Python here is only *mechanism* — a chat UI, an agent
@@ -38,6 +45,9 @@ editable knowledge files under [`knowledge/`](knowledge/). Reliability comes fro
 - **Per-action approval.** Read-only probes run automatically; every *mutating* command
   (installing Docker/kind, creating/deleting the cluster, standup, run, teardown) shows you
   the exact command and waits for you to click Approve.
+- **Full command transparency.** The UI shows *every* command the agent runs — including the
+  read-only probes that run automatically — and a one-click **Debug view** lists just the
+  executed-command trail (with read-only/mutating badges). Nothing runs off-screen.
 - **Secrets stay server-side.** Your LLM API key never reaches the browser.
 
 ## The four determinism gates
@@ -69,6 +79,31 @@ pip install -e '.[dev]'
 pytest tests/
 ```
 
+## Deploy to Kubernetes (production image + one command)
+
+A hardened container image and a one-command cluster deploy ship in
+[`Dockerfile`](Dockerfile) + [`deploy/`](deploy/). Build the image, then deploy with **either**
+Helm or Kustomize:
+
+```bash
+docker build -t llm-d-benchmarking-agent:0.1.0 .
+
+# Helm:
+helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
+  --namespace llmd-bench --create-namespace \
+  --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
+
+# ...or Kustomize (Helm-free):
+kubectl apply -k deploy/kustomize/base
+```
+
+The deploy runs the agent **non-root** with a read-only root filesystem, sources LLM/HF keys
+from a Kubernetes Secret (never baked into the image), probes `/healthz`, exposes `/metrics`
+for Prometheus, and grants a **namespaced least-privilege Role** so the agent can orchestrate
+benchmark Jobs (the verbs in [`app/orchestrator/kube.py`](app/orchestrator/kube.py) and nothing
+more). Prefer pinning the image by digest in production. See
+[`knowledge/packaging.md`](knowledge/packaging.md) for the full deployment guide.
+
 ## Validate the agent runs the *right commands*
 A **flow-validation harness** proves the agent drives the correct command sequence for
 each end-to-end flow (the kind quickstart, the optimized-baseline guide, teardown,
@@ -97,7 +132,19 @@ and how to add a flow.
 | `workspace/` | Gitignored runtime scratch (sessions, configs, logs) |
 | `tests/` | pytest |
 
-See [`CLAUDE.md`](CLAUDE.md) for the full set of working rules and
+## Documentation
+
+The full technical documentation suite lives under [`docs/`](docs/):
+
+| Doc | For |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design: layers, components, the four determinism gates, trust boundaries |
+| [docs/API.md](docs/API.md) | The HTTP/WebSocket API + the 18-tool agent surface + the `SessionPlan` |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Running locally and in-cluster (Helm/Kustomize), config, secrets, RBAC, observability |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Using the agent end-to-end with no `llm-d-benchmark` expertise |
+| [docs/VALIDATION.md](docs/VALIDATION.md) | The flow-validation harness — does the agent run the *right* commands? |
+
+See also [`CLAUDE.md`](CLAUDE.md) for the full set of working rules and
 [`plan.md`](plan.md) for the implementation plan.
 
 ## Relationship to the repos

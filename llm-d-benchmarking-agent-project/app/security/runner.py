@@ -8,8 +8,10 @@ Secrets (LLM API keys) are excluded from the child environment.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import shutil
+import signal
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,6 +53,17 @@ def _is_within(child: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _kill_process_group(proc: "asyncio.subprocess.Process") -> None:
+    """SIGKILL the child's whole process group (it is its own session leader — see
+    ``start_new_session`` below) so a command that double-forks a daemon doesn't leave a
+    grandchild running. Falls back to killing just the child."""
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
 
 
 class CommandRunner:
@@ -115,7 +128,22 @@ class CommandRunner:
                 raise RunnerError(f"project script {runner['script']!r} escapes the project root")
             if not script.exists():
                 raise RunnerError(f"project script {script} not found")
-            real = [str(script), *rest]
+            # Optional: run the project script through a specific repo venv's Python (e.g.
+            # the benchmark repo's venv, which is the only interpreter carrying the `planner`
+            # package the capacity pre-flight imports). Still a vetted, project-shipped script
+            # — the interpreter only changes which dependencies are importable, not the
+            # command surface (the allowlist already pins the script + its single argument).
+            python_via = runner.get("python_via")
+            if python_via:
+                py = self._resolve_repo_ref(python_via) / "bin" / "python"
+                if not py.exists():
+                    raise RunnerError(
+                        f"{py} not found — the benchmark venv is not set up yet "
+                        f"(run install.sh first)"
+                    )
+                real = [str(py), str(script), *rest]
+            else:
+                real = [str(script), *rest]
         else:
             which = shutil.which(exe)
             if which is None:
@@ -160,6 +188,7 @@ class CommandRunner:
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                start_new_session=True,  # own process group → we can reap grandchildren on timeout
             )
         except FileNotFoundError as exc:
             raise RunnerError(f"failed to launch {real_argv[0]!r}: {exc}") from exc
@@ -180,15 +209,16 @@ class CommandRunner:
                     await on_line(line)
 
         try:
-            await asyncio.wait_for(_pump(), timeout=deadline)
-            await proc.wait()
+            # Bound the WHOLE process lifecycle — both draining stdout AND the process exit —
+            # under one deadline. A child that closes stdout without exiting (e.g. it
+            # double-forks a daemon) must not hang here forever: that would pin a concurrency
+            # slot (the caller may hold a run-cap semaphore around this call) indefinitely.
+            await asyncio.wait_for(asyncio.gather(_pump(), proc.wait()), timeout=deadline)
         except asyncio.TimeoutError:
             timed_out = True
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
-            await proc.wait()
+            _kill_process_group(proc)
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(proc.wait(), timeout=5.0)  # brief grace to reap
 
         duration = time.monotonic() - start
         return RunResult(

@@ -1,0 +1,20 @@
+# Kustomize base for the llm-d Benchmarking Assistant agent — a Helm-free, one-command deploy:
+#   kubectl apply -k deploy/kustomize/base
+# or an overlay (see deploy/kustomize/overlays/example). Keep this in lockstep with the Helm
+# chart; tests assert both render the same RBAC + probe + port contract.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+commonLabels:
+  app.kubernetes.io/name: llm-d-benchmarking-agent
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - serviceaccount.yaml
+  - rbac.yaml
+  - deployment.yaml
+  - service.yaml
+
+images:
+  - name: ghcr.io/llm-d/llm-d-benchmarking-agent
+    newTag: "0.1.0"

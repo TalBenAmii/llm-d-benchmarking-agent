@@ -15,12 +15,14 @@
 
   <link rel="stylesheet" href="/static/styles.css" />
 
-  <!-- Apply the saved theme before first paint to avoid a flash. -->
+  <!-- Apply the saved theme + debug view before first paint to avoid a flash. -->
   <script>
     (function () {
       try {
         var t = localStorage.getItem("llmd-theme") || "dark";
         document.documentElement.setAttribute("data-theme", t);
+        var d = localStorage.getItem("llmd-debug") === "on" ? "on" : "off";
+        document.documentElement.setAttribute("data-debug", d);
       } catch (e) {}
     })();
   </script>
@@ -32,6 +34,23 @@
     </div>
     <div class="sidebar-label">Recent</div>
     <nav id="conv-list" class="conv-list" aria-label="Recent conversations"></nav>
+
+    <section id="history" class="history" aria-label="Stored benchmark results">
+      <div class="sidebar-label history-head">
+        <span>Results</span>
+        <button id="history-refresh" class="icon-btn icon-btn-sm" type="button" title="Refresh stored results" aria-label="Refresh stored results">⟳</button>
+      </div>
+      <div class="history-controls">
+        <label class="sr-only" for="trend-metric">Trend metric</label>
+        <select id="trend-metric" class="trend-metric" title="Show the trend of this metric across stored results">
+          <option value="">Trend: pick a metric…</option>
+        </select>
+      </div>
+      <div id="trend-view" class="trend-view" aria-live="polite"></div>
+      <div id="history-list" class="history-list" aria-live="polite">
+        <div class="history-empty">No stored results yet.</div>
+      </div>
+    </section>
   </aside>
   <div class="main-col">
   <header>
@@ -51,12 +70,23 @@
       </div>
     </div>
     <div class="header-actions">
+      <button id="debug-toggle" type="button" class="icon-btn" title="Toggle debug view — show only the commands the agent executed" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
       <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
       <div id="status" class="status" title="connection status">connecting…</div>
     </div>
   </header>
 
   <main id="transcript" aria-live="polite"></main>
+
+  <section id="cmdlog" class="cmdlog" aria-label="Executed commands">
+    <div class="cmdlog-head">
+      <span>Executed commands</span>
+      <span class="cmdlog-hint">every command the agent ran this session — read-only probes included</span>
+    </div>
+    <div id="cmdlog-list" class="cmdlog-list" aria-live="polite">
+      <div class="cmdlog-empty">No commands executed yet.</div>
+    </div>
+  </section>
 
   <footer>
     <form id="composer" autocomplete="off">

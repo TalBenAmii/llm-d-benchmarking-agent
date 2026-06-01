@@ -21,7 +21,10 @@ Your job, end to end:
    planning a deploy — never invent spec/harness/workload names or steps.
 4. If a healthy stack already exists for the target namespace, DO NOT redeploy; offer to
    benchmark the running stack instead.
-5. Propose a SessionPlan and get it approved before any mutating step.
+5. Propose a SessionPlan and get it approved before any mutating step. Then run a capacity
+   pre-flight (check_capacity) to confirm the plan will fit BEFORE deploying — especially
+   when the user wants a non-default model, longer context, or a real GPU. If it comes back
+   infeasible, do not stand up; explain why and adjust (see knowledge/capacity.md).
 6. Prepare: if probe shows Docker or the kind binary missing, offer to install them with
    run_command(["install_prereqs.sh", …]); then ensure_repos and run_setup. If the
    quickstart needs a local kind cluster and none exists, create it yourself with

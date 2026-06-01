@@ -63,15 +63,28 @@ Drive the `llm-d-benchmark` quickstart (local kind cluster, CPU-only sim) end-to
 probe → ensure repo → `install.sh --uv` → `standup --spec cicd/kind` → `smoketest` →
 `run -l inference-perf -w sanity_random.yaml` → parse report → summarize → offer teardown.
 
-**Status:** the full vertical is built and `pytest tests/` passes (100 tests). A real LLM
-session needs an API key in `.env` (only the fake-provider loop is exercised in tests).
-GPU/`llm-d/guides/*` deploys are deferred. The agent owns host bootstrap: it installs the
-prerequisites `install.sh` does NOT (the Docker daemon + the kind binary) via the vetted
-`scripts/install_prereqs.sh`, creates/deletes the kind cluster (`kind create/delete
-cluster`), and runs any allowlisted command through the generic `run_command` tool — all
-approval-gated, and all widened purely via `security/allowlist.yaml` (no per-command
-Python). The 12 agent tools live in `app/tools/`; the loop is `app/agent/loop.py`; the
-policy is `security/allowlist.yaml`. See `plan.md` → "Implementation status" for the record.
+**Status:** the full vertical is built and `pytest tests/` passes. A real LLM session needs
+an API key in `.env` (only the fake-provider loop is exercised in tests). The agent owns
+host bootstrap: it installs the prerequisites `install.sh` does NOT (the Docker daemon + the
+kind binary) via the vetted `scripts/install_prereqs.sh`, creates/deletes the kind cluster
+(`kind create/delete cluster`), and runs any allowlisted command through the generic
+`run_command` tool — all approval-gated, and all widened purely via
+`security/allowlist.yaml` (no per-command Python). The agent tools live in `app/tools/`; the
+loop is `app/agent/loop.py`; the policy is `security/allowlist.yaml`.
+
+## Beyond the MVP — current feature set
+The project has grown well past the quickstart MVP (see `ROADMAP.md` / `PROGRESS.md` for the
+phased build-out). It now also includes: a **Kubernetes-native benchmark orchestrator**
+(`app/orchestrator/` — Job lifecycle, fault classification, retry/dead-letter, parallel
+sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
+comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
+**Prometheus/Grafana observability**, and a **hardened image + one-command Helm/Kustomize
+deploy** (`Dockerfile`, `deploy/`) with least-privilege RBAC. The agent exposes **18 tools**.
+All of this obeys the same thin-code/thick-agent + determinism-gate rules above.
+
+**Documentation:** the technical documentation suite lives under `docs/` — `ARCHITECTURE.md`,
+`API.md` (HTTP/WS + tool reference), `DEPLOYMENT.md`, `USER_GUIDE.md`, and `VALIDATION.md`
+(the flow-validation harness). See `plan.md` → "Implementation status" for the MVP record.
 
 ## Run locally
 ```bash
