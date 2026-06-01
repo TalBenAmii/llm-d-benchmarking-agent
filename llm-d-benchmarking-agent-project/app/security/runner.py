@@ -128,7 +128,22 @@ class CommandRunner:
                 raise RunnerError(f"project script {runner['script']!r} escapes the project root")
             if not script.exists():
                 raise RunnerError(f"project script {script} not found")
-            real = [str(script), *rest]
+            # Optional: run the project script through a specific repo venv's Python (e.g.
+            # the benchmark repo's venv, which is the only interpreter carrying the `planner`
+            # package the capacity pre-flight imports). Still a vetted, project-shipped script
+            # — the interpreter only changes which dependencies are importable, not the
+            # command surface (the allowlist already pins the script + its single argument).
+            python_via = runner.get("python_via")
+            if python_via:
+                py = self._resolve_repo_ref(python_via) / "bin" / "python"
+                if not py.exists():
+                    raise RunnerError(
+                        f"{py} not found — the benchmark venv is not set up yet "
+                        f"(run install.sh first)"
+                    )
+                real = [str(py), str(script), *rest]
+            else:
+                real = [str(script), *rest]
         else:
             which = shutil.which(exe)
             if which is None:
