@@ -5,9 +5,14 @@ from pathlib import Path
 
 import pytest
 
+from app.config import get_settings
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
-BENCH_REPO = PROJECT_ROOT.parent / "llm-d-benchmark"
+# Resolve the read-only sibling repo via the app's own settings so the suite works
+# from any checkout/worktree: honors REPOS_DIR/.env, else falls back to the sibling
+# of this project (the layout in the primary checkout). Keeps tests location-portable.
+BENCH_REPO = get_settings().bench_repo
 BR_DIR = BENCH_REPO / "llmdbenchmark" / "analysis" / "benchmark_report"
 BR_SCHEMA = BR_DIR / "br_v0_2_json_schema.json"
 BR_EXAMPLE = BR_DIR / "br_v0_2_example.yaml"
