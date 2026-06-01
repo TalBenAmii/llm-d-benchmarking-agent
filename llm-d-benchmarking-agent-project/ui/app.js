@@ -20,6 +20,9 @@ const historyList = document.getElementById("history-list");
 const historyRefresh = document.getElementById("history-refresh");
 const trendMetric = document.getElementById("trend-metric");
 const trendView = document.getElementById("trend-view");
+const workingEl = document.getElementById("working");
+const workWordEl = workingEl.querySelector(".working-word");
+const workStatsEl = workingEl.querySelector(".working-stats");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -67,6 +70,9 @@ let switching = false;        // true while intentionally closing to switch chat
 
 const toolEls = {}; // id -> details element
 
+// "working" indicator state (spinning-hexagon status line; see helpers below)
+let workTimer = null, wordTimer = null, workStart = 0, workActivity = null, workWordFixed = false;
+
 // ---- connection ---------------------------------------------------------
 
 function connect(sid) {
@@ -79,6 +85,7 @@ function connect(sid) {
     if (switching) { switching = false; return; }   // a deliberate switch opens its own socket
     setStatus("disconnected — retrying…", "down");
     setEnabled(false);
+    stopWorking();                                   // don't keep spinning while disconnected; "ready".running restarts it
     setTimeout(() => connect(currentSession), 1500); // reconnect resumes the same chat
   };
   ws.onerror = () => setStatus("connection error", "down");
@@ -101,6 +108,7 @@ function resetTranscript() {
   for (const k in toolEls) delete toolEls[k];
   activeConsole = null;
   clearCmdlog();
+  stopWorking();
 }
 
 function clearCmdlog() {
@@ -130,16 +138,20 @@ function handle(msg) {
       if (data.running) addNote("⏳ A benchmark is still running in this chat in the background. Reopen this chat once it finishes to see the results.");
       else if (!data.resumed) addNote("Session ready. What would you like to benchmark?");
       loadSessions();
+      if (data.running) startWorking("Working");   // a turn is in flight — show the live indicator
       break;
     case "history": renderHistory(data.items || [], data.commands || []); break;
-    case "assistant_text": addBubble("assistant", data.text); break;
-    case "tool_call": startTool(data); break;
-    case "command": onCommand(data); break;
+    case "assistant_text":
+      addBubble("assistant", data.text);
+      if (!workingEl.hidden) resumeThinking();      // between steps: back to generic cycling
+      break;
+    case "tool_call": startTool(data); setWorkTool(data.name); break;
+    case "command": onCommand(data); setWorkActivity(data.text || (data.argv || []).join(" ")); break;
     case "output": appendConsole(data.line); break;
-    case "tool_result": finishTool(data); break;
-    case "approval_request": addApprovalCard(data); break;
-    case "error": addBubble("error", data.message); break;
-    case "done": setEnabled(true); activeConsole = null; loadSessions(); loadHistory(); break;
+    case "tool_result": finishTool(data); resumeThinking(); break;
+    case "approval_request": addApprovalCard(data); stopWorking(); break;  // now waiting on the user, not the model
+    case "error": addBubble("error", data.message); stopWorking(); break;
+    case "done": setEnabled(true); activeConsole = null; loadSessions(); loadHistory(); stopWorking(); break;
     case "pong": break;
   }
   scroll();
@@ -560,6 +572,7 @@ function addApprovalCard(data) {
 
   const resolve = (ok) => {
     ws.send(JSON.stringify({ type: "approval", request_id, approved: ok }));
+    startWorking();   // the turn resumes after the user decides (approve or reject), until "done"
     approve.disabled = reject.disabled = true;
     card.appendChild(el("div", "resolved", ok ? "✓ approved" : "✗ rejected"));
   };
@@ -578,6 +591,81 @@ function addDecisionCard(it) {
 
 function scroll() { transcript.scrollTop = transcript.scrollHeight; }
 
+// ---- "working" indicator (spinning hexagon + live status) ----------------
+// Shown while a turn is in flight. The word cycles through generic gerunds while
+// we're waiting on the model, and snaps to a specific verb/activity when a tool
+// or command is running. Elapsed time ticks live.
+const WORK_WORDS = ["Thinking", "Pondering", "Reasoning", "Planning", "Cogitating", "Crunching", "Calibrating", "Synthesizing", "Strategizing", "Working"];
+const TOOL_VERBS = {
+  probe_environment: "Probing environment",
+  list_catalog: "Browsing catalog",
+  read_repo_doc: "Reading docs",
+  fetch_key_docs: "Reading docs",
+  propose_session_plan: "Planning",
+  check_capacity: "Checking capacity",
+  ensure_repos: "Fetching repos",
+  run_setup: "Setting up",
+  write_and_validate_config: "Writing config",
+  execute_llmdbenchmark: "Benchmarking",
+  run_command: "Running command",
+  locate_and_parse_report: "Reading results",
+  compare_reports: "Comparing results",
+  compare_harness_runs: "Comparing harnesses",
+  analyze_results: "Analyzing results",
+  result_history: "Saving to history",
+  orchestrate_benchmark_run: "Orchestrating run",
+  observe_run_metrics: "Observing metrics",
+};
+
+function humanizeTool(name) {
+  return String(name || "Working").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+}
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return s + "s";
+  return Math.floor(s / 60) + "m " + (s % 60) + "s";
+}
+function renderWorkStats() {
+  workStatsEl.textContent = "(" + fmtElapsed(Date.now() - workStart) + (workActivity ? " · " + workActivity : "") + ")";
+}
+function cycleWord() {
+  if (workWordFixed) return;
+  workWordEl.textContent = WORK_WORDS[Math.floor(Math.random() * WORK_WORDS.length)];
+}
+function startWorking(initialWord) {
+  workStart = Date.now();
+  workActivity = null;
+  workWordFixed = false;
+  workWordEl.textContent = initialWord || WORK_WORDS[0];
+  renderWorkStats();
+  workingEl.hidden = false;
+  clearInterval(workTimer); clearInterval(wordTimer);
+  workTimer = setInterval(renderWorkStats, 250);
+  wordTimer = setInterval(cycleWord, 2200);
+}
+function stopWorking() {
+  clearInterval(workTimer); clearInterval(wordTimer);
+  workTimer = wordTimer = null;
+  workingEl.hidden = true;
+  workActivity = null; workWordFixed = false;
+}
+function setWorkTool(name) {       // a tool started — snap to its verb
+  workWordFixed = true;
+  workWordEl.textContent = TOOL_VERBS[name] || humanizeTool(name);
+  workActivity = null;
+  renderWorkStats();
+}
+function setWorkActivity(text) {   // a command started — show it after the "·"
+  workActivity = text ? String(text).slice(0, 52) : null;
+  renderWorkStats();
+}
+function resumeThinking() {        // back between steps — resume generic cycling
+  workWordFixed = false;
+  workActivity = null;
+  cycleWord();
+  renderWorkStats();
+}
+
 // ---- input --------------------------------------------------------------
 
 form.addEventListener("submit", (e) => {
@@ -589,6 +677,7 @@ form.addEventListener("submit", (e) => {
   input.value = "";
   input.style.height = "auto";
   setEnabled(false);
+  startWorking();
   scroll();
 });
 

@@ -412,3 +412,35 @@ main::-webkit-scrollbar-thumb, pre::-webkit-scrollbar-thumb, #input::-webkit-scr
 main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input::-webkit-scrollbar-thumb:hover { background: var(--accent); background-clip: padding-box; }
 /* Firefox: thin themed scrollbar for the composer (it ignores ::-webkit-scrollbar). */
 #input { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+
+/* ── "Working" indicator (spinning llm-d hexagon + live status) ───────────
+   Pinned just above the composer while a turn is in flight. The hexagon mesh
+   spins and the three sub-hexes pulse on a staggered cadence; a gerund word
+   and the elapsed time / current activity sit alongside it. */
+.working {
+  display: flex; align-items: center; gap: 9px;
+  max-width: 900px; margin: 0 auto 10px;
+  font-size: 13px; color: var(--accent);
+}
+.working[hidden] { display: none; }
+.working-logo svg { width: 19px; height: 20px; overflow: visible; display: block; }
+.working-logo path { stroke: var(--accent); }
+.working-hex {
+  transform-box: fill-box; transform-origin: center;
+  animation: hexspin 2.4s linear infinite;
+}
+.working-logo .hx1 { animation: hexpulse 1.5s ease-in-out infinite; animation-delay: 0s; }
+.working-logo .hx2 { animation: hexpulse 1.5s ease-in-out infinite; animation-delay: .25s; }
+.working-logo .hx3 { animation: hexpulse 1.5s ease-in-out infinite; animation-delay: .5s; }
+@keyframes hexspin { to { transform: rotate(360deg); } }
+@keyframes hexpulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+.working-word { font-weight: 600; font-family: var(--serif); }
+.working-dots { color: var(--accent); }
+.working-stats { color: var(--muted); font: 12px var(--mono); }
+
+@media (prefers-reduced-motion: reduce) {
+  .working-hex,
+  .working-logo .hx1,
+  .working-logo .hx2,
+  .working-logo .hx3 { animation: none !important; }
+}

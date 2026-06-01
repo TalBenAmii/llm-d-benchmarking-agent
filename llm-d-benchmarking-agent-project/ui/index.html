@@ -89,6 +89,19 @@
   </section>
 
   <footer>
+    <div id="working" class="working" role="status" aria-live="polite" hidden>
+      <span class="working-logo" aria-hidden="true">
+        <svg viewBox="0 0 30 32" width="19" height="20" focusable="false">
+          <g class="working-hex" fill="none" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
+            <path class="hx1" d="M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z" />
+            <path class="hx2" d="M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z" />
+            <path class="hx3" d="M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z" />
+          </g>
+        </svg>
+      </span>
+      <span class="working-word">Thinking</span><span class="working-dots">…</span>
+      <span class="working-stats"></span>
+    </div>
     <form id="composer" autocomplete="off">
       <textarea id="input" rows="1" placeholder="e.g. Benchmark a small chat model on my laptop" disabled></textarea>
       <button id="send" type="submit" disabled>Send</button>
