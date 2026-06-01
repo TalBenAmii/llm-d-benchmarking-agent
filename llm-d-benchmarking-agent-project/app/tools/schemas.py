@@ -147,6 +147,28 @@ class AnalyzeResultsInput(BaseModel):
     )
 
 
+class CheckCapacityInput(BaseModel):
+    spec: str = Field(
+        ...,
+        description="A spec name from the live catalog, e.g. 'cicd/kind' or 'examples/gpu'. "
+                    "The pre-flight reads its scenario (model/accelerator/parallelism) from the repo.",
+    )
+    overrides: dict[str, Any] | None = Field(
+        default=None,
+        description="Conversation-derived deviations from the spec's defaults. Allowed keys: "
+                    "model, huggingface_id, max_model_len, gpu_memory_utilization, gpu_memory_gb, "
+                    "accelerator_count, tensor_parallelism, data_parallelism, decode_replicas, "
+                    "prefill_replicas. E.g. {'model':'meta-llama/Llama-3.1-8B','max_model_len':8192,"
+                    "'gpu_memory_gb':80}. Use these to reflect what the user actually asked for.",
+    )
+    enforce: bool = Field(
+        default=False,
+        description="When True, shortfalls are tagged ERROR (deployment-halting) rather than "
+                    "advisory WARNING — the strict read a real standup uses when "
+                    "ignoreFailedValidation is off.",
+    )
+
+
 class CompareReportsInput(BaseModel):
     sources: list[str] | None = Field(
         default=None,

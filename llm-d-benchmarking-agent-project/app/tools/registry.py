@@ -12,10 +12,22 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
-from app.tools import analyze, command, compare, config_artifact, execute, orchestrate, plan, probe, repos
+from app.tools import (
+    analyze,
+    capacity,
+    command,
+    compare,
+    config_artifact,
+    execute,
+    orchestrate,
+    plan,
+    probe,
+    repos,
+)
 from app.tools.context import ToolContext
 from app.tools.schemas import (
     AnalyzeResultsInput,
+    CheckCapacityInput,
     CompareReportsInput,
     EnsureReposInput,
     ExecuteInput,
@@ -76,6 +88,17 @@ _DESCRIPTIONS = {
         "flags, steps) for the user to APPROVE before any deployment. Enum fields are "
         "checked against the live catalog. You MUST get a plan approved before any "
         "mutating step (ensure_repos/run_setup/standup/run/teardown)."
+    ),
+    "check_capacity": (
+        "Capacity PRE-FLIGHT: will this deployment fit? Runs the benchmark repo's OWN "
+        "capacity planner over the spec's rendered config (model weights + activation + KV "
+        "cache vs GPU memory, valid tensor-parallelism, max-context limits) and returns a "
+        "feasible/infeasible verdict with the planner's diagnostics. Read-only; auto-runs. "
+        "Pass `overrides` to reflect what the user actually asked for (a bigger model, "
+        "longer context, a real GPU). Call this right after propose_session_plan and BEFORE "
+        "standing anything up — it catches OOM / won't-load / can't-serve cases before a "
+        "long standup fails opaquely. Interpret the verdict with knowledge/capacity.md. "
+        "(Needs the benchmark venv: run_setup installs it.)"
     ),
     "ensure_repos": (
         "Clone the llm-d-benchmark and/or llm-d repos if missing (mutating; needs approval). "
@@ -139,6 +162,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("read_repo_doc", _DESCRIPTIONS["read_repo_doc"], ReadRepoDocInput, probe.read_repo_doc),
         ToolSpec("fetch_key_docs", _DESCRIPTIONS["fetch_key_docs"], FetchKeyDocsInput, probe.fetch_key_docs),
         ToolSpec("propose_session_plan", _DESCRIPTIONS["propose_session_plan"], SessionPlan, plan.propose_session_plan),
+        ToolSpec("check_capacity", _DESCRIPTIONS["check_capacity"], CheckCapacityInput, capacity.check_capacity),
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),
         ToolSpec("run_setup", _DESCRIPTIONS["run_setup"], RunSetupInput, repos.run_setup),
         ToolSpec("write_and_validate_config", _DESCRIPTIONS["write_and_validate_config"], WriteConfigInput, config_artifact.write_and_validate_config),
