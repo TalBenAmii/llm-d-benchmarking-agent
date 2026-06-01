@@ -15,6 +15,7 @@ from app.config import Settings
 from app.observability import instrument
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist, Decision
 from app.security.runner import CommandRunner, RunResult
+from app.storage.history import HistoryStore
 from app.tools.catalog import build_catalog, catalog_for_allowlist
 
 
@@ -55,6 +56,16 @@ class ToolContext:
         if self._catalog is None or refresh:
             self._catalog = build_catalog(self.settings.bench_repo)
         return self._catalog
+
+    def history_store(self) -> HistoryStore:
+        """The cross-session historical-result store. Rooted at the SHARED workspace root
+        (the parent of the per-session ``sessions/<id>`` dir) so stored results persist
+        across sessions; for a bare workspace (e.g. tests) it sits beside it. Resolving it
+        from ``self.workspace`` rather than settings keeps it co-located with whatever
+        workspace this context actually uses (and hermetic in tests)."""
+        ws = self.workspace
+        root = ws.parent.parent if ws.parent.name == "sessions" else ws.parent
+        return HistoryStore(root)
 
     def catalog_for_allowlist(self) -> dict[str, list[str]]:
         return catalog_for_allowlist(self.catalog())

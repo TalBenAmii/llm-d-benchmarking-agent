@@ -15,7 +15,7 @@ def test_tool_definitions_complete():
         "propose_session_plan", "check_capacity", "ensure_repos", "run_setup",
         "write_and_validate_config", "execute_llmdbenchmark", "run_command",
         "locate_and_parse_report", "compare_reports", "analyze_results",
-        "orchestrate_benchmark_run", "observe_run_metrics",
+        "orchestrate_benchmark_run", "observe_run_metrics", "result_history",
     }
     assert names == expected
     for d in defs:

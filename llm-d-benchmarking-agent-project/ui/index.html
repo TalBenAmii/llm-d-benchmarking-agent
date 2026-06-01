@@ -34,6 +34,23 @@
     </div>
     <div class="sidebar-label">Recent</div>
     <nav id="conv-list" class="conv-list" aria-label="Recent conversations"></nav>
+
+    <section id="history" class="history" aria-label="Stored benchmark results">
+      <div class="sidebar-label history-head">
+        <span>Results</span>
+        <button id="history-refresh" class="icon-btn icon-btn-sm" type="button" title="Refresh stored results" aria-label="Refresh stored results">⟳</button>
+      </div>
+      <div class="history-controls">
+        <label class="sr-only" for="trend-metric">Trend metric</label>
+        <select id="trend-metric" class="trend-metric" title="Show the trend of this metric across stored results">
+          <option value="">Trend: pick a metric…</option>
+        </select>
+      </div>
+      <div id="trend-view" class="trend-view" aria-live="polite"></div>
+      <div id="history-list" class="history-list" aria-live="polite">
+        <div class="history-empty">No stored results yet.</div>
+      </div>
+    </section>
   </aside>
   <div class="main-col">
   <header>
