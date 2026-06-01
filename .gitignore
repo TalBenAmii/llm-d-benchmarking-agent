@@ -1,0 +1,3 @@
+# Nested upstream repos — tracked in their own git repos, not this one
+/llm-d/
+/llm-d-benchmark/
