@@ -127,3 +127,32 @@ async def test_tool_default_command_embeds_run_invocation(tmp_path):
     assert cmd == ["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "bench",
                    "-l", "inference-perf", "-w", "sanity_random.yaml"]
     assert manifest["spec"]["backoffLimit"] == 0
+    # No SA configured/passed → the pod uses the namespace default (no serviceAccountName key).
+    assert "serviceAccountName" not in manifest["spec"]["template"]["spec"]
+
+
+async def test_tool_runs_job_under_configured_service_account(tmp_path):
+    """Phase 8: the least-privilege SA the deploy creates flows into the submitted Job, so an
+    in-cluster orchestrated run authenticates as that SA (resolving the Phase-3 RBAC gap)."""
+    import yaml
+
+    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws",
+                        orchestrator_image="ghcr.io/llm-d/bench:0",
+                        orchestrator_service_account="llm-d-benchmarking-agent")
+
+    async def approve(kind, payload):
+        return True
+
+    runner = CaptureRunner(settings.repo_paths)
+    ctx = ToolContext(settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+                      runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
+                      request_approval=approve)
+    frozen = frozen_catalog()
+    ctx._catalog = frozen
+    ctx.catalog = lambda *, refresh=False: frozen
+
+    await dispatch(ctx, "orchestrate_benchmark_run", {
+        "namespace": "bench", "spec": "cicd/kind", "watch": False,
+    })
+    manifest = yaml.safe_load(next((ctx.workspace / "jobs").glob("*.yaml")).read_text())
+    assert manifest["spec"]["template"]["spec"]["serviceAccountName"] == "llm-d-benchmarking-agent"

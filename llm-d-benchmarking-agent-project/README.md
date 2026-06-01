@@ -72,6 +72,31 @@ pip install -e '.[dev]'
 pytest tests/
 ```
 
+## Deploy to Kubernetes (production image + one command)
+
+A hardened container image and a one-command cluster deploy ship in
+[`Dockerfile`](Dockerfile) + [`deploy/`](deploy/). Build the image, then deploy with **either**
+Helm or Kustomize:
+
+```bash
+docker build -t llm-d-benchmarking-agent:0.1.0 .
+
+# Helm:
+helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
+  --namespace llmd-bench --create-namespace \
+  --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
+
+# ...or Kustomize (Helm-free):
+kubectl apply -k deploy/kustomize/base
+```
+
+The deploy runs the agent **non-root** with a read-only root filesystem, sources LLM/HF keys
+from a Kubernetes Secret (never baked into the image), probes `/healthz`, exposes `/metrics`
+for Prometheus, and grants a **namespaced least-privilege Role** so the agent can orchestrate
+benchmark Jobs (the verbs in [`app/orchestrator/kube.py`](app/orchestrator/kube.py) and nothing
+more). Prefer pinning the image by digest in production. See
+[`knowledge/packaging.md`](knowledge/packaging.md) for the full deployment guide.
+
 ## Validate the agent runs the *right commands*
 A **flow-validation harness** proves the agent drives the correct command sequence for
 each end-to-end flow (the kind quickstart, the optimized-baseline guide, teardown,

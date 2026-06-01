@@ -1,0 +1,44 @@
+# Keep the build context lean and secret-free. The image is built from pyproject + app/ +
+# the runtime data dirs only (see Dockerfile); everything below is either a secret, runtime
+# scratch, local tooling, or docs that don't belong in the image.
+
+# Secrets — never copy .env (or any local override) into an image layer.
+.env
+.env.*
+!.env.example
+
+# Runtime scratch (per-session state, generated configs, captured logs, optional repo clones).
+workspace/
+
+# Local virtualenvs / build outputs.
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Python caches.
+__pycache__/
+*.py[cod]
+
+# Tooling / test caches.
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Tests are not needed in the production image.
+tests/
+
+# VCS + editor + OS noise.
+.git/
+.github/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# Docs / planning that don't belong in the image.
+*.md
+!README.md
+plan.md
+docs/

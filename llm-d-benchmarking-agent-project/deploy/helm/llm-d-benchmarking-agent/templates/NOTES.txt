@@ -1,0 +1,28 @@
+The llm-d Benchmarking Assistant ({{ include "agent.fullname" . }}) is deploying.
+
+1. Watch it come up:
+   kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "agent.fullname" . }}
+
+2. Open the chat UI (port-forward):
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "agent.fullname" . }} 8000:{{ .Values.service.port }}
+   # then browse http://127.0.0.1:8000
+
+3. Check health / readiness:
+   kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+{{- if not .Values.secret.existingSecret }}
+{{- if not .Values.secret.anthropicApiKey }}{{- if not .Values.secret.openaiApiKey }}
+
+WARNING: no LLM API key was provided. Set --set secret.anthropicApiKey=... (or
+secret.openaiApiKey=...), or point secret.existingSecret at a Secret you manage. Without a
+key the server still starts (and /healthz reports provider_ready=false), but chat is disabled.
+{{- end }}{{- end }}
+{{- end }}
+
+{{- if .Values.rbac.create }}
+
+The agent has a namespaced least-privilege Role to orchestrate benchmark Jobs in
+{{ .Release.Namespace }} (jobs: create/get/list/watch/patch/delete; pods + pods/log: read).
+To enable in-cluster orchestrated runs, set config.orchestratorImage to an image carrying the
+llmdbenchmark CLI.
+{{- end }}

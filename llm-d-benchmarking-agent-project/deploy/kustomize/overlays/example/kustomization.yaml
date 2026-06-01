@@ -1,0 +1,31 @@
+# Example overlay: deploy the agent into the `llmd-bench` namespace with a pinned image and an
+# LLM API-key Secret generated from a local .env-style file.
+#
+#   kubectl create namespace llmd-bench
+#   # create deploy/kustomize/overlays/example/secret.env with ANTHROPIC_API_KEY=... (gitignored)
+#   kubectl apply -k deploy/kustomize/overlays/example
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: llmd-bench
+
+resources:
+  - ../../base
+
+# Pin the image to a specific tag (prefer a digest in production) for reproducible rollouts.
+images:
+  - name: ghcr.io/llm-d/llm-d-benchmarking-agent
+    newTag: "0.1.0"
+
+# Generate the API-key Secret the Deployment's secretKeyRefs read. secret.env is NOT committed
+# (see .gitignore); copy secret.env.example and fill it in. Keys must match the env refs:
+# ANTHROPIC_API_KEY / OPENAI_API_KEY / HF_TOKEN.
+secretGenerator:
+  - name: llm-d-benchmarking-agent
+    behavior: create
+    envs:
+      - secret.env
+
+# A stable Secret name (no content hash suffix) so the Deployment's secretKeyRef resolves.
+generatorOptions:
+  disableNameSuffixHash: true

@@ -28,7 +28,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["app", "app.llm", "app.agent", "app.tools", "app.security", "app.validation", "app.knowledge", "app.orchestrator", "app.capacity", "app.observability", "app.storage"]
+packages = ["app", "app.llm", "app.agent", "app.tools", "app.security", "app.validation", "app.knowledge", "app.orchestrator", "app.capacity", "app.observability", "app.storage", "app.packaging"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

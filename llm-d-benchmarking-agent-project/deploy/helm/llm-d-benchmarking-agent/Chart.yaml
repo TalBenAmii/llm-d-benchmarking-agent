@@ -1,0 +1,18 @@
+apiVersion: v2
+name: llm-d-benchmarking-agent
+description: >-
+  Local/cluster chat-based assistant that helps non-experts run llm-d-benchmark. Deploys the
+  agent service with a least-privilege ServiceAccount/RBAC so it can orchestrate benchmark
+  Jobs in its namespace.
+type: application
+# Chart version is independent of the app; appVersion tracks the agent (pyproject version).
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - llm-d
+  - benchmark
+  - inference
+  - kubernetes
+home: https://github.com/llm-d/llm-d-benchmark
+sources:
+  - https://github.com/llm-d/llm-d-benchmark
