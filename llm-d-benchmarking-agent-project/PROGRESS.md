@@ -8,6 +8,22 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-01 — Phase 8: Packaging — container image + Helm/Kustomize one-command deploy — DONE
+Branch `feature/roadmap-p8-packaging` → merged into `feature/roadmap` (`--no-ff`, `742e20d`).
+Only conflict was `pyproject.toml`'s `[tool.setuptools] packages` list — resolved by keeping BOTH
+sides' additions (`app.storage` from Phase 5 + `app.packaging`). `app/tools/schemas.py` auto-merged.
+- **Shipped:** hardened non-root, read-only-rootfs, multi-stage `Dockerfile` (+`.dockerignore`,
+  pinned kubectl, no baked-in secrets); a Helm chart (`deploy/helm/llm-d-benchmarking-agent`) and a
+  Kustomize base/overlay (`deploy/kustomize`) that each render Deployment + Service + ServiceAccount
+  + namespaced least-privilege Role/RoleBinding granting EXACTLY the kubectl verbs RealKubeClient
+  uses — resolving the Phase-3 RBAC deferral. `app/packaging` holds the port/path/RBAC contract;
+  judgment lives in `knowledge/packaging.md`. `orchestrate_benchmark_run` now threads
+  `orchestrator_service_account` so submitted Jobs run under the deploy's SA. LLM/HF keys via K8s
+  Secret; `/healthz` probe + `/metrics` scrape annotations.
+- **Tests:** worktree suite **315 passed / 6 skipped / 0 failed** (+`test_packaging.py`, 327 lines;
+  +SA-wiring test in `test_orchestrator_tool.py`). Run with `REPOS_DIR=/home/tal/kind-quickstart-guide`
+  against the worktree venv + .env, 420s timeout — no hang (exit 0). Prior baseline was 297 passed / 6 skipped.
+
 ## 2026-06-01 — Phase 5: Historical result storage + trends UI — DONE
 Branch `feature/roadmap-p5-storage` → merged into `feature/roadmap` (`--no-ff`, `60d356d`).
 Clean merge — no conflicts in the shared registration files (the branch was based on a recent

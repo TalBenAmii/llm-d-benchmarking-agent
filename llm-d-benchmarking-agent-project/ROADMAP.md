@@ -133,9 +133,13 @@ differentiators, then stretch goals and packaging/docs deliverables.
   Grafana dashboard + scrape config under `deploy/observability/`; merged into `feature/roadmap`,
   full suite **269 passed / 6 skipped / 0 failed**.
 
-## Phase 8 — Packaging: container image + Helm/Kustomize single-command deploy — **TODO**
+## Phase 8 — Packaging: container image + Helm/Kustomize single-command deploy — **DONE**
 *Proposal §5.3 deliverable.*
 - Production image for the agent service; Helm chart / Kustomize for one-command K8s deploy.
+- **Result:** hardened non-root Dockerfile + Helm chart and Kustomize base/overlay rendering
+  Deployment/Service/ServiceAccount + namespaced least-privilege Role/RoleBinding (exactly the
+  kubectl verbs RealKubeClient uses), resolving the Phase-3 RBAC deferral; orchestrated Jobs now
+  run under the deploy's SA. Suite 315 passed / 6 skipped / 0 failed.
 
 ## Phase 9 — Documentation suite + upstream-PR readiness — **TODO**
 *Grade dimension 4 · §10.*
