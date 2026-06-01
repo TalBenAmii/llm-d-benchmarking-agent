@@ -155,7 +155,9 @@ then the agent correctly falls back to the local CLI path (`execute_llmdbenchmar
 
 ## Health & observability
 
-- **Probes:** liveness/readiness hit `/healthz`.
+- **Probes:** the `livenessProbe` hits `/healthz` (minimal — process up?); the `readinessProbe`
+  hits `/readyz` (per-component: provider configured, repos present, runner ok, workspace
+  writable — `200` ready / `503` not).
 - **Metrics:** Prometheus scrapes `/metrics` (the agent + orchestrator counters/timers in
   text exposition). The pod is annotated `prometheus.io/scrape` when `metrics.podAnnotations`
   is on. A ready-made scrape config and Grafana dashboard ship under

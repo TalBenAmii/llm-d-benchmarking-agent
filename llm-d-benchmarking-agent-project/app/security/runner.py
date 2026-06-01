@@ -228,6 +228,17 @@ class CommandRunner:
             _kill_process_group(proc)
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(proc.wait(), timeout=5.0)  # brief grace to reap
+        except asyncio.CancelledError:
+            # The awaiting task was cancelled (Phase 16: a cancelled run/turn, or graceful
+            # shutdown). Reap the child's whole process group so cancellation never ORPHANS a
+            # subprocess (e.g. a long standup that double-forks a daemon). The slot the caller
+            # holds around this call is released as cancellation unwinds the `async with`. Then
+            # re-raise so the cancellation propagates to the turn task as normal.
+            log.warning("runner.exec.cancelled", extra={"exe": real_argv[0] if real_argv else ""})
+            _kill_process_group(proc)
+            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
+                await asyncio.shield(asyncio.wait_for(proc.wait(), timeout=5.0))  # reap, best-effort
+            raise
 
         duration = time.monotonic() - start
         return RunResult(

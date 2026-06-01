@@ -15,7 +15,8 @@ The llm-d Benchmarking Assistant ({{ include "agent.fullname" . }}) is deploying
 
 WARNING: no LLM API key was provided. Set --set secret.anthropicApiKey=... (or
 secret.openaiApiKey=...), or point secret.existingSecret at a Secret you manage. Without a
-key the server still starts (and /healthz reports provider_ready=false), but chat is disabled.
+key the server still starts (and /readyz reports the provider component not ready), but chat
+is disabled. (/healthz is liveness-only — it just reports {"ok": true}.)
 {{- end }}{{- end }}
 {{- end }}
 

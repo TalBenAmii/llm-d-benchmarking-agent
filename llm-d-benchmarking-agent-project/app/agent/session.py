@@ -104,12 +104,15 @@ class Session:
 
 class SessionManager:
     def __init__(self, settings: Settings, allowlist: Allowlist, runner: CommandRunner,
-                 run_semaphore=None):
+                 run_semaphore=None, runs=None):
         self._settings = settings
         self._allowlist = allowlist
         self._runner = runner
         # Shared cap on concurrent heavy runs across every session (None = unlimited).
         self._run_semaphore = run_semaphore
+        # Shared in-flight-run registry (Phase 16) so every session's ToolContext can drive the
+        # cancel tool against any still-running background turn. None when lifecycle is unwired.
+        self._runs = runs
         self._sessions: dict[str, Session] = {}
 
     @property
@@ -123,6 +126,8 @@ class SessionManager:
             runner=self._runner,
             workspace=self._root / sid,
             run_semaphore=self._run_semaphore,
+            runs=self._runs,
+            session_id=sid,
         )
 
     def create(self) -> Session:

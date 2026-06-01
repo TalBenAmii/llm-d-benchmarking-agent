@@ -26,6 +26,7 @@ from app.packaging.assets import (
     AGENT_CONTAINER_PORT,
     AGENT_HEALTH_PATH,
     AGENT_METRICS_PATH,
+    AGENT_READY_PATH,
     deploy_dir,
     helm_chart_dir,
     kustomize_base_dir,
@@ -84,6 +85,8 @@ def test_contract_matches_app_defaults():
 
     src = Path(main_mod.__file__).read_text()
     assert f'"{AGENT_HEALTH_PATH}"' in src and f'"{AGENT_METRICS_PATH}"' in src
+    # Phase 16 split readiness onto /readyz (per-component) from /healthz liveness — both served.
+    assert f'"{AGENT_READY_PATH}"' in src
 
 
 def test_contract_rbac_is_the_orchestrators_verbs_and_no_more():
@@ -244,7 +247,8 @@ def test_kustomize_deployment_matches_app_contract():
     port = next(p["containerPort"] for p in c["ports"] if p.get("name") == "http")
     assert port == AGENT_CONTAINER_PORT
     assert c["livenessProbe"]["httpGet"]["path"] == AGENT_HEALTH_PATH
-    assert c["readinessProbe"]["httpGet"]["path"] == AGENT_HEALTH_PATH
+    # Readiness hits the dedicated /readyz (Phase 16), not liveness's /healthz.
+    assert c["readinessProbe"]["httpGet"]["path"] == AGENT_READY_PATH
     # Writable scratch is an emptyDir (root FS is read-only), keyed to WORKSPACE_DIR.
     env = {e["name"]: e for e in c["env"]}
     assert env["WORKSPACE_DIR"]["value"] == "/workspace"

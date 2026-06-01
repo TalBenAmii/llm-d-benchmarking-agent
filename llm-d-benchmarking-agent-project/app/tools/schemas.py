@@ -260,6 +260,17 @@ class CompareReportsInput(BaseModel):
     )
 
 
+class CancelRunInput(BaseModel):
+    session_id: str = Field(
+        ...,
+        description="The chat/session id whose in-flight run to cancel (as shown in "
+                    "/api/sessions or the `ready` event's session_id). Cancelling frees the "
+                    "run's concurrency slot and cleans up its subprocess. You cannot cancel the "
+                    "run you are calling from — cancel a DIFFERENT session's run.",
+        min_length=1,
+    )
+
+
 class CompareHarnessRunsInput(BaseModel):
     sources: list[str] = Field(
         ...,
