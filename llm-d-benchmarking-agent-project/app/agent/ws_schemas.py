@@ -10,6 +10,7 @@ agent judgment, only the shape of the protocol.
 Inbound (client -> server) frames are a tagged union discriminated on ``type``:
   user_message  {type, text}
   approval      {type, request_id, approved}
+  cancel        {type}                       — cancel this chat's in-flight run (Phase 16)
   ping          {type}
 
 Outbound (server -> client) frames are uniformly ``{type, data}`` (see :func:`outbound`);
@@ -24,6 +25,7 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 __all__ = [
     "UserMessageIn",
     "ApprovalIn",
+    "CancelIn",
     "PingIn",
     "InboundMessage",
     "INBOUND_ADAPTER",
@@ -51,6 +53,14 @@ class ApprovalIn(BaseModel):
     approved: bool
 
 
+class CancelIn(BaseModel):
+    """Cancel this chat's in-flight run/turn (Phase 16): the user clicked Stop. Frees the run's
+    concurrency slot and reaps its subprocess. Idempotent — a no-op if nothing is running."""
+    model_config = {"extra": "forbid"}
+
+    type: Literal["cancel"]
+
+
 class PingIn(BaseModel):
     """A keep-alive probe; the server answers with a ``pong`` event."""
     model_config = {"extra": "forbid"}
@@ -62,7 +72,7 @@ class PingIn(BaseModel):
 # error for an unknown/missing tag or a malformed payload. Keeping the discriminator explicit
 # means a new inbound frame is a one-line addition here, not a branch in the handler.
 InboundMessage = Annotated[
-    Union[UserMessageIn, ApprovalIn, PingIn],
+    Union[UserMessageIn, ApprovalIn, CancelIn, PingIn],
     Field(discriminator="type"),
 ]
 

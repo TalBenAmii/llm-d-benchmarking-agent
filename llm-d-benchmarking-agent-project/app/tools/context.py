@@ -70,6 +70,13 @@ class ToolContext:
     # Shared across sessions: caps concurrent heavy (mutating) executions so parallel
     # benchmark runs stay bounded. None = unlimited.
     run_semaphore: asyncio.Semaphore | None = field(default=None, repr=False)
+    # Shared across sessions (Phase 16): the in-flight-run registry the cancel tool reaches to
+    # cancel a still-running background turn (and free its concurrency slot). None in contexts
+    # that have no lifecycle wiring (e.g. unit tests of a single tool). Mechanism only.
+    runs: Any = field(default=None, repr=False)
+    # The id of THIS context's own session, so the cancel tool can refuse to cancel the very
+    # turn it is running inside (that would deadlock: cancel-self then await-self).
+    session_id: str | None = field(default=None, repr=False)
     # Per-session usage-quota counter (Phase 13). MECHANISM only — the CAPS come from the
     # allowlist DATA via the Decision; this just tallies and compares. One per session
     # (a ToolContext is created per session), so per_session counts are naturally scoped.

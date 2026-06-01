@@ -20,7 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # --- the app's network contract (matches app/main.py + app/config.py defaults) ----------
 AGENT_CONTAINER_PORT = 8000          # uvicorn bind port inside the container
-AGENT_HEALTH_PATH = "/healthz"       # liveness/readiness probe target (app/main.py)
+AGENT_HEALTH_PATH = "/healthz"       # LIVENESS probe target (app/main.py) — minimal, deps-free
+AGENT_READY_PATH = "/readyz"         # READINESS probe target (app/main.py, Phase 16) — per-component
 AGENT_METRICS_PATH = "/metrics"      # Prometheus scrape target (app/main.py)
 
 # Distribution / artifact names (kept consistent across the image tag, chart, and SA name).
