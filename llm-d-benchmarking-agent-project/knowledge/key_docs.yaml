@@ -32,3 +32,20 @@ docs:
   - path: llm-d-benchmark/config/specification/guides/optimized-baseline.yaml.j2
     task: optimized_baseline
     why: The benchmark-side spec that targets the optimized-baseline guide stack.
+
+  # Observability / benchmark metrics collection. Read these before enabling --monitoring
+  # so the producer activation is grounded in the real procedure (ROADMAP_V4 Phase 27).
+  # The agent already parses results.observability (Phase 25); these docs are the missing
+  # producer half (what --monitoring/metricsScrapeEnabled actually turn on and need).
+  - path: llm-d-benchmark/docs/observability.md
+    task: observability
+    why: >
+      The CLI monitoring flags (--monitoring/--no-monitoring), what PodMonitor/ServiceMonitor
+      get created, EPP verbosity, and the Prometheus-operator CRD prerequisite — the authority
+      for when to emit --no-monitoring on Kind / CRD-less clusters.
+  - path: llm-d-benchmark/docs/metrics_collection.md
+    task: observability
+    why: >
+      The metrics-collection configuration (metricsScrapeEnabled /
+      LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED, DCGM/cAdvisor/EPP sources) and the
+      report-integration mapping into results.observability that report.py consumes.
