@@ -352,3 +352,24 @@ Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is nev
   (63 files) (+`tests/test_resource_management.py`, 347 lines / +37 tests; hermetic — baseline manifest
   unchanged when unset, GPU/node-selector/toleration/affinity/anti-affinity rendering, and
   type-validation rejection). Prior baseline 519 passed / 7 skipped (Phase 21).
+
+## Phase 22 — DOE checkpoint/resume for long sweeps — DONE
+- Added cluster-backed checkpoint/resume to `run_sweep` (proposal §3.3/§4 — the biggest 40%-grade
+  omission). A new `app/orchestrator/checkpoint.py` (`SweepCheckpoint`/`CheckpointStore`) persists each
+  treatment's completed/in-flight state + terminal outcome to a per-sweep **ConfigMap** (the cluster
+  source of truth, consistent with the stateless design — no local file), read/written over the same
+  allowlisted `kubectl` surface (`cm/configmaps` added to the read-only enum; `kube.list_configmaps`).
+  When `run_sweep` is given a `sweep_id` (+`namespace`) it loads the checkpoint, **skips** every
+  treatment already recorded COMPLETED (its prior outcome reconstructed into the merged result so the
+  result still covers all N), marks each remaining treatment in-flight before it runs and completed
+  after — so re-invoking with the same `sweep_id` resumes idempotently from where an interrupted sweep
+  stopped. `reconstruct_sweep(sweep_id)` rebuilds progress purely from the ConfigMap. Reconciles cleanly
+  on top of the Phase 21 streaming run loop (per-treatment `on_log_line` tagging preserved). Omitting
+  `sweep_id` ⇒ the original stateless (no-checkpoint) behavior, byte-for-byte. WHICH/WHEN to checkpoint
+  is documented as guidance in `knowledge/orchestrator.md` (thin code / thick agent).
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — P22 branched from the v3 HEAD that
+  already included P21/P23/P25, no conflicts); full suite **568 passed / 7 skipped / 0 failed**
+  (17.6s, no hang, exit 0), ruff clean, mypy clean (64 files) (+`tests/test_orchestrator_checkpoint.py`,
+  264 lines / +12 tests; hermetic — fake kube ConfigMap store, asserts skip-completed, in-flight
+  persistence, idempotent resume, all-N merged result, and no-`sweep_id` stateless path). Prior baseline
+  556 passed / 7 skipped (Phase 23).

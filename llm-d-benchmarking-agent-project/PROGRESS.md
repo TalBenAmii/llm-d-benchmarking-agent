@@ -8,6 +8,26 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-02 — Phase 22: DOE checkpoint/resume for long sweeps — DONE
+Branch `feature/roadmap-v3-p22-checkpoint` → merged into `feature/roadmap-v3` (`--no-ff`, clean `ort`;
+P22 branched from the v3 HEAD already carrying P21/P23/P25, so no conflicts).
+- **Shipped:** cluster-backed checkpoint/resume for `run_sweep` (proposal §3.3/§4 — the biggest
+  40%-grade omission). New `app/orchestrator/checkpoint.py` (`SweepCheckpoint`/`CheckpointStore`, 205
+  lines) persists each treatment's completed/in-flight state + terminal outcome to a per-sweep
+  **ConfigMap** (cluster source of truth — no local file), over the same allowlisted `kubectl` surface
+  (`cm/configmaps` added to the read-only enum; new `kube.list_configmaps`). Given a `sweep_id`
+  (+`namespace`), `run_sweep` loads the checkpoint, SKIPS every treatment already COMPLETED (prior
+  outcome reconstructed so the merged result still covers all N), and marks each remaining treatment
+  in-flight→completed — so re-invoking with the same `sweep_id` resumes idempotently from where an
+  interrupted sweep stopped. `reconstruct_sweep(sweep_id)` rebuilds progress purely from the ConfigMap.
+  Reconciled on top of the Phase 21 streaming run loop (per-treatment `on_log_line` tagging preserved);
+  no `sweep_id` ⇒ original stateless behavior, byte-for-byte. WHICH/WHEN to checkpoint is guidance in
+  `knowledge/orchestrator.md` (thin code / thick agent).
+- **Tests:** full integration suite **568 passed / 7 skipped / 0 failed** (17.6s, no hang, exit 0;
+  +`tests/test_orchestrator_checkpoint.py`, 264 lines / +12 tests — hermetic fake-kube ConfigMap store).
+  Prior baseline 556 passed / 7 skipped (Phase 23). Ruff clean, mypy clean (64 source files).
+  Authoritative run from the integration worktree against the worktree app + shared venv, 600s timeout.
+
 ## 2026-06-02 — Phase 19: DOE experiment-file generator + token-characteristics elicitation — DONE
 Branch `feature/roadmap-v3-p19-doe-gen` → merged into `feature/roadmap-v3` (`--no-ff`).
 - **Shipped:** a `generate_doe_experiment` tool (`app/tools/doe.py`, 213 lines) over pure mechanism
