@@ -17,7 +17,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from app.config import Settings
 from app.security.allowlist import Allowlist
@@ -30,7 +30,7 @@ _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _TITLE_MAX = 60
 
 
-def _is_valid_id(sid: str | None) -> bool:
+def _is_valid_id(sid: str | None) -> TypeGuard[str]:
     return isinstance(sid, str) and bool(_ID_RE.match(sid))
 
 
@@ -104,12 +104,15 @@ class Session:
 
 class SessionManager:
     def __init__(self, settings: Settings, allowlist: Allowlist, runner: CommandRunner,
-                 run_semaphore=None):
+                 run_semaphore=None, runs=None):
         self._settings = settings
         self._allowlist = allowlist
         self._runner = runner
         # Shared cap on concurrent heavy runs across every session (None = unlimited).
         self._run_semaphore = run_semaphore
+        # Shared in-flight-run registry (Phase 16) so every session's ToolContext can drive the
+        # cancel tool against any still-running background turn. None when lifecycle is unwired.
+        self._runs = runs
         self._sessions: dict[str, Session] = {}
 
     @property
@@ -123,6 +126,8 @@ class SessionManager:
             runner=self._runner,
             workspace=self._root / sid,
             run_semaphore=self._run_semaphore,
+            runs=self._runs,
+            session_id=sid,
         )
 
     def create(self) -> Session:
@@ -133,6 +138,11 @@ class SessionManager:
 
     def get(self, sid: str | None) -> Session | None:
         return self._sessions.get(sid) if sid else None
+
+    def active_ids(self) -> set[str]:
+        """Ids of sessions currently held in memory (loaded/live). Retention GC treats these
+        as active and never prunes their on-disk scratch (Phase 18 active-run safety)."""
+        return set(self._sessions)
 
     def load(self, sid: str | None) -> Session | None:
         """Reconstruct a session from its on-disk snapshot, or None if absent."""

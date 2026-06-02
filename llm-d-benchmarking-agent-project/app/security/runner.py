@@ -9,15 +9,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import shutil
 import signal
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Awaitable, Callable
 
 from app.config import PROJECT_ROOT
+
+# Records emitted here automatically carry the turn's corr_id/session_id/tool via the
+# logging ContextFilter installed at startup — no need to thread anything through (Phase 11).
+log = logging.getLogger("app.security.runner")
 
 # Environment keys allowed through to child processes. Notably EXCLUDES
 # ANTHROPIC_API_KEY / OPENAI_API_KEY and anything else secret.
@@ -55,7 +60,7 @@ def _is_within(child: Path, parent: Path) -> bool:
         return False
 
 
-def _kill_process_group(proc: "asyncio.subprocess.Process") -> None:
+def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
     """SIGKILL the child's whole process group (it is its own session leader — see
     ``start_new_session`` below) so a command that double-forks a daemon doesn't leave a
     grandchild running. Falls back to killing just the child."""
@@ -181,6 +186,7 @@ class CommandRunner:
         deadline = timeout if timeout is not None else self._default_timeout
 
         start = time.monotonic()
+        log.info("runner.exec.start", extra={"exe": real_argv[0] if real_argv else "", "cwd": cwd})
         try:
             proc = await asyncio.create_subprocess_exec(
                 *real_argv,
@@ -191,6 +197,7 @@ class CommandRunner:
                 start_new_session=True,  # own process group → we can reap grandchildren on timeout
             )
         except FileNotFoundError as exc:
+            log.error("runner.exec.launch_failed", extra={"exe": real_argv[0] if real_argv else ""})
             raise RunnerError(f"failed to launch {real_argv[0]!r}: {exc}") from exc
 
         captured: list[str] = []
@@ -214,11 +221,24 @@ class CommandRunner:
             # double-forks a daemon) must not hang here forever: that would pin a concurrency
             # slot (the caller may hold a run-cap semaphore around this call) indefinitely.
             await asyncio.wait_for(asyncio.gather(_pump(), proc.wait()), timeout=deadline)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             timed_out = True
+            log.warning("runner.exec.timeout", extra={
+                "exe": real_argv[0] if real_argv else "", "deadline_s": deadline})
             _kill_process_group(proc)
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(proc.wait(), timeout=5.0)  # brief grace to reap
+        except asyncio.CancelledError:
+            # The awaiting task was cancelled (Phase 16: a cancelled run/turn, or graceful
+            # shutdown). Reap the child's whole process group so cancellation never ORPHANS a
+            # subprocess (e.g. a long standup that double-forks a daemon). The slot the caller
+            # holds around this call is released as cancellation unwinds the `async with`. Then
+            # re-raise so the cancellation propagates to the turn task as normal.
+            log.warning("runner.exec.cancelled", extra={"exe": real_argv[0] if real_argv else ""})
+            _kill_process_group(proc)
+            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
+                await asyncio.shield(asyncio.wait_for(proc.wait(), timeout=5.0))  # reap, best-effort
+            raise
 
         duration = time.monotonic() - start
         return RunResult(

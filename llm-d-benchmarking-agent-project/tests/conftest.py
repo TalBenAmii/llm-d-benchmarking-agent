@@ -1,6 +1,7 @@
 """Shared pytest fixtures."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,12 @@ from app.config import get_settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+# Hermetic baseline: neutralize the developer's .env SIMULATE toggle before the first settings
+# read. A dev .env with SIMULATE=1 otherwise makes approval-dependent tests deadlock — simulate
+# mode skips the per-command approval those tests wait for. Env vars take precedence over the
+# .env file in pydantic-settings; clearing the lru_cache covers any earlier read.
+os.environ["SIMULATE"] = "0"
+get_settings.cache_clear()
 # Resolve the read-only sibling repo via the app's own settings so the suite works
 # from any checkout/worktree: honors REPOS_DIR/.env, else falls back to the sibling
 # of this project (the layout in the primary checkout). Keeps tests location-portable.

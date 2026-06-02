@@ -8,6 +8,117 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-02 — Phase 16: Run lifecycle & readiness — DONE
+Branch `feature/roadmap-v2-p16-run-lifecycle` → merged into `feature/roadmap-v2` (`--no-ff`).
+- **Shipped:** `app/agent/lifecycle.py` (a `RunRegistry` tracking each session's in-flight turn
+  task) + a `cancel_run` tool (`app/tools/cancel.py`) that cancels a DIFFERENT session's run from
+  outside itself — `asyncio` unwinds the concurrency-cap semaphore (freeing the slot) and the
+  runner reaps the child process group on `CancelledError` (no orphaned K8s Job / subprocess). The
+  `lifespan` installs a SIGTERM graceful-shutdown cancelling every in-flight run, composed into one
+  coherent startup/shutdown with Phase 18's self-check + retention GC. A `cancelled` event + cancel
+  control message + a `runner_ok` component on `/readyz` round out the surface; `knowledge/run_lifecycle.md`
+  carries the JUDGMENT of *when* to cancel (thick agent / thin code).
+- **Merge note:** the v2 hot files (`app/main.py` lifespan, `session.py`, `ws_schemas.py`,
+  `runner.py`, `retention.py`, `registry.py`/`schemas.py`) auto-merged cleanly under `ort`; verified
+  the result is a deliberate union (lifespan runs BOTH Phase 16 shutdown AND Phase 18 GC; `cancel_run`
+  registered alongside all prior tools) rather than a blind concatenation. No conflict markers.
+- **Tests:** worktree full suite **415 passed / 6 skipped / 0 failed** (15.6s, no hang;
+  +`tests/test_run_lifecycle.py`, 384 lines; prior baseline 404 passed / 6 skipped).
+
+## 2026-06-02 — Phase 18: Workspace lifecycle — retention/GC + startup self-check — DONE
+Branch `feature/roadmap-v2-p18-workspace` → merged into `feature/roadmap-v2` (`--no-ff`).
+- **Shipped:** `app/storage/retention.py` (446 lines) — a config-driven retention/GC mechanism
+  over the workspace scratch areas (sessions, history, orchestrator `workspace/jobs/*.yaml`), with
+  the policy as DATA in `config.py` (`retention_max_age_days` / `retention_max_items` /
+  `retention_max_bytes`, all unlimited by default) and the walk/counter as the mechanism. The
+  FastAPI `lifespan` runs a one-shot GC at startup (toggle `retention_gc_on_startup`, defaults ON,
+  never blocks startup) that is fed `_active_session_ids(app)` so a live/running session is never
+  pruned. Also added a structured startup `self_check(settings)` (workspace writable, provider
+  coherent, repos resolvable, auth coherent) surfaced through a new `/readyz` readiness probe
+  (200 ready / 503 not, with the structured reasons); liveness stays on `/healthz`.
+- **Merge composition:** the structural-wiring file `app/main.py` was reconciled into ONE coherent
+  `lifespan` running BOTH the prior wiring (logging/auth/rate-limit/allowlist/runner/sessions/
+  provider) and the new self-check + GC; `session.py` gained `active_ids()`; `config.py` got the
+  Phase 18 settings. No entries dropped. Other files were clean additions.
+- **Tests:** full integration suite **404 passed / 6 skipped / 0 failed** (+`tests/test_retention.py`
+  + `tests/test_readyz.py`, 20 new hermetic tests; prior baseline 384 passed / 6 skipped).
+  Authoritative run from the integration worktree (worktree app on `PYTHONPATH`, real venv + .env,
+  `REPOS_DIR` set, 600s timeout — exit 0, no hang).
+
+## 2026-06-02 — Phase 15: WebSocket protocol hardening + live event buffer — DONE
+Branch `feature/roadmap-v2-p15-ws-protocol` → merged into `feature/roadmap-v2` (`--no-ff`). The
+phase branched off the current tip, so the merge applied with no code conflicts.
+- **Shipped:** the `/ws` boundary now validates every *inbound* frame against an explicit Pydantic
+  tagged union (`app/agent/ws_schemas.py` — `user_message`/`approval`/`ping`, `extra="forbid"`);
+  a malformed/non-dict frame is rejected with a structured `error` event of `kind="protocol_error"`
+  and the socket is KEPT ALIVE (no silent no-op / handler crash). The `Channel` gained a BOUNDED
+  per-turn live ring buffer (`deque(maxlen=...)`): each emitted turn event is fanned out to the live
+  socket AND appended, so a client reconnecting mid-turn replays the missed live stream and then
+  continues live. Connection-lifecycle frames (`ready`/`history`/`pong`) are excluded from the
+  buffer so a second reconnect doesn't replay stale handshake frames. Outbound serialization unified
+  through `outbound()`; `ping` is answered with a `pong` event.
+- **Tests:** full integration suite **384 passed / 6 skipped / 0 failed** (+`tests/test_ws.py`,
+  280 lines; prior baseline 378 passed / 6 skipped). Authoritative run from the integration worktree
+  with `PYTHONPATH=$PWD`, `REPOS_DIR` set, `timeout 600` — no hang (12s, exit 0).
+
+## 2026-06-02 — Phase 13: Allowlist governance — per-command timeouts + quotas — DONE
+Branch `feature/roadmap-v2-p13-allowlist-gov` → merged into `feature/roadmap-v2` (`--no-ff`). The
+phase branched off the Phase-11 tip; its files (`allowlist.py`, `quota.py`, `context.py`,
+`execute.py`, `loop.py`, `allowlist.yaml`) are disjoint from Phase 12's (`auth.py`, `main.py`,
+`config.py`), so the merge applied with no code conflicts.
+- **Shipped:** execution limits moved out of Python into `security/allowlist.yaml` as data —
+  optional `timeout_s` and `quota {per_session, per_day}` on an executable and/or subcommand
+  (subcommand overrides executable). `allowlist.py` schema-validates both AT STARTUP (malformed
+  allowlist → clear load-time error) and rides the resolved limits on the `Decision`. The runner
+  sources its per-command deadline from `Decision.timeout_s`, REMOVING the parallel
+  `execute.py::_TIMEOUTS` table (one mechanism, not two; a sane global default remains). New
+  `app/security/quota.py` is a pure per-session/per-day usage counter; `ToolContext` refuses an
+  over-quota command with a structured `QuotaError` BEFORE execution/approval and the loop relays
+  it. Judgment in `knowledge/governance.md`.
+- **Tests:** full integration suite **378 passed / 6 skipped / 0 failed** (+27 hermetic governance
+  tests; prior baseline 351 passed / 6 skipped). Authoritative run from the integration worktree
+  with `PYTHONPATH=$PWD`, `REPOS_DIR` set, `timeout 600` — no hang (12s, exit 0).
+
+## 2026-06-02 — Phase 12: API trust — auth + rate-limit + CORS — DONE
+Branch `feature/roadmap-v2-p12-authz` → merged into `feature/roadmap-v2` (`--no-ff`). The phase
+branched cleanly off the current v2 tip (single commit), so the merge applied with no conflicts in
+the additive-registration or structural-wiring files (`app/main.py`, `app/config.py` took the
+phase changes outright over an unchanged base).
+- **Shipped:** stdlib-only API-trust controls (NO new dependency), all defaulting OFF/open so
+  existing flows and tests are unchanged — `app/security/auth.py`: optional Bearer auth
+  (constant-time `secrets.compare_digest`, app-level dependency over a typed `HTTPConnection` that
+  guards every HTTP route, with the `/ws` handshake guarded in-handler via `Authorization` header
+  or `?token=` → 401 / WS close 1008) and a `TokenBucket`/`RateLimiter` with an injectable
+  monotonic clock (deterministic, sleepless tests) throttling the `/api/*` intake (empty bucket →
+  429; `/healthz` + `/metrics` never throttled). `app/main.py` wires `CORSMiddleware` only when
+  `CORS_ALLOW_ORIGINS` is set and the lifespan builds the shared limiter, failing loud if
+  `AUTH_ENABLED` is set with an empty `AUTH_TOKEN`. `app/config.py` adds the settings +
+  `cors_origins_list`; `.env.example` documents them. Judgment in `knowledge/api_trust.md`.
+- **Tests:** full integration suite **351 passed / 6 skipped / 0 failed** (+12 hermetic api-trust
+  tests; prior baseline 339 passed / 6 skipped). Authoritative run from the integration worktree
+  with `PYTHONPATH=$PWD`, `REPOS_DIR` set, `timeout 600` — no hang.
+
+## 2026-06-02 — Phase 11: Structured logging + correlation IDs — DONE
+Branch `feature/roadmap-v2-p11-logging` → merged into `feature/roadmap-v2` (`--no-ff`). The phase
+branched cleanly off the current v2 tip (single commit), so the merge applied with no conflicts in
+the additive-registration or structural-wiring files.
+- **Shipped:** stdlib-only structured logging — `app/observability/logging.py` (JSON formatter, one
+  JSON object per line; a `logging.Filter` that injects the per-turn correlation context) +
+  `app/observability/logctx.py` (contextvars carrier for `corr_id`/`session_id`/`run_id`/`tool`). A
+  fresh `corr_id` is minted at the WebSocket handshake (one per connection/turn) and bound before
+  `create_task`, so it propagates via `contextvars` into the agent loop (`turn.start/end`,
+  `tool.call.start/result`), every tool dispatch (`tool=<name>`), and the command runner
+  (`command.exec`, `runner.exec.start/timeout/launch_failed`). Trace one turn end-to-end by grepping
+  its `corr_id`; one chat by `session_id`. `LOG_LEVEL` (default INFO) + `LOG_FORMAT` (json default /
+  text dev) added to `config`; `setup_logging()` wired once in the lifespan. Secrets never logged —
+  the exec record carries `exe` (argv[0]) only, never full argv/env. No new runtime dependency;
+  judgment in `knowledge/logging.md`.
+- **Tests:** worktree suite **339 passed / 6 skipped / 0 failed** (+7 hermetic tests in
+  `test_logging.py`: JSON formatter keys + valid JSON, one `corr_id` bound at the WS boundary appears
+  on records from the loop + a tool + the runner within one turn via a real read-only `git status -s`,
+  the text path, idempotent setup). Run with `REPOS_DIR=/home/tal/kind-quickstart-guide` against the
+  worktree venv + .env, 600s timeout — no hang (exit 0). Prior baseline 332 passed / 6 skipped.
+
 ## 2026-06-01 — Phase 9: Documentation suite + upstream-PR readiness — DONE
 Branch `feature/roadmap-p9-docs` → merged into `feature/roadmap` (`--no-ff`). Docs-only phase: no
 conflicts in the shared registration files (no code touched), so the merge applied clean.
@@ -217,3 +328,25 @@ Branch `feature/roadmap-p1-transparency` → merged into `feature/roadmap`.
   checkout is `test_snapshot_matches_live` (catalog-drift guard) which deliberately skips when the
   bench repo isn't at the canonical sibling path — expected, benign.
 - Next: Phase 1 (command transparency, debug mode, UI/slider polish).
+
+## Phase 17 — Operability docs + alert rules — DONE
+Branch `feature/roadmap-v2-p17-ops-docs` → merged into `feature/roadmap-v2` (`--no-ff`).
+- Added `docs/SECURITY.md`, `docs/TROUBLESHOOTING.md`, `docs/CONTRIBUTING.md`, `docs/CHANGELOG.md`
+  (linked from `docs/README.md`) and `deploy/observability/alerts.rules.yaml` (5 alert rules over
+  the already-exported metrics). Docs + data only — no app behavior change.
+- New hermetic `tests/test_ops_docs.py` checks the docs/sections exist, the alert YAML is valid
+  Prometheus, and every metric the rules reference is actually exported (derived live from
+  `app.observability.instrument`, so it can't drift); an optional `promtool` lint skips when the
+  binary is absent.
+- **Tests:** full suite **424 passed / 7 skipped / 0 failed** (prior baseline 415 passed / 6 skipped).
+
+
+## Phase 14 — Quality gates: ruff + mypy + coverage — DONE
+Branch `feature/roadmap-v2-p14-quality-gates` → merged into `feature/roadmap-v2` (`--no-ff`).
+- Added three enforced quality gates: `ruff check` (lint), `mypy app` (strict typecheck), and a
+  coverage-gated suite (`--cov=app --cov-fail-under=85`), surfaced via `Makefile` targets,
+  `pyproject.toml` config, and a new GitHub Actions workflow. Cleaned up types/lint across
+  tools/validation/observability/security/storage to make the gates green (no behavior change);
+  `tests/test_quality_gates.py` locks the config + thresholds + CI wiring so they can't silently drift.
+- **Gates:** ruff clean; mypy clean (61 files); coverage **88.90%** (gate 85%).
+- **Tests:** full suite **432 passed / 7 skipped / 0 failed** (prior baseline 424 passed / 7 skipped).

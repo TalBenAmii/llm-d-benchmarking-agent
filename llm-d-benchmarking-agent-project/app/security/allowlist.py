@@ -40,6 +40,18 @@ class Decision:
     mode: str = MUTATING  # conservative default
     reason: str = ""
     argv: list[str] = field(default_factory=list)
+    # --- governance, sourced PURELY from security/allowlist.yaml (Phase 13) ---
+    # The per-command execution deadline (seconds) declared in the policy data, or None
+    # when the command carries no `timeout_s` (the runner then applies its global default).
+    # This is the ONE place timeouts come from — there is no Python per-command table.
+    timeout_s: int | None = None
+    # The usage-quota CAPS (data) for this command, or None when uncapped. The mechanism
+    # (a per-session / per-day counter) lives in ToolContext; only the LIMIT is here.
+    # ``quota_key`` is the stable identity a counter increments against (the
+    # executable[+subcommand]); the caps are the integer ceilings from the YAML.
+    quota_key: str | None = None
+    quota_per_session: int | None = None
+    quota_per_day: int | None = None
 
     @property
     def requires_approval(self) -> bool:
@@ -54,6 +66,60 @@ class AllowlistError(RuntimeError):
     pass
 
 
+# ----------------------------------------------------------------------------
+# Governance fields (Phase 13): per-command timeouts + usage quotas live in the
+# YAML as DATA. The two helpers below are the only things that read those fields —
+# one validates their SHAPE at load, the other extracts them for a Decision. No
+# per-command knowledge: both operate uniformly over whatever the policy declares.
+# ----------------------------------------------------------------------------
+_QUOTA_KEYS = ("per_session", "per_day")
+
+
+def _check_positive_int(value: Any, where: str) -> None:
+    # bool is an int subclass — reject it explicitly so `timeout_s: true` can't slip through.
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise AllowlistError(f"{where} must be a positive integer, got {value!r}")
+
+
+def _validate_one_governance_block(block: dict[str, Any], where: str) -> None:
+    """Validate the optional ``timeout_s`` / ``quota`` fields on a single executable or
+    subcommand entry. Raises :class:`AllowlistError` on any malformed value."""
+    if "timeout_s" in block:
+        _check_positive_int(block["timeout_s"], f"{where}.timeout_s")
+    if "quota" in block:
+        quota = block["quota"]
+        if not isinstance(quota, dict):
+            raise AllowlistError(f"{where}.quota must be a mapping, got {type(quota).__name__}")
+        unknown = set(quota) - set(_QUOTA_KEYS)
+        if unknown:
+            raise AllowlistError(
+                f"{where}.quota has unknown key(s) {sorted(unknown)}; allowed: {list(_QUOTA_KEYS)}"
+            )
+        if not quota:
+            raise AllowlistError(f"{where}.quota must declare at least one of {list(_QUOTA_KEYS)}")
+        for k in _QUOTA_KEYS:
+            if k in quota:
+                _check_positive_int(quota[k], f"{where}.quota.{k}")
+
+
+def _validate_governance_schema(executables: dict[str, Any]) -> None:
+    """Walk every executable + subcommand and schema-validate their governance fields."""
+    if not isinstance(executables, dict):
+        raise AllowlistError("executables must be a mapping")
+    for exe, entry in executables.items():
+        if not isinstance(entry, dict):
+            raise AllowlistError(f"executable {exe!r} must be a mapping")
+        _validate_one_governance_block(entry, f"executables.{exe}")
+        subs = entry.get("subcommands")
+        if subs is not None:
+            if not isinstance(subs, dict):
+                raise AllowlistError(f"executables.{exe}.subcommands must be a mapping")
+            for sub, sub_entry in subs.items():
+                if not isinstance(sub_entry, dict):
+                    raise AllowlistError(f"executables.{exe}.subcommands.{sub} must be a mapping")
+                _validate_one_governance_block(sub_entry, f"executables.{exe}.subcommands.{sub}")
+
+
 class Allowlist:
     """Loads the policy once and validates argv lists against it."""
 
@@ -61,11 +127,17 @@ class Allowlist:
         self._policy = policy
         self._executables: dict[str, Any] = policy.get("executables", {})
         self._value_constraints: dict[str, Any] = policy.get("value_constraints", {})
+        # Schema-validate the governance fields (timeout_s / quota) AT STARTUP so a
+        # malformed allowlist fails loudly here instead of mis-enforcing at run time.
+        _validate_governance_schema(self._executables)
 
     # ---- construction -----------------------------------------------------
     @classmethod
-    def from_file(cls, path: str | Path) -> "Allowlist":
-        data = yaml.safe_load(Path(path).read_text())
+    def from_file(cls, path: str | Path) -> Allowlist:
+        try:
+            data = yaml.safe_load(Path(path).read_text())
+        except yaml.YAMLError as exc:
+            raise AllowlistError(f"allowlist policy at {path} is not valid YAML: {exc}") from exc
         if not isinstance(data, dict) or "executables" not in data:
             raise AllowlistError(f"malformed allowlist policy at {path}")
         return cls(data)
@@ -108,7 +180,7 @@ class Allowlist:
                     base_mode=entry.get("mode", MUTATING),
                     catalog=catalog,
                 )
-                return Decision(allowed=True, mode=mode, reason="ok", argv=list(argv))
+                return self._allow(argv, mode, exe, entry, None, None)
 
             # Executable with subcommands.
             global_flags = entry.get("global_flags", {})
@@ -119,7 +191,7 @@ class Allowlist:
                 # Allow standalone read-only global flags (e.g. `llmdbenchmark --version`).
                 if self._has_read_only_trigger(rest, global_flags):
                     self._walk(rest, flags=global_flags, positionals=[], base_mode=READ_ONLY, catalog=catalog)
-                    return Decision(allowed=True, mode=READ_ONLY, reason="ok", argv=list(argv))
+                    return self._allow(argv, READ_ONLY, exe, entry, None, None)
                 return _deny(argv, f"no subcommand provided for {exe!r}")
 
             subname = rest[sub_idx]
@@ -144,9 +216,49 @@ class Allowlist:
                 # read_only_triggers from the global region matter too:
                 pre_tokens=pre,
             )
-            return Decision(allowed=True, mode=mode, reason="ok", argv=list(argv))
+            return self._allow(argv, mode, exe, entry, subname, sub)
         except _Reject as exc:
             return _deny(argv, str(exc))
+
+    def _allow(
+        self,
+        argv: list[str],
+        mode: str,
+        exe: str,
+        entry: dict[str, Any],
+        subname: str | None,
+        sub: dict[str, Any] | None,
+    ) -> Decision:
+        """Build an allowed Decision and attach the governance limits (timeout + quota)
+        that the policy DATA declares for this command. A subcommand's own field overrides
+        the executable's; absence means 'no limit declared' (None). No per-command Python
+        knowledge — the values are read straight out of the matched YAML entries."""
+        timeout_s = None
+        per_session = per_day = None
+        # Subcommand-level fields take precedence over the executable-level ones.
+        for block in (entry, sub):
+            if not block:
+                continue
+            if block.get("timeout_s") is not None:
+                timeout_s = block["timeout_s"]
+            quota = block.get("quota")
+            if isinstance(quota, dict):
+                if quota.get("per_session") is not None:
+                    per_session = quota["per_session"]
+                if quota.get("per_day") is not None:
+                    per_day = quota["per_day"]
+        quota_key = f"{exe}:{subname}" if subname else exe
+        has_quota = per_session is not None or per_day is not None
+        return Decision(
+            allowed=True,
+            mode=mode,
+            reason="ok",
+            argv=list(argv),
+            timeout_s=timeout_s,
+            quota_key=quota_key if has_quota else None,
+            quota_per_session=per_session,
+            quota_per_day=per_day,
+        )
 
     # ---- internals --------------------------------------------------------
     def _find_subcommand_index(self, tokens: list[str], global_flags: dict) -> int | None:

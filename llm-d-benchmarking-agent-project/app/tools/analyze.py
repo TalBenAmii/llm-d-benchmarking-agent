@@ -38,7 +38,12 @@ def _resolve(
     resolved: list[tuple[str, Path | None]] = []
     for i, src in enumerate(sources or []):
         p = Path(src)
-        report = p if p.is_file() else (find_reports([p], newest_only=True) or [None])[0]
+        report: Path | None
+        if p.is_file():
+            report = p
+        else:
+            found = find_reports([p], newest_only=True)
+            report = found[0] if found else None
         label = (labels[i] if labels and i < len(labels) else None) or (
             report.parent.name if report else src
         )

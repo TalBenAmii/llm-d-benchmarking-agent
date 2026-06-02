@@ -11,13 +11,16 @@ eviction / unschedulable) and retry/dead-letter build on this in later sub-phase
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Awaitable, Callable
 
 import yaml
 
+from app.observability import instrument
+from app.orchestrator.faults import EVICTED, TIMEOUT, UNKNOWN, Failure, classify_failure
 from app.orchestrator.job import (
     ABSENT,
     FAILED,
@@ -29,9 +32,7 @@ from app.orchestrator.job import (
     classify_job_status,
     job_name,
 )
-from app.orchestrator.faults import EVICTED, TIMEOUT, UNKNOWN, Failure, classify_failure
 from app.orchestrator.kube import KubeClient
-from app.observability import instrument
 
 OnStatus = Callable[[JobStatus], Awaitable[None]]
 
@@ -47,10 +48,8 @@ _MIN_POLL_INTERVAL = 0.05
 
 def _safe_metric(fn, *args, **kwargs) -> None:
     """Record a metric without ever letting observability disrupt the Job lifecycle."""
-    try:
+    with contextlib.suppress(Exception):  # metrics must never disrupt the lifecycle
         fn(*args, **kwargs)
-    except Exception:  # noqa: BLE001
-        pass
 
 
 @dataclass

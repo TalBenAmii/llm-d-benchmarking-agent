@@ -21,7 +21,7 @@ patches that to a flow-declared set so probe behaviour is identical on every mac
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -293,10 +293,10 @@ def argv_matches(expected: list[str], actual: list[str]) -> bool:
     (used for the run command's dynamic ``-r <results_dir>`` path)."""
     if len(expected) != len(actual):
         return False
-    return all(e == "*" or e == a for e, a in zip(expected, actual))
+    return all(e == "*" or e == a for e, a in zip(expected, actual, strict=True))
 
 
-def diff_significant(run: FlowRun, expected: list["ExpectedCommand"]) -> list[str]:
+def diff_significant(run: FlowRun, expected: list[ExpectedCommand]) -> list[str]:
     """Return human-readable mismatches between a flow's significant captured commands
     and its expected (ordered) command list. Empty == match."""
     actual = run.significant
@@ -308,7 +308,7 @@ def diff_significant(run: FlowRun, expected: list["ExpectedCommand"]) -> list[st
             f"  actual:   {[c.argv for c in actual]}"
         )
         return problems
-    for i, (exp, got) in enumerate(zip(expected, actual)):
+    for i, (exp, got) in enumerate(zip(expected, actual, strict=True)):
         if not argv_matches(exp.argv, got.argv):
             problems.append(f"command #{i} argv mismatch:\n  expected: {exp.argv}\n  actual:   {got.argv}")
         if exp.mode != got.mode:

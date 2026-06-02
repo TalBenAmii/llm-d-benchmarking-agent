@@ -53,7 +53,7 @@ def main(argv: list[str]) -> int:
         return 2
 
     try:
-        with open(argv[1], "r", encoding="utf-8") as fh:
+        with open(argv[1], encoding="utf-8") as fh:
             request = json.load(fh)
     except (OSError, ValueError) as exc:
         _emit({"ok": False, "error": f"cannot read request file: {exc}"})

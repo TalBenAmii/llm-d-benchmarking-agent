@@ -7,30 +7,67 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
+import logging
+import signal
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.agent import events as ws_events
 from app.agent.channel import Channel
+from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
+from app.agent.ws_schemas import (
+    ApprovalIn,
+    CancelIn,
+    PingIn,
+    UserMessageIn,
+    ValidationError,
+    outbound,
+    parse_inbound,
+)
 from app.config import get_settings
 from app.llm.provider import get_provider
 from app.observability import instrument
+from app.observability.logctx import bind as log_bind
+from app.observability.logctx import new_corr_id
+from app.observability.logging import setup_logging
 from app.observability.metrics import render_prometheus
 from app.security.allowlist import Allowlist
+from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocket_authorized
 from app.security.runner import CommandRunner, SimRunner
 from app.storage.history import HistoryStore, available_metrics, trend
+from app.storage.retention import readiness, run_gc, self_check
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
 _PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
+log = logging.getLogger("app.main")
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    # Initialize structured logging ONCE, before anything downstream logs (Phase 11).
+    setup_logging(level=settings.log_level, log_format=settings.log_format)
+    log.info("startup", extra={"log_format": settings.log_format, "provider": settings.llm_provider})
     app.state.settings = settings
+    # API trust (Phase 12): a misconfigured auth toggle (enabled but no token) would silently
+    # reject every request — fail loudly at startup instead, per the project's fail-loud rule.
+    if settings.auth_enabled and not settings.auth_token:
+        raise RuntimeError("AUTH_ENABLED is set but AUTH_TOKEN is empty — refusing to start")
+    # Build the rate limiter ONCE (shared process-wide bucket) so the per-request dependency
+    # doesn't reconstruct it. Off by default -> a no-op limiter.
+    app.state.rate_limiter = RateLimiter.from_settings(settings)
+    if settings.auth_enabled:
+        log.info("auth.enabled")
+    if settings.rate_limit_enabled:
+        log.info("ratelimit.enabled", extra={"rps": settings.rate_limit_rps, "burst": settings.rate_limit_burst})
     app.state.allowlist = Allowlist.from_file(settings.allowlist_path)
     runner_cls = SimRunner if settings.simulate else CommandRunner
     app.state.runner = runner_cls(settings.repo_paths, extra_env=settings.extra_subprocess_env)
@@ -42,11 +79,16 @@ async def lifespan(app: FastAPI):
     # the turn currently running per session (prevents two connections double-running one chat).
     app.state.background_tasks = set()
     app.state.running = {}
+    # Run lifecycle (Phase 16): the registry of in-flight turn tasks the cancel tool / cancel
+    # control message / graceful-shutdown handler operate on. Cancelling a registered task frees
+    # the concurrency slot it holds and reaps its subprocess (no orphaned Jobs/subprocesses).
+    app.state.runs = RunRegistry()
     # Per-session Channel: routes a running turn's events + approval gates to whatever socket
     # is currently attached, so a turn (incl. one parked at an approval) survives reconnects.
     app.state.channels = {}
     app.state.sessions = SessionManager(
-        settings, app.state.allowlist, app.state.runner, run_semaphore=app.state.run_semaphore
+        settings, app.state.allowlist, app.state.runner,
+        run_semaphore=app.state.run_semaphore, runs=app.state.runs,
     )
     # Build the provider tolerantly: a missing key shouldn't crash the server.
     try:
@@ -55,10 +97,85 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         app.state.provider = None
         app.state.provider_error = str(exc)
-    yield
+    # Workspace lifecycle (Phase 18): run the startup configuration self-check (structured
+    # pass/fail folded into /readyz) and a one-shot retention GC over scratch. Both honor their
+    # toggles + the DATA caps; GC never prunes a session that is currently live/running.
+    app.state.self_check = self_check(settings)
+    if not app.state.self_check.ok:
+        log.warning("selfcheck.failed", extra={"reasons": app.state.self_check.reasons})
+    if settings.retention_gc_on_startup:
+        try:
+            gc = run_gc(settings, active_session_ids=_active_session_ids(app))
+            log.info("retention.gc", extra={
+                "removed": gc.total_removed, "reclaimed_bytes": gc.total_reclaimed_bytes,
+            })
+        except Exception as exc:  # noqa: BLE001 — GC must never block startup
+            log.warning("retention.gc.failed", extra={"error": str(exc)})
+    # Graceful shutdown (Phase 16): on SIGTERM (the orchestrator's stop signal) cancel every
+    # in-flight turn so we don't orphan K8s Jobs / leak subprocesses. We register an asyncio
+    # signal handler that schedules the SAME shutdown coroutine the lifespan teardown runs (and
+    # which a test can call directly — see graceful_shutdown). Best-effort: a loop that doesn't
+    # support add_signal_handler (e.g. on Windows / inside some test harnesses) is tolerated.
+    with contextlib.suppress(NotImplementedError, RuntimeError, ValueError):
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler(
+            signal.SIGTERM, lambda: loop.create_task(graceful_shutdown(app))
+        )
+    try:
+        yield
+    finally:
+        # Lifespan teardown (uvicorn's normal stop path also lands here): cancel any in-flight
+        # turns so nothing is orphaned even when SIGTERM wasn't the trigger.
+        with contextlib.suppress(Exception):
+            await graceful_shutdown(app)
 
 
-app = FastAPI(title="llm-d Benchmarking Assistant", lifespan=lifespan)
+async def graceful_shutdown(app: FastAPI) -> dict[str, Any]:
+    """Cancel all in-flight runs on shutdown (Phase 16). A PLAIN coroutine so a test can invoke
+    it DIRECTLY — no real OS signal required. Cancelling each run frees its concurrency slot and
+    reaps its subprocess, so a SIGTERM stops the server WITHOUT orphaning Jobs/subprocesses.
+    Returns the structured summary from the registry (which sessions were cancelled)."""
+    runs: RunRegistry | None = getattr(app.state, "runs", None)
+    if runs is None:
+        return {"cancelled": [], "count": 0}
+    summary = await runs.shutdown()
+    log.info("shutdown.runs_cancelled", extra={"count": summary["count"]})
+    return summary
+
+
+def _active_session_ids(app: FastAPI) -> set[str]:
+    """Sessions the retention GC must NOT prune: any held in memory by the SessionManager plus
+    any with a turn currently running (background benchmark) — the active-run safety (Phase 18)."""
+    sessions = getattr(app.state, "sessions", None)
+    ids: set[str] = sessions.active_ids() if sessions is not None else set()
+    ids |= set(getattr(app.state, "running", {}) or {})
+    return ids
+
+
+def install_cors(target: FastAPI, origins: list[str]) -> None:
+    """Wire CORS (Phase 12) onto ``target`` — but ONLY when ``origins`` is non-empty, so the
+    default (empty CORS_ALLOW_ORIGINS) keeps today's behavior: no CORS middleware, no CORS
+    headers on responses. Factored out so the wiring can be exercised on a throwaway app in a
+    test without reloading this module (a reload would rebind the shared ``app`` and leak)."""
+    if origins:
+        target.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+
+# Auth (Phase 12) guards EVERY HTTP route via an app-level dependency: a single registration
+# point (thin code) rather than per-route annotations that could be forgotten. It's a no-op
+# when AUTH_ENABLED is False (the default), so the API is open exactly as today.
+app = FastAPI(
+    title="llm-d Benchmarking Assistant",
+    lifespan=lifespan,
+    dependencies=[Depends(check_http_auth)],
+)
+install_cors(app, get_settings().cors_origins_list)
 
 
 @app.get("/")
@@ -68,16 +185,24 @@ async def index() -> FileResponse:
 
 @app.get("/healthz")
 async def healthz() -> JSONResponse:
-    s = get_settings()
-    cat = app.state.sessions.create().ctx.catalog()  # cheap; reflects live repo
-    return JSONResponse({
-        "ok": True,
-        "provider": s.llm_provider,
-        "provider_ready": app.state.provider is not None,
-        "provider_error": app.state.provider_error,
-        "repos_present": cat.get("present"),
-        "specs": cat.get("specs", [])[:5],
-    })
+    """Liveness probe (Phase 16): keep this MINIMAL — it answers only 'is the process up and
+    serving?'. It must NOT depend on the repos, the provider, or any heavy work (a liveness probe
+    that fails on a degraded-but-alive dependency would get the pod needlessly restarted). All
+    per-component readiness (provider/repos/runner/workspace) lives on /readyz."""
+    return JSONResponse({"ok": True})
+
+
+@app.get("/readyz")
+async def readyz() -> JSONResponse:
+    """Readiness probe: reports per-component readiness from the startup configuration self-check
+    — workspace writable, provider configured, repos present, runner ok (the allowlist policy
+    loads), auth coherent (Phase 16 splits this from /healthz liveness and adds the runner_ok
+    component). Returns 200 when ready, 503 when not, with the STRUCTURED self-check reasons so an
+    operator/orchestrator can see *why*. Liveness stays on the minimal /healthz; this is the
+    readiness gate a K8s readinessProbe / load balancer should poll."""
+    contrib = readiness(get_settings())
+    code = status.HTTP_200_OK if contrib.get("ready") else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(contrib, status_code=code)
 
 
 @app.get("/metrics")
@@ -88,21 +213,28 @@ async def metrics() -> PlainTextResponse:
     return PlainTextResponse(render_prometheus(instrument.REGISTRY), media_type=_PROM_CONTENT_TYPE)
 
 
-@app.get("/api/sessions")
+# The /api/* routes are the HTTP message-intake surface the browser drives, so the rate
+# limiter (Phase 12) guards them: an empty bucket -> 429. /healthz + /metrics are deliberately
+# NOT throttled (liveness probes / Prometheus scrapes must never be rate-limited away). The
+# limiter is a no-op when RATE_LIMIT_ENABLED is False (the default).
+@app.get("/api/sessions", dependencies=[Depends(rate_limit)])
 async def list_sessions() -> JSONResponse:
     """Recent chats for the sidebar (summaries only, newest first)."""
     return JSONResponse({"sessions": app.state.sessions.list()})
 
 
-@app.delete("/api/sessions/{sid}")
+@app.delete("/api/sessions/{sid}", dependencies=[Depends(rate_limit)])
 async def delete_session(sid: str) -> JSONResponse:
     if not app.state.sessions.delete(sid):
         raise HTTPException(status_code=404, detail="session not found")
     # Tear down any live turn (e.g. one parked at an approval gate) + its channel so deleting
-    # a session doesn't leak a forever-blocked task.
+    # a session doesn't leak a forever-blocked task. Cancelling via the registry also frees any
+    # concurrency slot the turn holds and reaps its subprocess (Phase 16).
     task = app.state.running.pop(sid, None)
-    if task is not None and not task.done():
-        task.cancel()
+    if task is not None:
+        if not task.done():
+            task.cancel()
+        app.state.runs.forget(sid, task)
     app.state.channels.pop(sid, None)
     return JSONResponse({"deleted": True, "id": sid})
 
@@ -121,7 +253,7 @@ def _history_record_view(rec) -> dict[str, Any]:
     }
 
 
-@app.get("/api/history")
+@app.get("/api/history", dependencies=[Depends(rate_limit)])
 async def list_history(tag: str | None = None, model: str | None = None) -> JSONResponse:
     """Stored historical results for the results-browser (newest first, summaries only)."""
     records = _history_store().list(tag=tag, model=model)
@@ -131,7 +263,7 @@ async def list_history(tag: str | None = None, model: str | None = None) -> JSON
     })
 
 
-@app.get("/api/history/trend")
+@app.get("/api/history/trend", dependencies=[Depends(rate_limit)])
 async def history_trend(metric: str, tag: str | None = None, model: str | None = None) -> JSONResponse:
     """Time-series of one metric across stored results, for the trends view. Facts only —
     the value series + the metric's better-direction; no regression verdict (that's the agent)."""
@@ -171,9 +303,27 @@ def _history_items(session) -> list[dict[str, Any]]:
 app.mount("/static", StaticFiles(directory=str(get_settings().ui_dir)), name="static")
 
 
+def _first_validation_message(exc: ValidationError) -> str:
+    """A short, human-readable reason from a Pydantic validation error for the protocol
+    `error` event — the field path + message of the first error, without leaking internals."""
+    errs = exc.errors()
+    if not errs:
+        return "invalid frame"
+    e = errs[0]
+    loc = ".".join(str(p) for p in e.get("loc", ())) or "frame"
+    return f"{loc}: {e.get('msg', 'invalid')}"
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
+    # Auth (Phase 12): the app-level HTTP dependency does NOT cover WebSockets, so guard the
+    # handshake here. Accept first so the client receives a clean 1008 (policy-violation) close
+    # rather than a bare network drop; closed immediately when the token is missing/bad. No-op
+    # when AUTH_ENABLED is False (the default) -> /ws is open exactly as today.
     await websocket.accept()
+    if not websocket_authorized(websocket, get_settings()):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     # ``/ws?session=<id>`` reattaches to a saved chat (page reload / sidebar click);
     # an unknown or missing id just mints a fresh session.
     requested = websocket.query_params.get("session")
@@ -196,6 +346,10 @@ async def ws(websocket: WebSocket) -> None:
 
     async def run_turn(text: str) -> None:
         busy["value"] = True
+        # Open a fresh live-event buffer for this turn (Phase 15): every event emitted below is
+        # appended to the channel's bounded ring buffer so a client that reconnects mid-turn can
+        # replay what it missed and catch up to the LIVE stream.
+        channel.begin_turn()
         try:
             if loop is None:
                 # No LLM, but still record the turn so the chat persists / resumes.
@@ -205,13 +359,28 @@ async def ws(websocket: WebSocket) -> None:
                 await channel.emit("done", {})
                 return
             await loop.run_turn(session, text, emit=channel.emit, request_approval=channel.request_approval)
+        except asyncio.CancelledError:
+            # The turn was cancelled (Phase 16: cancel tool / control message / graceful
+            # shutdown). The concurrency slot is already released as this unwinds the runner's
+            # `async with run_semaphore`. Announce it (best-effort — a socket may be attached)
+            # and persist so a resumed chat shows the run ended, then re-raise so the task is
+            # marked cancelled and the registry's awaiter returns.
+            with contextlib.suppress(Exception):
+                session.persist()
+                await channel.emit("cancelled", {"message": "run cancelled"})
+                await channel.emit("done", {})
+            raise
         except Exception as exc:  # noqa: BLE001
             await channel.emit("error", {"message": f"agent error: {exc}"})
             await channel.emit("done", {})
         finally:
+            channel.end_turn()
             busy["value"] = False
             if app.state.running.get(session.id) is asyncio.current_task():
                 app.state.running.pop(session.id, None)
+            # Deregister this turn from the lifecycle registry (Phase 16) on normal completion;
+            # forget() is a no-op if a newer turn already replaced this session's handle.
+            app.state.runs.forget(session.id, asyncio.current_task())
             # Forget the channel once its turn ends with nothing attached/pending, so a long-
             # lived server doesn't accumulate one channel per chat ever opened.
             if channel.ws is None and not channel.pending:
@@ -225,26 +394,86 @@ async def ws(websocket: WebSocket) -> None:
     })
     if resumed:
         await channel.emit("history", {"items": _history_items(session), "commands": session.commands})
+    # If a turn is still running on this session (the socket dropped mid-run), replay the
+    # buffered LIVE events for that turn so a reconnecting client catches up to the live stream
+    # — the events it missed, in order — then continues live, rather than waiting blind for the
+    # final result (resolves the Phase-2 deferral). AFTER history so it lands below the replayed
+    # transcript. Guarded by turn_active so we never replay a stale prior turn's tail.
+    if channel.turn_active:
+        await channel.replay_live()
     # Re-surface any still-undecided approval (a gate the turn parked on while you were away),
-    # AFTER history so the live card lands below the replayed transcript.
+    # AFTER the live replay so the live card lands at the bottom.
     if channel.pending:
         await channel.reemit_pending()
     turn_task: asyncio.Task | None = None
 
     try:
         while True:
-            msg = await websocket.receive_json()
-            mtype = msg.get("type")
-            if mtype == "user_message":
+            # Decode the inbound frame ourselves (rather than websocket.receive_json) so we can
+            # guard the JSON-decode layer too: a non-JSON text frame, or a binary frame in a
+            # text protocol, must be rejected with a structured `error` and the socket KEPT
+            # ALIVE — never crash the handler. receive_json() would raise json.JSONDecodeError
+            # (or KeyError on a binary frame) straight out of the loop and tear down the socket.
+            message = await websocket.receive()
+            # A control frame announcing disconnect surfaces here as a websocket.disconnect
+            # message; raise so the outer `except WebSocketDisconnect` handles teardown.
+            if message["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect(message.get("code", 1000), message.get("reason"))
+            text = message.get("text")
+            if text is None:
+                # No text payload (e.g. a binary frame): can't be a protocol frame.
+                await websocket.send_json(outbound(ws_events.ERROR, {
+                    "message": "malformed message: expected a JSON text frame",
+                    "kind": "protocol_error",
+                }))
+                continue
+            try:
+                raw = json.loads(text)
+            except (json.JSONDecodeError, ValueError) as exc:
+                # Non-JSON text frame — the most basic malformed frame. Reject structurally and
+                # keep the connection alive so a hostile/buggy client cannot crash the handler.
+                await websocket.send_json(outbound(ws_events.ERROR, {
+                    "message": "malformed message: invalid JSON: " + str(exc),
+                    "kind": "protocol_error",
+                }))
+                continue
+            # Validate the inbound frame against the WS wire protocol (Phase 15). A malformed
+            # frame (non-dict, unknown/missing type, wrong field shape, extra fields) is
+            # rejected with a structured `error` event and the socket is KEPT ALIVE — a bad or
+            # hostile frame must never crash the handler or silently no-op. The validated,
+            # typed message then drives the handler below.
+            try:
+                msg = parse_inbound(raw)
+            except ValidationError as exc:
+                # Send a structured, client-actionable error; do NOT close the connection.
+                await websocket.send_json(outbound(ws_events.ERROR, {
+                    "message": "malformed message: " + _first_validation_message(exc),
+                    "kind": "protocol_error",
+                }))
+                continue
+            if isinstance(msg, UserMessageIn):
                 existing = app.state.running.get(session.id)
                 if busy["value"] or (existing is not None and not existing.done()):
                     await channel.emit("error", {"message": "still working on the previous request — please wait."})
                     continue
-                turn_task = asyncio.create_task(run_turn(msg.get("text", "")))
+                # Mint a fresh correlation id at the WS boundary (one per connection/turn) and
+                # bind it before creating the turn task: asyncio.create_task snapshots the
+                # current contextvars, so the corr_id + session_id ride into the loop, every
+                # tool dispatch, and the command runner automatically (Phase 11).
+                with log_bind(corr_id=new_corr_id(), session_id=session.id):
+                    turn_task = asyncio.create_task(run_turn(msg.text))
                 app.state.running[session.id] = turn_task
-            elif mtype == "approval":
-                channel.resolve(msg.get("request_id"), bool(msg.get("approved")))
-            elif mtype == "ping":
+                # Register the turn in the lifecycle registry (Phase 16) so it can be cancelled
+                # (freeing its concurrency slot) by the cancel tool / cancel message / shutdown.
+                app.state.runs.register(session.id, turn_task)
+            elif isinstance(msg, ApprovalIn):
+                channel.resolve(msg.request_id, msg.approved)
+            elif isinstance(msg, CancelIn):
+                # Cancel THIS chat's own in-flight run from the client (the user clicked Stop).
+                # Frees the concurrency slot + reaps the subprocess. Idempotent — a no-op if
+                # nothing is running. The turn's own `cancelled`/`done` events announce the stop.
+                await app.state.runs.cancel(session.id)
+            elif isinstance(msg, PingIn):
                 await channel.emit("pong", {})
     except WebSocketDisconnect:
         pass

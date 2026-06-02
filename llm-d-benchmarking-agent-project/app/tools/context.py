@@ -7,16 +7,22 @@ through the allowlist gate (defense in depth — nothing bypasses validation).
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from app.config import Settings
 from app.observability import instrument
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist, Decision
+from app.security.quota import QuotaCounter, QuotaExceeded
 from app.security.runner import CommandRunner, RunResult
 from app.storage.history import HistoryStore
 from app.tools.catalog import build_catalog, catalog_for_allowlist
+
+log = logging.getLogger("app.tools.context")
 
 
 class ToolError(RuntimeError):
@@ -29,6 +35,19 @@ class ApprovalRejected(RuntimeError):
     def __init__(self, argv: list[str]):
         super().__init__("user rejected the command: " + " ".join(argv))
         self.argv = argv
+
+
+class QuotaError(ToolError):
+    """Raised BEFORE execution when a command would exceed its allowlist-declared usage
+    quota (per_session / per_day). It is a ToolError, so the agent loop already relays it
+    as a clean tool error; the carried fields (key/window/cap/used) make it structured."""
+
+    def __init__(self, exc: QuotaExceeded):
+        super().__init__(str(exc))
+        self.key = exc.key
+        self.window = exc.window
+        self.cap = exc.cap
+        self.used = exc.used
 
 
 # Callbacks the agent loop wires in per dispatch.
@@ -53,6 +72,17 @@ class ToolContext:
     # Shared across sessions: caps concurrent heavy (mutating) executions so parallel
     # benchmark runs stay bounded. None = unlimited.
     run_semaphore: asyncio.Semaphore | None = field(default=None, repr=False)
+    # Shared across sessions (Phase 16): the in-flight-run registry the cancel tool reaches to
+    # cancel a still-running background turn (and free its concurrency slot). None in contexts
+    # that have no lifecycle wiring (e.g. unit tests of a single tool). Mechanism only.
+    runs: Any = field(default=None, repr=False)
+    # The id of THIS context's own session, so the cancel tool can refuse to cancel the very
+    # turn it is running inside (that would deadlock: cancel-self then await-self).
+    session_id: str | None = field(default=None, repr=False)
+    # Per-session usage-quota counter (Phase 13). MECHANISM only — the CAPS come from the
+    # allowlist DATA via the Decision; this just tallies and compares. One per session
+    # (a ToolContext is created per session), so per_session counts are naturally scoped.
+    quota: QuotaCounter = field(default_factory=QuotaCounter, repr=False)
     _catalog: dict[str, Any] | None = field(default=None, repr=False)
 
     def catalog(self, *, refresh: bool = False) -> dict[str, Any]:
@@ -91,30 +121,73 @@ class ToolContext:
             })
 
     def _record_metric(self, decision: Decision, *, auto_run: bool, result: RunResult) -> None:
-        """File the executed-command fact into the metrics registry. Best-effort: observability
-        must never break command execution, so any error here is swallowed. ``exe`` is argv[0]
-        only (bounded cardinality — never the full argv, which would explode the label space)."""
-        try:
+        """File the executed-command fact into the metrics registry AND the structured log.
+        Best-effort: observability must never break command execution, so any error here is
+        swallowed. ``exe`` is argv[0] only (bounded cardinality — never the full argv, which
+        would explode the metric label space and bloat the log line). The log line carries
+        mode + exe + duration + exit code (per Phase 11) and — via the contextvars filter —
+        the turn's corr_id/session_id/tool automatically."""
+        exe = decision.argv[0] if decision.argv else ""
+        with contextlib.suppress(Exception):  # metrics must not affect the run
             instrument.record_command(
-                exe=decision.argv[0] if decision.argv else "",
+                exe=exe,
                 mode=decision.mode,
                 auto_run=auto_run,
                 duration_s=result.duration_s,
             )
-        except Exception:  # noqa: BLE001 — metrics must not affect the run
-            pass
+        with contextlib.suppress(Exception):  # logging must not affect the run
+            log.info("command.exec", extra={
+                "exe": exe,
+                "mode": decision.mode,
+                "auto_run": auto_run,
+                "duration_s": result.duration_s,
+                "exit_code": result.exit_code,
+                "timed_out": result.timed_out,
+            })
 
-    async def run_readonly(self, argv: list[str], *, timeout: float = 20.0) -> RunResult:
+    def _enforce_quota(self, decision: Decision) -> None:
+        """Refuse, BEFORE execution, if this command would exceed its allowlist-declared
+        usage quota. The caps are DATA (on the Decision, sourced from the YAML); the
+        counting is mechanism (the per-session QuotaCounter). No per-command Python."""
+        if decision.quota_key is None:
+            return  # no quota declared in the policy for this command
+        try:
+            self.quota.check(
+                decision.quota_key,
+                per_session=decision.quota_per_session,
+                per_day=decision.quota_per_day,
+            )
+        except QuotaExceeded as exc:
+            raise QuotaError(exc) from exc
+
+    @staticmethod
+    def _effective_timeout(decision: Decision, fallback: float | None) -> float | None:
+        """The deadline for this command. The policy's ``timeout_s`` (DATA) wins when the
+        command declares one; otherwise the caller's ``fallback`` applies (e.g. a probe's
+        short 20s bound, or the per-subcommand budget the run tools pass). When neither is
+        set, return None so the runner applies its own sane global default."""
+        if decision.timeout_s is not None:
+            return float(decision.timeout_s)
+        return fallback
+
+    async def run_readonly(self, argv: list[str], *, timeout: float | None = 20.0) -> RunResult:
         """Validate + run a command that MUST be read-only. Raises if the allowlist
-        would not classify it read-only (these are trusted probes, but we still gate)."""
+        would not classify it read-only (these are trusted probes, but we still gate).
+        The policy's ``timeout_s`` (if declared) supersedes ``timeout``; probes default to
+        a short 20s bound when the policy declares none."""
         decision = self.allowlist.validate(argv, catalog=self.catalog_for_allowlist())
         if not decision.allowed:
             raise ToolError(f"probe command denied by allowlist: {decision.reason}")
         if decision.mode != READ_ONLY:
             raise ToolError(f"probe command is not read-only: {' '.join(argv)}")
+        self._enforce_quota(decision)  # pre-exec refusal (data-driven cap, counter mechanism)
         entry = self.allowlist.executable(argv[0])
         await self._emit_command(decision, auto_run=True)
-        result = await self.runner.execute(argv, entry, timeout=timeout)
+        result = await self.runner.execute(
+            argv, entry, timeout=self._effective_timeout(decision, timeout)
+        )
+        if decision.quota_key is not None:
+            self.quota.record(decision.quota_key)
         self._record_metric(decision, auto_run=True, result=result)
         return result
 
@@ -132,6 +205,9 @@ class ToolContext:
         decision = self.allowlist.validate(argv, catalog=self.catalog_for_allowlist())
         if not decision.allowed:
             raise ToolError(f"command denied by allowlist: {decision.reason}")
+        # Quota refusal happens BEFORE the approval prompt and before any execution, so an
+        # over-quota command never even asks the user. Cap = DATA; counter = mechanism.
+        self._enforce_quota(decision)
         # In simulate mode mutating commands auto-run as harmless no-ops, so the flow
         # proceeds without a per-command Approve/Reject prompt (which would stall the walk).
         if decision.requires_approval and not self.settings.simulate:
@@ -146,11 +222,15 @@ class ToolContext:
         await self._emit_command(decision, auto_run=not decision.requires_approval)
         on_line = self._emit_line if (stream and self.emit is not None) else None
         auto_run = not decision.requires_approval
+        deadline = self._effective_timeout(decision, timeout)
         # Bound concurrent heavy runs across sessions (read-only commands run uncapped).
         if self.run_semaphore is not None and decision.mode == MUTATING:
             async with self.run_semaphore:
-                result = await self.runner.execute(argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)
+                result = await self.runner.execute(argv, entry, on_line=on_line, timeout=deadline, cwd=cwd)
         else:
-            result = await self.runner.execute(argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)
+            result = await self.runner.execute(argv, entry, on_line=on_line, timeout=deadline, cwd=cwd)
+        # Tally the use only after it actually ran (an approved, executed command).
+        if decision.quota_key is not None:
+            self.quota.record(decision.quota_key)
         self._record_metric(decision, auto_run=auto_run, result=result)
         return result

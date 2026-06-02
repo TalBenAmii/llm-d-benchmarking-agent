@@ -37,7 +37,7 @@ def _parse_top_table(text: str) -> list[dict[str, str]]:
         if len(cells) != len(keys):
             # A column may be empty/missing on a partial line; skip rather than misalign.
             continue
-        rows.append(dict(zip(keys, cells)))
+        rows.append(dict(zip(keys, cells, strict=True)))
     return rows
 
 

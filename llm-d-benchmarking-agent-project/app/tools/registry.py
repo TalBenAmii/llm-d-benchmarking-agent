@@ -7,13 +7,15 @@ definitions (name/description/JSON-Schema) are exported for the LLM providers.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
 from app.tools import (
     analyze,
+    cancel,
     capacity,
     command,
     compare,
@@ -30,6 +32,7 @@ from app.tools import (
 from app.tools.context import ToolContext
 from app.tools.schemas import (
     AnalyzeResultsInput,
+    CancelRunInput,
     CheckCapacityInput,
     CompareHarnessRunsInput,
     CompareReportsInput,
@@ -195,6 +198,16 @@ _DESCRIPTIONS = {
         "answer 'has performance regressed over time?'. The tool returns facts (values + "
         "direction); call read_knowledge('history') to interpret trends and give the verdict."
     ),
+    "cancel_run": (
+        "Cancel a still-running background run/turn in ANOTHER chat by its session id (from "
+        "/api/sessions or a `ready` event). Use this to free a concurrency slot held by an "
+        "abandoned or clearly-stuck run so a new run can start, or when the user changed their "
+        "mind about a run they navigated away from. Cancelling frees the run's concurrency-cap "
+        "slot AND cleans up its subprocess (no orphaned process / leaked Job). Auto-runs (it "
+        "STOPS work; it starts no mutation). Idempotent — a session with no live run reports "
+        "cancelled=false. You cannot cancel the run you are calling from. Judgment on WHEN to "
+        "cancel is in knowledge/run_lifecycle.md."
+    ),
     "orchestrate_benchmark_run": (
         "Run a benchmark as a Kubernetes Job the orchestrator manages end-to-end: submit "
         "(approval-gated `kubectl apply`), watch to completion, stream logs, and on failure "
@@ -230,6 +243,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("result_history", _DESCRIPTIONS["result_history"], ResultHistoryInput, history.result_history),
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
         ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
+        ToolSpec("cancel_run", _DESCRIPTIONS["cancel_run"], CancelRunInput, cancel.cancel_run),
     ]
     return {s.name: s for s in specs}
 

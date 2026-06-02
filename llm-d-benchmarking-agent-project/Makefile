@@ -2,7 +2,12 @@
 # (so CI, which builds a fresh interpreter, works without changes).
 PY := $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)
 
-.PHONY: help install test validate validate-pytest validate-live snapshot-catalog flows
+# Coverage gate (Phase 14): set a few points BELOW the measured baseline (~89%).
+# Tune here, not in tool config, so it can move with the suite without churn.
+COV_FAIL_UNDER := 85
+
+.PHONY: help install test validate validate-pytest validate-live snapshot-catalog flows \
+        lint typecheck coverage quality
 
 help:
 	@echo "make validate         # prove the agent runs the right commands per flow (deterministic, hermetic)"
@@ -10,6 +15,10 @@ help:
 	@echo "make validate-pytest  # the same checks as gating pytest (tests/flows)"
 	@echo "make flows            # list the known flows"
 	@echo "make test             # full test suite"
+	@echo "make lint             # ruff static checks (no reformatting)"
+	@echo "make typecheck        # mypy type check of app/"
+	@echo "make coverage         # full suite under coverage, gated at $(COV_FAIL_UNDER)%"
+	@echo "make quality          # lint + typecheck + coverage (the CI quality gate)"
 	@echo "make install          # editable install with dev extras"
 	@echo "make snapshot-catalog # regenerate the frozen catalog snapshot from the live repo"
 
@@ -18,6 +27,19 @@ install:
 
 test:
 	$(PY) -m pytest tests/ -v
+
+# --- Quality gates (Phase 14): ruff + mypy + coverage -------------------------
+lint:
+	$(PY) -m ruff check .
+
+typecheck:
+	$(PY) -m mypy app
+
+coverage:
+	$(PY) -m pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER)
+
+# Everything the CI quality-gates job enforces, in one local command.
+quality: lint typecheck coverage
 
 # --- the headline: "validate that the agent runs the right commands" ---------
 validate:

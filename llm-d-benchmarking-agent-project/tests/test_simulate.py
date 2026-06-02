@@ -17,7 +17,6 @@ from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner, SimRunner
 from app.tools.context import ApprovalRejected, ToolContext
 from app.tools.probe import locate_and_parse_report
-
 from tests.flows.catalog_snapshot import frozen_catalog
 
 

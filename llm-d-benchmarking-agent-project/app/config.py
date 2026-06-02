@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +57,40 @@ class Settings(BaseSettings):
     # Simulate (dry run): drive the whole workflow but execute nothing — every command
     # is a no-op returning synthetic success and per-command approvals are skipped.
     simulate: bool = False
+    # ---- API trust (Phase 12): optional auth + rate-limit + CORS ----------
+    # ALL THREE default OFF/open, so local use is unchanged and existing flows/tests pass.
+    # Turn them on only when exposing the API beyond localhost. Pure mechanism here; the
+    # operator's judgment about *when* to enable lives in knowledge/api_trust.md.
+    #
+    # Optional Bearer-token auth. When enabled, every HTTP route and the /ws endpoint require
+    # ``Authorization: Bearer <AUTH_TOKEN>`` (constant-time compared); missing/bad token -> 401.
+    # AUTH_TOKEN is a secret (backend-only, like the LLM keys) — never sent to the browser.
+    auth_enabled: bool = False
+    auth_token: str = ""
+
+    # In-memory token-bucket rate limiter on the HTTP message-intake surface. RPS is the
+    # steady-state refill rate (tokens/second); BURST is the bucket capacity (max instantaneous
+    # tokens). Empty bucket -> 429. Off by default; per-process, not distributed.
+    rate_limit_enabled: bool = False
+    rate_limit_rps: float = 5.0
+    rate_limit_burst: int = 10
+
+    # CORS allowed origins for the browser fetch surface. Empty (default) = today's behavior
+    # (no CORS middleware installed, so the response carries no CORS headers). Set a
+    # comma-separated origin list (e.g. ``https://app.example.com``) to allow those origins.
+    cors_allow_origins: str = ""
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Parse CORS_ALLOW_ORIGINS (comma-separated) into a clean origin list. Empty when
+        unset — the signal to NOT install the CORS middleware at all (today's default)."""
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
+    # Structured logging (Phase 11). LOG_LEVEL is a stdlib level name (DEBUG/INFO/WARNING/...).
+    # LOG_FORMAT is "json" (one JSON object per line — the default, for log aggregation) or
+    # "text" (a compact human line, for local dev). Set via LOG_LEVEL / LOG_FORMAT in the env.
+    log_level: str = "INFO"
+    log_format: str = "json"
 
     # Max concurrent *heavy* (mutating) command executions across ALL sessions — bounds
     # how many benchmark runs proceed in parallel so they don't thrash the host. Read-only
@@ -73,6 +107,32 @@ class Settings(BaseSettings):
     # Kustomize base create; an empty value (local dev) leaves the pod on the namespace default
     # SA. Set via ORCHESTRATOR_SERVICE_ACCOUNT in the backend env / the deploy manifest.
     orchestrator_service_account: str = ""
+
+    # ---- Workspace lifecycle (Phase 18): retention/GC caps + startup self-check ----------
+    # Bound the unbounded growth of per-session/run scratch and the history store. These are
+    # DATA (the caps); the GC walk + counter in app/storage/retention.py is the MECHANISM —
+    # no decision logic in Python. Each cap is applied INDEPENDENTLY to each managed area
+    # (sessions/, runs/, history/), removing the OLDEST items first (by mtime) until the area
+    # is within the cap. An ACTIVE/running session is NEVER pruned regardless of caps.
+    #
+    # 0 (or unset/None) means UNLIMITED for that dimension — so the DEFAULTS BELOW DO NOT
+    # SURPRISE EXISTING USERS: max-age and max-bytes default to unlimited (no time-based or
+    # size-based deletion out of the box). Only a generous per-area item count is enforced by
+    # default, purely to stop truly unbounded file-count growth on a long-lived server.
+    # Tighten any of these via the env vars below when you want active reclamation.
+    retention_max_age_days: float = 0.0     # delete items older than N days (0 = unlimited)
+    retention_max_items: int = 500          # keep at most N items per area    (0 = unlimited)
+    retention_max_bytes: int = 0            # keep area under N bytes total     (0 = unlimited)
+
+    # Run the retention GC pass once at startup (in the FastAPI lifespan). Defaults ON, but it
+    # is a no-op under the default caps above except the generous item-count ceiling — so a
+    # fresh install reclaims nothing surprising. Set RETENTION_GC_ON_STARTUP=false to disable.
+    retention_gc_on_startup: bool = True
+
+    # Run the startup configuration self-check (workspace writable, provider config coherent,
+    # repos resolvable) and fold its result into readiness. Defaults ON; it only OBSERVES (it
+    # never mutates), so leaving it on is safe. Set STARTUP_SELF_CHECK=false to skip it.
+    startup_self_check: bool = True
 
     # ---- derived locations ------------------------------------------------
     @property

@@ -5,10 +5,7 @@ read-only/mutating classification, and that everything outside the policy is den
 """
 from __future__ import annotations
 
-import pytest
-
 from app.security.allowlist import MUTATING, READ_ONLY
-
 
 # ---- permitted commands, correct classification ---------------------------
 

@@ -13,17 +13,10 @@ from app.tools.context import ToolContext, ToolError
 
 _SUBCOMMANDS = {"plan", "standup", "smoketest", "run", "teardown", "results", "experiment"}
 
-# Sensible per-subcommand timeouts (seconds). `experiment` runs standup+run+teardown for
-# every treatment in the sweep, so it gets the most generous budget.
-_TIMEOUTS = {
-    "plan": 300.0,
-    "standup": 3600.0,
-    "smoketest": 900.0,
-    "run": 3600.0,
-    "teardown": 900.0,
-    "results": 300.0,
-    "experiment": 14400.0,
-}
+# Per-subcommand execution timeouts are now POLICY DATA: they live as `timeout_s` on each
+# llmdbenchmark subcommand in security/allowlist.yaml and are sourced from there by the
+# command runner (via the Decision). There is intentionally no Python timeout table here —
+# one mechanism, not two (Phase 13).
 
 
 def build_argv(
@@ -111,7 +104,10 @@ async def execute_llmdbenchmark(
     if not decision.allowed:
         raise ToolError(f"command refused by allowlist: {decision.reason}\n  argv: {' '.join(argv)}")
 
-    res = await ctx.run_command(argv, timeout=_TIMEOUTS.get(subcommand, 1800.0))
+    # No timeout override: ctx.run_command sources the per-command deadline from the
+    # allowlist's `timeout_s` for this subcommand (data), falling back to the runner's
+    # global default when the policy declares none.
+    res = await ctx.run_command(argv)
     results_dir = _result_location(
         subcommand, flags, _parse_results_dir(res.output), str(ctx.workspace / "results")
     )

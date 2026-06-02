@@ -15,7 +15,8 @@ the LLM as JSON Schema); the registry + descriptions live in
 |---|---|---|
 | `GET` | `/` | Serve the chat UI (`ui/index.html`). |
 | `GET` | `/static/*` | Static UI assets. |
-| `GET` | `/healthz` | Liveness/readiness: `{ok, provider, provider_ready, provider_error, repos_present, specs[:5]}`. Used by the K8s probes. |
+| `GET` | `/healthz` | **Liveness** (minimal): `{ok: true}` — process is up and serving; no dependency checks. K8s `livenessProbe` target. |
+| `GET` | `/readyz` | **Readiness** (Phase 16): `{ready, self_check:{checks:[…]}}` with per-component status (provider configured, repos present, runner ok, workspace writable). `200` when ready, `503` when not. K8s `readinessProbe` target. |
 | `GET` | `/metrics` | Prometheus text exposition of the agent + orchestrator metrics (content-type `text/plain; version=0.0.4`). Scrape target. |
 | `GET` | `/api/sessions` | Recent chats for the sidebar (summaries, newest first). |
 | `DELETE` | `/api/sessions/{id}` | Delete a saved chat; `404` if unknown. |
@@ -26,6 +27,16 @@ the LLM as JSON Schema); the registry + descriptions live in
 
 Connect to `/ws` for a fresh chat, or `/ws?session=<id>` to **resume** a saved one (an
 unknown id mints a new session). All frames are JSON `{ "type": <event>, "data": {...} }`.
+
+Every **inbound** frame is validated against an explicit schema (`app/agent/ws_schemas.py`)
+before the handler acts on it. A malformed frame (non-object, unknown/missing `type`, wrong
+field shape, or extra fields) is rejected with an `error` event of `kind: "protocol_error"`
+and **the connection is kept alive** — a bad frame never crashes the handler.
+
+If you **reconnect while a turn is still running** on that session (e.g. the socket dropped
+mid-benchmark), the server replays the in-flight turn's buffered **live** events (a bounded
+per-turn ring buffer) so the client catches up to the live stream — the events it missed, in
+order — and then continues live, rather than waiting blind for only the final result.
 
 **Server → client events** (`app/agent/events.py`):
 
@@ -40,7 +51,8 @@ unknown id mints a new session). All frames are JSON `{ "type": <event>, "data":
 | `approval_request` | `{request_id, kind, payload}` | A mutating command (or a `session_plan`) needs Approve/Reject. |
 | `tool_result` | `{id, name, result}` | A tool finished. |
 | `session_plan` | `{plan}` | A proposed plan (also an approval request). |
-| `error` | `{message}` | A recoverable error. |
+| `error` | `{message[, kind]}` | A recoverable error. `kind: "protocol_error"` marks a rejected malformed inbound frame. |
+| `cancelled` | `{message}` | The in-flight run/turn was cancelled (Phase 16); its concurrency slot is freed and its subprocess reaped. Followed by `done`. |
 | `done` | `{}` | The agent finished this turn. |
 | `pong` | `{}` | Reply to a `ping`. |
 
@@ -50,6 +62,7 @@ unknown id mints a new session). All frames are JSON `{ "type": <event>, "data":
 |---|---|---|
 | `user_message` | `{text}` | The user's chat input (starts a turn). |
 | `approval` | `{request_id, approved}` | Approve/Reject a pending command/plan. |
+| `cancel` | `{}` | Cancel this chat's in-flight run (Phase 16): frees its concurrency slot, reaps its subprocess. Idempotent. |
 | `ping` | `{}` | Keepalive. |
 
 ---
@@ -112,6 +125,12 @@ Every tool call is validated against its Pydantic input model before the handler
 | Tool | Key inputs | What it does |
 |---|---|---|
 | `result_history` | `action` (`store`/`list`/`get`/`trend`/`delete`), `source`, `label`, `tags`, `spec`/`harness`/`workload`/`namespace`/`session_id`, `record_id`, `metric`, `filter_tag`/`filter_model` | Persist a validated report's summary across sessions and read trends. `store` validates first and is idempotent; `trend` returns one metric's time-series. Interpreted with `knowledge/history.md`. |
+
+### Run lifecycle (read-only — stops work, starts none)
+
+| Tool | Key inputs | What it does |
+|---|---|---|
+| `cancel_run` | `session_id` | Cancel a still-running background run/turn in **another** chat by its session id — frees the concurrency-cap slot it holds and reaps its subprocess (no orphaned process / leaked Job). Idempotent; refuses to cancel the run it is called from. Judgment on **when** to cancel is in `knowledge/run_lifecycle.md`. |
 
 ---
 

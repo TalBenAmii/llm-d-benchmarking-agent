@@ -1,10 +1,14 @@
-"""Observability (Phase 7): a tiny, dependency-free metrics registry + Prometheus text
-exposition, instrumentation of the existing central mechanism points, and a `/metrics`
-endpoint. Mechanism only — *what* a metric means and *when* to act on it lives in
-``knowledge/observability.md`` and the agent's reasoning, never in this package.
+"""Observability: a tiny, dependency-free metrics registry + Prometheus text exposition
+(Phase 7), structured JSON logging with per-turn correlation ids (Phase 11), instrumentation
+of the existing central mechanism points, and a `/metrics` endpoint. Mechanism only — *what*
+a metric means, *when* to act on it, and how to read a correlated log trail live in
+``knowledge/`` and the agent's reasoning, never in this package.
 """
 from __future__ import annotations
 
+from app.observability.logctx import bind as log_bind
+from app.observability.logctx import get_corr_id, new_corr_id
+from app.observability.logging import JsonFormatter, setup_logging
 from app.observability.metrics import (
     Counter,
     Gauge,
@@ -19,4 +23,9 @@ __all__ = [
     "Histogram",
     "MetricsRegistry",
     "render_prometheus",
+    "setup_logging",
+    "JsonFormatter",
+    "log_bind",
+    "get_corr_id",
+    "new_corr_id",
 ]

@@ -11,11 +11,15 @@
 #     mode: read_only|mutating      # base mode (flat executables only)
 #     runner: {...}                 # hints used by runner.py, ignored by the validator
 #     cwd_must_be: "repo:<name>"    # hint for the runner
+#     timeout_s: <int>              # OPTIONAL execution deadline (sec); see GOVERNANCE below
+#     quota: { per_session: <int>, per_day: <int> }   # OPTIONAL usage caps; see GOVERNANCE
 #     global_flags: { <flag>: <flagspec> }     # flags allowed BEFORE the subcommand
 #     flags:        { <flag>: <flagspec> }     # flat executables only
 #     positionals:  [ <posspec>, ... ]         # flat executables only
 #     subcommands.<name>:
 #       mode: read_only|mutating
+#       timeout_s: <int>            # OPTIONAL — overrides the executable's, see GOVERNANCE
+#       quota: { per_session: <int>, per_day: <int> }   # OPTIONAL — overrides executable's
 #       flags: { <flag>: <flagspec> }
 #       positionals: [ <posspec>, ... ]
 #
@@ -42,6 +46,29 @@
 # metachar-screened (but not constraint-checked) and never change the mode. What stays
 # strict: which executables/subcommands may run, positionals, value constraints on known
 # flags, the metacharacter screen, and the mutating→approval gate.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# GOVERNANCE: per-command timeouts + usage quotas (policy as DATA, Phase 13)
+# ─────────────────────────────────────────────────────────────────────────────
+# Execution LIMITS live here, not in Python. The runner/quota counter are pure mechanism;
+# every ceiling is a number in this file. Both fields are OPTIONAL and may sit on an
+# executable AND/OR a subcommand (a subcommand's value OVERRIDES the executable's).
+#
+#   timeout_s: <positive int>
+#     The per-command execution deadline in seconds, enforced by the command runner. When a
+#     command declares none, the runner's sane global default applies. This is the SINGLE
+#     source of timeouts — there is no Python per-command timeout table.
+#
+#   quota:
+#     per_session: <positive int>    # max permitted uses within one chat session
+#     per_day:     <positive int>    # max permitted uses within one UTC calendar day
+#     A command that would exceed either cap is REFUSED before execution (and before any
+#     approval prompt) with a structured quota error. Counting is mechanism (a per-session
+#     counter); the cap is data. Declare at least one of the two keys.
+#
+# The loader SCHEMA-VALIDATES both fields at startup: a non-positive/non-int timeout_s, a
+# non-mapping or empty quota, or an unknown quota key REJECTS the whole allowlist with a
+# clear error (fail loud, never mis-enforce).
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # HOW TO ADD A NEW COMMAND (this is the ONLY file you edit to widen the agent)
@@ -297,6 +324,7 @@ executables:
     subcommands:
       plan:
         mode: read_only
+        timeout_s: 300       # quick config render / preview
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
@@ -304,6 +332,7 @@ executables:
           "--dry-run": { read_only_trigger: true }
       standup:
         mode: mutating
+        timeout_s: 3600      # deploys the stack — can be slow
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
@@ -314,6 +343,7 @@ executables:
           "--dry-run": { read_only_trigger: true }
       smoketest:
         mode: mutating
+        timeout_s: 900
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
@@ -323,6 +353,11 @@ executables:
           "--dry-run": { read_only_trigger: true }
       run:
         mode: mutating
+        timeout_s: 3600
+        # Each benchmark run is heavy; cap how many a single chat session can fire so a
+        # runaway loop can't thrash the host. Limit is DATA — tune it here, not in Python.
+        quota:
+          per_session: 25
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
@@ -344,6 +379,7 @@ executables:
           "--dry-run": { read_only_trigger: true }
       teardown:
         mode: mutating
+        timeout_s: 900
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
@@ -353,6 +389,7 @@ executables:
           "--dry-run": { read_only_trigger: true }
       results:
         mode: read_only
+        timeout_s: 300
         flags:
           "-r": { takes_value: true, value: { ref: output_dir } }
           "--output": { takes_value: true, value: { ref: output_dir } }
@@ -361,6 +398,7 @@ executables:
       # are deliberately NOT permitted here — results go to a local dir for the MVP.
       experiment:
         mode: mutating
+        timeout_s: 14400     # a DoE sweep runs standup+run+teardown per treatment
         flags:
           "-e": { takes_value: true, value: { ref: output_dir } }
           "--experiments": { takes_value: true, value: { ref: output_dir } }
