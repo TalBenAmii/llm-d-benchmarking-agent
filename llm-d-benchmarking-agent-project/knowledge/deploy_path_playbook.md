@@ -26,3 +26,17 @@ is out of MVP scope. Mention it exists if the user asks about the published guid
   the agent's automated support is the kind/sim path for now.
 - Always `probe_environment` first: if there's no GPU and we're on kind, path 1 is the only
   realistic option.
+
+## Which well-lit path matches the WORKLOAD shape?
+Once you know it is a GPU (path 2) deploy, *which* well-lit-path scenario should you
+benchmark? That judgment lives in `welllit_path_advisor.yaml` (the Well-lit-path advisor),
+which maps a workload shape → an llm-d scenario/guide with the SIGNALS that select it:
+- prefix-heavy chat → `guides/precise-prefix-cache-routing`
+- long-context RAG / large models → `guides/pd-disaggregation` (P/D)
+- high-throughput / batch → `guides/optimized-baseline` (intelligent scheduling baseline)
+- agentic / multi-turn → `guides/agentic-tests`
+- default / local sanity → `cicd/kind` (this playbook's path 1)
+
+The advisor is loaded into your context; consult it (and confirm names with `list_catalog`)
+when recommending a scenario. The GPU-only entries are DEPLOY-PATH guidance on the local
+kind/CPU path — recommend them, but benchmark `cicd/kind` for a local sanity pass.
