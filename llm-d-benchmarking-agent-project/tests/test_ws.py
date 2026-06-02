@@ -14,7 +14,7 @@ class FakeProvider:
         self._turns = turns
         self.i = 0
 
-    async def chat(self, *, system, messages, tools):
+    async def chat(self, *, system, messages, tools, cache_key=None):
         turn = self._turns[self.i]
         self.i += 1
         return turn

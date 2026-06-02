@@ -11,7 +11,7 @@ from typing import Any
 from app.agent import events
 from app.agent.prompt import build_system_prompt
 from app.agent.session import Session
-from app.llm.provider import LLMProvider
+from app.llm.provider import LLMProvider, Usage
 from app.observability.logctx import bind as log_bind
 from app.tools.context import ApprovalRejected, QuotaError, ToolError
 from app.tools.registry import dispatch, tool_definitions
@@ -47,13 +47,46 @@ class AgentLoop:
         system = build_system_prompt(ctx)
         tools = tool_definitions()
         tool_calls_made = 0
+        # One user "press enter" runs this loop = several LLM calls; per-turn tokens are the SUM
+        # of usage across all of them. Track the running turn total + a call counter so the live
+        # UI line ticks up on every step and the per-turn footer is exact.
+        turn_usage = Usage()
+        calls = 0
 
         for _ in range(MAX_STEPS):
             try:
-                turn = await self._provider.chat(system=system, messages=session.messages, tools=tools)
+                turn = await self._provider.chat(
+                    system=system, messages=session.messages, tools=tools, cache_key=session.id,
+                )
             except Exception as exc:  # provider/network error
                 await emit(events.ERROR, {"message": f"LLM call failed: {exc}"})
                 break
+
+            # Accumulate REAL usage: into the running turn total and the persisted session tally.
+            # (calls counts only SUCCESSFUL chats — the error path above breaks before here, so
+            # it is NOT the loop index; keep the explicit counter.)
+            turn_usage += turn.usage
+            calls += 1  # noqa: SIM113
+            session.total_input_tokens += turn.usage.input_tokens
+            session.total_output_tokens += turn.usage.output_tokens
+            session.total_cache_read_tokens += turn.usage.cache_read_tokens
+            session.total_cache_write_tokens += turn.usage.cache_write_tokens
+            await emit(events.USAGE, {
+                "turn": {
+                    "input": turn_usage.input_tokens,
+                    "output": turn_usage.output_tokens,
+                    "cache_read": turn_usage.cache_read_tokens,
+                    "cache_write": turn_usage.cache_write_tokens,
+                    "calls": calls,
+                    "total": turn_usage.total_input + turn_usage.output_tokens,
+                },
+                "session": {
+                    "input": session.total_input_tokens,
+                    "output": session.total_output_tokens,
+                    "cache_read": session.total_cache_read_tokens,
+                    "total": session.session_total,
+                },
+            })
 
             session.messages.append({
                 "role": "assistant",

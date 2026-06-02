@@ -23,6 +23,7 @@ const trendView = document.getElementById("trend-view");
 const workingEl = document.getElementById("working");
 const workWordEl = workingEl.querySelector(".working-word");
 const workStatsEl = workingEl.querySelector(".working-stats");
+const tokenChip = document.getElementById("token-total");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -72,6 +73,45 @@ const toolEls = {}; // id -> details element
 
 // "working" indicator state (spinning-hexagon status line; see helpers below)
 let workTimer = null, wordTimer = null, workStart = 0, workActivity = null, workWordFixed = false;
+
+// ---- token usage (REAL provider counts; see the `usage` event) -----------
+let sessionTokens = 0;     // running SESSION total (header chip), persisted across reloads
+let turnUsage = null;      // latest in-progress-turn totals (live line + per-turn footer)
+
+// Compact token formatting: <1000 -> integer; <1M -> one-decimal k; else one-decimal M.
+function fmtTokens(n) {
+  n = Number(n) || 0;
+  if (n < 1000) return String(Math.round(n));
+  if (n < 1000000) return (n / 1000).toFixed(1) + "k";
+  return (n / 1000000).toFixed(1) + "M";
+}
+
+function setSessionTokens(total) {
+  sessionTokens = Number(total) || 0;
+  if (!tokenChip) return;
+  tokenChip.hidden = sessionTokens <= 0;
+  tokenChip.textContent = "Σ " + fmtTokens(sessionTokens) + " tokens";
+}
+
+// A `usage` event (per LLM call): refresh the running turn tally (live line) + the header chip.
+function onUsage(data) {
+  turnUsage = data.turn || null;
+  if (data.session) setSessionTokens(data.session.total);
+  renderWorkStats();
+}
+
+// On `done`, append a small grey footer beneath the just-finished assistant turn.
+function appendTurnTokens() {
+  if (!turnUsage) return;
+  const up = (turnUsage.input || 0) + (turnUsage.cache_read || 0) + (turnUsage.cache_write || 0);
+  const down = turnUsage.output || 0;
+  const thisTurn = up + down;
+  let text = `↑${fmtTokens(up)} ↓${fmtTokens(down)} · ${fmtTokens(thisTurn)} this turn (${turnUsage.calls || 0} call${turnUsage.calls === 1 ? "" : "s"}`;
+  if (turnUsage.cache_read > 0) text += ` · ${fmtTokens(turnUsage.cache_read)} cached`;
+  text += ")";
+  transcript.appendChild(el("div", "turn-tokens", text));
+  turnUsage = null;
+}
 
 // ---- connection ---------------------------------------------------------
 
@@ -135,6 +175,8 @@ function handle(msg) {
     case "ready":
       currentSession = data.session_id;
       setEnabled(true);
+      // Restore the persisted session token total so the header chip is correct on (re)connect.
+      setSessionTokens((data.usage && data.usage.total) || 0);
       if (data.running) addNote("⏳ A benchmark is still running in this chat in the background. Reopen this chat once it finishes to see the results.");
       else if (!data.resumed) addNote("Session ready. What would you like to benchmark?");
       loadSessions();
@@ -151,7 +193,8 @@ function handle(msg) {
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "approval_request": addApprovalCard(data); stopWorking(); break;  // now waiting on the user, not the model
     case "error": addBubble("error", data.message); stopWorking(); break;
-    case "done": setEnabled(true); activeConsole = null; loadSessions(); loadHistory(); stopWorking(); break;
+    case "usage": onUsage(data); break;
+    case "done": setEnabled(true); activeConsole = null; appendTurnTokens(); loadSessions(); loadHistory(); stopWorking(); break;
     case "pong": break;
   }
   scroll();
@@ -626,7 +669,14 @@ function fmtElapsed(ms) {
   return Math.floor(s / 60) + "m " + (s % 60) + "s";
 }
 function renderWorkStats() {
-  workStatsEl.textContent = "(" + fmtElapsed(Date.now() - workStart) + (workActivity ? " · " + workActivity : "") + ")";
+  let live = fmtElapsed(Date.now() - workStart);
+  if (workActivity) live += " · " + workActivity;
+  // Show the running turn token tally as it ticks up: ↑ = total input, ↓ = generated.
+  if (turnUsage) {
+    const up = (turnUsage.input || 0) + (turnUsage.cache_read || 0) + (turnUsage.cache_write || 0);
+    live += " · ↑" + fmtTokens(up) + " ↓" + fmtTokens(turnUsage.output || 0);
+  }
+  workStatsEl.textContent = "(" + live + ")";
 }
 function cycleWord() {
   if (workWordFixed) return;
@@ -635,6 +685,7 @@ function cycleWord() {
 function startWorking(initialWord) {
   workStart = Date.now();
   workActivity = null;
+  turnUsage = null;          // reset the live turn tally; usage events repopulate it
   workWordFixed = false;
   workWordEl.textContent = initialWord || WORK_WORDS[0];
   renderWorkStats();

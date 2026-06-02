@@ -202,6 +202,14 @@ header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin:
 .status.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
 .status.down { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
 
+/* Running session token total — a muted chip in the header. */
+.token-chip {
+  font: 11.5px var(--mono); color: var(--muted); padding: 4px 10px;
+  border: 1px solid var(--border); border-radius: 999px; white-space: nowrap;
+  background: var(--panel-2);
+}
+.token-chip[hidden] { display: none; }
+
 .icon-btn {
   width: 34px; height: 34px; padding: 0; border-radius: 9px; cursor: pointer;
   border: 1px solid var(--border); background: var(--panel-2); color: var(--accent);
@@ -437,6 +445,12 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
 .working-word { font-weight: 600; font-family: var(--serif); }
 .working-dots { color: var(--accent); }
 .working-stats { color: var(--muted); font: 12px var(--mono); }
+
+/* Per-turn token footer beneath an assistant turn — subtle, mono, small (matches .working-stats). */
+.turn-tokens {
+  color: var(--muted); font: 11.5px var(--mono);
+  max-width: 900px; width: 100%; margin: -6px auto 10px; padding: 0 2px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .working-hex,

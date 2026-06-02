@@ -52,7 +52,7 @@ class ScriptedProvider(LLMProvider):
         self._turns = list(turns)
         self.i = 0
 
-    async def chat(self, *, system, messages, tools) -> AssistantTurn:
+    async def chat(self, *, system, messages, tools, cache_key=None) -> AssistantTurn:
         if self.i >= len(self._turns):
             # The transcript is exhausted: end the turn cleanly.
             return AssistantTurn(text="", tool_calls=[])
