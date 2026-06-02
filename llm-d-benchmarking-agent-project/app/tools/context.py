@@ -87,6 +87,7 @@ class ToolContext:
                 "text": " ".join(decision.argv),
                 "mode": decision.mode,
                 "auto_run": auto_run,
+                "simulated": self.settings.simulate,  # flag simulated (no-op) commands in the UI/trail
             })
 
     def _record_metric(self, decision: Decision, *, auto_run: bool, result: RunResult) -> None:
@@ -131,7 +132,9 @@ class ToolContext:
         decision = self.allowlist.validate(argv, catalog=self.catalog_for_allowlist())
         if not decision.allowed:
             raise ToolError(f"command denied by allowlist: {decision.reason}")
-        if decision.requires_approval:
+        # In simulate mode mutating commands auto-run as harmless no-ops, so the flow
+        # proceeds without a per-command Approve/Reject prompt (which would stall the walk).
+        if decision.requires_approval and not self.settings.simulate:
             if self.request_approval is None:
                 raise ToolError("approval required but no approver is wired")
             payload = {"command": " ".join(decision.argv), "argv": decision.argv, "mode": decision.mode}

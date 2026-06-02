@@ -73,6 +73,10 @@ uvicorn app.main:app --reload
 # open http://127.0.0.1:8000
 ```
 
+Set `SIMULATE=1` in `.env` for a dry run: the agent drives the whole workflow but executes
+nothing (every command is a no-op returning synthetic success, per-command approvals are
+skipped, and a synthetic report is produced) — watch a guide end-to-end without a cluster.
+
 Run the tests:
 ```bash
 pip install -e '.[dev]'
