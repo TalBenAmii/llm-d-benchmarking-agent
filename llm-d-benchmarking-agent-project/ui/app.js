@@ -72,7 +72,110 @@ let welcomeCard = null;       // the start-of-chat suggestion-chips card, remove
 let readyNoteTimer = null;    // defers the plain "Session ready" note so chips can supersede it
 let resourcePanel = null;     // single live resource-stats panel, updated in place during a run
 
-const toolEls = {}; // id -> details element
+let toolEls = {}; // id -> details element (swapped per chat; the ACTIVE chat's map)
+
+// ---- per-chat state cache (seamless switching) --------------------------
+// Switching chats USED to wipe the transcript and rebuild it from history, which reset the
+// "thinking" timer to 0, lost scroll position, and collapsed expanded tool panels. Instead we
+// keep a per-chat record holding that chat's own DOM pane + working-set, detach/reattach the
+// pane on switch (never destroy it), and reconnect with a resume cursor so the server replays
+// only the events the cached view missed. Each chat's live state is preserved EXACTLY; a chat
+// that kept working in the background catches up the instant you return.
+const sessions = {};          // session id -> record (see makeRecord)
+let cur = null;               // the active chat's record (drives the renderers below)
+let activePane = null;        // cur.pane — the <div.chat-pane> renderers append into
+let viewClock = 0;            // monotonic counter for LRU eviction ordering
+let stickBottom = true;       // sticky auto-scroll: only jump to bottom if already near it
+const MAX_PANES = 8;          // cap cached panes (memory bound); evict least-recently-viewed
+
+function makeRecord(sid) {
+  viewClock += 1;
+  return {
+    id: sid || null,
+    pane: el("div", "chat-pane"),
+    toolEls: {}, activeConsole: null,
+    welcomeCard: null, resourcePanel: null,
+    workStart: 0, workActivity: null, workWordFixed: false, workWord: "Working", workingHidden: true,
+    turnUsage: null, sessionTokens: 0,
+    cmdlogHTML: "", lastSeq: 0, running: false, scrollTop: 0,
+    pendingApprovals: {}, order: viewClock,
+  };
+}
+
+// Snapshot the active chat's working-set into its record and DETACH (not destroy) its pane, so
+// returning later restores it byte-for-byte. The live ticking intervals are stopped; the record
+// keeps workStart so elapsed continues correctly on return (the server also re-seeds it).
+function snapshotActive() {
+  if (!cur) return;
+  clearInterval(workTimer); clearInterval(wordTimer); workTimer = wordTimer = null;
+  if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }  // don't fire into another pane
+  cur.toolEls = toolEls;
+  cur.activeConsole = activeConsole;
+  cur.welcomeCard = welcomeCard;
+  cur.resourcePanel = resourcePanel;
+  cur.workStart = workStart; cur.workActivity = workActivity; cur.workWordFixed = workWordFixed;
+  cur.workWord = workWordEl.textContent; cur.workingHidden = workingEl.hidden;
+  cur.turnUsage = turnUsage; cur.sessionTokens = sessionTokens;
+  cur.cmdlogHTML = cmdlogList ? cmdlogList.innerHTML : "";
+  if (cur.pane) { cur.scrollTop = transcript.scrollTop; cur.pane.remove(); }
+}
+
+// Make a record the active chat: attach its pane, load its working-set into the module globals
+// the renderers use, restore scroll, and reflect its running state in the shared "working" line.
+function activate(rec) {
+  cur = rec;
+  activePane = rec.pane;
+  transcript.appendChild(activePane);
+  toolEls = rec.toolEls;
+  activeConsole = rec.activeConsole;
+  welcomeCard = rec.welcomeCard;
+  resourcePanel = rec.resourcePanel;
+  readyNoteTimer = null;
+  workStart = rec.workStart; workActivity = rec.workActivity; workWordFixed = rec.workWordFixed;
+  turnUsage = rec.turnUsage;
+  setSessionTokens(rec.sessionTokens);
+  if (cmdlogList) { cmdlogList.innerHTML = rec.cmdlogHTML || ""; if (!cmdlogList.childNodes.length) clearCmdlog(); }
+  workWordEl.textContent = rec.workWord || WORK_WORDS[0];
+  clearInterval(workTimer); clearInterval(wordTimer); workTimer = wordTimer = null;
+  if (rec.running) {
+    workingEl.hidden = false;
+    renderWorkStats();
+    workTimer = setInterval(renderWorkStats, 250);
+    wordTimer = setInterval(cycleWord, 2200);
+  } else {
+    workingEl.hidden = true;
+  }
+  transcript.scrollTop = rec.scrollTop || transcript.scrollHeight;
+}
+
+// Full-rebuild reset of the ACTIVE pane (used when the server sends a fresh history rather than
+// an incremental patch — e.g. first open of a chat, or the resume cursor fell off the buffer).
+function clearActivePane() {
+  if (activePane) activePane.innerHTML = "";
+  toolEls = cur ? (cur.toolEls = {}) : {};
+  activeConsole = null; if (cur) cur.activeConsole = null;
+  welcomeCard = null; if (cur) cur.welcomeCard = null;
+  resourcePanel = null; if (cur) cur.resourcePanel = null;
+  turnUsage = null; if (cur) cur.turnUsage = null;
+  if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }
+  if (cur) { cur.pendingApprovals = {}; cur.lastSeq = 0; }
+  clearCmdlog();
+}
+
+// Bound memory: keep at most MAX_PANES cached panes, evicting the least-recently-viewed chats
+// that are neither active nor running (a running chat must always return to a live-correct view).
+function evictPanes() {
+  const recs = Object.keys(sessions).map((id) => sessions[id]);
+  let over = recs.length - MAX_PANES;
+  if (over <= 0) return;
+  const evictable = recs.filter((r) => r !== cur && !r.running).sort((a, b) => a.order - b.order);
+  for (const r of evictable) {
+    if (over <= 0) break;
+    if (r.pane) r.pane.remove();
+    delete sessions[r.id];
+    over -= 1;
+  }
+}
 
 // "working" indicator state (spinning-hexagon status line; see helpers below)
 let workTimer = null, wordTimer = null, workStart = 0, workActivity = null, workWordFixed = false;
@@ -112,15 +215,18 @@ function appendTurnTokens() {
   let text = `↑${fmtTokens(up)} ↓${fmtTokens(down)} · ${fmtTokens(thisTurn)} this turn (${turnUsage.calls || 0} call${turnUsage.calls === 1 ? "" : "s"}`;
   if (turnUsage.cache_read > 0) text += ` · ${fmtTokens(turnUsage.cache_read)} cached`;
   text += ")";
-  transcript.appendChild(el("div", "turn-tokens", text));
+  activePane.appendChild(el("div", "turn-tokens", text));
   turnUsage = null;
 }
 
 // ---- connection ---------------------------------------------------------
 
-function connect(sid) {
+function connect(sid, afterSeq) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const qs = sid ? `?session=${encodeURIComponent(sid)}` : "";
+  let qs = sid ? `?session=${encodeURIComponent(sid)}` : "";
+  // Resume cursor: when we already hold a cached pane for this chat, ask the server to replay
+  // only the events past what we've rendered (it patches our view instead of resending history).
+  if (sid && afterSeq != null && afterSeq > 0) qs += `${qs ? "&" : "?"}after_seq=${afterSeq}`;
   ws = new WebSocket(`${proto}://${location.host}/ws${qs}`);
 
   ws.onopen = () => setStatus("connected", "ok");
@@ -129,7 +235,9 @@ function connect(sid) {
     setStatus("disconnected — retrying…", "down");
     setEnabled(false);
     stopWorking();                                   // don't keep spinning while disconnected; "ready".running restarts it
-    setTimeout(() => connect(currentSession), 1500); // reconnect resumes the same chat
+    // Reconnect resumes the SAME chat WITH its cursor: the pane is intact, so the server patches
+    // the missed tail rather than rebuilding (no flash on a brief drop).
+    setTimeout(() => connect(currentSession, cur ? cur.lastSeq : null), 1500);
   };
   ws.onerror = () => setStatus("connection error", "down");
   ws.onmessage = (ev) => handle(JSON.parse(ev.data));
@@ -137,24 +245,26 @@ function connect(sid) {
 
 function switchTo(sid) {
   switching = true;
-  currentSession = sid || null;
+  snapshotActive();                                  // save + detach the chat we're leaving
   try { if (ws) ws.close(); } catch (e) {}
-  resetTranscript();
-  connect(sid || null);
+  let rec = sid ? sessions[sid] : null;
+  const cacheHit = !!rec;                             // we've shown this chat before → patch it
+  if (!rec) { rec = makeRecord(sid); if (sid) sessions[sid] = rec; }
+  rec.order = ++viewClock;
+  activate(rec);                                      // attach its pane + restore its working-set
+  currentSession = sid || null;
+  evictPanes();
+  connect(sid || null, cacheHit ? rec.lastSeq : null);
 }
 
 function newChat() { switchTo(null); }
 function openSession(sid) { if (sid !== currentSession) switchTo(sid); }
 
-function resetTranscript() {
-  transcript.innerHTML = "";
-  for (const k in toolEls) delete toolEls[k];
-  activeConsole = null;
-  welcomeCard = null;          // cleared with the transcript; a new chat re-renders its own
-  resourcePanel = null;
-  if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }
-  clearCmdlog();
-  stopWorking();
+// Boot the first chat without going through switchTo (no prior socket to close, so the
+// `switching` flag must stay false or the first real disconnect wouldn't auto-reconnect).
+function bootChat() {
+  activate(makeRecord(null));
+  connect(null, null);
 }
 
 function clearCmdlog() {
@@ -176,21 +286,35 @@ function setEnabled(on) {
 }
 
 function handle(msg) {
-  const { type, data } = msg;
+  const { type, data, seq } = msg;
+  // Capture whether we're pinned to the bottom BEFORE rendering, so we only auto-scroll when the
+  // user hasn't scrolled up to read — this also preserves a restored scroll position on a pure
+  // switch-back (where the `ready` frame would otherwise yank us to the bottom).
+  stickBottom = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) < 120;
   switch (type) {
-    case "ready":
+    case "ready": {
       currentSession = data.session_id;
+      // A brand-new chat learns its id here — register the active record under it.
+      if (cur) { cur.id = data.session_id; sessions[data.session_id] = cur; }
       setEnabled(true);
+      const inc = !!(data.resume && data.resume.incremental);
+      // Full rebuild path: drop any cached content so the incoming `history` doesn't duplicate it.
+      // Incremental: keep the cached pane and let the missed-tail replay patch it in place.
+      if (!inc) clearActivePane();
       // Restore the persisted session token total so the header chip is correct on (re)connect.
       setSessionTokens((data.usage && data.usage.total) || 0);
-      if (data.running) addNote("⏳ A benchmark is still running in this chat in the background. Reopen this chat once it finishes to see the results.");
-      // A brand-new chat shows the welcome card with suggestion chips (a `suggestions` event
-      // follows `ready`). The plain note is only a FALLBACK for when no chips arrive — defer it
-      // briefly so the chips, if any, supersede it.
-      else if (!data.resumed) scheduleReadyNote();
+      if (!inc) {
+        if (data.running) addNote("⏳ Picking up a benchmark already running in this chat — catching up to live…");
+        // A brand-new chat shows the welcome card with suggestion chips (a `suggestions` event
+        // follows `ready`). The plain note is only a FALLBACK for when no chips arrive — defer it
+        // briefly so the chips, if any, supersede it.
+        else if (!data.resumed) scheduleReadyNote();
+      }
       loadSessions();
-      if (data.running) startWorking("Working");   // a turn is in flight — show the live indicator
+      if (data.running) { if (cur) cur.running = true; resumeWorking(data.running_elapsed_ms); }  // re-seed elapsed from the server
+      else if (cur) cur.running = false;
       break;
+    }
     case "history": renderHistory(data.items || [], data.commands || []); break;
     case "suggestions": renderSuggestions(data.chips || []); break;
     case "assistant_text":
@@ -202,13 +326,16 @@ function handle(msg) {
     case "command": removeWelcomeCard(); onCommand(data); setWorkActivity(data.text || (data.argv || []).join(" ")); break;
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); resumeThinking(); break;
-    case "approval_request": addApprovalCard(data); stopWorking(); break;  // now waiting on the user, not the model
-    case "error": addBubble("error", data.message); stopWorking(); break;
+    case "approval_request": addApprovalCard(data); if (cur) cur.running = false; stopWorking(); break;  // now waiting on the user, not the model
+    case "error": addBubble("error", data.message); if (cur) cur.running = false; stopWorking(); break;
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
-    case "done": setEnabled(true); activeConsole = null; appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
+    case "done": setEnabled(true); activeConsole = null; if (cur) cur.running = false; appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
     case "pong": break;
   }
+  // Advance this chat's resume cursor for every turn event we rendered (live or replayed); the
+  // next reconnect sends it as ?after_seq so we patch only what's new.
+  if (seq != null && cur) cur.lastSeq = Math.max(cur.lastSeq, seq);
   scroll();
 }
 
@@ -530,7 +657,7 @@ function addBubble(role, text) {
   } else {
     wrap.appendChild(el("div", "bubble", text || ""));
   }
-  transcript.appendChild(wrap);
+  activePane.appendChild(wrap);
 }
 
 function addNote(text) { addBubble("assistant", text); }
@@ -566,7 +693,7 @@ function renderSuggestions(chips) {
     wrap.appendChild(btn);
   }
   card.appendChild(wrap);
-  transcript.appendChild(card);
+  activePane.appendChild(card);
   welcomeCard = card;
   scroll();
 }
@@ -582,7 +709,7 @@ function removeWelcomeCard() {
 function ensureResourcePanel() {
   if (resourcePanel && resourcePanel.isConnected) return resourcePanel;
   resourcePanel = el("div", "resource-panel");
-  transcript.appendChild(resourcePanel);
+  activePane.appendChild(resourcePanel);
   return resourcePanel;
 }
 
@@ -644,7 +771,7 @@ function addHistoryTool(it) {
   const body = el("div", "body");
   if (it.input && Object.keys(it.input).length) body.appendChild(prettyJson(it.input));
   d.appendChild(body);
-  transcript.appendChild(d);
+  activePane.appendChild(d);
 }
 
 function startTool(data) {
@@ -659,7 +786,7 @@ function startTool(data) {
     body.appendChild(prettyJson(data.input));
   }
   d.appendChild(body);
-  transcript.appendChild(d);
+  activePane.appendChild(d);
   toolEls[data.id] = d;
   // commands stream into a console under this tool
   activeConsole = el("pre", "console");
@@ -814,7 +941,7 @@ function renderReportSummary(result) {
   renderPercentileTable(bubble, L, T);
   renderReportCharts(bubble, result.charts);
   wrap.appendChild(bubble);
-  transcript.appendChild(wrap);
+  activePane.appendChild(wrap);
 }
 
 // Collapsible drill-down: the full percentile ladder for every latency/throughput metric
@@ -950,6 +1077,10 @@ function approvalCardBody(card, kind, payload, heading) {
 
 function addApprovalCard(data) {
   const { request_id, kind, payload } = data;
+  // De-dup: on reconnect the server re-surfaces every still-undecided approval, but our cached
+  // pane may already show this card. Skip re-adding (the existing card's buttons still work — its
+  // resolve closure reads the current global `ws`, which is the freshly-reconnected socket).
+  if (cur && cur.pendingApprovals[request_id]) return;
   const card = el("div", "card");
   approvalCardBody(card, kind, payload, kind === "session_plan" ? "Review the plan before we start" : "Approve this command ");
   const actions = el("div", "actions");
@@ -958,10 +1089,12 @@ function addApprovalCard(data) {
   actions.appendChild(approve);
   actions.appendChild(reject);
   card.appendChild(actions);
-  transcript.appendChild(card);
+  activePane.appendChild(card);
+  if (cur) cur.pendingApprovals[request_id] = card;
 
   const resolve = (ok) => {
     ws.send(JSON.stringify({ type: "approval", request_id, approved: ok }));
+    if (cur) { cur.running = true; delete cur.pendingApprovals[request_id]; }
     startWorking();   // the turn resumes after the user decides (approve or reject), until "done"
     approve.disabled = reject.disabled = true;
     card.appendChild(el("div", "resolved", ok ? "✓ approved" : "✗ rejected"));
@@ -976,10 +1109,13 @@ function addDecisionCard(it) {
   const card = el("div", "card");
   approvalCardBody(card, kind || "command", payload || {}, kind === "session_plan" ? "Plan" : "Command ");
   card.appendChild(el("div", "resolved", approved ? "✓ approved" : "✗ rejected"));
-  transcript.appendChild(card);
+  activePane.appendChild(card);
 }
 
-function scroll() { transcript.scrollTop = transcript.scrollHeight; }
+// Sticky auto-scroll: only jump to the bottom if the user was already pinned there (captured in
+// `stickBottom` at the start of handle(), before new content shifted scrollHeight). This keeps a
+// scrolled-up reading position — and a restored position on switch-back — instead of yanking down.
+function scroll() { if (stickBottom) transcript.scrollTop = transcript.scrollHeight; }
 
 // ---- "working" indicator (spinning hexagon + live status) ----------------
 // Shown while a turn is in flight. The word cycles through generic gerunds while
@@ -1041,6 +1177,18 @@ function startWorking(initialWord) {
   workTimer = setInterval(renderWorkStats, 250);
   wordTimer = setInterval(cycleWord, 2200);
 }
+// Resume the indicator for an ALREADY-running turn on (re)connect: seed elapsed from the
+// server's authoritative `running_elapsed_ms` (a duration, so it's clock-skew-proof — both
+// terms use this client's Date.now()) and keep ticking. Unlike startWorking it PRESERVES the
+// live turn tally and current verb/activity, which the buffered replay restores or extends.
+function resumeWorking(elapsedMs) {
+  workStart = Date.now() - (Number(elapsedMs) || 0);
+  workingEl.hidden = false;
+  renderWorkStats();
+  clearInterval(workTimer); clearInterval(wordTimer);
+  workTimer = setInterval(renderWorkStats, 250);
+  wordTimer = setInterval(cycleWord, 2200);
+}
 function stopWorking() {
   clearInterval(workTimer); clearInterval(wordTimer);
   workTimer = wordTimer = null;
@@ -1075,8 +1223,9 @@ function sendUserMessage(text) {
   addBubble("user", text);
   ws.send(JSON.stringify({ type: "user_message", text }));
   setEnabled(false);
+  if (cur) cur.running = true;      // this chat now has a turn in flight (kept across switches)
   startWorking();
-  scroll();
+  stickBottom = true; scroll();     // sending always pins to the newest message
 }
 
 form.addEventListener("submit", (e) => {
@@ -1098,4 +1247,4 @@ newChatBtn.addEventListener("click", newChat);
 // ---- boot ---------------------------------------------------------------
 loadSessions();
 loadHistory();
-connect(null);
+bootChat();
