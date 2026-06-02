@@ -274,3 +274,6 @@ Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never
   `tests/test_quality_gates.py` (146 lines) asserting the config/threshold/CI wiring stay in place.
 - Merged into `feature/roadmap-v2` (`--no-ff`); full suite **432 passed / 7 skipped / 0 failed**
   (ruff clean, mypy clean, coverage **88.90%** >= 85% gate; prior baseline 424 passed / 7 skipped).
+
+## Roadmap v3 — proposal-completion features (Phases 19-26)
+Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is never touched directly) for the missing proposal-coverage features.
