@@ -19,6 +19,16 @@ SUCCEEDED_JOB = json.dumps({"items": [{
     "status": {"succeeded": 1, "conditions": [{"type": "Complete", "status": "True"}]},
 }]})
 
+# Phase 24: orchestrate_benchmark_run now gates submission on a real endpoint-readiness check.
+# These tests exercise the submit/watch/retry/manifest mechanics, so they stand the endpoint
+# up READY by default — the gate is transparent when the inference endpoint is serving (a
+# Service with a ready backing address). Tests asserting the gate BLOCKS live in
+# tests/test_endpoint_readiness.py.
+ENDPOINTS_READY = json.dumps({"items": [
+    {"metadata": {"name": "kubernetes"}, "subsets": [{"addresses": [{"ip": "10.96.0.1"}]}]},
+    {"metadata": {"name": "llm-d-inference"}, "subsets": [{"addresses": [{"ip": "10.244.0.7"}]}]},
+]})
+
 
 def _ctx(tmp_path, *, canned=None, image=""):
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos",
@@ -27,7 +37,9 @@ def _ctx(tmp_path, *, canned=None, image=""):
     async def approve(kind, payload):
         return True
 
-    runner = CaptureRunner(settings.repo_paths, canned=canned or {})
+    # Default the endpoint to READY so the readiness gate passes; a test can override.
+    canned = {"get endpoints": ENDPOINTS_READY, **(canned or {})}
+    runner = CaptureRunner(settings.repo_paths, canned=canned)
     ctx = ToolContext(
         settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
@@ -109,9 +121,10 @@ async def test_tool_retries_transient_then_succeeds(tmp_path):
         "failed": 1, "conditions": [{"type": "Failed", "status": "True", "reason": "BackoffLimitExceeded"}]}}]})
 
     class _SeqRunner(CaptureRunner):
-        """Returns a FAILED job for the first `get jobs`, SUCCEEDED for the next."""
+        """Returns a FAILED job for the first `get jobs`, SUCCEEDED for the next. The endpoint
+        is READY (canned) so the Phase 24 readiness gate passes and the run reaches submission."""
         def __init__(self, repo_paths):
-            super().__init__(repo_paths)
+            super().__init__(repo_paths, canned={"get endpoints": ENDPOINTS_READY})
             self._gj = [failed_job, SUCCEEDED_JOB]
             self._i = 0
 
@@ -175,7 +188,7 @@ async def test_tool_runs_job_under_configured_service_account(tmp_path):
     async def approve(kind, payload):
         return True
 
-    runner = CaptureRunner(settings.repo_paths)
+    runner = CaptureRunner(settings.repo_paths, canned={"get endpoints": ENDPOINTS_READY})
     ctx = ToolContext(settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
                       runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
                       request_approval=approve)

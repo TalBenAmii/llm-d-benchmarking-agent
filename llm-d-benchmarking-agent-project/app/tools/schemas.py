@@ -150,6 +150,33 @@ class OrchestrateBenchmarkInput(BaseModel):
     watch: bool = Field(default=True, description="Watch the Job to completion + diagnose failures (vs submit-and-return)")
     poll_interval: float = Field(default=3.0, ge=0, description="Seconds between status polls while watching")
     max_wait: float = Field(default=3600.0, ge=0, description="Max seconds to watch before giving up")
+    require_ready_endpoint: bool = Field(
+        default=True,
+        description="Gate submission on a real inference-endpoint READINESS check (a Service "
+                    "with a ready backing endpoint — beyond mere pod presence). When the stack "
+                    "isn't ready the run is NOT submitted (nothing mutates) and a structured "
+                    "not-ready result with a standup_suggestion is returned. Set False ONLY if "
+                    "you know the endpoint is reachable another way (e.g. an external -U URL).",
+    )
+
+
+class CheckEndpointReadinessInput(BaseModel):
+    namespace: str = Field(
+        ...,
+        description="Kubernetes namespace whose inference endpoint to check for readiness "
+                    "(the namespace you intend to benchmark).",
+    )
+    spec: str | None = Field(
+        default=None,
+        description="Optional llm-d spec from the catalog (e.g. 'cicd/kind'); used only to "
+                    "scope the corroborating benchmark-CLI endpoint probe.",
+    )
+    probe_cli_endpoints: bool = Field(
+        default=True,
+        description="Also corroborate via the benchmark CLI's read-only `run --list-endpoints` "
+                    "(best-effort; the Kubernetes endpoint-address readiness is the gate). Set "
+                    "False to skip it (e.g. the benchmark venv isn't installed yet).",
+    )
 
 
 class AnalyzeResultsInput(BaseModel):

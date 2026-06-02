@@ -271,6 +271,13 @@ def test_from_dict_accepts_valid_shapes():
 
 # --- 8. End-to-end through the agent tool (dispatch + allowlisted runner) ----
 
+# Phase 24: orchestrate_benchmark_run gates on endpoint readiness before submitting. These
+# manifest-mechanics tests stand the endpoint up READY so the gate is transparent.
+_ENDPOINTS_READY = json.dumps({"items": [
+    {"metadata": {"name": "llm-d-inference"}, "subsets": [{"addresses": [{"ip": "10.244.0.7"}]}]},
+]})
+
+
 def _tool_ctx(tmp_path):
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos",
                         workspace_dir=tmp_path / "ws", orchestrator_image="ghcr.io/llm-d/bench:0")
@@ -278,7 +285,7 @@ def _tool_ctx(tmp_path):
     async def approve(kind, payload):
         return True
 
-    runner = CaptureRunner(settings.repo_paths)
+    runner = CaptureRunner(settings.repo_paths, canned={"get endpoints": _ENDPOINTS_READY})
     ctx = ToolContext(
         settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
