@@ -167,9 +167,11 @@ def install_cors(target: FastAPI, origins: list[str]) -> None:
         )
 
 
-# Auth (Phase 12) guards EVERY HTTP route via an app-level dependency: a single registration
+# Auth (Phase 12) guards HTTP routes via an app-level dependency: a single registration
 # point (thin code) rather than per-route annotations that could be forgotten. It's a no-op
-# when AUTH_ENABLED is False (the default), so the API is open exactly as today.
+# when AUTH_ENABLED is False (the default), so the API is open exactly as today. The
+# liveness/readiness probes (/healthz, /readyz) are exempted inside check_http_auth so K8s
+# probes — which can't carry a Bearer token — are never locked out.
 app = FastAPI(
     title="llm-d Benchmarking Assistant",
     lifespan=lifespan,
@@ -298,6 +300,35 @@ def _history_items(session) -> list[dict[str, Any]]:
                     items.append({"role": "approval_decision", "kind": a.get("kind"),
                                   "payload": a.get("payload"), "approved": a.get("approved")})
     return items
+
+
+# Per-run chart images (e.g. the latency/throughput PNGs inference-perf renders into a
+# session's analysis/ dir) live under the gitignored workspace, which the /static mount does
+# NOT serve. This read-only route exposes them so the UI can show a run's charts inline next to
+# its summary. Hardened: image suffixes only, and the resolved path must stay INSIDE the named
+# session dir (defeats ../ traversal). Auth-gated by the app-level dependency; rate-limited like
+# the rest of /api. The chart paths come from locate_and_parse_report's `charts` field.
+_ARTIFACT_SUFFIXES = frozenset({".png", ".svg", ".jpg", ".jpeg", ".webp"})
+_ARTIFACT_MEDIA = {
+    ".png": "image/png", ".svg": "image/svg+xml", ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg", ".webp": "image/webp",
+}
+
+
+@app.get("/api/sessions/{sid}/artifact", dependencies=[Depends(rate_limit)])
+async def session_artifact(sid: str, path: str) -> FileResponse:
+    """Serve one image artifact from a session's workspace dir (read-only, image-only)."""
+    sessions_root = (get_settings().resolved_workspace_dir / "sessions").resolve()
+    base = (sessions_root / sid).resolve()
+    candidate = (base / path).resolve()
+    # `base` must be a real session dir directly under sessions_root, and `candidate` must not
+    # escape it — together these reject ../ traversal in either `sid` or `path`.
+    if base.parent != sessions_root or not base.is_dir() or not candidate.is_relative_to(base):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    suffix = candidate.suffix.lower()
+    if suffix not in _ARTIFACT_SUFFIXES or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="artifact not found")
+    return FileResponse(candidate, media_type=_ARTIFACT_MEDIA[suffix])
 
 
 app.mount("/static", StaticFiles(directory=str(get_settings().ui_dir)), name="static")

@@ -14,7 +14,22 @@ always tied to the user's stated goal. Never quote numbers that aren't in the su
 - **throughput.request_rate** — requests/sec completed.
 - **success_rate_pct** — fraction of requests that succeeded; flag anything below ~100%.
 
-Each metric carries `units` — respect them (e.g. TTFT may be in seconds `s` or `ms`).
+## Units — read them off the report, never guess
+
+Every latency/throughput entry in the summary carries an explicit `units` field. **Read it and
+trust it. Never infer a unit from how big or small a number looks.**
+
+- BR v0.2 reports latency in **seconds**: TTFT and `request_latency` are `units: s`; TPOT and
+  ITL are `units: s/token`. A `mean` of `0.13` with `units: s` is **0.13 seconds = 130 ms**, not
+  130 ns and not 130 ms-raw.
+- When you narrate latency to a non-expert, **convert seconds → milliseconds** (×1000) and label
+  it `ms` (e.g. `ttft.mean = 0.13 s` → "first token in ~130 ms"; a `tpot` of `0.021 s/token` →
+  "~21 ms per token"). Milliseconds are the canonical unit users expect.
+- **Never report nanoseconds or microseconds.** BR v0.2 carries no ns/µs latency — if you find
+  yourself writing "nanoseconds", you misread a `units: s` value. There is no nanosecond field.
+- Throughput is `tokens/s` / `queries/s` (requests/s) — quote those as-is; do not convert.
+- If an entry's `units` is missing or unfamiliar, say the raw number with whatever `units` is
+  present and flag the ambiguity — do not assume a unit.
 
 ## Standard resource/serving metrics (when the harness emits them)
 

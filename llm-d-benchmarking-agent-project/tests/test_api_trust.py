@@ -122,6 +122,25 @@ def test_http_route_401_without_token_and_200_with_token():
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_health_and_ready_probes_exempt_from_auth():
+    """Liveness/readiness probes stay reachable WITHOUT a token even when auth is on, so a
+    Kubernetes kubelet (which can't carry a Bearer token) isn't locked out — while the regular
+    API surface is still 401 without one."""
+    app = main_mod.app
+    enabled = _auth_settings()
+    app.dependency_overrides[get_settings] = lambda: enabled
+    try:
+        with TestClient(app) as client:
+            # Probes: no token, never 401 (healthz is up=200; readyz is 200/503 on readiness).
+            assert client.get("/healthz").status_code == 200
+            assert client.get("/readyz").status_code in (200, 503)
+            # A normal API route is still guarded.
+            assert client.get("/api/sessions").status_code == 401
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_ws_rejected_without_token_and_accepted_with_token(monkeypatch):
     app = main_mod.app
     enabled = _auth_settings()
