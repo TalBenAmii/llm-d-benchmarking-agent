@@ -94,7 +94,10 @@ class ExecuteInput(BaseModel):
     flags: dict[str, Any] | None = Field(
         default=None,
         description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "
-                    "endpoint_url}. For subcommand='experiment' (a DoE sweep over a treatments "
+                    "endpoint_url}. `output` is a DESTINATION KEYWORD — 'local' (default), "
+                    "'gs://bucket/...', or 's3://bucket/...' — NOT a filesystem path; a `run` "
+                    "defaults to local output anchored under the session workspace. For "
+                    "subcommand='experiment' (a DoE sweep over a treatments "
                     "file): {experiments (path to the experiment YAML), workspace (dir for "
                     "outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, skip_teardown}.",
     )

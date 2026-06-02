@@ -86,9 +86,15 @@ async def execute_llmdbenchmark(
         raise ToolError(f"unsupported subcommand {subcommand!r}; allowed: {sorted(_SUBCOMMANDS)}")
 
     flags = dict(flags or {})
-    # Default `run` output into the session workspace so the report is easy to locate.
-    if subcommand == "run" and not flags.get("output") and not flags.get("list_endpoints") and not flags.get("dry_run"):
-        flags["output"] = str(ctx.workspace / "results")
+    # `llmdbenchmark`'s -r/--output is a DESTINATION KEYWORD — `local`, `gs://…`, or
+    # `s3://…` — NOT a filesystem path. Passing an absolute path makes the run fail with
+    # "Unknown output destination: <path>". So default a `run` to local output and anchor
+    # its --workspace to the session dir: the CLI then writes the report UNDER this session
+    # (locate_and_parse_report searches the workspace recursively) and it persists with the
+    # session. Mirrors the experiment anchoring below.
+    if subcommand == "run" and not flags.get("list_endpoints") and not flags.get("dry_run"):
+        flags.setdefault("output", "local")
+        flags.setdefault("workspace", str(ctx.workspace))
     # A DoE `experiment` writes per-treatment reports under its workspace; anchor it to the
     # session dir (unless previewing) so compare_reports(experiment_dir=...) can find them.
     if subcommand == "experiment" and not flags.get("workspace") and not flags.get("dry_run"):
