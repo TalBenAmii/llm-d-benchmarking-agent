@@ -117,6 +117,30 @@ body {
 .conv-del:hover { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
 .conv-empty { color: var(--muted); font-size: 12.5px; padding: 10px 12px; }
 
+/* ── Namespace folders (group chats by Kubernetes namespace) ────────────── */
+.conv-folder { margin-bottom: 2px; }
+.conv-folder-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; border-radius: 8px; cursor: pointer; user-select: none;
+  font: 600 10.5px/1 var(--mono); letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
+}
+.conv-folder-head:hover { background: var(--panel-2); }
+.conv-folder-caret {
+  flex: none; font-size: 9px; transition: transform .12s ease; display: inline-block;
+}
+.conv-folder.collapsed .conv-folder-caret { transform: rotate(-90deg); }
+.conv-folder-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-transform: none; letter-spacing: 0; font-size: 11.5px; color: var(--text);
+}
+.conv-folder-count {
+  flex: none; color: var(--muted); background: var(--panel-2);
+  border-radius: 999px; padding: 1px 7px; font-size: 10px;
+}
+.conv-folder-body { padding-left: 8px; }
+.conv-folder.collapsed .conv-folder-body { display: none; }
+
 /* ── Stored results browser + trends (sidebar) ──────────────────────────── */
 .conv-list { max-height: 40%; }
 .history {

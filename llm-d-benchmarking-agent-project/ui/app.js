@@ -210,27 +210,75 @@ async function loadSessions() {
   } catch (e) { /* offline — keep whatever's shown */ }
 }
 
+// Chats are grouped into one folder per Kubernetes namespace; un-namespaced chats live in a
+// "no_namespace" folder until an approved plan assigns one. We persist the set of COLLAPSED
+// folders (not the expanded ones) so a brand-new folder defaults to expanded automatically —
+// anything not in the set is open. Mirrors the localStorage try/catch used for theme/debug.
+const NO_NAMESPACE = "no_namespace";
+function loadCollapsedFolders() {
+  try { return new Set(JSON.parse(localStorage.getItem("llmd-folders-collapsed") || "[]")); }
+  catch (e) { return new Set(); }
+}
+function saveCollapsedFolders(set) {
+  try { localStorage.setItem("llmd-folders-collapsed", JSON.stringify([...set])); } catch (e) {}
+}
+let collapsedFolders = loadCollapsedFolders();
+
 function renderSidebar(sessions) {
   convList.innerHTML = "";
   if (!sessions.length) {
     convList.appendChild(el("div", "conv-empty", "No conversations yet."));
     return;
   }
+  // Group by namespace, preserving the backend's newest-first order within each group. A Map
+  // keeps first-insertion order, and the first chat seen for a namespace is its most recent —
+  // so folders end up ordered by most-recent activity (the freshest folder on top).
+  const groups = new Map();
   for (const s of sessions) {
-    const row = el("div", "conv" + (s.id === currentSession ? " active" : ""));
-    row.title = s.title || "New chat";
-    const main = el("div", "conv-main");
-    main.appendChild(el("div", "conv-title", s.title || "New chat"));
-    main.appendChild(el("div", "conv-time", relTime(s.updated_at)));
-    const del = el("button", "conv-del", "×");
-    del.type = "button";
-    del.title = "Delete conversation";
-    del.onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
-    row.appendChild(main);
-    row.appendChild(del);
-    row.onclick = () => openSession(s.id);
-    convList.appendChild(row);
+    const ns = s.namespace || NO_NAMESPACE;
+    if (!groups.has(ns)) groups.set(ns, []);
+    groups.get(ns).push(s);
   }
+  for (const [ns, items] of groups) {
+    convList.appendChild(renderFolder(ns, items));
+  }
+}
+
+function renderFolder(ns, items) {
+  const collapsed = collapsedFolders.has(ns);
+  const folder = el("div", "conv-folder" + (collapsed ? " collapsed" : ""));
+  const head = el("div", "conv-folder-head");
+  head.title = ns;
+  head.appendChild(el("span", "conv-folder-caret", "▾"));   // CSS rotates it when collapsed
+  head.appendChild(el("span", "conv-folder-name", ns));
+  head.appendChild(el("span", "conv-folder-count", String(items.length)));
+  head.onclick = () => {
+    if (collapsedFolders.has(ns)) collapsedFolders.delete(ns);
+    else collapsedFolders.add(ns);
+    saveCollapsedFolders(collapsedFolders);
+    folder.classList.toggle("collapsed");        // pure CSS show/hide — no refetch
+  };
+  folder.appendChild(head);
+  const body = el("div", "conv-folder-body");
+  for (const s of items) body.appendChild(renderConvRow(s));
+  folder.appendChild(body);
+  return folder;
+}
+
+function renderConvRow(s) {
+  const row = el("div", "conv" + (s.id === currentSession ? " active" : ""));
+  row.title = s.title || "New chat";
+  const main = el("div", "conv-main");
+  main.appendChild(el("div", "conv-title", s.title || "New chat"));
+  main.appendChild(el("div", "conv-time", relTime(s.updated_at)));
+  const del = el("button", "conv-del", "×");
+  del.type = "button";
+  del.title = "Delete conversation";
+  del.onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
+  row.appendChild(main);
+  row.appendChild(del);
+  row.onclick = () => openSession(s.id);
+  return row;
 }
 
 async function deleteSession(sid) {
