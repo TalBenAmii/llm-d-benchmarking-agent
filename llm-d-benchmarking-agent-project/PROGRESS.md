@@ -383,3 +383,16 @@ Branch `feature/roadmap-v3-p20-welllit-advisor` → merged into `feature/roadmap
 - **Tests:** full suite **491 passed / 7 skipped / 0 failed** (prior baseline 477 passed / 7 skipped);
   ruff clean, mypy clean (63 files). New hermetic `tests/test_welllit_advisor.py` (231 lines) validates the
   required archetypes/fields/signals and that every referenced scenario/workload id is catalog-well-formed.
+
+## Phase 25 — Analyzer metric completeness (KV-cache hit rate, schedule delay, GPU util) — DONE
+Branch `feature/roadmap-v3-p25-analyzer-metrics` → merged into `feature/roadmap-v3` (`--no-ff`, clean `ort`).
+- `summarize_report`/`analysis.py` now PARSE + SURFACE the §3.4 standard serving metrics (KV-cache hit
+  rate, schedule delay, GPU utilization) from BR v0.2 standardized OR harness-native output, with the
+  candidate field names living as DATA in `knowledge/standard_metrics.yaml` (thin code / thick agent);
+  absent metrics degrade to `None` (never fabricated). Surfaced in the human summary, per-run in
+  `analyze_results`, and as INFORMATIONAL Pareto objectives kept OUT of dominance (goodput/SLO/Pareto
+  unchanged). `results_interpretation.md` + `analysis.md` explain them in plain language.
+- **Tests:** full integration suite **509 passed / 7 skipped / 0 failed** (14.4s, no hang, exit 0;
+  +`tests/test_standard_metrics.py`, 293 lines / +18 tests). Prior baseline 491 passed / 7 skipped
+  (Phase 20). Ruff clean, mypy clean (63 source files). Authoritative run from the integration worktree
+  against the worktree app + shared venv, 600s timeout.

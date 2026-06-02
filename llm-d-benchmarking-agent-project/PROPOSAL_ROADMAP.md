@@ -48,7 +48,7 @@
 | DOE Pareto-optimal config identification | ✅ | `analysis.py` `pareto_analysis` |
 | Report generation (BR-v0.2 JSON + human summary) | ✅ | `app/validation/report.py` `summarize_report` |
 | Metric extraction: TTFT, TBT/TPOT, ITL, latency P50/P95/P99, throughput | ✅ | `report.py` / `analysis.py` |
-| Metric extraction: **KV-cache hit rate, schedule delay, GPU utilization** | ⬜→v3 | Listed in §3.4 "standard metrics" but never parsed/surfaced — **P25** |
+| Metric extraction: **KV-cache hit rate, schedule delay, GPU utilization** | ✅ | `report.py` / `analysis.py` via `knowledge/standard_metrics.yaml` — **P25** done |
 
 ## §4 Distributed-Systems Concepts · §2.2 Harnesses
 

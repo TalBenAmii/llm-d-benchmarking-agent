@@ -304,3 +304,18 @@ Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is nev
   dropped); full suite **491 passed / 7 skipped / 0 failed**, ruff clean, mypy clean (63 files)
   (+`tests/test_welllit_advisor.py`, 231 lines; hermetic — validates every archetype's fields/signals and
   that each `scenario`/`also_consider`/`benchmark_workloads` id resolves against the catalog snapshot).
+
+## Phase 25 — Analyzer metric completeness: KV-cache hit rate, schedule delay, GPU utilization — DONE
+- Extended `summarize_report`/`analysis` to PARSE and SURFACE the §3.4 standard serving metrics that
+  were previously ignored — KV-cache hit rate, schedule delay (queue-depth proxy), and GPU utilization —
+  mechanically extracting the first present candidate from EITHER the BR v0.2 standardized
+  `observability.components[].aggregate` shape OR a harness-native per-metric entry, with field-name
+  discovery as DATA in `knowledge/standard_metrics.yaml` (thin code / thick agent); gracefully `None`
+  when a harness doesn't emit them — never fabricated. Surfaced in the human summary
+  (`summary.standard_metrics`), per-run in `analyze_results`, and as INFORMATIONAL Pareto objectives kept
+  deliberately OUT of dominance — goodput/SLO/Pareto behavior unchanged.
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — additive analyzer/knowledge, no
+  entries dropped); full suite **509 passed / 7 skipped / 0 failed**, ruff clean, mypy clean (63 files)
+  (+`tests/test_standard_metrics.py`, 293 lines; hermetic — standardized + native extraction, catalog
+  preference order, graceful degradation on absent/garbage reports, real BR v0.2 surfacing, and the
+  informational-only Pareto behavior).
