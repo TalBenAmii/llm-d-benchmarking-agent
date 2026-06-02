@@ -35,6 +35,16 @@ from app.orchestrator.job import (
 from app.orchestrator.kube import KubeClient
 
 OnStatus = Callable[[JobStatus], Awaitable[None]]
+# Sink for a benchmark pod's live log lines (Phase 21). The tool wires this to the session's
+# `output` event — the SAME transport the UI already renders for streamed command output — so
+# pod logs surface in real time during a run. None disables streaming (e.g. unit tests / when
+# the caller wants no live tail), keeping existing behavior unchanged.
+OnLogLine = Callable[[str], Awaitable[None]]
+
+# How long the watch loop waits for the in-flight log tail to wind down after the Job reaches a
+# terminal phase, so any final buffered lines are flushed before we stop. Bounded so a tail that
+# refuses to stop never delays the run's completion.
+_TAIL_DRAIN_TIMEOUT = 2.0
 
 # Faults worth retrying: transient/environmental, where a fresh attempt may succeed. OOM /
 # unschedulable / image / timeout are deterministic — retrying changes nothing, so they
@@ -159,6 +169,65 @@ class BenchmarkOrchestrator:
             namespace=namespace, selector=self._run_selector(run_id), tail=tail, follow=follow
         )
 
+    async def _tail_logs(self, run_id: str, *, namespace: str, on_log_line: OnLogLine,
+                         tail: int | None = None) -> None:
+        """Background driver: follow a run's pod logs and forward each line to ``on_log_line``
+        as it is produced (Phase 21 real-time streaming). This is a BEST-EFFORT side channel —
+        it must NEVER break the run/watch loop:
+
+        * It is launched as its own task and cancelled when the Job reaches a terminal state;
+          ``CancelledError`` is allowed to propagate so the task stops promptly.
+        * EVERY other failure (pod not ready yet, log rotation, the follow stream erroring out,
+          a raised ``on_log_line``) is swallowed — a failing tail leaves the run untouched.
+
+        The lines ride the existing allowlisted, read-only ``kubectl logs -f`` path (argv-only,
+        ``shell=False``); ``on_log_line`` is the same ``output`` event the UI already renders."""
+        try:
+            stream = self._kube.stream_log_lines(
+                namespace=namespace, selector=self._run_selector(run_id), tail=tail,
+            )
+            async for line in stream:
+                try:
+                    await on_log_line(line)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # a failing sink must not abort the tail or the run
+                    continue
+        except asyncio.CancelledError:
+            raise  # terminal-state cancellation — stop the tail, never the run
+        except Exception:
+            # pod-not-ready / rotation / stream error: log streaming is best-effort. Swallow so
+            # the run/watch loop is wholly unaffected (acceptance: a failing tail never fails it).
+            return
+
+    @contextlib.asynccontextmanager
+    async def _log_tail(self, run_id: str, *, namespace: str, on_log_line: OnLogLine | None,
+                        tail: int | None = None):
+        """Run a live log tail for the duration of the enclosed block (one Job attempt's
+        watch). On exit — the Job reached a terminal state, or the watch raised/was cancelled —
+        the tail is cancelled and reaped, bounded by ``_TAIL_DRAIN_TIMEOUT`` so a stuck tail
+        never delays the run. A no-op when ``on_log_line`` is None (streaming disabled)."""
+        if on_log_line is None:
+            yield
+            return
+        task = asyncio.create_task(
+            self._tail_logs(run_id, namespace=namespace, on_log_line=on_log_line, tail=tail)
+        )
+        try:
+            yield
+        finally:
+            # The Job is terminal, so a real `kubectl logs -f` exits on its own and the tail
+            # finishes naturally — give it a brief, bounded window to flush any lines still in
+            # flight (so the final benchmark output isn't dropped). If it does NOT settle in
+            # time (a wedged follow stream), cancel + reap it so it can never delay the run.
+            if not task.done():
+                with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                    await asyncio.wait_for(asyncio.shield(task), timeout=_TAIL_DRAIN_TIMEOUT)
+            if not task.done():
+                task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                await asyncio.wait_for(asyncio.shield(task), timeout=_TAIL_DRAIN_TIMEOUT)
+
     async def reconstruct(self, *, namespace: str, session_id: str | None = None,
                           sweep_id: str | None = None) -> list[JobStatus]:
         """Rebuild run state purely from the cluster: list the agent-managed Jobs (optionally
@@ -183,12 +252,18 @@ class BenchmarkOrchestrator:
         poll_interval: float = 2.0,
         max_wait: float = 7200.0,
         on_status: OnStatus | None = None,
+        on_log_line: OnLogLine | None = None,
     ) -> RunOutcome:
         """Submit a benchmark run, watching it to terminal; on a *transient* failure
         (``retryable``) resubmit as a FRESH Job (a new attempt, distinct run-id) up to
         ``max_attempts``. A deterministic fault (OOM/unschedulable/image/timeout) or an
         exhausted budget dead-letters the run. Every attempt is its own inspectable Job
-        (``<run_id>-a<N>``), so failed attempts remain in the cluster for diagnosis."""
+        (``<run_id>-a<N>``), so failed attempts remain in the cluster for diagnosis.
+
+        ``on_log_line`` (Phase 21): while each attempt's Job runs, its pod logs are followed in
+        a background task and each line is forwarded here as it is produced — surfacing
+        benchmark output live, not just at the end. The tail is cancelled when the attempt
+        reaches a terminal state, and a failing tail never affects the run (see ``_tail_logs``)."""
         attempts: list[AttemptResult] = []
         outcome: RunOutcome | None = None
         # A run is "in flight" while the orchestrator is watching its attempts (a live gauge
@@ -198,8 +273,13 @@ class BenchmarkOrchestrator:
             for i in range(1, max_attempts + 1):
                 spec_i = replace(base_spec, run_id=f"{base_spec.run_id}-a{i}", attempt=i)
                 await self.submit(spec_i)
-                st = await self.watch(spec_i.run_id, namespace=spec_i.namespace,
-                                      poll_interval=poll_interval, max_wait=max_wait, on_status=on_status)
+                # Follow this attempt's pod logs live for the span of the watch; the tail is
+                # cancelled (and reaped) when the watch returns a terminal status.
+                async with self._log_tail(spec_i.run_id, namespace=spec_i.namespace,
+                                          on_log_line=on_log_line):
+                    st = await self.watch(spec_i.run_id, namespace=spec_i.namespace,
+                                          poll_interval=poll_interval, max_wait=max_wait,
+                                          on_status=on_status)
                 _safe_metric(instrument.record_attempt, st.phase)
                 if st.phase == SUCCEEDED:
                     attempts.append(AttemptResult(spec_i.run_id, st, None))
@@ -242,12 +322,27 @@ class BenchmarkOrchestrator:
         retryable=DEFAULT_RETRYABLE,
         poll_interval: float = 2.0,
         max_wait: float = 7200.0,
+        on_log_line: OnLogLine | None = None,
     ) -> SweepOutcome:
         """Run a list of treatment specs as parallel Jobs under a concurrency cap, each with
         its own retry/dead-letter budget. A persistently-failing treatment dead-letters
         without sinking the rest of the sweep (the proposal's DoE parallel scheduling +
-        dead-letter). Returns a per-treatment outcome roll-up."""
+        dead-letter). Returns a per-treatment outcome roll-up.
+
+        ``on_log_line`` (Phase 21): each treatment streams its pod logs live; because the
+        sweep runs treatments in parallel, each line is prefixed with the treatment's run-id
+        (``[<run_id>] <line>``) so interleaved lines stay attributable in the shared event
+        stream. A failing tail on one treatment never affects the rest of the sweep."""
         sem = asyncio.Semaphore(max(1, max_parallel))
+
+        def _tagged_sink(run_id: str) -> OnLogLine | None:
+            if on_log_line is None:
+                return None
+
+            async def _emit(line: str) -> None:
+                await on_log_line(f"[{run_id}] {line}")
+
+            return _emit
 
         async def _one(spec: JobSpec) -> RunOutcome:
             async with sem:
@@ -255,6 +350,7 @@ class BenchmarkOrchestrator:
                     return await self.run_with_retries(
                         spec, max_attempts=max_attempts, retryable=retryable,
                         poll_interval=poll_interval, max_wait=max_wait,
+                        on_log_line=_tagged_sink(spec.run_id),
                     )
                 except Exception as exc:  # isolate: one treatment's error must not sink the sweep
                     # run_with_retries didn't reach its own outcome-recording, so count this

@@ -9,12 +9,28 @@ workload, retry budget) is the agent's; this is mechanism.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.orchestrator.controller import BenchmarkOrchestrator, RunOutcome
 from app.orchestrator.job import JobSpec
 from app.orchestrator.kube import RealKubeClient
 from app.tools.context import ToolContext, ToolError
+
+
+def _live_log_sink(ctx: ToolContext) -> Callable[[str], Awaitable[None]] | None:
+    """Build the per-line sink that forwards a benchmark pod's live logs to the UI as
+    ``output`` events — the exact event the runner already emits for streamed command output,
+    so the UI renders pod logs with no new transport. Returns None when no emitter is wired
+    (streaming is then simply disabled), keeping non-UI callers unchanged."""
+    emit = ctx.emit
+    if emit is None:
+        return None
+
+    async def _sink(line: str) -> None:
+        await emit("output", {"line": line})
+
+    return _sink
 
 
 def _default_command(spec: str | None, harness: str | None, workload: str | None, namespace: str) -> list[str]:
@@ -104,7 +120,15 @@ async def orchestrate_benchmark_run(
         return {"submitted": True, "run_id": run_id, "job": job, "namespace": namespace,
                 "note": "Job submitted; not watched. Use list_orchestrated_runs to check status."}
 
+    # Phase 21: forward the benchmark pod's live log lines to the UI as `output` events — the
+    # SAME transport the runner already uses for streamed command output — so the user sees
+    # benchmark progress in real time during the run, not just at the end. Best-effort: a
+    # failing tail never breaks the run (guarded in the orchestrator), and with no emitter
+    # wired (e.g. a bare unit test) streaming is simply disabled.
+    on_log_line = _live_log_sink(ctx)
+
     outcome = await orch.run_with_retries(
         spec_obj, max_attempts=max_attempts, poll_interval=poll_interval, max_wait=max_wait,
+        on_log_line=on_log_line,
     )
     return {"namespace": namespace, **_serialize_outcome(outcome)}

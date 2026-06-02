@@ -33,6 +33,27 @@ the fix — these are operational facts; the remediation judgment is yours:
 - **`run_error`** — the benchmark container ran and exited non-zero. Read the logs (the tool
   streams them) for the real error before deciding.
 
+## Live log streaming (real-time, during the run)
+
+While an `orchestrate_benchmark_run` watches a Job, the benchmark pod's logs are followed in
+the background and each line is surfaced to the user **as it is produced** — through the same
+streamed-output channel the UI already renders for any other running command (not just dumped
+at the end). So you can narrate progress live: "the harness is warming up", "it's on load
+point 2 of 3", etc., straight from the pod's own output.
+
+What this means for you:
+
+- You don't have to call anything extra — streaming is automatic for a watched run. Just keep
+  the user informed using what scrolls by, and reserve `summarize_report` for the *parsed*
+  Benchmark Report (never scrape numbers from these raw log lines — they're for visibility,
+  not for results).
+- For a **sweep**, several treatments run at once, so each streamed line is prefixed with its
+  treatment run-id (`[t1] …`, `[t2] …`) — tell the user which treatment a line belongs to.
+- Log streaming is **best-effort**: if a pod isn't ready yet, logs rotate, or the follow
+  stream hiccups, the live tail quietly stops **without affecting the run**. A run can still
+  succeed even if no lines streamed. If the user saw nothing stream, that's not a failure —
+  read the final outcome (and, for a `run_error`, the captured logs) instead.
+
 ## Sweeps & retries
 
 - For a parameter sweep, prefer the CLI's native DoE (`execute_llmdbenchmark`
