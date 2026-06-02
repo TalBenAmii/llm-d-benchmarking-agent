@@ -64,6 +64,38 @@ off the served nodes (`avoid_labels` → pod anti-affinity), node pools, taints,
 in [`knowledge/resource_management.md`](resource_management.md). Read it before setting
 `scheduling`, and verify the real node/pod label values on the target cluster first.
 
+## Endpoint readiness gate (don't benchmark an unready stack)
+
+Before a benchmark Job is submitted, the inference endpoint must actually be **serving** — not
+just "a pod exists". A pod can be `Running` yet failing its readiness probe, in which case it
+is **not** in any Service's ready backing endpoints and a benchmark against it would fail or
+mislead. So the gate goes BEYOND pod presence:
+
+- **`check_endpoint_readiness`** (read-only, auto-runs) is the explicit check. It reads the
+  authoritative Kubernetes signal — `kubectl get endpoints` — and asks: does any Service in the
+  namespace have a **ready backing endpoint** (a live address that can receive traffic)? It
+  corroborates with the benchmark CLI's own read-only `run --list-endpoints`. It returns a
+  structured `ready` verdict plus per-service ready/not-ready endpoint counts.
+- **`orchestrate_benchmark_run` gates on this automatically** (`require_ready_endpoint=true` by
+  default). If the endpoint isn't ready it submits **nothing**, mutates nothing, and returns a
+  structured not-ready result: `{submitted:false, ready:false, readiness:{…}, standup_suggestion:{…}}`.
+
+When you get a not-ready result:
+
+- **Tell the user plainly** what the readiness check found (e.g. "the `cicd/kind` namespace has
+  no ready inference endpoint yet" or "the service exists but no pod is serving").
+- **OFFER to stand up a stack** — the result's `standup_suggestion` names the approval-gated path
+  (`execute_llmdbenchmark subcommand="standup"`). Standing up is **mutating**, so it requires the
+  user's explicit approval. **The decision to stand up is yours and the user's, not the gate's** —
+  the readiness check is only the mechanism; never stand up unprompted, and never auto-mutate.
+- A ready result means the stack is serving — proceed with the benchmark as before.
+- Only set `require_ready_endpoint=false` (or skip the check) when you KNOW the endpoint is
+  reachable another way — e.g. you're benchmarking an **external** endpoint via an explicit
+  `-U/--endpoint-url` rather than an in-cluster Service.
+
+This is the proposal's §3.3 dependency management: the run depends on a healthy serving stack,
+so we verify that dependency (readiness) and — only with approval — bring it up.
+
 ## Sweeps & retries
 
 - For a parameter sweep, prefer the CLI's native DoE (`execute_llmdbenchmark`

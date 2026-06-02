@@ -40,3 +40,19 @@ Before standing up anything, decide using `stack` (pass the target `namespace`):
 
 When unsure whether the running stack matches the use case, you can also preview endpoints
 read-only with `execute_llmdbenchmark subcommand=run flags={list_endpoints:true}`.
+
+## Endpoint readiness before a benchmark (stronger than pod presence)
+`stack.detected` proves a pod is *Ready*, but that is NOT the same as the inference
+**endpoint** actually serving traffic: a pod can be Running yet failing its readiness probe,
+so it is absent from any Service's ready backing endpoints. Before benchmarking an existing
+stack, run `check_endpoint_readiness(namespace=...)` — a read-only gate that reads
+`kubectl get endpoints` (does a Service have a *ready backing endpoint*?) and corroborates
+with the CLI's `run --list-endpoints`. It returns a structured `ready` verdict; when not
+ready it includes a `standup_suggestion`.
+- `ready == true` → the endpoint is serving; go ahead and benchmark.
+- `ready == false` → do **not** submit a benchmark. Tell the user, and **offer** the
+  approval-gated standup the suggestion names (`execute_llmdbenchmark subcommand="standup"`).
+  Standing up is mutating — never do it without the user's explicit approval. The DECISION to
+  stand up is yours and the user's; the readiness check is only the mechanism.
+`orchestrate_benchmark_run` applies this same gate automatically before submitting a Job
+(see knowledge/orchestrator.md).

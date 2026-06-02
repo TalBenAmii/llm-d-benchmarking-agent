@@ -16,6 +16,7 @@ from app.orchestrator.controller import BenchmarkOrchestrator, RunOutcome
 from app.orchestrator.job import JobSpec, Scheduling
 from app.orchestrator.kube import RealKubeClient
 from app.tools.context import ToolContext, ToolError
+from app.tools.readiness import check_endpoint_readiness
 
 
 def _live_log_sink(ctx: ToolContext) -> Callable[[str], Awaitable[None]] | None:
@@ -84,6 +85,7 @@ async def orchestrate_benchmark_run(
     watch: bool = True,
     poll_interval: float = 3.0,
     max_wait: float = 3600.0,
+    require_ready_endpoint: bool = True,
 ) -> dict[str, Any]:
     image = image or ctx.settings.orchestrator_image
     if not image:
@@ -105,6 +107,29 @@ async def orchestrate_benchmark_run(
         sched = Scheduling.from_dict(scheduling)
     except ValueError as exc:
         raise ToolError(f"invalid scheduling: {exc}") from exc
+
+    # Phase 24: GATE on a real inference-endpoint readiness check before submitting — don't
+    # benchmark an unready stack. This goes BEYOND pod presence: it verifies a Service has a
+    # READY backing endpoint (see app/orchestrator/readiness.py). When not ready we submit
+    # NOTHING and return a structured not-ready outcome carrying a standup suggestion the agent
+    # can OFFER (approval-gated). The DECISION to stand up is the agent's/user's judgment; this
+    # is just the mechanism. Skipped in simulate mode (the synthetic walk deploys nothing) and
+    # when the caller explicitly opts out (e.g. it just stood the stack up and knows it's ready).
+    if require_ready_endpoint and not ctx.settings.simulate:
+        readiness = await check_endpoint_readiness(ctx, namespace=namespace, spec=spec)
+        if not readiness.get("ready"):
+            return {
+                "submitted": False,
+                "ready": False,
+                "namespace": namespace,
+                "readiness": readiness,
+                "standup_suggestion": readiness.get("standup_suggestion"),
+                "note": "Benchmark NOT submitted: the inference endpoint in this namespace is "
+                        "not ready (no Service has a ready backing endpoint). Nothing was "
+                        "mutated. Offer to stand up a stack first (approval-gated) — see "
+                        "standup_suggestion — or pass require_ready_endpoint=false to override "
+                        "if you know the endpoint is reachable another way.",
+            }
 
     run_id = uuid.uuid4().hex[:8]
     spec_obj = JobSpec(

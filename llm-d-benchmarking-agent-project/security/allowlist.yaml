@@ -108,7 +108,9 @@ value_constraints:
   kubectl_resource:
     enum: [ns, namespace, namespaces, po, pod, pods, svc, service, services,
            deploy, deployment, deployments, ep, endpoints, events, nodes, node,
-           job, jobs]   # job/jobs: the orchestrator submits benchmark runs as K8s Jobs
+           job, jobs]   # job/jobs: the orchestrator submits benchmark runs as K8s Jobs.
+                        # ep/endpoints: the Phase 24 endpoint-readiness gate reads a Service's
+                        # ready backing endpoints (read-only) before submitting a benchmark.
   git_ref:         { regex: "^[A-Za-z0-9._/-]+$" }
   cluster_name:    { regex: "^[a-z0-9]([-a-z0-9]{0,40}[a-z0-9])?$" }   # kind cluster name
   duration:        { regex: "^[0-9]+(s|m|h)?$" }                       # e.g. 120s, 5m
