@@ -114,3 +114,29 @@ integrator). When implementing one:
   `docs/SECURITY.md`.
 - Fail loudly on a misconfiguration (e.g. a missing repo path, a malformed allowlist) rather
   than silently degrading.
+
+## Quality gates (ruff + mypy + coverage)
+
+Three CI-enforced gates keep the tree clean. Run them all locally with `make quality`
+(or `make lint` / `make typecheck` / `make coverage` individually); CI runs the same three
+in the `quality-gates` job (the hermetic flow-validation job runs unchanged alongside it).
+
+- **`ruff check .`** — a sensible modern ruleset (`E/W/F/I/B/UP/C4/SIM`, configured in
+  `[tool.ruff.lint]`). `E501` (line length) is **deliberately not enforced** — the codebase
+  favours longer explanatory lines and enforcing it would be pure churn. Idiomatic test
+  patterns (broad `assertRaises`, `assert False`, nested `with`) are relaxed for `tests/`.
+- **`mypy app`** — meaningful but **not** `--strict` over the whole tree (that would demand a
+  rewrite for no real benefit). Genuine `Optional`/arg-type bugs are flagged; the two LLM
+  provider modules that hand dict-shaped payloads to the richly-typed `anthropic`/`openai`
+  SDKs have `arg-type`/`call-overload` relaxed at that boundary only (`[[tool.mypy.overrides]]`).
+  Prefer a precise annotation or a `TypeGuard` over a blanket `type: ignore`; targeted ignores
+  must carry an error code.
+- **coverage** — the full suite under `--cov=app`, gated by `--cov-fail-under`. The threshold
+  lives in **one** place, `COV_FAIL_UNDER` in the `Makefile`, and is mirrored by the CI step
+  and asserted by `tests/test_quality_gates.py` (so they can't drift). It is set a few points
+  below the measured baseline (~89%), **not** a hardcoded 80%. Never delete a functional test
+  to satisfy coverage — add a test or raise nothing.
+
+The covered suite reads the real Benchmark Report schema/specs, so it needs the read-only
+`llm-d` / `llm-d-benchmark` repos present (`REPOS_DIR` points at their parent); CI clones them
+shallowly for that job.

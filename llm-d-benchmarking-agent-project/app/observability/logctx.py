@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import contextvars
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterator
 
 # The correlation fields. Empty string = "unset" (rendered as absent, never a bogus value).
 _corr_id: contextvars.ContextVar[str] = contextvars.ContextVar("corr_id", default="")

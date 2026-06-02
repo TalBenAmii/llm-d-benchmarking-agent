@@ -21,6 +21,9 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
 ]
 
 [build-system]
@@ -33,3 +36,79 @@ packages = ["app", "app.llm", "app.agent", "app.tools", "app.security", "app.val
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# --- Quality gates (Phase 14): ruff + mypy + coverage -------------------------
+# Config only; no app behaviour change. The ruleset is tuned to the existing
+# style (no churn-heavy reformatting), mypy is meaningful-but-achievable
+# (genuine bugs flagged, the typed-SDK boundary relaxed), and coverage gates the
+# suite a few points below the measured baseline (see `make coverage`).
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+# The runtime tree (mechanism); knowledge/ + docs are data, never linted.
+src = ["."]
+extend-exclude = ["workspace", ".venv"]
+
+[tool.ruff.lint]
+# A sensible modern ruleset matching the existing style. E501 (line length) is
+# deliberately omitted — the codebase favours longer explanatory lines and
+# enforcing it would be pure churn with no behaviour benefit.
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes (unused imports/names, undefined names)
+    "I",    # isort (import ordering)
+    "B",    # flake8-bugbear (likely bugs)
+    "UP",   # pyupgrade (modern syntax for the pinned py311 floor)
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line-too-long — existing style keeps explanatory long lines
+    "B008",  # function-call-in-default-arg — FastAPI Depends(...) is idiomatic
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally use patterns ruff flags as "smells" in app code: broad
+# assertRaises(Exception), assert False, nested with-blocks, dict()/list() calls
+# for readability. These are fine in test scaffolding.
+"tests/**" = ["B017", "B011", "SIM117", "C408"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["app"]
+# Meaningful but achievable — NOT --strict on the whole tree. We flag genuine
+# Optional/arg-type bugs while tolerating the dynamic Pydantic/FastAPI shapes
+# and untyped third-party returns.
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+# The LLM provider modules hand richly-typed vendor SDKs (anthropic / openai)
+# our own dict-shaped message/tool payloads. Type-checking those call sites
+# against the SDK's exhaustive overloads adds no value here (the payloads are
+# validated by our own schemas), so relax arg-type/call-overload at that
+# boundary only — the rest of the tree stays checked.
+module = ["app.llm.anthropic_provider", "app.llm.openai_provider"]
+disable_error_code = ["arg-type", "call-overload"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = ["app/__init__.py", "*/__init__.py"]
+
+[tool.coverage.report]
+# Show missing lines and don't let __repr__/TYPE_CHECKING-only branches skew the
+# number. The fail-under threshold lives on the CLI / Makefile (see `coverage`
+# target) so it can be tuned without editing tool config.
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]

@@ -32,7 +32,6 @@ from app.agent.ws_schemas import (
     parse_inbound,
 )
 from app.config import get_settings
-from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocket_authorized
 from app.llm.provider import get_provider
 from app.observability import instrument
 from app.observability.logctx import bind as log_bind
@@ -40,6 +39,7 @@ from app.observability.logctx import new_corr_id
 from app.observability.logging import setup_logging
 from app.observability.metrics import render_prometheus
 from app.security.allowlist import Allowlist
+from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocket_authorized
 from app.security.runner import CommandRunner
 from app.storage.history import HistoryStore, available_metrics, trend
 from app.storage.retention import readiness, run_gc, self_check

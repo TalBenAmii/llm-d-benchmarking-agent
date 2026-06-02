@@ -18,7 +18,6 @@ from app.tools.context import ToolContext
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 
-
 # ---- allowlist: the new kubectl surface -----------------------------------
 
 ALLOW = [

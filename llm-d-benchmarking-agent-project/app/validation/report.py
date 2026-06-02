@@ -388,7 +388,7 @@ def compare_across_harnesses(entries: list[dict[str, Any]]) -> dict[str, Any]:
     # Group runs by the harness the report names. Runs whose report doesn't declare a
     # harness are grouped under "unknown" so they're visible, never silently dropped.
     by_harness: dict[str, list[dict[str, Any]]] = {}
-    for label, s in zip(labels, summaries):
+    for label, s in zip(labels, summaries, strict=True):
         h = s.get("harness") or "unknown"
         by_harness.setdefault(h, []).append({"label": label, "summary": s})
 
@@ -438,7 +438,7 @@ def compare_across_harnesses(entries: list[dict[str, Any]]) -> dict[str, Any]:
                     break
         cross_metrics.append({"key": m, "name": name, "per_harness": per_harness})
 
-    models = sorted({s.get("model") for s in summaries if s.get("model")})
+    models: list[str] = sorted({str(s["model"]) for s in summaries if s.get("model")})
     return {
         "n": len(entries),
         "harnesses": harness_view,

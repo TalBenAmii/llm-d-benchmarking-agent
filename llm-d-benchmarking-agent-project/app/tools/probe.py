@@ -205,7 +205,7 @@ def fetch_key_docs(
     try:
         spec = yaml.safe_load(kfile.read_text()) or {}
     except yaml.YAMLError as exc:
-        raise ToolError(f"key_docs.yaml is not valid YAML: {exc}")
+        raise ToolError(f"key_docs.yaml is not valid YAML: {exc}") from exc
 
     entries = spec.get("docs", []) if isinstance(spec, dict) else []
     if task:
@@ -222,7 +222,12 @@ def fetch_key_docs(
             item.update(found=False, reason=str(exc))
         fetched.append(item)
 
-    available = sorted({e.get("task") for e in spec.get("docs", []) if isinstance(e, dict) and e.get("task")})
+    tasks: set[str] = {
+        str(e["task"])
+        for e in spec.get("docs", [])
+        if isinstance(e, dict) and e.get("task")
+    }
+    available = sorted(tasks)
     return {
         "task": task,
         "available_tasks": available,

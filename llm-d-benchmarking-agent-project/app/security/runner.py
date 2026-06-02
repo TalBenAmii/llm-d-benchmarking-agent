@@ -14,9 +14,9 @@ import os
 import shutil
 import signal
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Awaitable, Callable
 
 from app.config import PROJECT_ROOT
 
@@ -60,7 +60,7 @@ def _is_within(child: Path, parent: Path) -> bool:
         return False
 
 
-def _kill_process_group(proc: "asyncio.subprocess.Process") -> None:
+def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
     """SIGKILL the child's whole process group (it is its own session leader — see
     ``start_new_session`` below) so a command that double-forks a daemon doesn't leave a
     grandchild running. Falls back to killing just the child."""
@@ -221,7 +221,7 @@ class CommandRunner:
             # double-forks a daemon) must not hang here forever: that would pin a concurrency
             # slot (the caller may hold a run-cap semaphore around this call) indefinitely.
             await asyncio.wait_for(asyncio.gather(_pump(), proc.wait()), timeout=deadline)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             timed_out = True
             log.warning("runner.exec.timeout", extra={
                 "exe": real_argv[0] if real_argv else "", "deadline_s": deadline})

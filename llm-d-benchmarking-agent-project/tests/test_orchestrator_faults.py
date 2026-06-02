@@ -15,7 +15,7 @@ from app.orchestrator.faults import (
     classify_failure,
 )
 from app.orchestrator.job import JobStatus
-from tests.orchestrator_fakes import FakeKubeClient, make_job, make_pod
+from tests.orchestrator_fakes import FakeKubeClient, make_pod
 
 
 def _failed(reason=""):

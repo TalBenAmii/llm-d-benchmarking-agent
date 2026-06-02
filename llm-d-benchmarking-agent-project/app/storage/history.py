@@ -208,7 +208,7 @@ class HistoryStore:
         if not isinstance(data, dict) or "summary" not in data:
             return None
         # Reconstruct only known fields; ignore anything extra a newer writer added.
-        known = {k: data.get(k) for k in HistoryRecord.__dataclass_fields__}
+        known: dict[str, Any] = {k: data.get(k) for k in HistoryRecord.__dataclass_fields__}
         known["id"] = path.stem  # never trust an id baked into the file; the path is truth
         try:
             return HistoryRecord(**known)

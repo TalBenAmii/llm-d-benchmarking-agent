@@ -27,8 +27,7 @@ from app.storage.history import (
 from app.tools import history as history_tool
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import ResultHistoryInput
-from app.validation.report import load_report, summarize_report
-
+from app.validation.report import load_report
 
 # ---- helpers ---------------------------------------------------------------
 

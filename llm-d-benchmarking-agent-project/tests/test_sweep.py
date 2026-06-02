@@ -19,7 +19,6 @@ from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import ExecuteInput
 from app.validation.report import ReportError, compare_summaries, find_reports, load_report
 
-
 # ---- compare_summaries (pure math) ----------------------------------------
 
 def _summary(ttft_mean: float, out_rate_mean: float, *, success: float = 100.0, total: int = 500):

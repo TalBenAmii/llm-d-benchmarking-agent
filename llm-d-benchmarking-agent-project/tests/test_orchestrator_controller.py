@@ -2,8 +2,6 @@
 log streaming, and cluster-only reconstruction. Hermetic (FakeKubeClient, no cluster)."""
 from __future__ import annotations
 
-import pytest
-
 from app.orchestrator.controller import BenchmarkOrchestrator
 from app.orchestrator.job import (
     ABSENT,

@@ -22,12 +22,15 @@ compares against DATA caps; it embeds no per-area judgment in ``if/elif`` branch
 """
 from __future__ import annotations
 
+import contextlib
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 from app.config import Settings
+
 
 # ---------------------------------------------------------------------------
 # Managed scratch areas. Each is (logical-name, subpath-under-workspace, item-kind).
@@ -68,7 +71,7 @@ class RetentionCaps:
     max_bytes: int | None = None           # keep an area under this total; None = unlimited
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> "RetentionCaps":
+    def from_settings(cls, settings: Settings) -> RetentionCaps:
         # Treat 0 / 0.0 / None uniformly as "unlimited" for that dimension (documented default
         # policy). The conversion is the ONLY place env numbers become caps — pure normalization.
         age_days = settings.retention_max_age_days or 0.0
@@ -167,10 +170,8 @@ def _remove(path: Path) -> None:
 
         shutil.rmtree(path, ignore_errors=True)
     else:
-        try:
+        with contextlib.suppress(OSError):
             path.unlink()
-        except OSError:
-            pass
 
 
 def _enumerate(area: ManagedArea, root: Path, active_ids: set[str]) -> list[_Item]:

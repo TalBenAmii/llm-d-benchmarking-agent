@@ -201,7 +201,6 @@ async def test_shutdown_handler_cancels_all_inflight(tmp_path):
 def test_app_graceful_shutdown_callable_and_cancels(tmp_path):
     """app.main.graceful_shutdown is a plain coroutine a test invokes DIRECTLY (no signal). With
     a fake in-flight run registered on app.state.runs it cancels it and reports the summary."""
-    import app.main as main_mod
     from app.main import app, graceful_shutdown
 
     with TestClient(app):

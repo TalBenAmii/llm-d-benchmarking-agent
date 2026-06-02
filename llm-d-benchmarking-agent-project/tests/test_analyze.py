@@ -22,7 +22,6 @@ from app.validation.analysis import (
 from app.validation.report import load_report
 from app.validation.session_plan import SessionPlan
 
-
 # ---- helpers ---------------------------------------------------------------
 
 def _summary(*, ttft_ms=None, tpot_ms=None, out_rate=None, req_lat_ms=None,

@@ -18,7 +18,7 @@ the typed envelope below documents that shape and gives a single place to serial
 """
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
@@ -72,7 +72,7 @@ class PingIn(BaseModel):
 # error for an unknown/missing tag or a malformed payload. Keeping the discriminator explicit
 # means a new inbound frame is a one-line addition here, not a branch in the handler.
 InboundMessage = Annotated[
-    Union[UserMessageIn, ApprovalIn, CancelIn, PingIn],
+    UserMessageIn | ApprovalIn | CancelIn | PingIn,
     Field(discriminator="type"),
 ]
 

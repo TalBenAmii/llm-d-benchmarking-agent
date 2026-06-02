@@ -142,7 +142,7 @@ class RunRegistry:
                 # Await the task itself (no shield): the slot is released as CancelledError
                 # unwinds the `async with run_semaphore`, and `await` returns once that's done.
                 await asyncio.wait_for(_await_quietly(handle.task), timeout=remaining)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # The task didn't finish unwinding within the slice; loop to re-cancel/await
                 # until the overall deadline. wait_for cancelled the wrapper, not handle.task.
                 continue

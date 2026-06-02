@@ -10,9 +10,6 @@ import pytest
 
 from app.observability.metrics import (
     DEFAULT_DURATION_BUCKETS,
-    Counter,
-    Gauge,
-    Histogram,
     MetricsRegistry,
     render_prometheus,
 )
