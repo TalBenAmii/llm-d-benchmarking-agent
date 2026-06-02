@@ -445,3 +445,22 @@ scheduling into one run path).
   +`tests/test_resource_management.py`, 347 lines / +37 tests). Prior baseline 519 passed / 7 skipped
   (Phase 21). Ruff clean, mypy clean (63 source files). Authoritative run from the integration worktree
   against the worktree app + shared venv, 600s timeout.
+
+## 2026-06-02 — Phase 24: Endpoint health-check before submit (+ optional auto-standup) — DONE
+Branch `feature/roadmap-v3-p24-health-check` → merged into `feature/roadmap-v3` (`--no-ff`; one
+additive conflict in `security/allowlist.yaml` resolved by keeping BOTH sides — Phase 22
+`cm/configmaps` enum entries + Phase 24 `ep/endpoints` readiness comment; `knowledge/orchestrator.md`
+auto-merged the checkpoint + readiness sections).
+- Shipped an endpoint-readiness gate so the orchestrator never benchmarks an unready stack
+  (proposal §3.3). `app/orchestrator/readiness.py` reads `kubectl get endpoints` (the authoritative
+  signal — a Running pod failing its readiness probe is NOT a ready backing endpoint) and corroborates
+  with the CLI's read-only `run --list-endpoints`. New read-only `check_endpoint_readiness` tool
+  (auto-runs). `orchestrate_benchmark_run` gates on it by default (`require_ready_endpoint=true`):
+  unready ⇒ `{submitted:false, ready:false, readiness, standup_suggestion}`, mutating nothing; the
+  standup is an approval-gated suggestion only. Guidance (when to skip for external `-U` endpoints,
+  how to act on not-ready) lives in `knowledge/orchestrator.md` + `knowledge/preconditions.md`.
+- **Tests:** full integration suite **584 passed / 7 skipped / 0 failed** (17.6s, no hang, exit 0;
+  +`tests/test_endpoint_readiness.py`, 289 lines / +28 net tests; hermetic — fake kube endpoints,
+  ready/not-ready verdicts, the submit gate, the standup suggestion, the external-endpoint skip path).
+  Prior baseline 568 passed / 7 skipped (Phase 22). Ruff clean, mypy clean (66 source files).
+  Authoritative run from the integration worktree against the worktree app + shared venv, 600s timeout.

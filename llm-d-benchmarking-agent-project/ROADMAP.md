@@ -373,3 +373,25 @@ Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is nev
   264 lines / +12 tests; hermetic — fake kube ConfigMap store, asserts skip-completed, in-flight
   persistence, idempotent resume, all-N merged result, and no-`sweep_id` stateless path). Prior baseline
   556 passed / 7 skipped (Phase 23).
+
+## Phase 24 — Endpoint health-check before submit (+ optional auto-standup) — DONE
+- Closed the proposal §3.3 dependency-management gap: the orchestrator no longer benchmarks an
+  unready stack. A new `app/orchestrator/readiness.py` reads the authoritative K8s signal
+  (`kubectl get endpoints`) and asks whether any Service in the namespace has a **ready backing
+  endpoint** (a live address that can receive traffic), corroborated by the benchmark CLI's
+  read-only `run --list-endpoints`, returning a structured `ready` verdict with per-service
+  ready/not-ready counts. The read-only `check_endpoint_readiness` tool exposes it (auto-runs), and
+  `orchestrate_benchmark_run` now **gates on it automatically** (`require_ready_endpoint=true` by
+  default): if the endpoint isn't ready it submits NOTHING, mutates nothing, and returns
+  `{submitted:false, ready:false, readiness:{…}, standup_suggestion:{…}}` — the standup is only an
+  approval-gated *suggestion*, never auto-run. `ep/endpoints` was already in the read-only kubectl
+  enum; WHEN to skip the gate (external `-U` endpoint) and HOW to act on a not-ready verdict is
+  guidance in `knowledge/orchestrator.md` + `knowledge/preconditions.md` (thin code / thick agent).
+- Merged into `feature/roadmap-v3` (`--no-ff`; one additive conflict in `security/allowlist.yaml`
+  resolved by keeping BOTH sides — the Phase 22 `cm/configmaps` enum entries AND the Phase 24
+  `ep/endpoints` readiness comment; `knowledge/orchestrator.md` auto-merged the checkpoint +
+  readiness sections into one coherent doc); full suite **584 passed / 7 skipped / 0 failed**
+  (17.6s, no hang, exit 0), ruff clean, mypy clean (66 files) (+`tests/test_endpoint_readiness.py`,
+  289 lines / +28 net tests; hermetic — fake kube endpoints, asserts ready/not-ready verdicts, the
+  submit gate (submits nothing when unready), the standup suggestion, and the external-endpoint skip
+  path). Prior baseline 568 passed / 7 skipped (Phase 22).
