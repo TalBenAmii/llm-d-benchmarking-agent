@@ -376,6 +376,12 @@ async def ws(websocket: WebSocket) -> None:
     # ``/ws?session=<id>`` reattaches to a saved chat (page reload / sidebar click);
     # an unknown or missing id just mints a fresh session.
     requested = websocket.query_params.get("session")
+    # ``after_seq`` is the client's resume cursor (chat-switch state fix): when a client keeps a
+    # cached transcript for this chat, it reconnects with the highest turn-event seq it has
+    # rendered so we can replay ONLY the tail it missed onto that cached view instead of
+    # resending the whole history (no flash, no duplicate rendering). Absent/garbage => full path.
+    after_raw = websocket.query_params.get("after_seq")
+    after_seq = int(after_raw) if (after_raw and after_raw.isdigit()) else None
     session = app.state.sessions.get_or_load(requested) if requested else None
     resumed = session is not None
     if session is None:
@@ -453,10 +459,28 @@ async def ws(websocket: WebSocket) -> None:
             pass
 
     _running_task = app.state.running.get(session.id)
+    # Resume decision (chat-switch state fix): if the client kept a cached transcript for this
+    # chat (it sent ``after_seq``) and that cursor still sits within the retained live buffer,
+    # patch its view with only the missed tail instead of resending the whole history. The check
+    # is independent of ``turn_active`` so a chat that *finished* in the background while the user
+    # was away still patches the buffered tail (incl. its ``done``) onto the cached view. A cursor
+    # that has fallen off the buffer — or predates a new turn that cleared it — fails the window
+    # test and falls back to a full history rebuild.
+    incremental = (
+        after_seq is not None
+        and channel.min_buffered_seq is not None
+        and channel.min_buffered_seq - 1 <= after_seq <= channel.cur_seq
+    )
     await channel.emit("ready", {
         "session_id": session.id,
         "resumed": resumed,
         "running": bool(_running_task and not _running_task.done()),
+        # Server-authoritative elapsed time of the in-flight turn (None when idle) so the client
+        # seeds its "thinking seconds" from the TRUE start and keeps ticking across a chat switch.
+        "running_elapsed_ms": channel.elapsed_ms,
+        # Resume hint: tells the client whether we patched its cached view (incremental) or are
+        # about to send a full history rebuild, plus the current cursor head.
+        "resume": {"incremental": incremental, "cur_seq": channel.cur_seq},
         # Persisted token tally so the header chip is correct immediately on connect/reload,
         # before any new turn (token-tracking feature).
         "usage": {
@@ -466,9 +490,9 @@ async def ws(websocket: WebSocket) -> None:
             "total": session.session_total,
         },
     })
-    if resumed:
+    if resumed and not incremental:
         await channel.emit("history", {"items": _history_items(session), "commands": session.commands})
-    else:
+    elif not resumed:
         # Brand-new chat: surface the start-of-chat suggestion chips (W1) right after `ready`, and
         # kick off a NON-blocking read-only environment pre-probe (W2) so the first turn starts
         # environment-aware without an extra LLM round-trip. Neither blocks input-enable: the
@@ -478,12 +502,16 @@ async def ws(websocket: WebSocket) -> None:
             await channel.emit(ws_events.SUGGESTIONS, {"chips": chips})
         if loop is not None:
             asyncio.create_task(_prewarm_env(session, channel))
-    # If a turn is still running on this session (the socket dropped mid-run), replay the
-    # buffered LIVE events for that turn so a reconnecting client catches up to the live stream
-    # — the events it missed, in order — then continues live, rather than waiting blind for the
-    # final result (resolves the Phase-2 deferral). AFTER history so it lands below the replayed
-    # transcript. Guarded by turn_active so we never replay a stale prior turn's tail.
-    if channel.turn_active:
+    # Replay buffered LIVE events so a reconnecting client catches up to the live stream — the
+    # events it missed, in order — rather than waiting blind for the final result. Two paths:
+    #   • incremental: patch only the missed tail (seq > after_seq) onto the client's CACHED
+    #     view; runs even when the turn already ended, so a finished-while-away chat still gets
+    #     its buffered tail (incl. ``done``) appended in place — no flash, no full rebuild.
+    #   • full: a turn is still running and the client is rebuilding from history; replay the
+    #     whole buffer below the freshly-replayed transcript (the original behavior).
+    if incremental:
+        await channel.replay_live(after_seq)
+    elif channel.turn_active:
         await channel.replay_live()
     # Re-surface any still-undecided approval (a gate the turn parked on while you were away),
     # AFTER the live replay so the live card lands at the bottom.

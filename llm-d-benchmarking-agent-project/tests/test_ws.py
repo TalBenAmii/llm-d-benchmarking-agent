@@ -363,8 +363,8 @@ def test_channel_live_buffer_is_bounded():
     # It keeps the MOST RECENT events (oldest fall off the ring).
     lines = [f["data"]["line"] for f in buffered]
     assert lines == [f"line-{i}" for i in range(90, 100)]
-    # Every buffered frame is the canonical outbound envelope.
-    assert all(set(f) == {"type", "data"} and f["type"] == "output" for f in buffered)
+    # Every buffered frame is the canonical outbound envelope plus a resume `seq` cursor.
+    assert all(set(f) == {"type", "data", "seq"} and f["type"] == "output" for f in buffered)
 
 
 def test_channel_begin_turn_resets_buffer():
@@ -466,3 +466,244 @@ def test_ws_new_connection_emits_suggestions_after_ready():
             assert ws2.receive_json()["type"] == "history"
             ws2.send_json({"type": "ping"})
             assert ws2.receive_json()["type"] == "pong"
+
+
+# --- chat-switch state: server-authoritative elapsed + resume cursor -------
+
+
+def test_channel_elapsed_ms_tracks_turn():
+    """`elapsed_ms` is None outside a turn, a small non-negative int that grows during one, and
+    None again after end_turn() — the server-authoritative clock the client seeds its timer from."""
+    import asyncio
+    import time
+
+    from app.agent.channel import Channel
+
+    class _Sess:
+        id = "elapsed"
+
+    async def _drive():
+        ch = Channel(_Sess())
+        assert ch.elapsed_ms is None, "no turn yet -> None"
+        ch.begin_turn()
+        e1 = ch.elapsed_ms
+        assert isinstance(e1, int) and e1 >= 0
+        time.sleep(0.02)
+        e2 = ch.elapsed_ms
+        assert e2 >= e1, "elapsed must not go backwards"
+        ch.end_turn()
+        assert ch.elapsed_ms is None, "after a turn ends -> None"
+
+    asyncio.run(_drive())
+
+
+def test_channel_seq_monotonic_and_window():
+    """Turn events are stamped with a channel-lifetime, strictly increasing `seq` (the resume
+    cursor); lifecycle frames carry none; begin_turn() clears the buffer but does NOT reset seq,
+    so a cursor from a prior turn reliably predates the new turn's min_buffered_seq."""
+    import asyncio
+
+    from app.agent import events
+    from app.agent.channel import Channel
+
+    class _Sess:
+        id = "seq"
+
+    async def _drive() -> Channel:
+        ch = Channel(_Sess(), buffer_max=50)
+        ch.begin_turn()
+        await ch.emit("assistant_text", {"text": "a"})   # seq 1
+        await ch.emit("tool_call", {"id": "t", "name": "x", "input": {}})  # seq 2
+        await ch.emit(events.PONG, {})                     # lifecycle: no seq, no advance
+        await ch.emit("assistant_text", {"text": "b"})    # seq 3
+        return ch
+
+    ch = asyncio.run(_drive())
+    seqs = [f["seq"] for f in ch.buffered_events]
+    assert seqs == [1, 2, 3], "buffered turn frames carry a strictly increasing seq"
+    assert ch.cur_seq == 3 and ch.min_buffered_seq == 1
+
+    # A second turn clears the buffer but the cursor keeps climbing (it is NOT reset in
+    # begin_turn). At a clean boundary a prior cursor sits exactly at min_buffered_seq-1, so it
+    # remains resumable — the next turn's events simply append to the cached view.
+    async def _next() -> Channel:
+        ch.begin_turn()
+        assert ch.buffered_events == []
+        await ch.emit("assistant_text", {"text": "c"})    # seq 4
+        return ch
+
+    asyncio.run(_next())
+    assert ch.cur_seq == 4 and ch.min_buffered_seq == 4
+
+    # Overflow is what truly pushes a cursor out of the resumable window: a small ring drops the
+    # oldest events, advancing min_buffered_seq, so a stale cursor below it must full-rebuild.
+    async def _overflow() -> Channel:
+        ch2 = Channel(_Sess(), buffer_max=3)
+        ch2.begin_turn()
+        for i in range(6):
+            await ch2.emit("output", {"line": str(i)})    # seq 1..6, ring keeps the last 3
+        return ch2
+
+    ch2 = asyncio.run(_overflow())
+    assert ch2.cur_seq == 6 and ch2.min_buffered_seq == 4, "oldest events fell off the ring"
+    assert not (ch2.min_buffered_seq - 1 <= 1 <= ch2.cur_seq), "stale cursor 1 is out of window"
+    assert ch2.min_buffered_seq - 1 <= 5 <= ch2.cur_seq, "a fresh cursor stays resumable"
+
+
+def test_channel_replay_after_seq_sends_only_tail():
+    """replay_live(after_seq) patches a cached view with ONLY the frames past the cursor, and
+    still skips approval_request frames (owned by reemit_pending). after_seq=None replays all."""
+    import asyncio
+
+    from app.agent.channel import Channel
+
+    class _Sess:
+        id = "replay"
+
+    class _FakeWS:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, frame):
+            self.sent.append(frame)
+
+    async def _drive():
+        ch = Channel(_Sess(), buffer_max=50)
+        ch.begin_turn()
+        await ch.emit("assistant_text", {"text": "a"})    # seq 1
+        await ch.emit("approval_request", {"request_id": "r", "kind": "k", "payload": {}})  # seq 2
+        await ch.emit("output", {"line": "o"})            # seq 3
+        ws = _FakeWS()
+        ch.ws = ws
+        await ch.replay_live(after_seq=1)                  # only seq>1, minus approvals
+        return ws
+
+    ws = asyncio.run(_drive())
+    types = [f["type"] for f in ws.sent]
+    assert types == ["output"], "only seq>after_seq non-approval frames replay"
+    assert all(f["seq"] > 1 for f in ws.sent)
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_ready_reports_running_elapsed():
+    """`ready` carries `running_elapsed_ms`: None for an idle/brand-new chat, and a non-negative
+    int when reconnecting to a chat whose turn is still in flight (parked at an approval gate)."""
+    from app.main import app
+
+    turns = [
+        AssistantTurn(text="Plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+        })]),
+        AssistantTurn(text="done.", tool_calls=[]),
+    ]
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider(turns)
+
+        with client.websocket_connect("/ws") as ws1:
+            ready1 = ws1.receive_json()
+            assert ready1["type"] == "ready"
+            assert ready1["data"]["running"] is False
+            assert ready1["data"]["running_elapsed_ms"] is None, "idle chat reports no elapsed"
+            sid = ready1["data"]["session_id"]
+            ws1.send_json({"type": "user_message", "text": "go"})
+            for _ in range(40):
+                if ws1.receive_json()["type"] == "approval_request":
+                    break  # parked at the gate; drop without answering
+
+        # Reconnect mid-turn: ready must report the turn as running with real elapsed time.
+        with client.websocket_connect(f"/ws?session={sid}") as ws2:
+            ready2 = ws2.receive_json()
+            assert ready2["type"] == "ready" and ready2["data"]["running"] is True
+            elapsed = ready2["data"]["running_elapsed_ms"]
+            assert isinstance(elapsed, int) and elapsed >= 0, "running chat reports elapsed ms"
+            # Finish cleanly so no background task is left parked.
+            rid = None
+            for _ in range(40):
+                ev = ws2.receive_json()
+                if ev["type"] == "approval_request":
+                    rid = ev["data"]["request_id"]
+                    break
+            ws2.send_json({"type": "approval", "request_id": rid, "approved": True})
+            for _ in range(40):
+                if ws2.receive_json()["type"] == "done":
+                    break
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_incremental_resume_skips_history_no_duplicates():
+    """Reconnecting with ?after_seq=<cursor> while the turn is still in flight PATCHES the cached
+    view: the server sends NO history and does NOT re-replay events at/under the cursor (no
+    duplicate assistant_text/tool_call). resume.incremental is True. The pending approval still
+    re-surfaces (it's cursor-independent)."""
+    from app.main import app
+
+    turns = [
+        AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+        })]),
+        AssistantTurn(text="Plan approved.", tool_calls=[]),
+    ]
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider(turns)
+
+        last_seq = 0
+        with client.websocket_connect("/ws") as ws1:
+            ready = ws1.receive_json()
+            sid = ready["data"]["session_id"]
+            ws1.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
+            for _ in range(40):
+                ev = ws1.receive_json()
+                if "seq" in ev:
+                    last_seq = max(last_seq, ev["seq"])
+                if ev["type"] == "approval_request":
+                    break  # parked at the gate; we've seen everything up to last_seq
+        assert last_seq > 0, "live turn events should have carried a seq cursor"
+
+        with client.websocket_connect(f"/ws?session={sid}&after_seq={last_seq}") as ws2:
+            ready2 = ws2.receive_json()
+            assert ready2["type"] == "ready"
+            assert ready2["data"]["resume"]["incremental"] is True
+            saw_history = saw_dupe = saw_reapproval = False
+            for _ in range(20):
+                ev = ws2.receive_json()
+                if ev["type"] == "history":
+                    saw_history = True
+                if ev["type"] in ("assistant_text", "tool_call") and ev.get("seq", 0) <= last_seq:
+                    saw_dupe = True
+                if ev["type"] == "approval_request":
+                    saw_reapproval = True
+                    rid = ev["data"]["request_id"]
+                    break
+            assert not saw_history, "incremental resume must NOT resend history"
+            assert not saw_dupe, "events at/under the cursor must not be replayed again"
+            assert saw_reapproval, "the still-pending approval should re-surface"
+            ws2.send_json({"type": "approval", "request_id": rid, "approved": True})
+            for _ in range(40):
+                if ws2.receive_json()["type"] == "done":
+                    break
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_stale_cursor_falls_back_to_full_history():
+    """A resume cursor outside the retained buffer window (here: beyond the head — what a client
+    with a stale-high cursor would send) is NOT incremental: the server falls back to a full
+    history rebuild so the client never silently misses events."""
+    from app.main import app
+
+    turns = [AssistantTurn(text="hi", tool_calls=[])]
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider(turns)
+        with client.websocket_connect("/ws") as ws1:
+            sid = ws1.receive_json()["data"]["session_id"]
+            ws1.send_json({"type": "user_message", "text": "hello"})
+            for _ in range(20):
+                if ws1.receive_json()["type"] == "done":
+                    break
+
+        # Reconnect with a bogus, too-high cursor → out of window → full rebuild (history present).
+        with client.websocket_connect(f"/ws?session={sid}&after_seq=999999") as ws2:
+            ready2 = ws2.receive_json()
+            assert ready2["type"] == "ready" and ready2["data"]["resume"]["incremental"] is False
+            assert _next_protocol(ws2)["type"] == "history", "stale cursor must fall back to history"

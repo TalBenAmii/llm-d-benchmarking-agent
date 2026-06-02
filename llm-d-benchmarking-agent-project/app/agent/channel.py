@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 import uuid
 from collections import deque
 from typing import Any
@@ -53,25 +54,63 @@ class Channel:
         # begins. deque(maxlen) drops the oldest event once full -> capped memory.
         self._buffer: deque[dict[str, Any]] = deque(maxlen=buffer_max)
         self._turn_active = False
+        # Monotonic timestamp of when the in-flight turn began, or None between turns. Used to
+        # report server-authoritative elapsed time so a client that reconnects mid-turn shows
+        # the REAL accumulated "thinking seconds", not a fresh zero (chat-switch state fix).
+        # ``time.monotonic`` is immune to wall-clock/NTP jumps and we only ever take a delta.
+        self._turn_started_monotonic: float | None = None
+        # Channel-lifetime sequence counter stamped onto every buffered (turn) event. It is a
+        # RESUME CURSOR: a reconnecting client says "I have through seq N" and we replay only
+        # newer frames onto its cached view. Monotonic across turns (NOT reset in begin_turn,
+        # which only clears the buffer) so a cursor stays comparable even past a turn boundary.
+        self._seq = 0
 
     def begin_turn(self) -> None:
         """Mark the start of a fresh turn and clear the live buffer.
 
         Called before a turn's first event so the buffer holds ONLY the in-flight turn's
-        events — a reconnecting client replays the current run, not a stale prior one.
+        events — a reconnecting client replays the current run, not a stale prior one. The
+        sequence counter is deliberately NOT reset (it spans the channel's lifetime) so a
+        cursor from the previous turn that predates this turn's first buffered seq reliably
+        signals "you missed a turn boundary — do a full rebuild".
         """
         self._buffer.clear()
         self._turn_active = True
+        self._turn_started_monotonic = time.monotonic()
 
     def end_turn(self) -> None:
         """Mark the running turn finished. The buffered events are kept until the next turn
         begins (a client that reconnects in the brief window after ``done`` still catches the
         tail), but no longer treated as a live, in-progress stream."""
         self._turn_active = False
+        self._turn_started_monotonic = None
 
     @property
     def turn_active(self) -> bool:
         return self._turn_active
+
+    @property
+    def elapsed_ms(self) -> int | None:
+        """Milliseconds since the in-flight turn began, or None when no turn is active.
+
+        Sampled at the instant the handler builds the ``ready`` frame on (re)connect, so a
+        client can seed its elapsed-time counter from the true start and keep ticking."""
+        if not self._turn_active or self._turn_started_monotonic is None:
+            return None
+        return int((time.monotonic() - self._turn_started_monotonic) * 1000)
+
+    @property
+    def cur_seq(self) -> int:
+        """Highest sequence number emitted so far (the live cursor head)."""
+        return self._seq
+
+    @property
+    def min_buffered_seq(self) -> int | None:
+        """Lowest sequence number still retained in the ring buffer, or None if empty.
+
+        A client cursor below ``min_buffered_seq - 1`` has fallen off the buffer (the gap was
+        evicted, or a new turn cleared it) → it must do a full rebuild rather than patch."""
+        return self._buffer[0].get("seq") if self._buffer else None
 
     @property
     def buffered_events(self) -> list[dict[str, Any]]:
@@ -92,13 +131,19 @@ class Channel:
         # in-flight turn's events, exactly as the docstring promises.
         frame = outbound(event_type, payload)
         if event_type not in events.NON_TURN_EVENTS:
+            # Stamp a resume cursor onto turn events only (lifecycle frames stay seqless — the
+            # handler re-sends them on every connect, so they must never advance the cursor).
+            # The live frame carries the same seq, so the attached client tracks its cursor in
+            # real time and asks for exactly the right tail if it later reconnects.
+            self._seq += 1
+            frame = {**frame, "seq": self._seq}
             self._buffer.append(frame)
         ws = self.ws
         if ws is not None:
             with contextlib.suppress(Exception):
                 await ws.send_json(frame)
 
-    async def replay_live(self) -> None:
+    async def replay_live(self, after_seq: int | None = None) -> None:
         """Replay the buffered live events for the in-flight turn to the current socket.
 
         Called when a socket (re)attaches while a turn is running, so a client that dropped
@@ -106,6 +151,12 @@ class Channel:
         then keeps receiving new events as they happen. A no-op when no turn is active or the
         buffer is empty. Sent verbatim (same envelope as the live frames) so the client reuses
         its existing renderers.
+
+        ``after_seq`` is the client's resume cursor: when given, only frames with a strictly
+        greater seq are replayed, so a client that kept its rendered transcript (a cached DOM
+        pane) is patched with ONLY the tail it missed — no duplicate rendering, no full
+        rebuild. ``None`` replays the whole buffer (the original behavior, for a client that
+        starts from a fresh/rebuilt transcript).
 
         Approval gates are deliberately SKIPPED here: they're stateful (an
         ``approval_request`` in the buffer may already be decided, or may be the one currently
@@ -118,6 +169,8 @@ class Channel:
             return
         for frame in list(self._buffer):
             if frame.get("type") == events.APPROVAL_REQUEST:
+                continue
+            if after_seq is not None and frame.get("seq", 0) <= after_seq:
                 continue
             with contextlib.suppress(Exception):
                 await ws.send_json(frame)
