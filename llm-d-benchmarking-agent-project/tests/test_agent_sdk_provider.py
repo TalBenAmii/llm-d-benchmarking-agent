@@ -66,9 +66,15 @@ def test_to_sdk_messages_renders_history_as_user_assistant_text_turns():
     roles = [m["message"]["role"] for m in out]
     # the tool_results turn is rendered as a USER text message (no native tool blocks)
     assert roles == ["user", "assistant", "user", "user"]
-    assert all(isinstance(m["message"]["content"], str) for m in out)
-    assert "[called tool probe_environment" in out[1]["message"]["content"]
-    assert "[tool results]" in out[2]["message"]["content"]
+    # REGRESSION: content MUST be a list of blocks, never a bare string. The CLI scans every
+    # input message with content.some(...) for tool_use blocks; a string has no .some and
+    # crashes the CLI on the first replayed turn ("H.message.content.some is not a function").
+    for m in out:
+        content = m["message"]["content"]
+        assert isinstance(content, list)
+        assert content and all(b.get("type") == "text" and isinstance(b.get("text"), str) for b in content)
+    assert "[called tool probe_environment" in out[1]["message"]["content"][0]["text"]
+    assert "[tool results]" in out[2]["message"]["content"][0]["text"]
 
 
 # ---- chat() orchestration via a monkeypatched query ----------------------------------------
