@@ -97,6 +97,13 @@ class FakeKubeClient:
         self.logs_text: dict[str, str] = {}
         self._runs: dict[tuple[str, str], dict[str, Any]] = {}
         self._pods: dict[tuple[str, str], list[dict]] = {}
+        # Phase 22: in-cluster ConfigMaps, keyed by (namespace, name) — the source of truth for
+        # a DOE sweep's checkpoint. `apply` of a ConfigMap manifest upserts here (create-or-
+        # update), and `list_configmaps` selects them by label, so a checkpoint round-trips
+        # through the fake exactly as it would through the real `kubectl apply`/`get`.
+        self._configmaps: dict[tuple[str, str], dict[str, Any]] = {}
+        # Observability for tests: how many times a ConfigMap was applied (checkpoint writes).
+        self.configmap_writes = 0
         # Phase 21: programmable live log streams, keyed by run-id. Each entry is a sequence of
         # lines yielded by `stream_log_lines`, with a small per-line delay so the tail interleaves
         # with the watch loop rather than dumping all lines before the first poll. Optional knobs:
@@ -137,6 +144,13 @@ class FakeKubeClient:
                 await self.apply_gate.wait()
         finally:
             self.apply_active -= 1
+        # A ConfigMap apply upserts into the in-memory CM store (create-or-update), mirroring
+        # `kubectl apply`. This is how a sweep's checkpoint is persisted to the cluster.
+        if manifest.get("kind") == "ConfigMap":
+            name = manifest.get("metadata", {}).get("name", "")
+            self._configmaps[(namespace, name)] = manifest
+            self.configmap_writes += 1
+            return RunResult(exit_code=0, duration_s=0.0, real_argv=["kubectl", "apply"], cwd=None)
         rid = (manifest.get("metadata", {}).get("labels", {}) or {}).get(LABEL_RUN)
         key = (namespace, rid)
         if rid and key not in self._runs:
@@ -144,6 +158,17 @@ class FakeKubeClient:
             snap["status"] = {"active": 1}
             self._runs[key] = {"snapshots": [snap], "cursor": 0}
         return RunResult(exit_code=0, duration_s=0.0, real_argv=["kubectl", "apply"], cwd=None)
+
+    async def list_configmaps(self, *, namespace: str, selector: str | None = None) -> list[dict]:
+        sel = _parse_selector(selector)
+        out: list[dict] = []
+        for (ns, _name), cm in self._configmaps.items():
+            if ns != namespace:
+                continue
+            labels = cm.get("metadata", {}).get("labels", {}) or {}
+            if _matches(labels, sel):
+                out.append(cm)
+        return out
 
     async def list_jobs(self, *, namespace: str, selector: str | None = None) -> list[dict]:
         sel = _parse_selector(selector)
