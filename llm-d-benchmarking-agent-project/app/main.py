@@ -391,6 +391,14 @@ async def ws(websocket: WebSocket) -> None:
         "session_id": session.id,
         "resumed": resumed,
         "running": bool(_running_task and not _running_task.done()),
+        # Persisted token tally so the header chip is correct immediately on connect/reload,
+        # before any new turn (token-tracking feature).
+        "usage": {
+            "input": session.total_input_tokens,
+            "output": session.total_output_tokens,
+            "cache_read": session.total_cache_read_tokens,
+            "total": session.session_total,
+        },
     })
     if resumed:
         await channel.emit("history", {"items": _history_items(session), "commands": session.commands})

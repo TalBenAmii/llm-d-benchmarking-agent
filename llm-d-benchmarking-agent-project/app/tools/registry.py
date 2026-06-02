@@ -108,7 +108,9 @@ _DESCRIPTIONS = {
         "Propose a structured SessionPlan (use case, spec, namespace, harness, workload, "
         "flags, steps) for the user to APPROVE. Enum fields are checked against the live "
         "catalog. Required and approved before any mutating step "
-        "(ensure_repos/run_setup/standup/run/teardown)."
+        "(ensure_repos/run_setup/standup/run/teardown). Call "
+        "read_knowledge('welllit_path_advisor') BEFORE choosing a well-lit path / spec / "
+        "profile so the plan follows the recommended path."
     ),
     "check_capacity": (
         "Capacity PRE-FLIGHT: will this deployment fit? Runs the benchmark repo's OWN "
@@ -171,7 +173,9 @@ _DESCRIPTIONS = {
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "
-        "repo schema, and return a plain-language metric summary. Read-only. Use after a run."
+        "repo schema, and return a plain-language metric summary. Read-only. Use after a run. "
+        "Call read_knowledge('results_interpretation') BEFORE interpreting or summarizing the "
+        "report for the user."
     ),
     "compare_reports": (
         "Compare 2+ Benchmark Reports side by side (an A/B of separate runs, or every "

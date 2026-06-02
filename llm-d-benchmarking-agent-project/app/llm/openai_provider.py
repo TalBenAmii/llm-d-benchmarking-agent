@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from app.config import Settings
-from app.llm.provider import AssistantTurn, LLMProvider, ProviderError, ToolCall
+from app.llm.provider import AssistantTurn, LLMProvider, ProviderError, ToolCall, Usage
 
 
 class OpenAIProvider(LLMProvider):
@@ -19,18 +19,26 @@ class OpenAIProvider(LLMProvider):
             raise ProviderError("the 'openai' package is not installed") from exc
         self._client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
         self._model = settings.openai_model
+        self._send_cache_key = settings.openai_send_prompt_cache_key
 
-    async def chat(self, *, system, messages, tools) -> AssistantTurn:
+    async def chat(self, *, system, messages, tools, cache_key=None) -> AssistantTurn:
         oai_tools = [
             {"type": "function", "function": {
                 "name": t["name"], "description": t["description"], "parameters": t["input_schema"]}}
             for t in tools
         ]
+        extra: dict[str, Any] = {}
+        # Only send prompt_cache_key when explicitly enabled (OpenAI proper): some
+        # OpenAI-compatible servers reject unknown params, so default OFF keeps them working
+        # (they still get implicit prefix caching for free).
+        if self._send_cache_key and cache_key:
+            extra["prompt_cache_key"] = cache_key
         resp = await self._client.chat.completions.create(
             model=self._model,
             messages=_to_openai(system, messages),
             tools=oai_tools,
             tool_choice="auto",
+            **extra,
         )
         msg = resp.choices[0].message
         tool_calls: list[ToolCall] = []
@@ -44,7 +52,25 @@ class OpenAIProvider(LLMProvider):
             text=msg.content or None,
             tool_calls=tool_calls,
             stop_reason=resp.choices[0].finish_reason,
+            usage=_usage_from(getattr(resp, "usage", None)),
         )
+
+
+def _usage_from(u: Any) -> Usage:
+    """Normalize an OpenAI usage object to the cross-provider contract. OpenAI reports cached
+    tokens as a SUBSET of prompt_tokens, so subtract to get the freshly-processed input. Some
+    OpenAI-compatible servers return no usage at all — never crash, return zeros."""
+    if u is None:
+        return Usage()
+    prompt = getattr(u, "prompt_tokens", 0) or 0
+    cached = getattr(getattr(u, "prompt_tokens_details", None), "cached_tokens", 0) or 0
+    completion = getattr(u, "completion_tokens", 0) or 0
+    return Usage(
+        input_tokens=max(prompt - cached, 0),
+        output_tokens=completion,
+        cache_read_tokens=cached,
+        cache_write_tokens=0,
+    )
 
 
 def _to_openai(system: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

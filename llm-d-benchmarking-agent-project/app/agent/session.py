@@ -65,6 +65,18 @@ class Session:
     title: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    # Cumulative REAL token usage across every LLM call in this session (the loop adds each
+    # call's normalized Usage here). Persisted so the header chip is correct on reload.
+    total_input_tokens: int = 0          # freshly-processed (non-cached) input
+    total_output_tokens: int = 0         # generated tokens
+    total_cache_read_tokens: int = 0     # input served from cache
+    total_cache_write_tokens: int = 0    # input written to cache (Anthropic only)
+
+    @property
+    def session_total(self) -> int:
+        """Every token billed this session (input + output + cache read + cache write)."""
+        return (self.total_input_tokens + self.total_output_tokens
+                + self.total_cache_read_tokens + self.total_cache_write_tokens)
 
     def record_command(self, payload: dict[str, Any]) -> None:
         self.commands.append(payload)
@@ -94,6 +106,10 @@ class Session:
                         "approved_plan": self.approved_plan,
                         "commands": self.commands[-_COMMANDS_MAX:],
                         "approvals": self.approvals[-_COMMANDS_MAX:],
+                        "total_input_tokens": self.total_input_tokens,
+                        "total_output_tokens": self.total_output_tokens,
+                        "total_cache_read_tokens": self.total_cache_read_tokens,
+                        "total_cache_write_tokens": self.total_cache_write_tokens,
                     },
                     indent=2,
                 )
@@ -162,6 +178,11 @@ class SessionManager:
             title=data.get("title", ""),
             created_at=data.get("created_at") or time.time(),
             updated_at=data.get("updated_at") or time.time(),
+            # Default to 0 when absent so pre-token-tracking state.json files still load.
+            total_input_tokens=data.get("total_input_tokens", 0),
+            total_output_tokens=data.get("total_output_tokens", 0),
+            total_cache_read_tokens=data.get("total_cache_read_tokens", 0),
+            total_cache_write_tokens=data.get("total_cache_write_tokens", 0),
         )
         self._sessions[session.id] = session
         return session

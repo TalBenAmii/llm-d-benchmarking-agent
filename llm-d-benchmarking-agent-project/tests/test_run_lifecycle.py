@@ -289,7 +289,7 @@ def test_reattach_replays_buffer_then_cancel_message_stops_run():
             self._t = ts
             self.i = 0
 
-        async def chat(self, *, system, messages, tools):
+        async def chat(self, *, system, messages, tools, cache_key=None):
             t = self._t[min(self.i, len(self._t) - 1)]
             self.i += 1
             return t

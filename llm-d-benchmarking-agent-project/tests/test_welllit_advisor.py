@@ -190,17 +190,19 @@ def test_loader_serves_the_advisor_via_read_knowledge(tool_ctx):
     assert "well_lit_paths" in out["content"]
 
 
-def test_advisor_is_inlined_into_the_system_prompt(tool_ctx):
-    # The advisor is a CORE knowledge file -> inlined verbatim into every system prompt.
-    assert ADVISOR_NAME in CORE_KNOWLEDGE
+def test_advisor_is_on_demand_in_the_system_prompt(tool_ctx):
+    # The advisor was de-inlined (token-shrink): it is NOT a CORE file, so its body is NOT in
+    # the prompt, but its topic IS listed in the on-demand knowledge index (the model loads it
+    # at PLANNING time via read_knowledge — see propose_session_plan's tool cue).
+    assert ADVISOR_NAME not in CORE_KNOWLEDGE
     prompt = build_system_prompt(tool_ctx)
-    assert f"# Knowledge: {ADVISOR_NAME}" in prompt
+    assert f"# Knowledge: {ADVISOR_NAME}" not in prompt
     body = (tool_ctx.settings.knowledge_dir / ADVISOR_NAME).read_text()
-    # A representative slice of the advisor body must be present verbatim.
-    assert "well_lit_paths" in prompt
-    assert "guides/precise-prefix-cache-routing" in prompt
-    # Sanity: the inlined section carries the real file content.
-    assert body.splitlines()[0].strip() in prompt
+    # The bulk of the advisor body (everything past the first heading) is NOT inlined.
+    assert body[200:] not in prompt
+    # But the topic name appears in the on-demand index, with the read_knowledge cue.
+    assert "welllit_path_advisor" in prompt
+    assert 'read_knowledge("<topic>")' in prompt
 
 
 def test_deploy_path_playbook_references_the_advisor():

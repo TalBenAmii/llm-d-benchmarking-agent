@@ -16,6 +16,12 @@ Server -> client:
                                             rejected malformed inbound frame (Phase 15)
   cancelled        {message}               — the in-flight run/turn was cancelled (Phase 16);
                                             its concurrency slot is freed and subprocess reaped
+  usage            {turn:{input,output,cache_read,cache_write,calls,total},
+                    session:{input,output,cache_read,total}}
+                                           — REAL token usage from the provider API. A PER-TURN
+                                            event emitted on every LLM call (the live UI line
+                                            ticks up): turn.* are the RUNNING totals for the
+                                            in-progress turn, session.* the running session totals.
   done             {}                      — the agent finished this turn
 
 Client -> server (validated against app.agent.ws_schemas; a malformed frame is rejected with
@@ -38,6 +44,7 @@ TOOL_RESULT = "tool_result"
 SESSION_PLAN = "session_plan"
 ERROR = "error"
 CANCELLED = "cancelled"
+USAGE = "usage"
 DONE = "done"
 
 # Connection-lifecycle frames: emitted by the /ws handler on (re)connect, NOT part of any
