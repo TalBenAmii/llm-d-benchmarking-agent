@@ -65,7 +65,8 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 |---|---|---|
 | llm-d brand theme (hexagon mark, Red Hat fonts), light/dark toggle | `ui/index.html`, `ui/styles.css` | 🔵 Open the app; click the theme toggle (top-right). Persists in `localStorage`. |
 | **Recent chats sidebar + resume** (Claude-web style) | `ui/app.js`, `GET /api/sessions`, WS `?session=<id>` | 🟢 `GET /api/sessions` returns the stored chats (observed: 100+ sessions). Click one to replay its transcript. |
-| **Stored Results sidebar + metric trend sparkline** | `ui/index.html` (`#history`, `#trend-view`), `GET /api/history`, `/api/history/trend` | 🟢 Endpoints live (see evidence). ⚠️ The sparkline only appears **after** a result is stored via the `result_history` tool — right now `/api/history` is empty, which is why you've never seen it. |
+| **Stored Results sidebar + metric trend sparkline** | `ui/index.html` (`#history`, `#trend-view`), `GET /api/history`, `/api/history/trend` | 🟢 Endpoints live (see evidence). The sparkline appears once a result is stored via `result_history`; the agent now proactively stores the first real run as a baseline (see Findings), so a fresh `/api/history` populates after your first benchmark. |
+| **Per-run charts shown inline under the report summary** | `GET /api/sessions/{sid}/artifact`, `app/tools/probe.py` (`charts`), `ui/app.js` (`renderReportCharts`) | 🟢 After `locate_and_parse_report`, the harness's latency/throughput PNGs render as captioned images in the results card. *Verified live (see Findings).* |
 | **Token-usage counter** (real provider counts) — header chip `Σ N tokens`, live `↑up ↓down · N this turn (X calls · Y cached)` | `app/agent/events.py` (`usage` event), `ui/app.js` (`onUsage`/`appendTurnTokens`) | 🔵 Visible during/after any chat turn; the chip persists across reloads. |
 | Animated "working" indicator (spinning llm-d hexagon + live status/tool name) | `ui/index.html` `#working`, `ui/app.js` | 🔵 Appears while the agent is thinking/running a tool. |
 | Markdown rendering of assistant text | `ui/app.js` (renderer) | 🔵 Assistant replies render as formatted markdown. |
@@ -77,8 +78,8 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 
 ## 4. The 22 agent tools (authoritative list — `app/tools/registry.py`)
 
-> Note: `CLAUDE.md` still says "18 tools"; the registry now defines **22**. Verify by reading
-> `app/tools/registry.py:build_registry`.
+> Note: the registry defines **22** tools (`CLAUDE.md` now matches — see Findings). Verify by
+> reading `app/tools/registry.py:build_registry`.
 
 **Sensing / grounding (read-only, auto-run):** `probe_environment`, `list_catalog`,
 `read_knowledge`, `read_repo_doc`, `fetch_key_docs`, `check_capacity`,
@@ -129,11 +130,12 @@ result.
 | **Cross-session result history** (`store`/`list`/`get`/`delete`) | `app/storage/history.py`, `result_history` tool, `GET /api/history` | 🟢 `GET /api/history` returns `records` + the 8 trendable `metrics`. Store one in chat to populate it. |
 | **Metric trends over time** (`trend`) + sidebar sparkline | `GET /api/history/trend?metric=<m>` | 🟢 Live (see evidence). Valid metrics: `ttft, tpot, itl, request_latency, output_token_rate, total_token_rate, request_rate, success_rate_pct`. |
 
-> ⚠️ **The harness's own PNG charts are not surfaced.** `inference-perf` writes
-> `latency_vs_qps.png`, `throughput_vs_latency.png`, `throughput_vs_qps.png` into the session
-> `analysis/` folder, but nothing in `app/` or `ui/` references them and `/static` only serves
-> `ui/`, so the browser can't reach them. The chat only shows the text summary + the trend
-> sparkline. Surfacing these per-run charts is the obvious open enhancement.
+> ✅ **The harness's own PNG charts are now surfaced** (was an open gap; fixed — see Findings).
+> `inference-perf` writes `latency_vs_qps.png`, `throughput_vs_latency.png`,
+> `throughput_vs_qps.png` into the session `analysis/` folder. `locate_and_parse_report` now
+> returns them as a `charts` list, the read-only `GET /api/sessions/{sid}/artifact` route serves
+> the bytes (image-only, traversal-hardened), and the report-summary card renders them inline as
+> captioned images alongside the text summary + trend sparkline.
 
 ---
 
@@ -246,9 +248,13 @@ startup log    → JSON: {"message":"startup","provider":"openai"} ; {"message":
 GET /api/sessions (no token)            → HTTP 401 {"detail":"missing or invalid bearer token"}
                                            header: www-authenticate: Bearer
 GET /api/sessions (Bearer s3cret)       → HTTP 200
-GET /healthz (no token)                 → HTTP 401   (health is gated too — see findings)
+GET /healthz (no token)                 → HTTP 401   (original finding — SINCE FIXED)
 6× rapid authed GET /api/sessions       → 200, 429, 429, 429, 429, 429
 ```
+> Post-fix re-verification (`AUTH_ENABLED=true`, no token): `GET /healthz` → **200** and
+> `GET /readyz` → readiness content (not 401); `/api/sessions` still 401 without a token, 200
+> with `Bearer s3cret`. The artifact route served the real chart PNG byte-identical
+> (`image/png`, 59,637 B); `../` traversal, non-image, and unknown-session all returned 404.
 
 **Artifacts:**
 ```
@@ -258,17 +264,27 @@ helm template deploy/helm/llm-d-benchmarking-agent      → + Secret  (6 kinds t
 
 ## Findings / caveats
 
-- ⚠️ **Harness PNG charts are orphaned** (§6): real per-run charts are generated but never
-  served or shown. This is the "results visualization" gap — the only visualization the app
-  surfaces is the cross-session trend sparkline.
-- ⚠️ **The trend sparkline is invisible until you store a result.** `/api/history` is empty,
-  so the sidebar shows "No stored results yet." Use the `result_history` tool (`store`) after a
-  run to populate it.
-- ⚠️ **`/healthz` and `/readyz` are gated by auth** when `AUTH_ENABLED=true` (both returned 401
-  without a token). Kubernetes liveness/readiness probes would need to carry the bearer token,
-  or these routes should be exempted. Worth a decision.
-- **Doc drift:** `CLAUDE.md` says "18 tools"; the registry has **22**.
-- **Reported run units looked off:** the earlier chat narration showed "nanosecond" TPOT/ITL —
-  a unit-labeling issue in the summary text, not a data problem. Separate from this inventory.
-</content>
-</invoke>
+All five caveats below were **fixed** on 2026-06-02 (commit `1515959`, merged via `3363496`);
+each entry records the original finding and the resolution. Re-verified: full suite 613 passed,
+ruff + mypy clean, plus live runtime checks (chart bytes served identically, probes reachable
+under auth).
+
+- ✅ **Harness PNG charts (§6) — RESOLVED.** `inference-perf` renders per-run latency/throughput
+  PNGs into a session's `analysis/` dir, but `/static` only served `ui/`, so the browser could
+  never reach them. Fix: new read-only route `GET /api/sessions/{sid}/artifact` (image-only,
+  path-traversal-hardened), `locate_and_parse_report` now returns a session-relative `charts`
+  list, and the report-summary card renders them inline as captioned `<img>`. *Verified live:
+  the real orphaned PNG now serves byte-identical (59,637 B, `image/png`); `../` / non-image /
+  unknown-session all 404.*
+- ✅ **Trend sparkline empty until a result is stored — RESOLVED.** `knowledge/history.md` now
+  directs the agent to proactively store the first real benchmark of a session as a baseline,
+  which is what makes the Results panel + sparkline appear (it was silently empty before).
+- ✅ **`/healthz` + `/readyz` gated by auth — RESOLVED.** `check_http_auth` now exempts the
+  liveness/readiness probes (they expose only up/ready facts, no secrets), so a K8s kubelet —
+  which can't carry a Bearer token — isn't locked out. *Verified live: with `AUTH_ENABLED=true`
+  and no token, `/healthz` → 200 and `/readyz` → readiness content (not 401), while
+  `/api/sessions` still 401s without a token and 200s with it.*
+- ✅ **Doc drift — RESOLVED.** `CLAUDE.md` now says **22 tools** (matches `app/tools/registry.py`).
+- ✅ **"Nanosecond" units — RESOLVED.** `knowledge/results_interpretation.md` now states the rule
+  unambiguously: BR v0.2 latency is in **seconds** (`s`, `s/token`) — read the `units` field,
+  convert to ms for the user, and never invent ns/µs.
