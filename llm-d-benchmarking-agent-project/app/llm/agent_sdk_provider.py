@@ -19,7 +19,10 @@ ONE :class:`AssistantTurn`. To do that without letting the SDK *run* anything:
 
 Conversation history is replayed as plain **user/assistant text** turns. The CLI's streaming
 input rejects synthetic ``tool_use``/``tool_result`` blocks (HTTP 400), so prior tool calls and
-their results are rendered into text; only NEW calls use structured tool-calling.
+their results are rendered into text; only NEW calls use structured tool-calling. The text is
+wrapped in a single ``{"type": "text"}`` block (NOT a bare string): the CLI scans every input
+message's ``content`` with ``.some(...)`` to find ``tool_use`` blocks, which throws if
+``content`` is a string — so each replayed turn MUST carry a list of content blocks.
 
 Auth: the SDK uses the ``claude`` CLI's logged-in subscription credentials — NO
 ``ANTHROPIC_API_KEY`` is needed. If one happens to be present in the environment it would
@@ -85,14 +88,21 @@ def _render_tool_results(results: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _text_blocks(text: str) -> list[dict[str, Any]]:
+    """Wrap replayed turn text in a single text block. ``content`` MUST be a list: the CLI
+    runs ``content.some(...)`` over every input message to look for ``tool_use`` blocks, and a
+    bare string has no ``.some`` (crashes the CLI on the first replayed turn)."""
+    return [{"type": "text", "text": text}]
+
+
 def _user(content: str) -> dict[str, Any]:
     return {"type": "user", "session_id": "", "parent_tool_use_id": None,
-            "message": {"role": "user", "content": content}}
+            "message": {"role": "user", "content": _text_blocks(content)}}
 
 
 def _assistant(text: str) -> dict[str, Any]:
     return {"type": "assistant", "session_id": "", "parent_tool_use_id": None,
-            "message": {"role": "assistant", "content": text}}
+            "message": {"role": "assistant", "content": _text_blocks(text)}}
 
 
 def _to_sdk_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
