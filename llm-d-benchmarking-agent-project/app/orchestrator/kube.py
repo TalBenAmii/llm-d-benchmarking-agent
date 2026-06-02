@@ -10,12 +10,19 @@ Job lifecycle is testable with no cluster.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from app.security.runner import RunResult
 from app.tools.context import ToolContext
+
+# Sentinel pushed onto the bridge queue when the `kubectl logs -f` producer finishes, so the
+# async generator that drives the live tail can stop cleanly (rather than blocking forever).
+_STREAM_DONE = object()
 
 
 class KubeError(RuntimeError):
@@ -55,8 +62,12 @@ class KubeClient(Protocol):
     async def apply(self, manifest_path: str | Path, *, namespace: str) -> RunResult: ...
     async def list_jobs(self, *, namespace: str, selector: str | None = None) -> list[dict[str, Any]]: ...
     async def list_pods(self, *, namespace: str, selector: str | None = None) -> list[dict[str, Any]]: ...
+    async def list_configmaps(self, *, namespace: str,
+                              selector: str | None = None) -> list[dict[str, Any]]: ...
     async def logs(self, *, namespace: str, selector: str, tail: int | None = None,
                    follow: bool = False) -> str: ...
+    def stream_log_lines(self, *, namespace: str, selector: str,
+                         tail: int | None = None) -> AsyncIterator[str]: ...
     async def delete_job(self, name: str, *, namespace: str, ignore_not_found: bool = True) -> RunResult: ...
 
 
@@ -96,6 +107,16 @@ class RealKubeClient:
         res = await self._ctx.run_readonly(argv)
         return parse_items(res.output)
 
+    async def list_configmaps(self, *, namespace: str,
+                              selector: str | None = None) -> list[dict[str, Any]]:
+        """Read the agent-managed ConfigMaps (selected by label) — read-only, auto-runs. Used
+        to load a DOE sweep's checkpoint (the cluster source of truth for sweep progress)."""
+        argv = ["kubectl", "get", "configmaps", "-n", namespace, "-o", "json"]
+        if selector:
+            argv += ["-l", selector]
+        res = await self._ctx.run_readonly(argv)
+        return parse_items(res.output)
+
     async def logs(self, *, namespace: str, selector: str, tail: int | None = None,
                    follow: bool = False) -> str:
         argv = ["kubectl", "logs", "-l", selector, "-n", namespace]
@@ -106,6 +127,53 @@ class RealKubeClient:
         # read-only → auto-runs and streams to the UI via the standard `output` event.
         res = await self._ctx.run_command(argv)
         return res.output
+
+    async def stream_log_lines(
+        self, *, namespace: str, selector: str, tail: int | None = None,
+    ) -> AsyncIterator[str]:
+        """Follow a run's pod logs as a live line-by-line stream, yielding each line as the
+        pod produces it. Same allowlisted, read-only ``kubectl logs -f`` path as :meth:`logs`
+        (argv-only, ``shell=False``) — but instead of returning the captured text at the end,
+        it bridges the runner's per-line callback into an async generator so the caller can
+        forward each line as it arrives (e.g. a live ``output`` event during a benchmark run).
+
+        We do NOT pass the captured lines through the UI here ourselves (``stream=False`` on the
+        underlying ``run_command``): the orchestrator decides where each yielded line goes, so
+        the same event transport is used but the orchestrator owns the emission point."""
+        argv = ["kubectl", "logs", "-l", selector, "-n", namespace]
+        if tail is not None:
+            argv += ["--tail", str(tail)]
+        argv += ["-f"]
+        # Bridge the runner's per-line callback (push) into an async generator (pull) via a
+        # queue. The producer task runs `kubectl logs -f` to completion; each captured line is
+        # queued, then a sentinel marks the end. `stream=False` so run_command doesn't ALSO emit
+        # an `output` event — the orchestrator is the single emission point for streamed logs.
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        async def _on_line(line: str) -> None:
+            await queue.put(line)
+
+        async def _produce() -> None:
+            try:
+                await self._ctx.run_command(argv, stream=False, on_line=_on_line)
+            finally:
+                await queue.put(_STREAM_DONE)
+
+        producer = asyncio.create_task(_produce())
+        try:
+            while True:
+                item = await queue.get()
+                if item is _STREAM_DONE:
+                    break
+                yield item
+        finally:
+            # Cancellation (the orchestrator cancels the tail at terminal state) or an early
+            # break must reap the producer so the follow subprocess is not orphaned; the runner
+            # SIGKILLs the `kubectl logs -f` process group on its CancelledError path.
+            if not producer.done():
+                producer.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await producer
 
     async def delete_job(self, name: str, *, namespace: str, ignore_not_found: bool = True) -> RunResult:
         argv = ["kubectl", "delete", "job", name, "-n", namespace]

@@ -20,6 +20,7 @@ from app.tools import (
     command,
     compare,
     config_artifact,
+    doe,
     execute,
     history,
     multiharness,
@@ -27,6 +28,7 @@ from app.tools import (
     orchestrate,
     plan,
     probe,
+    readiness,
     repos,
 )
 from app.tools.context import ToolContext
@@ -34,11 +36,13 @@ from app.tools.schemas import (
     AnalyzeResultsInput,
     CancelRunInput,
     CheckCapacityInput,
+    CheckEndpointReadinessInput,
     CompareHarnessRunsInput,
     CompareReportsInput,
     EnsureReposInput,
     ExecuteInput,
     FetchKeyDocsInput,
+    GenerateDoeInput,
     ListCatalogInput,
     LocateReportInput,
     ObserveRunMetricsInput,
@@ -117,6 +121,18 @@ _DESCRIPTIONS = {
         "long standup fails opaquely. Call read_knowledge('capacity') to interpret the "
         "verdict. (Needs the benchmark venv: run_setup installs it.)"
     ),
+    "check_endpoint_readiness": (
+        "Endpoint READINESS gate: is the inference endpoint in a namespace actually SERVING — "
+        "not just 'a pod exists'? Read-only; auto-runs. It checks the authoritative Kubernetes "
+        "signal (`kubectl get endpoints` — does a Service have a READY backing endpoint, which "
+        "a pod failing its readiness probe does NOT) and corroborates with the benchmark CLI's "
+        "own read-only `run --list-endpoints`. Returns a structured `ready` verdict with the "
+        "per-service ready/not-ready endpoint counts; when NOT ready it includes a "
+        "`standup_suggestion` you can OFFER the user (standing up is mutating and needs "
+        "approval — never do it unprompted). Call this BEFORE running a benchmark against an "
+        "existing stack; orchestrate_benchmark_run also gates on it automatically. This is the "
+        "mechanism; WHEN to stand up is your judgment — read_knowledge('orchestrator')."
+    ),
     "ensure_repos": (
         "Clone the llm-d-benchmark and/or llm-d repos if missing (mutating; needs approval). "
         "Idempotent; never overwrites an existing directory."
@@ -128,6 +144,22 @@ _DESCRIPTIONS = {
     "write_and_validate_config": (
         "Write a generated workload/run config into the session workspace and validate it. "
         "MVP uses stock profiles, so you rarely need this."
+    ),
+    "generate_doe_experiment": (
+        "AUTHOR a Design-of-Experiments (DoE) experiment YAML: you supply the FACTORS to "
+        "sweep — `run_factors` (workload knobs swept against one stack; REQUIRED) and "
+        "optional `setup_factors` (infrastructure knobs that change the deployment, each its "
+        "own standup/teardown) — where each factor is {name, dotted `key`, list of `levels`}. "
+        "The tool CROSS-PRODUCTS the levels into the full, deduped, named treatments matrix "
+        "(setup × run), writes a valid experiment YAML into the session workspace, and "
+        "validates it structurally against the repo's own experiment examples. Read-only "
+        "(only writes the workspace), auto-runs. Then pass the returned `path` as "
+        "flags.experiments to execute_llmdbenchmark (subcommand='experiment' for a full DoE, "
+        "or 'run' for a run-parameter sweep) — preview with flags.dry_run first. WHICH "
+        "factors/levels to sweep is YOUR judgment: call read_knowledge('sweep_playbook') to "
+        "pick them (e.g. the optimal prefill/decode ratio) and to elicit token characteristics "
+        "(input/output length distributions, system-prompt reuse → prefix sharing). Read the "
+        "repo's experiment examples (read_repo_doc) to pick real override keys."
     ),
     "execute_llmdbenchmark": (
         "Run the llmdbenchmark CLI: subcommand is one of plan/standup/smoketest/run/"
@@ -216,8 +248,12 @@ _DESCRIPTIONS = {
         "deterministic faults never retry. Unlike execute_llmdbenchmark (which runs the CLI "
         "locally as a blocking subprocess), use this for K8s-native, restart-resilient, "
         "individually-retryable runs. Needs the orchestrator container image (config "
-        "ORCHESTRATOR_IMAGE or `image`). Call read_knowledge('orchestrator') to choose "
-        "between this and execute_llmdbenchmark and to interpret a failure classification."
+        "ORCHESTRATOR_IMAGE or `image`). Pass an optional `scheduling` object to request a "
+        "GPU type/count and to PLACE the Job so it does not starve the measured llm-d stack "
+        "(node affinity / tolerations / pod anti-affinity via `avoid_labels`) — call "
+        "read_knowledge('resource_management') for HOW to choose; omit it for the generic "
+        "cpu/memory baseline. Call read_knowledge('orchestrator') to choose between this and "
+        "execute_llmdbenchmark and to interpret a failure classification."
     ),
 }
 
@@ -231,9 +267,11 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("fetch_key_docs", _DESCRIPTIONS["fetch_key_docs"], FetchKeyDocsInput, probe.fetch_key_docs),
         ToolSpec("propose_session_plan", _DESCRIPTIONS["propose_session_plan"], SessionPlan, plan.propose_session_plan),
         ToolSpec("check_capacity", _DESCRIPTIONS["check_capacity"], CheckCapacityInput, capacity.check_capacity),
+        ToolSpec("check_endpoint_readiness", _DESCRIPTIONS["check_endpoint_readiness"], CheckEndpointReadinessInput, readiness.check_endpoint_readiness),
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),
         ToolSpec("run_setup", _DESCRIPTIONS["run_setup"], RunSetupInput, repos.run_setup),
         ToolSpec("write_and_validate_config", _DESCRIPTIONS["write_and_validate_config"], WriteConfigInput, config_artifact.write_and_validate_config),
+        ToolSpec("generate_doe_experiment", _DESCRIPTIONS["generate_doe_experiment"], GenerateDoeInput, doe.generate_doe_experiment),
         ToolSpec("execute_llmdbenchmark", _DESCRIPTIONS["execute_llmdbenchmark"], ExecuteInput, execute.execute_llmdbenchmark),
         ToolSpec("run_command", _DESCRIPTIONS["run_command"], RunCommandInput, command.run_command),
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, probe.locate_and_parse_report),

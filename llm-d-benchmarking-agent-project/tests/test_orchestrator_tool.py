@@ -19,6 +19,16 @@ SUCCEEDED_JOB = json.dumps({"items": [{
     "status": {"succeeded": 1, "conditions": [{"type": "Complete", "status": "True"}]},
 }]})
 
+# Phase 24: orchestrate_benchmark_run now gates submission on a real endpoint-readiness check.
+# These tests exercise the submit/watch/retry/manifest mechanics, so they stand the endpoint
+# up READY by default — the gate is transparent when the inference endpoint is serving (a
+# Service with a ready backing address). Tests asserting the gate BLOCKS live in
+# tests/test_endpoint_readiness.py.
+ENDPOINTS_READY = json.dumps({"items": [
+    {"metadata": {"name": "kubernetes"}, "subsets": [{"addresses": [{"ip": "10.96.0.1"}]}]},
+    {"metadata": {"name": "llm-d-inference"}, "subsets": [{"addresses": [{"ip": "10.244.0.7"}]}]},
+]})
+
 
 def _ctx(tmp_path, *, canned=None, image=""):
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos",
@@ -27,7 +37,9 @@ def _ctx(tmp_path, *, canned=None, image=""):
     async def approve(kind, payload):
         return True
 
-    runner = CaptureRunner(settings.repo_paths, canned=canned or {})
+    # Default the endpoint to READY so the readiness gate passes; a test can override.
+    canned = {"get endpoints": ENDPOINTS_READY, **(canned or {})}
+    runner = CaptureRunner(settings.repo_paths, canned=canned)
     ctx = ToolContext(
         settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
@@ -59,6 +71,38 @@ async def test_tool_submits_watches_and_succeeds(tmp_path):
     assert applies and applies[-1][-2:] == ["-n", "bench"]      # a Job was applied to the ns
 
 
+async def test_tool_streams_pod_logs_as_output_events(tmp_path):
+    """Phase 21 end-to-end: through dispatch + the REAL RealKubeClient + the allowlisted
+    `kubectl logs -f` runner path, the benchmark pod's log lines surface as `output` events
+    (the SAME event the UI renders) DURING the run — not just at the end."""
+    pod_logs = "starting benchmark\nload point 1/2\nload point 2/2\nbenchmark complete: 30/30 ok"
+    ctx, runner = _ctx(tmp_path, canned={"get jobs": SUCCEEDED_JOB, "logs": pod_logs})
+
+    events: list[tuple[str, dict]] = []
+
+    async def emit(t, p):
+        events.append((t, p))
+
+    ctx.emit = emit
+
+    res = await dispatch(ctx, "orchestrate_benchmark_run", {
+        "namespace": "bench", "spec": "cicd/kind", "harness": "inference-perf",
+        "workload": "sanity_random.yaml", "image": "ghcr.io/llm-d/bench:0",
+        "poll_interval": 0, "watch": True,
+    })
+    assert res["succeeded"] is True
+
+    # The pod log lines were emitted as `output` events, in order, via the standard transport.
+    output_lines = [p["line"] for (t, p) in events if t == "output"]
+    for expected in pod_logs.splitlines():
+        assert expected in output_lines
+    assert output_lines.index("starting benchmark") < output_lines.index("benchmark complete: 30/30 ok")
+
+    # And it really used the allowlisted `kubectl logs -f` path (read-only, argv-only).
+    log_calls = [c["argv"] for c in runner.calls if c["argv"][:2] == ["kubectl", "logs"]]
+    assert log_calls and "-f" in log_calls[-1]
+
+
 async def test_tool_submit_only_does_not_watch(tmp_path):
     ctx, runner = _ctx(tmp_path, image="ghcr.io/llm-d/bench:0")
     res = await dispatch(ctx, "orchestrate_benchmark_run", {
@@ -77,9 +121,10 @@ async def test_tool_retries_transient_then_succeeds(tmp_path):
         "failed": 1, "conditions": [{"type": "Failed", "status": "True", "reason": "BackoffLimitExceeded"}]}}]})
 
     class _SeqRunner(CaptureRunner):
-        """Returns a FAILED job for the first `get jobs`, SUCCEEDED for the next."""
+        """Returns a FAILED job for the first `get jobs`, SUCCEEDED for the next. The endpoint
+        is READY (canned) so the Phase 24 readiness gate passes and the run reaches submission."""
         def __init__(self, repo_paths):
-            super().__init__(repo_paths)
+            super().__init__(repo_paths, canned={"get endpoints": ENDPOINTS_READY})
             self._gj = [failed_job, SUCCEEDED_JOB]
             self._i = 0
 
@@ -143,7 +188,7 @@ async def test_tool_runs_job_under_configured_service_account(tmp_path):
     async def approve(kind, payload):
         return True
 
-    runner = CaptureRunner(settings.repo_paths)
+    runner = CaptureRunner(settings.repo_paths, canned={"get endpoints": ENDPOINTS_READY})
     ctx = ToolContext(settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
                       runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
                       request_approval=approve)

@@ -5,6 +5,8 @@ with no cluster — the same philosophy as the CaptureRunner.
 """
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +97,22 @@ class FakeKubeClient:
         self.logs_text: dict[str, str] = {}
         self._runs: dict[tuple[str, str], dict[str, Any]] = {}
         self._pods: dict[tuple[str, str], list[dict]] = {}
+        # Phase 22: in-cluster ConfigMaps, keyed by (namespace, name) — the source of truth for
+        # a DOE sweep's checkpoint. `apply` of a ConfigMap manifest upserts here (create-or-
+        # update), and `list_configmaps` selects them by label, so a checkpoint round-trips
+        # through the fake exactly as it would through the real `kubectl apply`/`get`.
+        self._configmaps: dict[tuple[str, str], dict[str, Any]] = {}
+        # Observability for tests: how many times a ConfigMap was applied (checkpoint writes).
+        self.configmap_writes = 0
+        # Phase 21: programmable live log streams, keyed by run-id. Each entry is a sequence of
+        # lines yielded by `stream_log_lines`, with a small per-line delay so the tail interleaves
+        # with the watch loop rather than dumping all lines before the first poll. Optional knobs:
+        #   stream_line_delay  — seconds slept between yielded lines (default 0)
+        #   stream_raises       — run-ids whose stream raises mid-way (tests fault isolation)
+        self.log_streams: dict[str, list[str]] = {}
+        self.stream_line_delay = 0.0
+        self.stream_raises: set[str] = set()
+        self.stream_started: list[str] = []   # run-ids whose tail was started (observability)
         # Optional concurrency probe: if apply_gate is an unset asyncio.Event, apply() blocks
         # on it, so a test can observe how many applies run at once (the sweep's cap).
         self.apply_gate = None
@@ -104,7 +122,7 @@ class FakeKubeClient:
     def program(self, run_id: str, *, namespace: str = "bench", phases: list[str] | None = None,
                 jobs: list[dict] | None = None, labels: dict | None = None,
                 pods: list[dict] | None = None, logs: str | None = None,
-                reason: str = "") -> None:
+                log_lines: list[str] | None = None, reason: str = "") -> None:
         snaps = jobs if jobs is not None else [
             make_job(run_id, p, namespace=namespace, labels=labels, reason=reason) for p in (phases or [])
         ]
@@ -113,6 +131,8 @@ class FakeKubeClient:
             self._pods[(namespace, run_id)] = pods
         if logs is not None:
             self.logs_text[run_id] = logs
+        if log_lines is not None:
+            self.log_streams[run_id] = list(log_lines)
 
     async def apply(self, manifest_path, *, namespace: str) -> RunResult:
         manifest = yaml.safe_load(Path(manifest_path).read_text())
@@ -124,6 +144,13 @@ class FakeKubeClient:
                 await self.apply_gate.wait()
         finally:
             self.apply_active -= 1
+        # A ConfigMap apply upserts into the in-memory CM store (create-or-update), mirroring
+        # `kubectl apply`. This is how a sweep's checkpoint is persisted to the cluster.
+        if manifest.get("kind") == "ConfigMap":
+            name = manifest.get("metadata", {}).get("name", "")
+            self._configmaps[(namespace, name)] = manifest
+            self.configmap_writes += 1
+            return RunResult(exit_code=0, duration_s=0.0, real_argv=["kubectl", "apply"], cwd=None)
         rid = (manifest.get("metadata", {}).get("labels", {}) or {}).get(LABEL_RUN)
         key = (namespace, rid)
         if rid and key not in self._runs:
@@ -131,6 +158,17 @@ class FakeKubeClient:
             snap["status"] = {"active": 1}
             self._runs[key] = {"snapshots": [snap], "cursor": 0}
         return RunResult(exit_code=0, duration_s=0.0, real_argv=["kubectl", "apply"], cwd=None)
+
+    async def list_configmaps(self, *, namespace: str, selector: str | None = None) -> list[dict]:
+        sel = _parse_selector(selector)
+        out: list[dict] = []
+        for (ns, _name), cm in self._configmaps.items():
+            if ns != namespace:
+                continue
+            labels = cm.get("metadata", {}).get("labels", {}) or {}
+            if _matches(labels, sel):
+                out.append(cm)
+        return out
 
     async def list_jobs(self, *, namespace: str, selector: str | None = None) -> list[dict]:
         sel = _parse_selector(selector)
@@ -161,6 +199,22 @@ class FakeKubeClient:
     async def logs(self, *, namespace: str, selector: str, tail=None, follow: bool = False) -> str:
         rid = _parse_selector(selector).get(LABEL_RUN, "")
         return self.logs_text.get(rid, "")
+
+    async def stream_log_lines(self, *, namespace: str, selector: str,
+                               tail=None) -> AsyncIterator[str]:
+        """Yield the run's programmed log lines one at a time (mirrors the real `kubectl logs -f`
+        async generator). A small per-line delay lets the lines interleave with the watch loop;
+        a run-id in ``stream_raises`` raises mid-stream so a test can assert the run survives a
+        failing tail. The async generator's ``finally`` is exercised on the orchestrator's
+        terminal-state cancellation, just like the real bridge."""
+        rid = _parse_selector(selector).get(LABEL_RUN, "")
+        self.stream_started.append(rid)
+        for idx, line in enumerate(self.log_streams.get(rid, [])):
+            if rid in self.stream_raises and idx > 0:
+                raise RuntimeError(f"simulated log-stream failure for {rid}")
+            if self.stream_line_delay:
+                await asyncio.sleep(self.stream_line_delay)
+            yield line
 
     async def delete_job(self, name: str, *, namespace: str, ignore_not_found: bool = True) -> RunResult:
         self.deleted.append((namespace, name))

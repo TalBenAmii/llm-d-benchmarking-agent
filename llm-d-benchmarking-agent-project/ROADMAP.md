@@ -274,3 +274,145 @@ Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never
   `tests/test_quality_gates.py` (146 lines) asserting the config/threshold/CI wiring stay in place.
 - Merged into `feature/roadmap-v2` (`--no-ff`); full suite **432 passed / 7 skipped / 0 failed**
   (ruff clean, mypy clean, coverage **88.90%** >= 85% gate; prior baseline 424 passed / 7 skipped).
+
+## Roadmap v3 — proposal-completion features (Phases 19-26)
+Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is never touched directly) for the missing proposal-coverage features.
+
+## Phase 19 — DOE experiment-file generator + token-characteristics elicitation — DONE
+- Shipped a `generate_doe_experiment` tool (`app/tools/doe.py`) backed by pure mechanism in
+  `app/validation/doe.py`: the agent supplies factors (name, dotted override key, levels) for the
+  optional `setup` and required `run` phases; the tool cross-products factors × levels into the full
+  treatments matrix, emits a valid experiment YAML into the session workspace (never the read-only
+  repos), and validates it STRUCTURALLY against the llm-d-benchmark experiment example format read
+  LIVE from disk (no vendored copy). WHICH factors/levels to sweep is agent judgment grounded in an
+  expanded `knowledge/sweep_playbook.md`, which now adds explicit token-characteristics / prefix-reuse
+  elicitation guidance. Thin code / thick agent: no factor-selection logic in Python.
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — additive registry/schemas/knowledge,
+  no entries dropped); full suite **477 passed / 7 skipped / 0 failed**, ruff clean, mypy clean
+  (+`tests/test_doe.py`, 429 lines).
+
+## Phase 20 — Well-lit-path advisor — DONE
+- Shipped `knowledge/welllit_path_advisor.yaml` (the Well-lit-path advisor): ADVISORY DATA mapping a
+  workload SHAPE → the llm-d well-lit-path scenario worth benchmarking, with the SIGNALS that select it
+  (prefix-reuse, context length, concurrency, SLO emphasis), a plain-language rationale, candidate
+  `benchmark_workloads`, and a `deploy_path` reach flag (kind-local vs gpu-only). The judgment lives in
+  the data, not in any Python `if/elif`: the file is inlined into the system prompt (added to
+  `CORE_KNOWLEDGE` in `app/agent/prompt.py`) and served via `read_knowledge`. `deploy_path_playbook.md`
+  now points at the advisor so the agent consults it once a GPU deploy is in scope, while still
+  benchmarking `cicd/kind` for a local sanity pass. Thin code / thick agent — code only reads the file.
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — additive prompt/knowledge, no entries
+  dropped); full suite **491 passed / 7 skipped / 0 failed**, ruff clean, mypy clean (63 files)
+  (+`tests/test_welllit_advisor.py`, 231 lines; hermetic — validates every archetype's fields/signals and
+  that each `scenario`/`also_consider`/`benchmark_workloads` id resolves against the catalog snapshot).
+
+## Phase 25 — Analyzer metric completeness: KV-cache hit rate, schedule delay, GPU utilization — DONE
+- Extended `summarize_report`/`analysis` to PARSE and SURFACE the §3.4 standard serving metrics that
+  were previously ignored — KV-cache hit rate, schedule delay (queue-depth proxy), and GPU utilization —
+  mechanically extracting the first present candidate from EITHER the BR v0.2 standardized
+  `observability.components[].aggregate` shape OR a harness-native per-metric entry, with field-name
+  discovery as DATA in `knowledge/standard_metrics.yaml` (thin code / thick agent); gracefully `None`
+  when a harness doesn't emit them — never fabricated. Surfaced in the human summary
+  (`summary.standard_metrics`), per-run in `analyze_results`, and as INFORMATIONAL Pareto objectives kept
+  deliberately OUT of dominance — goodput/SLO/Pareto behavior unchanged.
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — additive analyzer/knowledge, no
+  entries dropped); full suite **509 passed / 7 skipped / 0 failed**, ruff clean, mypy clean (63 files)
+  (+`tests/test_standard_metrics.py`, 293 lines; hermetic — standardized + native extraction, catalog
+  preference order, graceful degradation on absent/garbage reports, real BR v0.2 surfacing, and the
+  informational-only Pareto behavior).
+
+## Phase 21 — Real-time benchmark-pod log streaming — DONE
+- Wired the existing `kube.stream_logs(follow=True)` into the orchestrator run loop: while a
+  benchmark Job runs, `controller` tails the pod's live log lines and forwards each through an
+  optional `on_log_line` sink. `orchestrate_benchmark_run` builds that sink from `ctx.emit`, so
+  every line surfaces to the UI as an `output` event — the SAME transport the runner already uses
+  for streamed command output, so the user watches benchmark progress in real time instead of only
+  at end-of-run. Best-effort: a failing/closed tail never breaks the run (guarded in the
+  orchestrator), and with no emitter wired (bare unit tests, non-UI callers) streaming is simply
+  disabled — behavior otherwise unchanged.
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — structural-wiring of the run loop,
+  no existing behavior dropped); full suite **519 passed / 7 skipped / 0 failed**, ruff clean, mypy
+  clean (63 files) (+`tests/test_orchestrator_logstream.py`, 213 lines + `test_orchestrator_tool.py`
+  additions; hermetic — fake kube client streams lines, asserts ordering/`output`-event shape, the
+  no-emitter disable path, and that a raising tail is swallowed without failing the run).
+
+## Phase 23 — Resource management: node affinity / GPU selection / anti-starvation — DONE
+- Added an OPTIONAL `Scheduling` value object to `JobSpec`/`build_job_manifest` so a benchmark Job
+  can request the right hardware (GPU resource + count, GPU-type node label) and be placed so it does
+  **not starve the measured llm-d stack** — via `node_selector`, `tolerations`, a raw agent-supplied
+  `affinity` block, and pod anti-affinity synthesized from `avoid_labels` (proposal §4). With
+  `scheduling` unset the rendered manifest is byte-for-byte the cpu/memory baseline. Mechanism only:
+  `Scheduling.from_dict` accepts/rejects on TYPE; the WHICH-GPU / WHERE-to-place judgment lives as
+  DATA in `knowledge/resource_management.md` (thin code / thick agent). `orchestrate_benchmark_run`
+  threads a validated `scheduling` dict through; the schema field + tool description guide the agent.
+  No allowlist change (the manifest goes through the existing `kubectl apply` surface).
+- Merged into `feature/roadmap-v3` (`--no-ff`; one additive conflict in `knowledge/orchestrator.md`
+  resolved by keeping BOTH sides — Phase 21 log-streaming section + Phase 23 hardware/placement
+  section; `orchestrate.py` auto-merged the streaming + scheduling wiring into one coherent run path);
+  full suite **556 passed / 7 skipped / 0 failed** (17.2s, no hang, exit 0), ruff clean, mypy clean
+  (63 files) (+`tests/test_resource_management.py`, 347 lines / +37 tests; hermetic — baseline manifest
+  unchanged when unset, GPU/node-selector/toleration/affinity/anti-affinity rendering, and
+  type-validation rejection). Prior baseline 519 passed / 7 skipped (Phase 21).
+
+## Phase 22 — DOE checkpoint/resume for long sweeps — DONE
+- Added cluster-backed checkpoint/resume to `run_sweep` (proposal §3.3/§4 — the biggest 40%-grade
+  omission). A new `app/orchestrator/checkpoint.py` (`SweepCheckpoint`/`CheckpointStore`) persists each
+  treatment's completed/in-flight state + terminal outcome to a per-sweep **ConfigMap** (the cluster
+  source of truth, consistent with the stateless design — no local file), read/written over the same
+  allowlisted `kubectl` surface (`cm/configmaps` added to the read-only enum; `kube.list_configmaps`).
+  When `run_sweep` is given a `sweep_id` (+`namespace`) it loads the checkpoint, **skips** every
+  treatment already recorded COMPLETED (its prior outcome reconstructed into the merged result so the
+  result still covers all N), marks each remaining treatment in-flight before it runs and completed
+  after — so re-invoking with the same `sweep_id` resumes idempotently from where an interrupted sweep
+  stopped. `reconstruct_sweep(sweep_id)` rebuilds progress purely from the ConfigMap. Reconciles cleanly
+  on top of the Phase 21 streaming run loop (per-treatment `on_log_line` tagging preserved). Omitting
+  `sweep_id` ⇒ the original stateless (no-checkpoint) behavior, byte-for-byte. WHICH/WHEN to checkpoint
+  is documented as guidance in `knowledge/orchestrator.md` (thin code / thick agent).
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — P22 branched from the v3 HEAD that
+  already included P21/P23/P25, no conflicts); full suite **568 passed / 7 skipped / 0 failed**
+  (17.6s, no hang, exit 0), ruff clean, mypy clean (64 files) (+`tests/test_orchestrator_checkpoint.py`,
+  264 lines / +12 tests; hermetic — fake kube ConfigMap store, asserts skip-completed, in-flight
+  persistence, idempotent resume, all-N merged result, and no-`sweep_id` stateless path). Prior baseline
+  556 passed / 7 skipped (Phase 23).
+
+## Phase 24 — Endpoint health-check before submit (+ optional auto-standup) — DONE
+- Closed the proposal §3.3 dependency-management gap: the orchestrator no longer benchmarks an
+  unready stack. A new `app/orchestrator/readiness.py` reads the authoritative K8s signal
+  (`kubectl get endpoints`) and asks whether any Service in the namespace has a **ready backing
+  endpoint** (a live address that can receive traffic), corroborated by the benchmark CLI's
+  read-only `run --list-endpoints`, returning a structured `ready` verdict with per-service
+  ready/not-ready counts. The read-only `check_endpoint_readiness` tool exposes it (auto-runs), and
+  `orchestrate_benchmark_run` now **gates on it automatically** (`require_ready_endpoint=true` by
+  default): if the endpoint isn't ready it submits NOTHING, mutates nothing, and returns
+  `{submitted:false, ready:false, readiness:{…}, standup_suggestion:{…}}` — the standup is only an
+  approval-gated *suggestion*, never auto-run. `ep/endpoints` was already in the read-only kubectl
+  enum; WHEN to skip the gate (external `-U` endpoint) and HOW to act on a not-ready verdict is
+  guidance in `knowledge/orchestrator.md` + `knowledge/preconditions.md` (thin code / thick agent).
+- Merged into `feature/roadmap-v3` (`--no-ff`; one additive conflict in `security/allowlist.yaml`
+  resolved by keeping BOTH sides — the Phase 22 `cm/configmaps` enum entries AND the Phase 24
+  `ep/endpoints` readiness comment; `knowledge/orchestrator.md` auto-merged the checkpoint +
+  readiness sections into one coherent doc); full suite **584 passed / 7 skipped / 0 failed**
+  (17.6s, no hang, exit 0), ruff clean, mypy clean (66 files) (+`tests/test_endpoint_readiness.py`,
+  289 lines / +28 net tests; hermetic — fake kube endpoints, asserts ready/not-ready verdicts, the
+  submit gate (submits nothing when unready), the standup suggestion, and the external-endpoint skip
+  path). Prior baseline 568 passed / 7 skipped (Phase 22).
+
+## Phase 26 — llm-d-inference-sim integration tests (opt-in) — DONE
+- Closed the proposal §5.3/§7 testing gap: shipped an `tests/integration/` layer that exercises the
+  analyze/compare path against `llm-d-inference-sim` (the CPU-only mock server) **without making the
+  default suite non-hermetic**. Two parts: (1) an **always-running** hermetic check that builds a
+  sim-SHAPED Benchmark Report v0.2 fixture from `llm-d-benchmark`'s own BR v0.2 example (read live,
+  never vendored) and drives it through the real `analyze_results` / `compare_reports` tools (SLO
+  verdict, goodput, §3.4 standard metrics incl. KV-cache hit rate, an A/B delta, and a Pareto sweep);
+  and (2) a **live integration test that is opt-in and SKIPPED by default** — it stands up a real
+  `llm-d-inference-sim` only when `LLMD_SIM_INTEGRATION=1` is set AND the sim is locatable (binary on
+  `PATH` / `LLMD_SIM_BINARY`, or a runnable container image), otherwise it skips cleanly and NEVER
+  hangs reaching for an absent server. Sim discovery is pure data/policy (overridable, no hardcoded
+  path); the WHAT-to-test stays in code. Also added a **non-gating** CI job
+  (`.github/workflows/agent-flow-validation.yml`) and a `tests/test_quality_gates.py` assertion that
+  the integration layer is genuinely opt-in. Guidance lives in `knowledge/sim_integration.md`
+  (thin code / thick agent); docs in `docs/VALIDATION.md` + `docs/CONTRIBUTING.md`.
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — 9 purely additive files, no
+  existing tool/field/policy/knowledge line dropped); full suite **591 passed / 9 skipped / 0 failed**
+  (18.6s, no hang, exit 0), ruff clean, mypy clean (66 source files). The +2 skips are the opt-in live
+  integration tests correctly skipping when no sim is available. Prior baseline 584 passed / 7 skipped
+  (Phase 24).

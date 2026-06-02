@@ -277,6 +277,19 @@ _OBJECTIVES: tuple[tuple[str, str, str], ...] = (
 _STAT_PREFERENCE = ("mean", "p50", "p90", "p95", "p99")
 
 
+# Informational §3.4 standard metrics, surfaced ALONGSIDE the Pareto frontier as extra
+# context but DELIBERATELY kept OUT of the dominance computation (so goodput/SLO/Pareto
+# behavior is unchanged). KV-cache hit rate is the canonical informational objective: a
+# higher hit rate explains *why* one config is faster, but it isn't a goodput/SLO target.
+# Each entry is (standard_metrics key, human name, direction). Values come from the
+# summary's ``standard_metrics`` block (populated by report.extract_standard_metrics).
+_INFORMATIONAL_OBJECTIVES: tuple[tuple[str, str, str], ...] = (
+    ("kv_cache_hit_rate", "kv_cache_hit_rate", "max"),
+    ("gpu_utilization", "gpu_utilization", "max"),
+    ("schedule_delay", "schedule_delay", "min"),
+)
+
+
 def _objective_value(summary: dict[str, Any], path: str) -> float | None:
     obj = _dig(summary, path)
     if not isinstance(obj, dict):
@@ -286,6 +299,57 @@ def _objective_value(summary: dict[str, Any], path: str) -> float | None:
         if isinstance(v, (int, float)):
             return float(v)
     return None
+
+
+def _standard_metric_value(summary: dict[str, Any], key: str) -> tuple[float | None, str | None]:
+    """Read a representative scalar + units for a §3.4 standard metric from a summary.
+
+    Reads ``summary["standard_metrics"][key]["value"]`` (a {units, mean, p50, ...} stat
+    object). Returns ``(value, units)`` or ``(None, None)`` when the metric is absent —
+    these are surfaced for context only and never enter Pareto dominance.
+    """
+    std = summary.get("standard_metrics")
+    if not isinstance(std, dict):
+        return None, None
+    entry = std.get(key)
+    if not isinstance(entry, dict):
+        return None, None
+    stat = entry.get("value")
+    if not isinstance(stat, dict):
+        return None, None
+    for s in _STAT_PREFERENCE:
+        v = stat.get(s)
+        if isinstance(v, (int, float)):
+            return float(v), stat.get("units")
+    return None, None
+
+
+def _informational_objectives(
+    labels: list[str], summaries: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Build the informational §3.4-metric block: per metric present in >=1 run, the
+    per-run value and which run leads it. Pure surfacing — no frontier, no dominance."""
+    out: list[dict[str, Any]] = []
+    for key, name, direction in _INFORMATIONAL_OBJECTIVES:
+        per_run: list[dict[str, Any]] = []
+        units: str | None = None
+        present: list[tuple[str, float]] = []
+        for label, s in zip(labels, summaries, strict=True):
+            val, u = _standard_metric_value(s, key)
+            if val is not None:
+                units = units if units is not None else u
+                present.append((label, val))
+            per_run.append({"label": label, "value": val})
+        if not present:
+            continue  # metric absent from every run -> omit (degrade gracefully)
+        chooser = max if direction == "max" else min
+        lead_label, lead_val = chooser(present, key=lambda t: t[1])
+        out.append({
+            "name": name, "direction": direction, "units": units,
+            "informational": True, "per_run": per_run,
+            "leader": {"label": lead_label, "value": lead_val},
+        })
+    return out
 
 
 def _dominates(a: dict[str, float], b: dict[str, float], dirs: dict[str, str]) -> bool:
@@ -351,9 +415,12 @@ def pareto_analysis(
             if v is not None:
                 points[i][name] = v
 
+    informational = _informational_objectives(labels, summaries)
+
     if not dirs:
         return {
             "objectives": [], "runs": [], "frontier": [],
+            "informational_objectives": informational,
             "note": "no objective metric is present in two or more runs — nothing to compare",
         }
 
@@ -381,6 +448,7 @@ def pareto_analysis(
 
     result: dict[str, Any] = {
         "objectives": [{"name": k, **obj_meta[k]} for k in dirs],
+        "informational_objectives": informational,
         "n": len(entries),
         "runs": runs_out,
         "frontier": frontier,

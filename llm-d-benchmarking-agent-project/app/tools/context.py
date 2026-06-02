@@ -198,10 +198,16 @@ class ToolContext:
         timeout: float | None = None,
         cwd: str | Path | None = None,
         stream: bool = True,
+        on_line: Callable[[str], Awaitable[None]] | None = None,
     ) -> RunResult:
         """Validate, gate (approval if mutating), then run a command — streaming output
         to the UI. Read-only commands auto-run; mutating commands require approval via
-        the wired ``approve`` callback and raise :class:`ApprovalRejected` if declined."""
+        the wired ``approve`` callback and raise :class:`ApprovalRejected` if declined.
+
+        ``on_line`` (when given) receives each output line as it arrives and OVERRIDES the
+        default UI ``output`` emission (so the caller — e.g. the orchestrator's live log tail —
+        owns where each line goes, while still passing through the SAME allowlist/runner path).
+        ``stream`` still gates the default UI emission when ``on_line`` is not supplied."""
         decision = self.allowlist.validate(argv, catalog=self.catalog_for_allowlist())
         if not decision.allowed:
             raise ToolError(f"command denied by allowlist: {decision.reason}")
@@ -220,7 +226,8 @@ class ToolContext:
         # Announce the command for the full executed-command trail / debug view. For a
         # mutating command this fires only after approval, so it records what truly ran.
         await self._emit_command(decision, auto_run=not decision.requires_approval)
-        on_line = self._emit_line if (stream and self.emit is not None) else None
+        if on_line is None:
+            on_line = self._emit_line if (stream and self.emit is not None) else None
         auto_run = not decision.requires_approval
         deadline = self._effective_timeout(decision, timeout)
         # Bound concurrent heavy runs across sessions (read-only commands run uncapped).

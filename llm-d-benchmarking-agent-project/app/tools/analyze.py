@@ -90,6 +90,11 @@ async def analyze_results(
         valid_entries.append({"label": label, "summary": summary})
         run_item: dict[str, Any] = {"label": label, "report_path": str(path),
                                     "model": summary.get("model"), "run_uid": summary.get("run_uid")}
+        # Surface the §3.4 standard metrics (KV-cache hit rate / schedule delay / GPU util)
+        # per run when the report carried them — omitted (None) otherwise, never fabricated.
+        # This makes them visible for a SINGLE run too (no sweep -> no Pareto block).
+        if summary.get("standard_metrics"):
+            run_item["standard_metrics"] = summary["standard_metrics"]
         if slo_targets is not None:
             run_item["slo"] = evaluate_slo(summary, slo_targets)
         runs.append(run_item)

@@ -86,6 +86,7 @@ CORE_KNOWLEDGE = (
     "preconditions.md",
     "deploy_path_playbook.md",
     "usecase_to_profile.yaml",
+    "welllit_path_advisor.yaml",
     "quickstart_playbook.md",
     "results_interpretation.md",
     "key_docs.yaml",

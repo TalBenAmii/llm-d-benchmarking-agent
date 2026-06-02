@@ -26,6 +26,10 @@ on:
         description: "Also run the live LLM eval (needs LLM_API_KEY secret)"
         type: boolean
         default: false
+      run_sim_integration:
+        description: "Also run the llm-d-inference-sim integration layer (opt-in, non-gating)"
+        type: boolean
+        default: false
 
 defaults:
   run:
@@ -114,3 +118,40 @@ jobs:
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_EVAL_LIVE: "1"
         run: python -m pytest tests/flows/test_flows_live.py -v
+
+  sim-integration:
+    # Phase 26: the proposal's explicit "integration tests with llm-d-inference-sim".
+    # OPT-IN and NON-GATING — mirrors the live-eval job above: it only runs on a manual
+    # dispatch (`run_sim_integration: true`) and is `continue-on-error`, so it can NEVER
+    # block the build. It stands up the real llm-d-inference-sim (the CPU-only mock
+    # inference server) and drives the analyze/compare path against a report produced from
+    # a real mock run. The DEFAULT (gating) suite stays fully hermetic — those same tests
+    # SKIP cleanly there because LLMD_SIM_INTEGRATION is unset.
+    name: llm-d-inference-sim integration (opt-in, non-gating)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_sim_integration }}
+    continue-on-error: true   # informational only — never blocks the build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install (editable + dev extras)
+        run: python -m pip install -e ".[dev]"
+
+      - name: Check out the read-only llm-d-benchmark repo (for the BR v0.2 schema/example)
+        working-directory: ${{ github.workspace }}
+        run: git clone --depth 1 https://github.com/llm-d/llm-d-benchmark.git
+
+      - name: Pull the llm-d-inference-sim image
+        # The integration layer locates the sim as a pulled container image (docker is
+        # preinstalled on ubuntu-latest runners). If the pull fails the tests SKIP cleanly
+        # (sim_available() == False) rather than fail — this job is informational.
+        run: docker pull ghcr.io/llm-d/llm-d-inference-sim:latest || true
+
+      - name: Run the sim integration layer
+        env:
+          REPOS_DIR: ${{ github.workspace }}
+          LLMD_SIM_INTEGRATION: "1"
+          LLMD_SIM_IMAGE: ghcr.io/llm-d/llm-d-inference-sim:latest
+        run: python -m pytest tests/integration/ -v

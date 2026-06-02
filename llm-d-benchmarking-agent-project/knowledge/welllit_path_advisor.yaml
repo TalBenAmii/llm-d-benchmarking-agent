@@ -1,0 +1,191 @@
+# Well-lit-path advisor — map a WORKLOAD SHAPE to the llm-d well-lit-path scenario worth
+# benchmarking, with the SIGNALS that select it and a plain-language rationale.
+#
+# WHAT THIS IS (and is not)
+# -------------------------
+# This is ADVISORY DATA — the JUDGMENT of "which scenario fits this workload" lives HERE,
+# not in any Python `if/elif`. The agent reads this file (it is loaded into the system
+# prompt / available via read_knowledge("welllit_path_advisor")) and reasons over it. The
+# code only *reads* the file; it never picks a path.
+#
+# HOW TO USE IT (agent)
+# ---------------------
+# 1. Elicit the workload shape: prefix-reuse ratio, context length, concurrency / arrival
+#    pattern, and which SLO the user emphasizes (TTFT vs TPOT/ITL vs throughput vs cost).
+#    (See `usecase_to_profile.yaml` for the harness/workload side; this file is the
+#    SCENARIO/guide side.) The token-characteristics elicitation guidance lives in
+#    `usecase_to_profile.yaml` and the DOE knowledge (Phase 19).
+# 2. Match the dominant signal(s) below to an archetype and recommend its `scenario`.
+# 3. ALWAYS confirm the chosen name against the LIVE catalog (`list_catalog`) before using
+#    it in a SessionPlan — the catalog on disk is the source of truth, this file is a guide.
+# 4. Honor `deploy_path` (see legend): GPU-only guides are NOT runnable on the local
+#    kind/CPU path — recommend them as DEPLOY-PATH guidance and benchmark `cicd/kind` for a
+#    local sanity pass.
+#
+# IDENTIFIER LEGEND
+# -----------------
+# Each archetype names a `scenario` using a benchmark-repo spec identifier (the `--spec`
+# the `llmdbenchmark` CLI takes, e.g. `guides/pd-disaggregation` or `cicd/kind`). These are
+# the names that appear in the live catalog (`list_catalog` -> specs). Where a scenario maps
+# onto an llm-d well-lit-path GUIDE, `guide` gives the llm-d repo path
+# (`llm-d/guides/<name>`). `deploy_path` marks reach:
+#   - kind-local : runnable end-to-end on the supported local kind/CPU-sim path (default MVP).
+#   - gpu-only   : a real GPU cluster is required; on kind this is DEPLOY-PATH guidance only
+#                  (set expectations, don't attempt a local standup — see deploy_path_playbook.md).
+
+legend:
+  deploy_path:
+    kind-local: Runnable on the local kind cluster with the CPU-only simulated engine (MVP path).
+    gpu-only: Needs a real GPU cluster; on kind, advise as deploy-path guidance only.
+  signals:
+    prefix_reuse_ratio: Fraction of incoming-request prompt tokens already seen (shared system
+      prompt, RAG context, multi-turn history). High => caching/cache-aware routing pays off.
+    context_length: Typical prompt (input) length in tokens. Long => prefill-bound; favors P/D.
+    concurrency: Sustained simultaneous in-flight requests / arrival pattern (steady vs bursty).
+    slo_emphasis: Which SLO dominates — ttft (responsiveness), tpot/itl (smooth streaming),
+      throughput (tokens/s or req/s at acceptable latency), or cost (tokens per GPU-hour).
+
+# The archetypes. EVERY entry MUST carry: archetype, scenario, deploy_path, signals,
+# rationale, benchmark_workloads. `guide` is present whenever the scenario maps to an
+# llm-d well-lit-path guide. The hermetic test validates these fields and that every
+# `scenario` (and `also_consider`) is a well-formed catalog identifier.
+well_lit_paths:
+
+  - archetype: chat_prefix_heavy
+    title: Prefix-heavy chat / shared-system-prompt assistants
+    scenario: guides/precise-prefix-cache-routing
+    guide: llm-d/guides/precise-prefix-cache-routing
+    deploy_path: gpu-only
+    signals:
+      prefix_reuse_ratio: high (>= ~0.5 — long shared system prompt, repeated few-shot, or
+        multi-turn chat where each turn re-sends the conversation)
+      context_length: short-to-medium per turn, but a large SHARED prefix
+      concurrency: medium-to-high, many users hitting the same prompt template
+      slo_emphasis: ttft
+    rationale: >
+      When most of each request's prefix is already resident in some pod's KV cache, the win
+      is routing the request to THAT pod. Precise prefix-cache routing indexes per-pod KV
+      state (block-hash events) and scores pods by resident-prefix fraction, cutting TTFT and
+      redundant prefill. Benchmark this when prefix-reuse is high and TTFT is the SLO.
+    also_consider:
+      - guides/tiered-prefix-cache  # when the reused KV working set exceeds accelerator memory
+      - guides/optimized-baseline   # prefix-cache-AWARE (heuristic) routing as the simpler baseline
+    benchmark_workloads:
+      - shared_prefix_synthetic.yaml
+      - shared_prefix_multi_turn_chat.yaml
+      - guide_precise-prefix-cache-routing_1.yaml
+
+  - archetype: long_context_rag
+    title: Long-context RAG / large-model serving (prefill-heavy)
+    scenario: guides/pd-disaggregation
+    guide: llm-d/guides/pd-disaggregation
+    deploy_path: gpu-only
+    signals:
+      prefix_reuse_ratio: low-to-medium (retrieved context differs per query)
+      context_length: long (large retrieved/document context; prefill dominates the request)
+      concurrency: medium; mixed long-prefill + streaming-decode phases contend on one engine
+      slo_emphasis: ttft and tpot together (prefill latency AND smooth decode)
+    rationale: >
+      Long prompts make prefill the bottleneck, and prefill bursts stall decode on a shared
+      engine (TTFT and inter-token latency both suffer). Prefill/Decode (P/D) disaggregation
+      runs specialized prefill and decode instances so a big prefill no longer blocks ongoing
+      decodes — improving throughput-per-GPU and QoS stability for medium/large models. This
+      is the scenario to benchmark for long-context RAG and large models.
+    also_consider:
+      - guides/wide-ep-lws  # very large Mixture-of-Experts models needing multi-node EP/DP
+    benchmark_workloads:
+      - guide_pd-disaggregation_1.yaml
+      - guide_pd-disaggregation_2.yaml
+      - summarization_synthetic.yaml
+
+  - archetype: high_throughput_batch
+    title: High-throughput / batch serving (latency-tolerant, cost-sensitive)
+    scenario: guides/optimized-baseline
+    guide: llm-d/guides/optimized-baseline
+    deploy_path: gpu-only
+    signals:
+      prefix_reuse_ratio: any (load-aware balancing helps regardless)
+      context_length: any
+      concurrency: high and sustained (saturate the pool; maximize tokens/s per GPU)
+      slo_emphasis: throughput / cost, with latency only loosely bounded
+    rationale: >
+      For pushing aggregate throughput at acceptable (not tight) latency, the optimized
+      baseline — load-aware AND prefix-cache-aware request balancing via the llm-d EPP /
+      inference scheduler — is the recommended out-of-the-box config for most vLLM/SGLang
+      deployments. It is the closest catalog spec to the upstream "inference-scheduling"
+      guide (intelligent request scheduling). Sweep load on it with guidellm to find the
+      max sustainable throughput before SLOs break.
+    notes: >
+      The upstream llm-d-benchmark README also documents `--spec inference-scheduling` (and
+      `inference-scheduling-wva`) as the intelligent-scheduling guide; in the frozen catalog
+      snapshot the present spec is `guides/optimized-baseline`. Verify the exact name with
+      list_catalog. For true latency-insensitive batch, the llm-d `batch-gateway` and
+      `asynchronous-processing` EXPERIMENTAL guides exist (deploy-path only; not in the
+      benchmark catalog).
+    also_consider:
+      - guides/workload-autoscaling  # when load is bursty and you want SLO-aware autoscaling
+    benchmark_workloads:
+      - guide_optimized-baseline_1.yaml
+      - chatbot_synthetic.yaml
+      - random_concurrent.yaml
+
+  - archetype: code_completion
+    title: Code completion / IDE assist (short prompt, tight TTFT)
+    scenario: guides/optimized-baseline
+    guide: llm-d/guides/optimized-baseline
+    deploy_path: gpu-only
+    signals:
+      prefix_reuse_ratio: medium (repeated file/context prefixes within a session)
+      context_length: short prompts, short completions
+      concurrency: high request rate, very latency-sensitive
+      slo_emphasis: ttft (and low tail latency)
+    rationale: >
+      Code completion is dominated by getting the first token out fast under a high request
+      rate. The optimized baseline's load-aware + prefix-cache-aware routing minimizes tail
+      latency for these short, frequent requests. If the editor re-sends a large shared file
+      context, escalate to precise-prefix-cache-routing (the prefix-heavy archetype).
+    also_consider:
+      - guides/precise-prefix-cache-routing  # if a large shared code/file context is re-sent
+    benchmark_workloads:
+      - code_completion_synthetic.yaml
+
+  - archetype: agentic
+    title: Agentic / tool-using workloads (multi-turn, growing context, tool loops)
+    scenario: guides/agentic-tests
+    guide: llm-d/guides/asynchronous-processing
+    deploy_path: gpu-only
+    signals:
+      prefix_reuse_ratio: high (each agent step re-sends the accumulated trajectory)
+      context_length: growing across the trajectory (history + tool outputs accumulate)
+      concurrency: bursty per-agent fan-out; uneven request sizes
+      slo_emphasis: ttft and tpot per step; end-to-end trajectory latency overall
+    rationale: >
+      Agentic loops re-send a large, growing conversation/tool context every step, so prefix
+      reuse is very high and the KV working set grows — caching and cache-aware routing pay
+      off heavily, and offloading helps when the working set outgrows GPU memory. Benchmark
+      with the `guides/agentic-tests` spec, which is built for these multi-turn patterns.
+    also_consider:
+      - guides/tiered-prefix-cache           # offload the growing KV working set beyond GPU memory
+      - guides/precise-prefix-cache-routing  # route on the precise resident-prefix fraction
+    benchmark_workloads:
+      - shared_prefix_multi_turn_chat.yaml
+      - shared_prefix_synthetic.yaml
+
+  - archetype: default_sanity
+    title: Default / sanity / "just try it locally" (no special workload shape)
+    scenario: cicd/kind
+    deploy_path: kind-local
+    signals:
+      prefix_reuse_ratio: n/a
+      context_length: n/a
+      concurrency: low (a plumbing/correctness check, not a load study)
+      slo_emphasis: success_rate (does it work end-to-end?) then ttft sanity
+    rationale: >
+      When the goal is a quick local sanity pass, a demo, or validating plumbing/SLO wiring
+      with no GPU, benchmark `cicd/kind` — the supported local kind cluster with the CPU-only
+      simulated engine (facebook/opt-125m via llm-d-inference-sim). This is ALSO the right
+      first step before any GPU guide above: prove the pipeline locally, then graduate to the
+      GPU well-lit path that matches the real workload shape. See deploy_path_playbook.md.
+    benchmark_workloads:
+      - sanity_random.yaml
+      - sanity_concurrent.yaml

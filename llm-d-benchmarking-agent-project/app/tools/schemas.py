@@ -127,6 +127,21 @@ class OrchestrateBenchmarkInput(BaseModel):
     )
     cpu: str = Field(default="1", description="CPU request/limit for the Job pod")
     memory: str = Field(default="1Gi", description="Memory request/limit for the Job pod")
+    scheduling: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional hardware/placement intent for the Job pod (see "
+                    "knowledge/resource_management.md for HOW to choose). Keys (all optional): "
+                    "gpu_count (int >=1, request N GPUs), gpu_resource (extended-resource name, "
+                    "default 'nvidia.com/gpu'), gpu_type_label ([label_key, value] to pin the GPU "
+                    "TYPE, e.g. ['nvidia.com/gpu.product','NVIDIA-A100-SXM4-80GB']), node_selector "
+                    "(dict of exact node-label matches), tolerations (list of K8s toleration dicts "
+                    "for tainted GPU pools), affinity (a raw K8s affinity block, merged verbatim), "
+                    "avoid_labels (dict — schedules the benchmark pod AWAY from nodes already "
+                    "running pods with these labels, e.g. the measured llm-d stack {'llm-d.ai/role':"
+                    "'decode'}, so the load generator never starves the system under test), "
+                    "avoid_topology_key (topology domain for avoid_labels, default "
+                    "'kubernetes.io/hostname'). Omit entirely for the generic cpu/memory baseline.",
+    )
     active_deadline_seconds: int | None = Field(
         default=None, description="Job timeout; exceeding it is classified as a timeout failure",
     )
@@ -138,6 +153,33 @@ class OrchestrateBenchmarkInput(BaseModel):
     watch: bool = Field(default=True, description="Watch the Job to completion + diagnose failures (vs submit-and-return)")
     poll_interval: float = Field(default=3.0, ge=0, description="Seconds between status polls while watching")
     max_wait: float = Field(default=3600.0, ge=0, description="Max seconds to watch before giving up")
+    require_ready_endpoint: bool = Field(
+        default=True,
+        description="Gate submission on a real inference-endpoint READINESS check (a Service "
+                    "with a ready backing endpoint — beyond mere pod presence). When the stack "
+                    "isn't ready the run is NOT submitted (nothing mutates) and a structured "
+                    "not-ready result with a standup_suggestion is returned. Set False ONLY if "
+                    "you know the endpoint is reachable another way (e.g. an external -U URL).",
+    )
+
+
+class CheckEndpointReadinessInput(BaseModel):
+    namespace: str = Field(
+        ...,
+        description="Kubernetes namespace whose inference endpoint to check for readiness "
+                    "(the namespace you intend to benchmark).",
+    )
+    spec: str | None = Field(
+        default=None,
+        description="Optional llm-d spec from the catalog (e.g. 'cicd/kind'); used only to "
+                    "scope the corroborating benchmark-CLI endpoint probe.",
+    )
+    probe_cli_endpoints: bool = Field(
+        default=True,
+        description="Also corroborate via the benchmark CLI's read-only `run --list-endpoints` "
+                    "(best-effort; the Kubernetes endpoint-address readiness is the gate). Set "
+                    "False to skip it (e.g. the benchmark venv isn't installed yet).",
+    )
 
 
 class AnalyzeResultsInput(BaseModel):
@@ -281,6 +323,82 @@ class CancelRunInput(BaseModel):
                     "run's concurrency slot and cleans up its subprocess. You cannot cancel the "
                     "run you are calling from — cancel a DIFFERENT session's run.",
         min_length=1,
+    )
+
+
+class DoEFactor(BaseModel):
+    """One swept parameter in a DoE matrix: a human `name`, the dotted config `key` the
+    level overrides, and the list of `levels` to sweep. The cross-product of all factors'
+    levels becomes the treatments. WHICH factor/levels to pick is your judgment (see
+    knowledge/sweep_playbook.md) — this only declares one axis of the grid."""
+
+    name: str = Field(
+        ...,
+        description="Short token naming this factor, used to build treatment names "
+                    "(e.g. 'tp', 'rep', 'numCpuBlocks'). Letters/digits/_/-/. only.",
+    )
+    key: str = Field(
+        ...,
+        description="The DOTTED override key this factor sets in each treatment, e.g. "
+                    "'decode.parallelism.tensor' or 'data.shared_prefix.num_groups' (setup "
+                    "factors override the scenario config; run factors override the workload "
+                    "profile). Read the repo's experiment examples to pick real keys.",
+    )
+    levels: list[Any] = Field(
+        ...,
+        description="The scalar values to sweep for this factor, e.g. [2, 4, 8]. The "
+                    "cross-product of every factor's levels yields the treatments. Non-empty.",
+        min_length=1,
+    )
+
+
+class GenerateDoeInput(BaseModel):
+    name: str = Field(
+        ...,
+        description="Experiment name (a token: letters/digits/_/-/. only). Also the default "
+                    "output filename (<name>.yaml).",
+    )
+    run_factors: list[DoEFactor] = Field(
+        ...,
+        description="REQUIRED. The workload/run factors to sweep against a single stood-up "
+                    "stack (each: name + dotted key + levels). The cross-product of these is "
+                    "the run treatments. Prefer a run-parameter sweep on kind/CPU-sim.",
+        min_length=1,
+    )
+    setup_factors: list[DoEFactor] | None = Field(
+        default=None,
+        description="Optional infrastructure factors that change the DEPLOYMENT (replicas, "
+                    "tensor parallelism, prefill/decode split, model). Each setup treatment "
+                    "triggers its own standup/teardown — a full DoE. Omit for a run-only sweep "
+                    "(one standup, N runs). The full matrix is setup × run treatments.",
+    )
+    run_constants: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional dotted-key → value pairs held FIXED across every run treatment "
+                    "(e.g. {'data.shared_prefix.output_len': 256}). Keep everything not being "
+                    "swept fixed so deltas are attributable.",
+    )
+    setup_constants: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional dotted-key → value pairs merged into every setup treatment "
+                    "(e.g. {'model.maxModelLen': 16000}).",
+    )
+    harness: str | None = Field(
+        default=None,
+        description="Optional harness override recorded in the experiment metadata (e.g. "
+                    "'inference-perf', 'vllm-benchmark'). Match the swept keys to the harness/"
+                    "workload. Usually set on the scenario instead; omit if so.",
+    )
+    profile: str | None = Field(
+        default=None, description="Optional workload-profile override recorded in the metadata.",
+    )
+    description: str | None = Field(
+        default=None, description="Optional human description recorded in the experiment metadata.",
+    )
+    target_filename: str | None = Field(
+        default=None,
+        description="Optional bare *.yaml filename to write into the session workspace "
+                    "(no path separators). Defaults to '<name>.yaml'.",
     )
 
 

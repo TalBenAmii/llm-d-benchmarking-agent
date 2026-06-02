@@ -105,3 +105,15 @@ No harness or CI changes are needed — the tests and the CLI pick it up automat
 workflows there) runs the hermetic gating job on every push/PR that touches the project.
 A separate **opt-in** `live-eval` job runs the real-LLM eval only on manual dispatch with an
 API-key secret, and is `continue-on-error` so it never blocks the build.
+
+## Integration tests with llm-d-inference-sim (opt-in)
+
+`tests/integration/` is an **opt-in** layer that exercises the analyze/compare path against a
+real `llm-d-inference-sim` (the CPU-only mock inference server). The **wiring** — parsing a
+sim-shaped Benchmark Report v0.2 through `analyze_results` / `compare_reports` — is covered
+**hermetically by default** (a sim-shaped fixture built from the repo's own BR v0.2 example),
+so the default suite stays green with no sim, no network, and no new required dependency. The
+**live** end-to-end test (stand up the sim, benchmark it, analyze/compare the report) runs
+only when `LLMD_SIM_INTEGRATION=1` **and** the sim is locatable — otherwise it SKIPS cleanly.
+A non-gating `sim-integration` CI job runs it on manual dispatch (`run_sim_integration: true`,
+`continue-on-error`). See **`knowledge/sim_integration.md`** for exactly how to run it.
