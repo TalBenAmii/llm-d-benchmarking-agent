@@ -32,6 +32,12 @@ from app.config import Settings, get_settings
 
 _BEARER_PREFIX = "bearer "  # case-insensitive scheme per RFC 6750
 
+# Liveness/readiness probes (Phase 16) stay UNAUTHENTICATED even when auth is on: a Kubernetes
+# kubelet probing /healthz or /readyz can't carry a Bearer token, and a probe that 401s would
+# get the pod needlessly restarted (liveness) or pulled from rotation (readiness). These paths
+# expose only up/ready facts — no session data, no secrets — so exempting them leaks nothing.
+_UNAUTHENTICATED_PATHS = frozenset({"/healthz", "/readyz"})
+
 
 def extract_bearer(authorization: str | None) -> str | None:
     """Pull the raw token out of an ``Authorization: Bearer <token>`` header value.
@@ -76,10 +82,14 @@ def check_http_auth(conn: HTTPConnection, settings: Settings = Depends(get_setti
     auth and closes with a proper 1008 (a 401 HTTPException can't be returned over a socket).
 
     When ``auth_enabled`` is False (default) this is a no-op and every route stays open exactly
-    as today. When enabled, an HTTP request needs a valid Bearer token or it raises 401."""
+    as today. When enabled, an HTTP request needs a valid Bearer token or it raises 401 —
+    EXCEPT the liveness/readiness probes (see ``_UNAUTHENTICATED_PATHS``), which stay open so
+    K8s probes (which can't carry a token) aren't locked out."""
     if not settings.auth_enabled:
         return
     if conn.scope.get("type") != "http":  # WebSocket handshake -> guarded in the /ws handler
+        return
+    if conn.url.path in _UNAUTHENTICATED_PATHS:  # liveness/readiness probes are always reachable
         return
     presented = extract_bearer(conn.headers.get("authorization"))
     if not token_matches(presented, settings.auth_token):

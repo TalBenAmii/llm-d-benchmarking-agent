@@ -563,8 +563,30 @@ function renderReportSummary(result) {
   const tput = s.throughput && s.throughput.total_token_rate;
   if (tput) add(`tok/s (${tput.units || ""})`, tput.mean);
   bubble.appendChild(grid);
+  renderReportCharts(bubble, result.charts);
   wrap.appendChild(bubble);
   transcript.appendChild(wrap);
+}
+
+// Render the per-run chart images the harness produced (served by the backend artifact
+// route). `charts` is locate_and_parse_report's list of {title, session_id, path}; absent
+// on the CPU-sim quickstart / guidellm, in which case we show nothing.
+function renderReportCharts(bubble, charts) {
+  if (!Array.isArray(charts) || charts.length === 0) return;
+  const wrap = el("div", "charts");
+  charts.forEach((c) => {
+    const sid = c.session_id || currentSession;
+    if (!sid || !c.path) return;
+    const fig = el("figure", "chart");
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.alt = c.title || "benchmark chart";
+    img.src = `/api/sessions/${encodeURIComponent(sid)}/artifact?path=${encodeURIComponent(c.path)}`;
+    fig.appendChild(img);
+    if (c.title) fig.appendChild(el("figcaption", null, c.title));
+    wrap.appendChild(fig);
+  });
+  if (wrap.childElementCount) bubble.appendChild(wrap);
 }
 
 function prettyJson(obj) {

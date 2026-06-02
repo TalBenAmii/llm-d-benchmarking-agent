@@ -319,10 +319,60 @@ def locate_and_parse_report(
     }
     if validation.valid:
         result["summary"] = summarize_report(report)
+    # Surface any per-run chart images the harness rendered next to the report (inference-perf
+    # writes latency/throughput PNGs into a sibling analysis/ tree). Pure mechanism: glob the
+    # files and hand the UI session-relative paths it can fetch from the artifact route. Empty
+    # on the CPU-sim quickstart / guidellm, which render no charts — never fabricated.
+    charts = _discover_charts(report_path, ctx.workspace.parent)
+    if charts:
+        result["charts"] = charts
     return result
 
 
 # ---- helpers --------------------------------------------------------------
+
+_CHART_SUFFIXES = (".png", ".svg")
+
+
+def _discover_charts(report_path: Path, sessions_root: Path) -> list[dict[str, str]]:
+    """Find chart images the harness rendered for this run, addressable via the artifact route.
+
+    inference-perf writes plots (latency_vs_qps.png, throughput_vs_latency.png, …) into an
+    ``analysis/`` tree beside the report. We locate the run's session dir (the path component
+    directly under ``<workspace>/sessions``) so each chart can be expressed as a session-relative
+    path the ``/api/sessions/<sid>/artifact`` route serves. Returns ``[]`` when the report isn't
+    under the per-session workspace, or when the run produced no charts (CPU-sim / guidellm)."""
+    try:
+        rel_to_sessions = report_path.resolve().relative_to(sessions_root.resolve())
+    except ValueError:
+        return []  # report located via an explicit results_dir outside the session workspace
+    if not rel_to_sessions.parts:
+        return []
+    sid = rel_to_sessions.parts[0]
+    session_dir = (sessions_root / sid).resolve()
+    # Walk up from the report to the nearest ancestor that holds an ``analysis/`` dir (the run
+    # dir), without escaping the session dir.
+    run_dir = report_path.resolve().parent
+    analysis: Path | None = None
+    while True:
+        if (run_dir / "analysis").is_dir():
+            analysis = run_dir / "analysis"
+            break
+        if run_dir == session_dir or run_dir.parent == run_dir:
+            break
+        run_dir = run_dir.parent
+    if analysis is None:
+        return []
+    charts: list[dict[str, str]] = []
+    for img in sorted(analysis.rglob("*")):
+        if img.suffix.lower() not in _CHART_SUFFIXES or not img.is_file():
+            continue
+        charts.append({
+            "title": img.stem.replace("_", " ").strip().capitalize(),
+            "session_id": sid,
+            "path": str(img.resolve().relative_to(session_dir)),
+        })
+    return charts
 
 def _names_from_json(text: str) -> list[str]:
     try:

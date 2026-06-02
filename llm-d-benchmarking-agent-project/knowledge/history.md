@@ -14,6 +14,12 @@ Store a run the user will care about *later*, **after** you've already located/p
 - Each treatment of a **sweep/experiment** they want to revisit or compare across days.
 - Any run the user explicitly asks to "save", "keep", or "remember".
 
+**Proactively store the first real benchmark of a session** (not a smoketest) once you've
+parsed it — make it the baseline and tell the user ("I've saved this as your baseline so you
+can track future runs against it"). The Results panel and trend chart in the UI stay **empty
+until something is stored**, so storing the first real result is also what makes that
+visualization appear at all; don't leave the user with an empty panel after a successful run.
+
 Do NOT auto-store every throwaway smoketest — storing is for results with lasting value.
 Always pass a clear `label` and useful `tags` (e.g. `["8B","baseline"]`, or
 `["concurrency-sweep","2026-06"]`) so `list`/`trend` can be filtered later. Pass the
