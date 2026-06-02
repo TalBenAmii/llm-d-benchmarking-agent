@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -113,6 +114,138 @@ def _stat(metric: Any) -> dict[str, Any] | None:
     return out or None
 
 
+# ---- §3.4 standard metrics (KV-cache hit rate / schedule delay / GPU util) --
+#
+# The proposal lists these among the Results Analyzer's "standard metrics" but, unlike
+# the request-level latency/throughput numbers, they are resource/serving metrics a
+# harness MAY or may not emit, under either the BR v0.2 standardized ResourceMetrics
+# object OR a harness-native per-metric observability entry. WHICH field name carries
+# WHICH metric (the discovery judgment) lives as DATA in knowledge/standard_metrics.yaml;
+# the code here is pure mechanism — it reads that catalog and extracts the first present
+# candidate, NEVER fabricating a value the report doesn't carry (thin code / thick agent).
+
+_STANDARD_METRICS_CATALOG = (
+    Path(__file__).resolve().parents[2] / "knowledge" / "standard_metrics.yaml"
+)
+
+
+@lru_cache(maxsize=4)
+def _load_standard_metrics_catalog(path: str) -> dict[str, Any]:
+    """Load (and cache) the metric→field-name catalog. Missing/malformed → empty (no crash)."""
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        data = yaml.safe_load(p.read_text())
+    except yaml.YAMLError:
+        return {}
+    metrics = data.get("metrics") if isinstance(data, dict) else None
+    return metrics if isinstance(metrics, dict) else {}
+
+
+def _native_stat(entry: Any) -> dict[str, Any] | None:
+    """Pull a {units, mean, percentiles} stats dict from a harness-native observability entry.
+
+    Harness-native entries (e.g. ``vllm_prefix_cache_hit_rate``) carry their stats under an
+    ``aggregated`` block (cluster-wide) and/or a ``components[].statistics`` block (per pod).
+    We prefer the cluster-wide ``aggregated`` and fall back to the first component's
+    ``statistics``. Returns ``_stat``-shaped output (units + ladder), or None.
+    """
+    if not isinstance(entry, dict):
+        return None
+    agg = entry.get("aggregated")
+    out = _stat(agg)
+    if out:
+        return out
+    comps = entry.get("components")
+    if isinstance(comps, list):
+        for c in comps:
+            if isinstance(c, dict):
+                out = _stat(c.get("statistics"))
+                if out:
+                    return out
+    return None
+
+
+def _extract_standard_metric(
+    observability: dict[str, Any], spec: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Extract ONE catalogued metric from a report's ``results.observability`` block.
+
+    Tries, in catalog-preference order: each standardized ResourceMetrics field name across
+    every ``components[].aggregate`` block, then each harness-native top-level key. Returns a
+    structured value (the picked stat ladder + provenance) or None when the metric is absent
+    everywhere — it is NEVER fabricated.
+    """
+    components = observability.get("components")
+    comp_list = components if isinstance(components, list) else []
+
+    # 1) Standardized ResourceMetrics fields under components[].aggregate.
+    for field_name in spec.get("standardized") or []:
+        for comp in comp_list:
+            if not isinstance(comp, dict):
+                continue
+            agg = comp.get("aggregate")
+            if not isinstance(agg, dict):
+                continue
+            stat = _stat(agg.get(field_name))
+            if stat:
+                return {
+                    "label": spec.get("label"),
+                    "value": stat,
+                    "source": "standardized",
+                    "field": field_name,
+                    "component_label": comp.get("component_label"),
+                    "direction": spec.get("direction"),
+                    "proxy": bool(spec.get("proxy", False)),
+                }
+
+    # 2) Harness-native per-metric observability entries (vendor metric keys).
+    for key in spec.get("native") or []:
+        stat = _native_stat(observability.get(key))
+        if stat:
+            return {
+                "label": spec.get("label"),
+                "value": stat,
+                "source": "native",
+                "field": key,
+                "direction": spec.get("direction"),
+                "proxy": bool(spec.get("proxy", False)),
+            }
+
+    return None
+
+
+def extract_standard_metrics(
+    report: dict[str, Any], *, catalog_path: str | Path | None = None
+) -> dict[str, Any]:
+    """Surface the §3.4 standard metrics (KV-cache hit rate / schedule delay / GPU util).
+
+    Reads the field-name catalog (knowledge/standard_metrics.yaml) and mechanically pulls
+    each metric from the report's ``results.observability`` block, in BR v0.2 standardized
+    form first then harness-native. Metrics absent from the report are OMITTED (never
+    fabricated). Returns ``{metric_name: {label, value, source, field, direction, ...}}``
+    containing only the metrics actually present — an empty dict when none are.
+    """
+    if not isinstance(report, dict):
+        return {}
+    results = report.get("results", {})
+    observability = results.get("observability", {}) if isinstance(results, dict) else {}
+    if not isinstance(observability, dict):
+        return {}
+    catalog = _load_standard_metrics_catalog(
+        str(catalog_path) if catalog_path is not None else str(_STANDARD_METRICS_CATALOG)
+    )
+    out: dict[str, Any] = {}
+    for name, spec in catalog.items():
+        if not isinstance(spec, dict):
+            continue
+        found = _extract_standard_metric(observability, spec)
+        if found is not None:
+            out[name] = found
+    return out
+
+
 def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     """Compute a compact, non-expert-friendly summary from a validated report.
 
@@ -179,6 +312,11 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     # Prune empty latency/throughput entries for a cleaner payload.
     summary["latency"] = {k: v for k, v in summary["latency"].items() if v}
     summary["throughput"] = {k: v for k, v in summary["throughput"].items() if v}
+
+    # §3.4 standard resource/serving metrics (KV-cache hit rate, schedule delay, GPU util).
+    # Present only when the harness emitted them; gracefully omitted (None-equivalent) otherwise.
+    standard = extract_standard_metrics(report)
+    summary["standard_metrics"] = standard or None
     return summary
 
 

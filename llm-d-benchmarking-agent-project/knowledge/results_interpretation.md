@@ -16,6 +16,35 @@ always tied to the user's stated goal. Never quote numbers that aren't in the su
 
 Each metric carries `units` — respect them (e.g. TTFT may be in seconds `s` or `ms`).
 
+## Standard resource/serving metrics (when the harness emits them)
+
+The summary may also carry `standard_metrics` — §3.4 "standard metrics" that describe what
+the *serving stack* was doing, not just the request results. They appear only when the
+harness/observability scrape produced them; if absent, `standard_metrics` is `null` — say
+nothing about them rather than guessing. Each entry has `label`, a `value` stat object
+(`units` + `mean`/percentiles), and a `source` (`standardized` = read from the Benchmark
+Report's standard ResourceMetrics; `native` = a harness-native metric like vLLM's).
+
+- **KV-cache hit rate** (`kv_cache_hit_rate`, %) — the fraction of prompt prefix tokens
+  served from cache instead of recomputed. Higher is better: more reuse means less prefill
+  work, which *explains* lower TTFT and higher throughput. It is the single best signal of
+  whether prefix-cache-aware routing is paying off. (Do not confuse it with *kv-cache
+  usage/occupancy*, which is how full the cache is — a different thing.)
+- **Schedule delay** (`schedule_delay`) — how much requests are waiting to be scheduled onto
+  the engine, i.e. queueing/admission delay under load. BR v0.2 carries no millisecond
+  "schedule delay" field, so this is surfaced as a **queue-depth proxy** (requests waiting;
+  the entry is flagged `proxy: true` and labelled accordingly). Lower is better; a rising
+  queue depth means the stack is saturated and latency tails will grow. Describe it as
+  "requests waiting to be scheduled", never as a fabricated time.
+- **GPU utilization** (`gpu_utilization`, %) — how busy the accelerator's compute was. High
+  utilization means the GPU is the bottleneck (good capacity use, little headroom); low
+  utilization with high latency means something *else* (queueing, CPU, network) is gating,
+  or the load is too light to saturate the GPU. "Higher" is informational, not automatically
+  "better" — interpret it next to throughput and the queue-depth proxy.
+
+On the CPU-sim quickstart these are usually absent or meaningless (no real GPU); only lean
+on them on a real GPU stack.
+
 ## How to talk about it
 - Lead with the answer to the user's question (e.g. "for a chat UX, first-token latency
   averaged X and the slowest 1% were Y").

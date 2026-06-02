@@ -73,6 +73,28 @@ How to advise:
    that appear in the analysis object (validated reports). Never extrapolate beyond the
    reported percentiles or invent a treatment that wasn't run.
 
+## Informational §3.4 metrics: KV-cache hit rate, schedule delay, GPU utilization
+
+When the reports carry them, `pareto.informational_objectives` surfaces the §3.4 standard
+*serving* metrics per run — **alongside** the frontier, never inside it. They are flagged
+`informational: true` and deliberately do **not** affect `frontier`, `slo_frontier`,
+`overall_met`, or goodput. Use them to *explain* the frontier, not to pick on them:
+
+- **KV-cache hit rate** (`max` better) — the headline informational objective. A frontier
+  run with a much higher hit rate is faster *because* it recomputes less prefill; this is the
+  evidence that prefix-cache-aware routing/config is working. Quote it when recommending:
+  "config B is on the latency frontier and has a 65% KV-cache hit rate vs 12% for A — that's
+  why its TTFT is lower."
+- **Schedule delay** (`min` better) — a queue-depth **proxy** (requests waiting), not a time.
+  A run with a low TTFT but a climbing queue depth is near saturation; flag that its tail will
+  degrade under more load. Never present the proxy as a millisecond delay.
+- **GPU utilization** (`max` = more utilized, not automatically better) — read it next to
+  throughput: high util + high throughput = the GPU is well used; low util + bad latency
+  points at a non-GPU bottleneck (queueing/CPU/network).
+
+`leader` names the run that leads each informational metric. A metric absent from every run
+is simply omitted — say nothing about it. On the CPU-sim quickstart these are usually absent.
+
 ## Caveat that still applies on the kind/CPU-sim quickstart
 
 The simulated CPU engine's absolute numbers are **not** representative of GPU serving, and
