@@ -62,6 +62,8 @@ class KubeClient(Protocol):
     async def apply(self, manifest_path: str | Path, *, namespace: str) -> RunResult: ...
     async def list_jobs(self, *, namespace: str, selector: str | None = None) -> list[dict[str, Any]]: ...
     async def list_pods(self, *, namespace: str, selector: str | None = None) -> list[dict[str, Any]]: ...
+    async def list_configmaps(self, *, namespace: str,
+                              selector: str | None = None) -> list[dict[str, Any]]: ...
     async def logs(self, *, namespace: str, selector: str, tail: int | None = None,
                    follow: bool = False) -> str: ...
     def stream_log_lines(self, *, namespace: str, selector: str,
@@ -100,6 +102,16 @@ class RealKubeClient:
 
     async def list_pods(self, *, namespace: str, selector: str | None = None) -> list[dict[str, Any]]:
         argv = ["kubectl", "get", "pods", "-n", namespace, "-o", "json"]
+        if selector:
+            argv += ["-l", selector]
+        res = await self._ctx.run_readonly(argv)
+        return parse_items(res.output)
+
+    async def list_configmaps(self, *, namespace: str,
+                              selector: str | None = None) -> list[dict[str, Any]]:
+        """Read the agent-managed ConfigMaps (selected by label) — read-only, auto-runs. Used
+        to load a DOE sweep's checkpoint (the cluster source of truth for sweep progress)."""
+        argv = ["kubectl", "get", "configmaps", "-n", namespace, "-o", "json"]
         if selector:
             argv += ["-l", selector]
         res = await self._ctx.run_readonly(argv)

@@ -72,3 +72,31 @@ in [`knowledge/resource_management.md`](resource_management.md). Read it before 
   keeps failing — one bad treatment doesn't sink the rest.
 - Retries are only worth it for transient faults (`evicted`). Deterministic faults (`oom`,
   `unschedulable`, `image_error`, `timeout`) never auto-retry — fix the cause instead.
+
+## Checkpoint / resume for long DOE sweeps (the cluster is the source of truth)
+
+A long DOE sweep (many treatments) can be interrupted part-way: the orchestrator restarts,
+the chat session drops, or the host reboots. Consistent with the **stateless design**
+(proposal §3.3/§4 — reconstruct from the cluster, store nothing locally), a sweep's progress
+is persisted to a **Kubernetes ConfigMap named for the sweep** (`llmd-bench-sweep-<sweep_id>`),
+labelled `managed-by` + the sweep label. That ConfigMap — NOT any local workspace file — is
+the single source of truth: it records which treatments are **completed** (with their outcome)
+and which are **in-flight**.
+
+What this buys the user:
+
+- **Resume, don't restart.** Re-run a sweep with the **same `sweep_id`** and it CONTINUES from
+  where it stopped — the already-completed treatments are skipped (not re-run), and only the
+  remaining `N-k` execute. The final result merges the prior outcomes with the newly-run ones,
+  so it still covers all `N` treatments.
+- **Idempotent.** Running the same sweep id twice never re-runs a completed treatment and never
+  duplicates work — a completed treatment in the checkpoint is authoritative.
+- **Stateless / recoverable.** Because the checkpoint lives in the cluster, a fresh orchestrator
+  (new process, new session) can `reconstruct_sweep(sweep_id)` to see exactly what is done and
+  what remains. Nothing is lost on a local restart.
+
+Judgment for the agent: when a sweep is interrupted, DON'T tell the user to start over — re-run
+it with the **same sweep id** to resume. To report progress mid-sweep, read the checkpoint
+(completed vs in-flight) rather than guessing. A *fresh* sweep should use a *new* sweep id (a
+new checkpoint); reuse an id only to deliberately resume that same sweep. The checkpoint
+ConfigMap is small and is left in place after a run so a later resume still works.
