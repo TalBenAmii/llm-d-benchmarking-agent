@@ -225,20 +225,36 @@ async def list_sessions() -> JSONResponse:
     return JSONResponse({"sessions": app.state.sessions.list()})
 
 
-@app.delete("/api/sessions/{sid}", dependencies=[Depends(rate_limit)])
-async def delete_session(sid: str) -> JSONResponse:
-    if not app.state.sessions.delete(sid):
-        raise HTTPException(status_code=404, detail="session not found")
-    # Tear down any live turn (e.g. one parked at an approval gate) + its channel so deleting
-    # a session doesn't leak a forever-blocked task. Cancelling via the registry also frees any
-    # concurrency slot the turn holds and reaps its subprocess (Phase 16).
+def _teardown_session_runtime(sid: str) -> None:
+    """Tear down a deleted session's live turn (e.g. one parked at an approval gate) + its
+    channel so deleting it doesn't leak a forever-blocked task. Cancelling via the registry
+    also frees any concurrency slot the turn holds and reaps its subprocess (Phase 16)."""
     task = app.state.running.pop(sid, None)
     if task is not None:
         if not task.done():
             task.cancel()
         app.state.runs.forget(sid, task)
     app.state.channels.pop(sid, None)
+
+
+@app.delete("/api/sessions/{sid}", dependencies=[Depends(rate_limit)])
+async def delete_session(sid: str) -> JSONResponse:
+    if not app.state.sessions.delete(sid):
+        raise HTTPException(status_code=404, detail="session not found")
+    _teardown_session_runtime(sid)
     return JSONResponse({"deleted": True, "id": sid})
+
+
+@app.delete("/api/namespaces/{namespace}", dependencies=[Depends(rate_limit)])
+async def delete_namespace(namespace: str) -> JSONResponse:
+    """Delete a whole sidebar folder — every chat in one namespace at once. The literal
+    ``no_namespace`` sentinel removes the chats that have no namespace set."""
+    deleted = app.state.sessions.delete_namespace(namespace)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="no chats in that namespace")
+    for sid in deleted:
+        _teardown_session_runtime(sid)
+    return JSONResponse({"deleted": deleted, "count": len(deleted)})
 
 
 def _history_store() -> HistoryStore:
