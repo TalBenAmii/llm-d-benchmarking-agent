@@ -59,6 +59,38 @@ async def test_tool_submits_watches_and_succeeds(tmp_path):
     assert applies and applies[-1][-2:] == ["-n", "bench"]      # a Job was applied to the ns
 
 
+async def test_tool_streams_pod_logs_as_output_events(tmp_path):
+    """Phase 21 end-to-end: through dispatch + the REAL RealKubeClient + the allowlisted
+    `kubectl logs -f` runner path, the benchmark pod's log lines surface as `output` events
+    (the SAME event the UI renders) DURING the run — not just at the end."""
+    pod_logs = "starting benchmark\nload point 1/2\nload point 2/2\nbenchmark complete: 30/30 ok"
+    ctx, runner = _ctx(tmp_path, canned={"get jobs": SUCCEEDED_JOB, "logs": pod_logs})
+
+    events: list[tuple[str, dict]] = []
+
+    async def emit(t, p):
+        events.append((t, p))
+
+    ctx.emit = emit
+
+    res = await dispatch(ctx, "orchestrate_benchmark_run", {
+        "namespace": "bench", "spec": "cicd/kind", "harness": "inference-perf",
+        "workload": "sanity_random.yaml", "image": "ghcr.io/llm-d/bench:0",
+        "poll_interval": 0, "watch": True,
+    })
+    assert res["succeeded"] is True
+
+    # The pod log lines were emitted as `output` events, in order, via the standard transport.
+    output_lines = [p["line"] for (t, p) in events if t == "output"]
+    for expected in pod_logs.splitlines():
+        assert expected in output_lines
+    assert output_lines.index("starting benchmark") < output_lines.index("benchmark complete: 30/30 ok")
+
+    # And it really used the allowlisted `kubectl logs -f` path (read-only, argv-only).
+    log_calls = [c["argv"] for c in runner.calls if c["argv"][:2] == ["kubectl", "logs"]]
+    assert log_calls and "-f" in log_calls[-1]
+
+
 async def test_tool_submit_only_does_not_watch(tmp_path):
     ctx, runner = _ctx(tmp_path, image="ghcr.io/llm-d/bench:0")
     res = await dispatch(ctx, "orchestrate_benchmark_run", {
