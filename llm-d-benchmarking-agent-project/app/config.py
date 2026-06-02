@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     llm_provider: str = "anthropic"
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-opus-4-8"
+    # Claude Agent SDK provider (LLM_PROVIDER=claude-agent-sdk): runs inference on the user's
+    # Claude subscription (e.g. a Max plan) via the logged-in ``claude`` CLI — no API key needed.
+    # The SDK's own built-in tools stay disabled; the app's tools + agent loop are unchanged.
+    # ``claude_cli_path`` is optional (the SDK auto-discovers the CLI on PATH when unset).
+    agent_sdk_model: str = "claude-sonnet-4-6"
+    claude_cli_path: str | None = None
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o"
