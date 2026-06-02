@@ -285,6 +285,17 @@ def locate_and_parse_report(
 
     report_path = _find_report(search_roots)
     if report_path is None:
+        # Simulate mode: no real report exists (nothing was benchmarked), so synthesize a
+        # clearly-labeled summary the agent can narrate. Does NOT read the live schema —
+        # the bench repo may be absent in this mode.
+        if ctx.settings.simulate:
+            return {
+                "found": True, "simulated": True, "valid": True,
+                "summary": {"requests": 120, "success_rate": 1.0,
+                            "throughput_tokens_per_s": 5000, "ttft_ms_p50": 130, "ttft_ms_p90": 210,
+                            "itl_ms_mean": 47},
+                "note": "synthetic results — simulate mode; nothing was actually benchmarked",
+            }
         return {
             "found": False,
             "reason": "no benchmark_report_v0.2 file located",

@@ -82,6 +82,12 @@ comparison**, a **capacity pre-flight**, **cross-session result history + trends
 deploy** (`Dockerfile`, `deploy/`) with least-privilege RBAC. The agent exposes **18 tools**.
 All of this obeys the same thin-code/thick-agent + determinism-gate rules above.
 
+**Simulate Mode (`SIMULATE=1`).** A dry-run toggle: the agent walks the WHOLE workflow
+(probe → plan → standup → smoketest → run → report) but executes nothing — every command is
+a no-op returning synthetic success, per-command approvals are skipped (the upfront
+SessionPlan approval is kept), and a synthetic report is produced. Watch a guide end-to-end
+without touching a cluster. Default `0` (real execution).
+
 **Documentation:** the technical documentation suite lives under `docs/` — `ARCHITECTURE.md`,
 `API.md` (HTTP/WS + tool reference), `DEPLOYMENT.md`, `USER_GUIDE.md`, and `VALIDATION.md`
 (the flow-validation harness). See `plan.md` → "Implementation status" for the MVP record.

@@ -230,3 +230,37 @@ class CommandRunner:
             timed_out=timed_out,
             lines=captured,
         )
+
+
+class SimRunner(CommandRunner):
+    """Dry-run runner: never spawns a process and never resolves paths, so a missing
+    venv/repos can't raise. Every command is a synthetic success — it just streams a
+    couple of "[simulate] …" lines and returns ``exit_code=0``. This mirrors the test
+    harness's ``CaptureRunner`` but for the live app (SIMULATE mode), carrying no
+    command-specific knowledge."""
+
+    async def execute(
+        self,
+        logical_argv: list[str],
+        entry: dict | None,
+        *,
+        on_line: OnLine | None = None,
+        timeout: float | None = None,
+        cwd: str | Path | None = None,
+    ) -> RunResult:
+        lines = [
+            f"[simulate] (no-op) would run: {' '.join(logical_argv)}",
+            "[simulate] exit_code=0",
+        ]
+        if on_line is not None:
+            for line in lines:
+                await on_line(line)
+        return RunResult(
+            exit_code=0,
+            duration_s=0.0,
+            real_argv=list(logical_argv),
+            cwd=str(cwd) if cwd else None,
+            output="\n".join(lines),
+            lines=lines,
+            timed_out=False,
+        )

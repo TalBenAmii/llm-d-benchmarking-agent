@@ -21,7 +21,7 @@ from app.llm.provider import get_provider
 from app.observability import instrument
 from app.observability.metrics import render_prometheus
 from app.security.allowlist import Allowlist
-from app.security.runner import CommandRunner
+from app.security.runner import CommandRunner, SimRunner
 from app.storage.history import HistoryStore, available_metrics, trend
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
@@ -32,7 +32,8 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.settings = settings
     app.state.allowlist = Allowlist.from_file(settings.allowlist_path)
-    app.state.runner = CommandRunner(settings.repo_paths, extra_env=settings.extra_subprocess_env)
+    runner_cls = SimRunner if settings.simulate else CommandRunner
+    app.state.runner = runner_cls(settings.repo_paths, extra_env=settings.extra_subprocess_env)
     # Cross-session cap on concurrent heavy runs (None = unlimited).
     app.state.run_semaphore = (
         asyncio.Semaphore(settings.max_concurrent_runs) if settings.max_concurrent_runs > 0 else None

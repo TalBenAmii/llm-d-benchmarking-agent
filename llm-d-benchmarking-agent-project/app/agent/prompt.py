@@ -61,6 +61,19 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
 """
 
 
+SIMULATE_NOTE = """\
+SIMULATE MODE IS ON — this is a DRY SIMULATION. No command has any real effect: every
+command (probe/standup/smoketest/run/teardown, install scripts, git, kind, kubectl, …)
+returns synthetic success and nothing is deployed or benchmarked. Therefore:
+- Assume ALL prerequisites are already satisfied. Do NOT refuse or stop for missing
+  hardware, Docker, kind, repos, venv, GPUs, or any other precondition — they are moot here.
+- Proceed through the ENTIRE requested workflow end to end (standup → smoketest → run →
+  report) without stopping; do not wait for things to "become ready".
+- In your FINAL summary, clearly tell the user these are SIMULATED results — nothing was
+  actually deployed or benchmarked.
+"""
+
+
 # Knowledge partition. CORE files are inlined into every system prompt — they cover the
 # phases the model reaches BEFORE it would know to ask for a specific guide (interview /
 # plan / deploy / basic results). The rest are interpretation guides tied to a specific
@@ -83,6 +96,8 @@ def build_system_prompt(ctx: ToolContext) -> str:
     parts = [ROLE, HARD_RULES]
     parts.extend(_knowledge_sections(ctx))
     parts.append("# Live catalog (authoritative — only use these names)\n" + _catalog_brief(ctx.catalog(refresh=True)))
+    if ctx.settings.simulate:
+        parts.append(SIMULATE_NOTE)
     return "\n\n".join(parts)
 
 
