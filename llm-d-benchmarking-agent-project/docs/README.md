@@ -7,14 +7,14 @@ agent + Kubernetes-native benchmark orchestrator + results analyzer for
 | Doc | For | Covers |
 |---|---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | engineers / reviewers | System design: layers, components, the four determinism gates, request flow, trust boundaries, concurrency & resilience. |
-| [API.md](API.md) | integrators / contributors | The HTTP/WebSocket API and the 18-tool agent surface (inputs, classification, result shapes) + the `SessionPlan`. |
+| [API.md](API.md) | integrators / contributors | The HTTP/WebSocket API and the 22-tool agent surface (inputs, classification, result shapes) + the `SessionPlan`. |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | operators | Running locally and in-cluster (Helm/Kustomize), configuration, secrets, least-privilege RBAC, observability. |
 | [USER_GUIDE.md](USER_GUIDE.md) | end users | Using the agent end-to-end with no `llm-d-benchmark` expertise. |
 | [VALIDATION.md](VALIDATION.md) | contributors | The flow-validation harness — proving the agent runs the *right* commands. |
 | [SECURITY.md](SECURITY.md) | operators / reviewers | Threat model: trust boundaries, the allowlist/approval model, secret scrubbing, network-exposure guidance, what requires isolation. |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | operators | Symptom → what to check; debug mode; the structured logs + `corr_id`; the readiness/metrics endpoints. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | contributors | How to add a tool/flow/phase; the two laws (thin-code, allowlist-as-data); the hermetic-test rule. |
-| [CHANGELOG.md](CHANGELOG.md) | everyone | Keep-a-Changelog history (v1 phases 0-10 + the in-progress v2 operability work). |
+| [CHANGELOG.md](CHANGELOG.md) | everyone | Keep-a-Changelog history (v1 phases 0-10, v2 operability phases 11-18, v3 proposal-completion phases 19-26 + token-tracking). |
 
 Ops assets live under [`deploy/observability/`](../deploy/observability/): a Prometheus scrape
 config, alert rules (`alerts.rules.yaml`), and a Grafana dashboard.

@@ -1,7 +1,7 @@
 # API & Tool Reference
 
 Two interfaces: the **HTTP/WebSocket API** the browser (or any client) speaks to the
-backend, and the **agent tool surface** — the 18 schema-validated tools that are the LLM's
+backend, and the **agent tool surface** — the 22 schema-validated tools that are the LLM's
 *entire* set of actions. The tool input schemas are defined in
 [`app/tools/schemas.py`](../app/tools/schemas.py) (the single source of truth, emitted to
 the LLM as JSON Schema); the registry + descriptions live in
@@ -84,6 +84,7 @@ Every tool call is validated against its Pydantic input model before the handler
 |---|---|---|
 | `probe_environment` | `checks` (or `"all"`), `namespace` | One structured snapshot: container runtime, repos present, toolchain, venv, kind clusters, kube context/reachability, namespaces, and whether a stack is already running. **Always called first.** |
 | `list_catalog` | `kinds`, `refresh` | Enumerate the valid specs / harnesses / workloads / scenarios that *actually exist* in the repo on disk, so the LLM can never name something invalid. |
+| `read_knowledge` | `name` | Load the full text of one of the agent's on-demand `knowledge/` guides by topic (e.g. `read_knowledge('capacity')`). The system prompt inlines the core guides and indexes the rest; this pulls one in before interpreting that kind of result or decision. Unknown name → returns the valid topics. |
 | `read_repo_doc` | `path`, `max_bytes` | Read one doc/spec file from inside a read-only repo (path must resolve inside a repo; `..` blocked). |
 | `fetch_key_docs` | `task`, `max_bytes_each` | Fetch the **live** content of the authoritative docs pinned in `knowledge/key_docs.yaml`, filtered by task. Called to ground the agent in the real procedure before planning a deploy. |
 
@@ -93,6 +94,8 @@ Every tool call is validated against its Pydantic input model before the handler
 |---|---|---|---|
 | `propose_session_plan` | approve | the `SessionPlan` (below) | Propose the structured, user-approved contract before any mutation. Enum fields checked against the live catalog. |
 | `check_capacity` | read-only | `spec`, `overrides`, `enforce` | Capacity pre-flight ("will this fit?") via the benchmark repo's own planner. `enforce=True` tags shortfalls as deployment-halting errors. Interpreted with `knowledge/capacity.md`. |
+| `check_endpoint_readiness` | read-only | `namespace`, `spec`, `probe_cli_endpoints` | Endpoint-readiness pre-flight before benchmarking: reads `kubectl get endpoints` for a *ready backing endpoint* (corroborated by the CLI's read-only `run --list-endpoints`). The orchestrator gates on this so it never benchmarks an unready stack. Interpreted with `knowledge/orchestrator.md`. |
+| `generate_doe_experiment` | read-only | `name`, `run_factors`, `setup_factors`, `run_constants`, `setup_constants`, `harness`, `profile`, `target_filename` | Author a DoE experiment YAML: cross-products agent-chosen *factors × levels* into the full treatments matrix, writes it into the session workspace (never the read-only repos), and validates it structurally against the repo's experiment-example format. *Which* factors/levels to sweep is the LLM's judgment, grounded in `knowledge/sweep_playbook.md`. |
 
 ### Prepare (mutating)
 

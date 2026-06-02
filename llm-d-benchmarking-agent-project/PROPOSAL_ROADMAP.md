@@ -2,11 +2,11 @@
 
 > Maps every feature in [`llm-d-benchmarking-agent-proposal.md`](llm-d-benchmarking-agent-proposal.md)
 > to its implementation status, derived from an evidence-backed audit of the codebase
-> (2026-06-02). The gaps at the bottom are implemented by the **v3 "proposal-completion"
-> autopilot** (`.claude/workflows/roadmap-v3-autopilot.js`), which builds on
-> `feature/roadmap-v2` and **never touches `main`**.
+> (2026-06-02). The gaps at the bottom were implemented by the **v3 "proposal-completion"
+> autopilot** (`.claude/workflows/roadmap-v3-autopilot.js`) and **merged into `main`** — every
+> phase below is now done.
 
-**Legend:** ✅ done · 🔄 in progress (running `roadmap-v2-autopilot`) · ⬜ missing → built by v3 · ◽ out of scope (documented below)
+**Legend:** ✅ done · 🔶 partial · ⬜ missing · ◽ out of scope (documented below)
 
 ---
 
@@ -71,9 +71,9 @@
 | Capacity Planner pre-flight (Configuration Explorer) | ✅ | Phase 6 `check_capacity` |
 | Helm chart / Kustomize single-command deploy + RBAC | ✅ | Phase 8 `deploy/` |
 | Technical docs: architecture, API, deployment, user guide | ✅ | Phase 9 `docs/` |
-| Ops/contrib docs: SECURITY, TROUBLESHOOTING, CONTRIBUTING, CHANGELOG | 🔄 | **v2 Phase 17** (in progress) |
+| Ops/contrib docs: SECURITY, TROUBLESHOOTING, CONTRIBUTING, CHANGELOG | ✅ | **v2 Phase 17** — `docs/{SECURITY,TROUBLESHOOTING,CONTRIBUTING,CHANGELOG}.md` + Prometheus alert rules |
 | CI/CD pipeline (GitHub Actions) | 🔶 | Exists at repo root (`/.github/workflows/agent-flow-validation.yml`, hermetic flow + opt-in live eval) |
-| CI: **linting (ruff) + type-checking (mypy) + coverage** | 🔄 | **v2 Phase 14** (in progress) |
+| CI: **linting (ruff) + type-checking (mypy) + coverage** | ✅ | **v2 Phase 14** — ruff + mypy (strict) + a coverage gate (≥85%) wired into `pyproject.toml`/`Makefile`/CI |
 | CI: **integration tests with llm-d-inference-sim** | ✅ | **v3 Phase 26** — opt-in env-gated `tests/integration/` layer (skipped by default; hermetic sim-shaped report coverage always runs) + non-gating CI job |
 | Upstream-PR-ready agent module | 🔶 | Structure aligns; strengthened by v2 docs + v3 features |
 
@@ -82,7 +82,8 @@
 ## v3 "proposal-completion" autopilot — the missing features
 
 Eight phases on `feature/roadmap-v3` (off `feature/roadmap-v2`), each hermetically testable,
-obeying thin-code/thick-agent + allowlist-as-data. Built by `roadmap-v3-autopilot.js`.
+obeying thin-code/thick-agent + allowlist-as-data. Built by `roadmap-v3-autopilot.js` and **all
+merged into `main`**.
 
 | # | Phase | Proposal ref | Delivers |
 |---|---|---|---|
@@ -90,9 +91,9 @@ obeying thin-code/thick-agent + allowlist-as-data. Built by `roadmap-v3-autopilo
 | **P20** ✅ | Well-lit-path advisor | §5.2 | `knowledge/welllit_path_advisor.yaml` mapping workload shape → llm-d scenario guide (prefix-heavy→precise-prefix-cache-routing, long-context→pd-disaggregation, throughput→optimized-baseline); referenced scenarios verified against the catalog; inlined into the system prompt + served via `read_knowledge`. |
 | **P21** ✅ | Real-time log streaming | §3.3, §4 | Wired `stream_logs(follow=True)` into the orchestrator run loop so benchmark-pod logs surface as live `output` events during a run (not just end-of-run); `orchestrate_benchmark_run` forwards each line via `ctx.emit("output", …)` — best-effort, a failing tail never breaks the run. |
 | **P22** ✅ | DOE checkpoint/resume | §3.3, §4 | Persist completed/in-flight treatment IDs + outcome to a per-sweep ConfigMap (cluster source of truth, consistent with the stateless design); `run_sweep(sweep_id)` resumes a sweep skipping completed treatments (idempotent), `reconstruct_sweep` rebuilds from the ConfigMap, and omitting `sweep_id` keeps the original stateless behavior. |
-| **P23** | Resource management | §4 | Extend `JobSpec`/`build_job_manifest` with optional `nodeSelector`/`affinity`/`tolerations` + GPU resource and anti-affinity so benchmark Jobs don't starve the measured stack; GPU/placement supplied at plan time via knowledge. |
-| **P24** | Endpoint health-check + optional auto-standup | §3.3 | Before submitting a benchmark Job, gate on inference-endpoint readiness; optionally trigger `standup` (approval-gated) when no healthy stack is present. |
-| **P25** | Analyzer metric completeness | §3.4 | Extract + surface KV-cache hit rate, schedule delay, and GPU utilization from BR-v0.2 / harness-native output (gracefully `None` when absent); include in summaries + Pareto objectives where sensible. |
+| **P23** ✅ | Resource management | §4 | Extend `JobSpec`/`build_job_manifest` with optional `nodeSelector`/`affinity`/`tolerations` + GPU resource and anti-affinity so benchmark Jobs don't starve the measured stack; GPU/placement supplied at plan time via knowledge. |
+| **P24** ✅ | Endpoint health-check + optional auto-standup | §3.3 | Before submitting a benchmark Job, gate on inference-endpoint readiness; optionally trigger `standup` (approval-gated) when no healthy stack is present. |
+| **P25** ✅ | Analyzer metric completeness | §3.4 | Extract + surface KV-cache hit rate, schedule delay, and GPU utilization from BR-v0.2 / harness-native output (gracefully `None` when absent); include in summaries + Pareto objectives where sensible. |
 | **P26** ✅ | llm-d-inference-sim integration tests | §5.3, §7 | An **opt-in** integration layer (env-gated, skipped by default to keep the suite hermetic) that stands up `llm-d-inference-sim` and runs analyze/compare against a real mock report; plus a non-gating CI job. |
 
 **Waves** (conflict- & dependency-ordered): `[[19,20,25],[21,23],[22,24],[26]]` — disjoint

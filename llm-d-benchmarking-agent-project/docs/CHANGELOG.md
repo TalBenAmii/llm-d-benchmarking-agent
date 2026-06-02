@@ -5,10 +5,71 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the proje
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Versions correspond to the
 phased build-out tracked in [`ROADMAP.md`](../ROADMAP.md) and [`PROGRESS.md`](../PROGRESS.md).
 
-## [Unreleased] — v2: production operability, trust & quality (Phases 11-18)
+## [Unreleased] — v3: proposal-completion features + token-tracking (Phases 19-26)
 
-Developed on the `feature/roadmap-v2` integration branch (never `main`); each phase lands after
-its full hermetic-suite gate is green. This work hardens the v1 agent for operation without
+Developed on the `feature/roadmap-v3` integration branch and merged into `main`. This wave closes
+the remaining proposal-coverage gaps (DOE generation, the well-lit-path advisor, live log
+streaming, checkpoint/resume, resource management, endpoint health-check, analyzer metric
+completeness, and an opt-in inference-sim integration layer), then adds token accounting + prompt
+caching. The agent tool surface grows from 18 to **22 tools**.
+
+### Added
+- **DOE experiment-file generator + token-characteristics elicitation** (Phase 19). A
+  `generate_doe_experiment` tool (`app/tools/doe.py`) cross-products agent-chosen *factors ×
+  levels* into the full treatments matrix, emits a valid experiment YAML into the session
+  workspace, and validates it structurally against the repo's experiment-example format (read
+  live). *Which* factors/levels to sweep is judgment in an expanded `knowledge/sweep_playbook.md`,
+  which now also elicits token characteristics / prefix-reuse ratio.
+- **Well-lit-path advisor** (Phase 20). `knowledge/welllit_path_advisor.yaml` maps a workload
+  *shape* → the llm-d well-lit-path scenario worth benchmarking (prefix-heavy chat →
+  precise-prefix-cache-routing, long-context RAG → pd-disaggregation, high-throughput →
+  optimized-baseline, …) with the selecting signals + a `deploy_path` reach flag; inlined into the
+  system prompt and served via `read_knowledge`. Judgment is data, not code.
+- **Real-time benchmark-pod log streaming** (Phase 21). `kube.stream_logs(follow=True)` is wired
+  into the orchestrator run loop so a running benchmark Job's log lines surface live as `output`
+  events (same transport as streamed command output) — progress during the run, not just at the
+  end. Best-effort: a failing tail never breaks the run.
+- **DOE checkpoint/resume for long sweeps** (Phase 22). `run_sweep(sweep_id, namespace)` persists
+  each treatment's completed/in-flight state + outcome to a per-sweep **ConfigMap** (the cluster
+  source of truth, consistent with the stateless design — `app/orchestrator/checkpoint.py`). On
+  resume, completed treatments are skipped (their outcome reconstructed so the merged result still
+  covers all N) and the sweep continues idempotently; no `sweep_id` ⇒ original stateless behavior.
+- **Resource management: node affinity / GPU selection / anti-starvation** (Phase 23). An optional
+  `Scheduling` value object on `JobSpec`/`build_job_manifest` lets a benchmark Job request hardware
+  (GPU resource/count, GPU-type node label) and be placed so it doesn't starve the measured stack
+  (`node_selector`/`tolerations`/raw `affinity` + pod anti-affinity from `avoid_labels`). Unset ⇒
+  byte-for-byte the cpu/memory baseline. The WHICH/WHERE judgment is data in
+  `knowledge/resource_management.md`.
+- **Endpoint health-check before submit** (Phase 24). `app/orchestrator/readiness.py` reads
+  `kubectl get endpoints` (corroborated by `run --list-endpoints`) for a ready backing endpoint;
+  the read-only `check_endpoint_readiness` tool exposes it, and `orchestrate_benchmark_run` gates on
+  it by default (`require_ready_endpoint=true`) — an unready stack submits nothing and returns an
+  approval-gated standup *suggestion* (never auto-run).
+- **Analyzer metric completeness** (Phase 25). `summarize_report`/`analysis` now parse and surface
+  the §3.4 standard serving metrics that were previously ignored — KV-cache hit rate, schedule
+  delay, GPU utilization — from either the BR v0.2 standardized shape or harness-native output,
+  with field-name discovery as data in `knowledge/standard_metrics.yaml`; absent metrics degrade to
+  `None` (never fabricated) and stay informational (kept out of Pareto dominance).
+- **llm-d-inference-sim integration tests (opt-in)** (Phase 26). A `tests/integration/` layer that
+  exercises the analyze/compare path against the CPU-only mock server without making the default
+  suite non-hermetic: an always-running check drives a sim-shaped BR v0.2 fixture through the real
+  tools, and a live test stands up a real sim **only** when `LLMD_SIM_INTEGRATION=1` and the sim is
+  locatable (else skips cleanly, never hangs). Plus a non-gating CI job.
+- **Token-usage counter + provider-agnostic prompt caching** (token-tracking merge). A real
+  provider token counter surfaced in the chat UI (header `Σ N tokens` chip + per-turn
+  `↑up ↓down · N this turn (X calls · Y cached)`), provider-agnostic prompt caching wired through
+  `app/llm/*`, and a system-prompt shrink (~20.4K → ~12.3K fixed overhead; schema `title`s
+  stripped).
+
+### Security
+- No new runtime dependency in any v3 phase. The new orchestrator surfaces (`cm/configmaps`,
+  `ep/endpoints`) ride the existing read-only allowlisted `kubectl` enum; the inference-sim live
+  test is env-gated and off by default.
+
+## v2 — production operability, trust & quality (Phases 11-18)
+
+Developed on the `feature/roadmap-v2` integration branch and merged into `main`; each phase lands
+after its full hermetic-suite gate is green. This work hardens the v1 agent for operation without
 changing its core behavior.
 
 ### Added
