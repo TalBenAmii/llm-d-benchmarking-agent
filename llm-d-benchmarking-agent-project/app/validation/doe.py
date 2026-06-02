@@ -16,12 +16,22 @@ against the repo's own examples — see ``app/tools/doe.py``):
       name: <name>
       harness: <harness?>
       profile: <profile?>
+    design:                # informational DoE metadata (mirrors the repo examples)
+      run:
+        constants:         # run-phase constants, list-of-{key,value} as the examples do
+          - {key: <dotted.key>, value: <value>}
     setup:                 # present only when setup factors are given
-      constants: {<dotted.key>: <value>, ...}
+      constants: {<dotted.key>: <value>, ...}   # parser-consumed: merged into each setup row
       treatments:
         - {name: <t>, <dotted.key>: <level>, ...}
     treatments:            # the RUN treatments (a.k.a. ``run:``)
       - {name: <t>, <dotted.key>: <level>, ...}
+
+Run-phase constants are emitted under ``design.run.constants`` (the location the repo's
+own ``optimized-baseline.yaml`` / ``pd-disaggregation.yaml`` examples use) — NOT as a
+top-level ``run`` key, which is not part of the upstream format and would be rejected by
+the structural validator. The parser does not consume run constants (they are held fixed
+in the profile, not swept), so this placement is informational and example-compatible.
 
 Each treatment row is the cross-product of one level per factor: N factors with
 L1, L2, ... Ln levels yield ``L1 * L2 * ... * Ln`` treatments.
@@ -224,18 +234,28 @@ def build_doe_experiment(
 
     document: dict[str, Any] = {"experiment": experiment_meta}
 
+    # ``design`` is informational DoE metadata that mirrors the repo's example files.
+    # Run-phase constants live here (under ``design.run.constants``, list-of-{key,value})
+    # because the upstream format has NO top-level ``run`` key — emitting one would fail
+    # structural validation against the repo's own experiment examples. ``design`` IS a
+    # top-level key the examples use, so this placement is example-/parser-compatible.
+    if run_consts:
+        document["design"] = {
+            "run": {"constants": [{"key": k, "value": v} for k, v in run_consts.items()]}
+        }
+
     if setup_rows:
         setup_block: dict[str, Any] = {}
         if setup_consts:
+            # ``setup.constants`` (a dotted-key → value mapping) IS consumed by the parser:
+            # it is merged into every setup treatment's overrides. Kept as a mapping for that
+            # reason (distinct from the informational list form used for run constants).
             setup_block["constants"] = setup_consts
         setup_block["treatments"] = setup_rows
         document["setup"] = setup_block
 
-    # Run treatments live under the ``treatments`` key (the parser also accepts ``run``);
-    # ``treatments`` is the canonical form used by the repo's own example files. Run-phase
-    # constants are surfaced under ``run.constants`` (informational, parser-compatible).
+    # Run treatments live under the ``treatments`` key (the parser also accepts ``run`` as a
+    # list); ``treatments`` is the canonical form used by the repo's own example files.
     document["treatments"] = run_rows
-    if run_consts:
-        document["run"] = {"constants": run_consts}
 
     return DoEResult(document=document, setup_treatments=setup_rows, run_treatments=run_rows)

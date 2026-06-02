@@ -54,7 +54,9 @@ def test_cross_product_two_factors_three_by_two_is_six():
 
 
 def test_setup_times_run_matrix_and_constants_merge():
-    """setup × run matrix sizing + constants are surfaced under each phase block."""
+    """setup × run matrix sizing + constants are surfaced in their parser/example-compatible
+    locations: setup constants as a parser-consumed ``setup.constants`` mapping, run constants
+    as the informational ``design.run.constants`` list (NEVER a top-level ``run`` key)."""
     result = build_doe_experiment(
         name="pd",
         setup_factors=[{"name": "dec", "key": "decode.replicas", "levels": [1, 2]}],
@@ -67,11 +69,38 @@ def test_setup_times_run_matrix_and_constants_merge():
     assert result.total_matrix == 6  # 2 setup × 3 run
 
     doc = result.document
+    # Setup constants stay a dotted-key mapping under `setup.constants` (the parser merges
+    # them into every setup treatment's overrides).
     assert doc["setup"]["constants"] == {"model.maxModelLen": 16000}
     assert [t["name"] for t in doc["setup"]["treatments"]] == ["dec1", "dec2"]
-    assert doc["run"]["constants"] == {"data.shared_prefix.output_len": 256}
+    # Run constants live under `design.run.constants` as a list-of-{key,value}, exactly as the
+    # repo's optimized-baseline.yaml / pd-disaggregation.yaml examples do. There must be NO
+    # top-level `run` key — that is not part of the upstream format (regression guard).
+    assert "run" not in doc
+    assert doc["design"]["run"]["constants"] == [
+        {"key": "data.shared_prefix.output_len", "value": 256}
+    ]
     # Run treatments live under the canonical `treatments` key.
     assert len(doc["treatments"]) == 3
+    # The document must use ONLY top-level keys the repo's own examples use.
+    assert set(doc) <= {"design", "experiment", "setup", "treatments"}
+
+
+def test_run_constants_document_passes_real_top_key_reference():
+    """REGRESSION (Phase 19 review): a document carrying run constants must validate cleanly
+    against a NON-EMPTY structural reference whose top_keys are the repo's real union
+    ({design, experiment, setup, treatments}). This is the hermetic guard the prior suite
+    lacked — with an empty reference the top-key check is skipped, masking a top-level `run`
+    key leak. Here we feed the real reference, so any stray top-level key would be caught."""
+    result = build_doe_experiment(
+        name="rc",
+        run_factors=[{"name": "c", "key": "max-concurrency", "levels": [8, 16]}],
+        run_constants={"random-input-len": 10000, "random-output-len": 1000},
+    )
+    real_reference = {"top_keys": ["design", "experiment", "setup", "treatments"]}
+    assert validate_structure(result.document, real_reference) == []
+    # And explicitly: no forbidden top-level `run` key slipped in.
+    assert "run" not in result.document
 
 
 def test_metadata_recorded():
@@ -217,10 +246,26 @@ def test_validate_structure_rejects_treatment_without_overrides():
 
 
 def test_validate_structure_rejects_unknown_top_key_against_reference():
+    # Use the repo's REAL top-key union (no `run` key — that is exactly why a top-level
+    # `run:` would be rejected, see the run-constants regression tests above).
     doc = {"experiment": {"name": "x"}, "treatments": [{"name": "t1", "rate": 1}], "bogus": 1}
-    reference = {"top_keys": ["experiment", "setup", "treatments", "run", "design"]}
+    reference = {"top_keys": ["design", "experiment", "setup", "treatments"]}
     errors = validate_structure(doc, reference)
     assert any("bogus" in e for e in errors)
+
+
+def test_validate_structure_rejects_top_level_run_against_real_reference():
+    """A bare top-level `run` key is NOT part of the upstream format and must be rejected
+    against the real reference — this is the exact shape the old run-constants emission
+    produced, which broke the tool against the populated repo."""
+    doc = {
+        "experiment": {"name": "x"},
+        "treatments": [{"name": "t1", "rate": 1}],
+        "run": {"constants": {"a": 1}},
+    }
+    reference = {"top_keys": ["design", "experiment", "setup", "treatments"]}
+    errors = validate_structure(doc, reference)
+    assert any("'run'" in e for e in errors)
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +322,45 @@ async def test_tool_validates_against_real_repo_examples(tool_ctx):
     # At least one example experiment file in the repo was used as the structural reference.
     assert out["validated_against_examples"]
     assert all(e.endswith((".yaml", ".yml")) for e in out["validated_against_examples"])
+
+
+async def test_tool_writes_run_constants_against_real_repo(tool_ctx):
+    """REGRESSION (Phase 19 review): the documented ``run_constants`` arg must NOT make the
+    tool reject its own output when the REAL populated bench repo is the structural reference.
+
+    The old emission wrote a top-level ``run:`` key, which ``validate_structure`` rejects
+    because the repo's examples never use it (top_keys = {design, experiment, setup,
+    treatments}). With the populated repo present this previously returned generated=False and
+    wrote NO file. It must now succeed and place run constants under ``design.run.constants``.
+    """
+    if not tool_ctx.settings.bench_repo.joinpath("workload", "experiments").is_dir():
+        import pytest
+
+        pytest.skip("bench repo experiment examples not present")
+
+    out = await generate_doe_experiment(
+        tool_ctx,
+        name="rc-real",
+        run_factors=[{"name": "c", "key": "max-concurrency", "levels": [8, 16]}],
+        run_constants={"random-input-len": 10000, "random-output-len": 1000},
+        harness="vllm-benchmark",
+    )
+    # Must succeed against the populated repo — this is the production/main integration path.
+    assert out["generated"] is True, out
+    assert out["valid"] is True
+    # It validated against the real example files (non-empty reference exercised the top-key
+    # check that the old `run:` key would have failed).
+    assert out["validated_against_examples"]
+
+    from pathlib import Path
+
+    doc = yaml.safe_load(Path(out["path"]).read_text())
+    assert "run" not in doc  # no forbidden top-level `run` key
+    assert doc["design"]["run"]["constants"] == [
+        {"key": "random-input-len", "value": 10000},
+        {"key": "random-output-len", "value": 1000},
+    ]
+    assert set(doc) <= {"design", "experiment", "setup", "treatments"}
 
 
 async def test_tool_rejects_empty_factor_set(tool_ctx):
