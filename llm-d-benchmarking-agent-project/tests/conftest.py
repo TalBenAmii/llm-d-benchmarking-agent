@@ -15,6 +15,11 @@ ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
 # mode skips the per-command approval those tests wait for. Env vars take precedence over the
 # .env file in pydantic-settings; clearing the lru_cache covers any earlier read.
 os.environ["SIMULATE"] = "0"
+# Tag every session the suite creates with namespace "test" so the test chats cluster under a
+# single foldable "test" folder in the sidebar instead of bloating the real chat list (and so
+# the namespace-folder feature is exercised end-to-end). Set before the first settings read so
+# the cached get_settings() and every direct Settings(...) in the suite pick it up.
+os.environ["DEFAULT_SESSION_NAMESPACE"] = "test"
 get_settings.cache_clear()
 # Resolve the read-only sibling repo via the app's own settings so the suite works
 # from any checkout/worktree: honors REPOS_DIR/.env, else falls back to the sibling

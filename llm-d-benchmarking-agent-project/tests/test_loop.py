@@ -85,6 +85,8 @@ async def test_full_loop_with_gating(tmp_path):
     # the plan was approved and captured on the session
     assert session.approved_plan is not None
     assert session.approved_plan["spec"] == "cicd/kind"
+    # approving the plan adopts its namespace as the chat's sidebar folder (was unset → filled)
+    assert session.namespace == "llmd-quickstart"
 
     # the standup command was GATED and rejected — never executed
     standup_results = [p for (t, p) in events if t == "tool_result" and p["name"] == "execute_llmdbenchmark"]

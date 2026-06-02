@@ -114,7 +114,13 @@ class AgentLoop:
                     ctx.current_tool_call_id = None
 
                     if tc.name == "propose_session_plan" and isinstance(result, dict) and result.get("approved"):
-                        session.approved_plan = result.get("plan")
+                        plan = result.get("plan")
+                        session.approved_plan = plan
+                        # The approved plan defines this chat's namespace (its sidebar folder). Fill
+                        # it only if still unset, so a session pre-stamped with a namespace (e.g. the
+                        # test suite's "test") is never overwritten.
+                        if plan and not session.namespace:
+                            session.namespace = plan.get("namespace")
 
                     log.info("tool.call.result", extra={
                         "tool_call_id": tc.id,

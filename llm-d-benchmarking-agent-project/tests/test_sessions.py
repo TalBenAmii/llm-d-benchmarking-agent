@@ -1,6 +1,8 @@
 """Disk-backed session persistence — the substrate for WS resume and the sidebar."""
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -111,3 +113,52 @@ def test_api_delete_unknown_returns_404(tmp_path):
     with TestClient(app) as client:
         client.app.state.sessions = manager
         assert client.delete("/api/sessions/nope").status_code == 404
+
+
+# ---- namespace: the sidebar's folder key -------------------------------------
+def test_create_stamps_default_namespace(manager):
+    # conftest sets DEFAULT_SESSION_NAMESPACE=test, so every session the suite mints is born
+    # "test" — keeping test chats out of the real list and exercising the folder feature.
+    assert manager.create().namespace == "test"
+
+
+def test_namespace_survives_persist_load(manager):
+    s = _seed(manager, "ns roundtrip")
+    s.namespace = "llmd-quickstart"
+    s.persist()
+    manager._sessions.clear()  # force a disk load
+    loaded = manager.load(s.id)
+    assert loaded is not None and loaded.namespace == "llmd-quickstart"
+
+
+def test_list_includes_namespace(manager):
+    s = _seed(manager, "grouped chat")
+    s.namespace = "ns-a"
+    s.persist()
+    summary = next(x for x in manager.list() if x["id"] == s.id)
+    assert summary["namespace"] == "ns-a"
+
+
+def test_list_namespace_falls_back_to_approved_plan(manager):
+    # A session persisted before the namespace field existed: no "namespace" key on disk, but an
+    # approved_plan that already chose one. list() must still group it under that namespace.
+    s = _seed(manager, "legacy chat")
+    state = manager._root / s.id / "state.json"
+    data = json.loads(state.read_text())
+    data.pop("namespace", None)
+    data["approved_plan"] = {"namespace": "from-plan"}
+    state.write_text(json.dumps(data))
+    summary = next(x for x in manager.list() if x["id"] == s.id)
+    assert summary["namespace"] == "from-plan"
+
+
+def test_list_namespace_none_when_unset(manager):
+    # Neither a namespace field nor an approved plan => the UI's "no_namespace" folder (None).
+    s = _seed(manager, "unfiled chat")
+    state = manager._root / s.id / "state.json"
+    data = json.loads(state.read_text())
+    data.pop("namespace", None)
+    data.pop("approved_plan", None)
+    state.write_text(json.dumps(data))
+    summary = next(x for x in manager.list() if x["id"] == s.id)
+    assert summary["namespace"] is None

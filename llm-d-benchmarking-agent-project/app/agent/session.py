@@ -65,6 +65,10 @@ class Session:
     title: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    # The Kubernetes namespace this chat belongs to — the sidebar groups chats into one folder
+    # per namespace. None until configured (an approved SessionPlan fills it; see loop.py), so the
+    # chat sits in the UI's "no_namespace" folder until then.
+    namespace: str | None = None
     # Cumulative REAL token usage across every LLM call in this session (the loop adds each
     # call's normalized Usage here). Persisted so the header chip is correct on reload.
     total_input_tokens: int = 0          # freshly-processed (non-cached) input
@@ -104,6 +108,7 @@ class Session:
                         "updated_at": self.updated_at,
                         "messages": self.messages,
                         "approved_plan": self.approved_plan,
+                        "namespace": self.namespace,
                         "commands": self.commands[-_COMMANDS_MAX:],
                         "approvals": self.approvals[-_COMMANDS_MAX:],
                         "total_input_tokens": self.total_input_tokens,
@@ -148,7 +153,8 @@ class SessionManager:
 
     def create(self) -> Session:
         sid = uuid.uuid4().hex[:12]
-        session = Session(id=sid, ctx=self._ctx_for(sid))
+        session = Session(id=sid, ctx=self._ctx_for(sid),
+                          namespace=self._settings.default_session_namespace)
         self._sessions[sid] = session
         return session
 
@@ -173,6 +179,7 @@ class SessionManager:
             ctx=self._ctx_for(data.get("id", sid)),
             messages=data.get("messages", []),
             approved_plan=data.get("approved_plan"),
+            namespace=data.get("namespace"),
             commands=data.get("commands", []),
             approvals=data.get("approvals", []),
             title=data.get("title", ""),
@@ -210,6 +217,9 @@ class SessionManager:
                     "title": data.get("title") or derive_title(messages),
                     "created_at": data.get("created_at"),
                     "updated_at": data.get("updated_at"),
+                    # Fall back to the approved plan's namespace so sessions persisted before this
+                    # field existed (but which already chose a namespace) still group correctly.
+                    "namespace": data.get("namespace") or (data.get("approved_plan") or {}).get("namespace"),
                     "message_count": len(messages),
                 }
             )

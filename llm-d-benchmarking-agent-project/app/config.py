@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     # Simulate (dry run): drive the whole workflow but execute nothing — every command
     # is a no-op returning synthetic success and per-command approvals are skipped.
     simulate: bool = False
+
+    # Default Kubernetes namespace stamped on every newly-created session — the sidebar
+    # "folder" a chat lands in until an approved SessionPlan assigns one. None (the default,
+    # and what production runs with) => new chats start in the "no_namespace" folder and move
+    # to their plan's namespace once approved. The test suite sets DEFAULT_SESSION_NAMESPACE=test
+    # so test-created sessions cluster under a foldable "test" folder instead of bloating the
+    # real chat list. Keep this None in production (loop.py only fills an *unset* namespace, so a
+    # non-None default here would swallow the plan's namespace — see app/agent/loop.py).
+    default_session_namespace: str | None = None
     # ---- API trust (Phase 12): optional auth + rate-limit + CORS ----------
     # ALL THREE default OFF/open, so local use is unchanged and existing flows/tests pass.
     # Turn them on only when exposing the API beyond localhost. Pure mechanism here; the
