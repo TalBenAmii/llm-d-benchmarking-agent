@@ -69,14 +69,23 @@ class Flow:
     live_eval: bool = True
     required_subcommands: list[str] = field(default_factory=list)
     required_spec: str | None = None
+    # Tool-CHOICE scoring (live eval): the agent must call every tool named in required_tools
+    # at least once, and must call none named in forbidden_tools. This scores flows whose
+    # substance is a TOOL choice rather than an `llmdbenchmark` subcommand — DOE/sweep design,
+    # analysis/comparison/history, the K8s orchestrator, and the capacity/readiness/observe/
+    # cancel surfaces. See score_flow; the deterministic gate is unaffected by these.
+    required_tools: list[str] = field(default_factory=list)
+    forbidden_tools: list[str] = field(default_factory=list)
 
 
 _tc_counter = 0
 
 
-def _tc(name: str, **inp) -> ToolCall:
-    # The tool-call id only needs to be unique within a transcript; a monotonic counter
-    # avoids hashing inputs (which may contain unhashable dicts/lists).
+def _tc(name: str, /, **inp) -> ToolCall:
+    # `name` is positional-only so a tool whose INPUT has its own ``name`` field (e.g.
+    # read_knowledge(name=...), generate_doe_experiment(name=...)) doesn't collide with the
+    # tool-name parameter. The tool-call id only needs to be unique within a transcript; a
+    # monotonic counter avoids hashing inputs (which may contain unhashable dicts/lists).
     global _tc_counter
     _tc_counter += 1
     return ToolCall(id=f"{name}-{_tc_counter}", name=name, input=inp)
@@ -431,6 +440,311 @@ SAFETY_REFUSAL = Flow(
 )
 
 
+# =============================================================================
+# 7) DOE / sweep design — does the model AUTHOR the right experiment matrix?
+#    (INTERACTIVE_TEST_GUIDE §4) These flows are scored on the TOOL the model
+#    chooses (generate_doe_experiment), not an llmdbenchmark subcommand: the
+#    golden transcript designs the matrix and stops before the (approval-gated)
+#    sweep, so it stays hermetic with zero significant commands. The real model
+#    is expected to additionally preview the sweep (run/experiment --dry-run) and
+#    analyze it — exercised by the live eval, but not hard-required (a live model
+#    phrases the follow-through differently; we score the core choice).
+# =============================================================================
+DOE_RUN_SWEEP = Flow(
+    name="doe-run-sweep",
+    title="DoE: run-parameter sweep (one stack, N runs)",
+    description="A load sweep against a single stood-up stack: the agent designs an experiment "
+                "matrix over a workload knob (max-concurrency 8/16/32) with generate_doe_experiment, "
+                "then would preview + run + compare. Scored on choosing the DoE generator; the "
+                "preferred-on-kind 'run-parameter sweep' shape (run_factors only, no setup_factors).",
+    repo_state="present_with_venv",
+    mock_user_input="My kind quickstart stack is already up. I want to see how latency scales "
+                    "with load — sweep max concurrency over 8, 16 and 32 against that one stack "
+                    "(don't redeploy per point), then compare the runs and tell me the best "
+                    "latency/throughput trade-off.",
+    turns=[
+        _turn("Sensing the environment first.",
+              _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
+        _turn("Grounding the sweep design in the playbook.",
+              _tc("read_knowledge", name="sweep_playbook")),
+        _turn("Designing a 3-treatment run-parameter sweep (one stack, three loads).",
+              _tc("generate_doe_experiment",
+                  name="concurrency_sweep",
+                  run_factors=[{"name": "conc", "key": "load.max_concurrency", "levels": [8, 16, 32]}],
+                  harness="inference-perf")),
+        _turn("That's a 3-treatment sweep over max-concurrency against the existing stack. "
+              "Approve and I'll preview it with `run --dry-run`, run the three loads, then "
+              "compare_reports across the treatments for the best latency/throughput trade-off."),
+    ],
+    required_tools=["generate_doe_experiment"],
+)
+
+DOE_FULL_EXPERIMENT = Flow(
+    name="doe-full-experiment",
+    title="DoE: full experiment (deployment changes per treatment)",
+    description="A full Design-of-Experiments where the DEPLOYMENT itself changes: the agent "
+                "sweeps setup_factors (prefill/decode replica split), so each treatment is its own "
+                "standup/teardown. Scored on choosing generate_doe_experiment WITH setup_factors "
+                "(subcommand='experiment' territory) vs the run-only sweep above.",
+    repo_state="present_with_venv",
+    mock_user_input="Find the best prefill/decode split for the optimized-baseline guide. Sweep "
+                    "decode replicas over 1 and 2 and prefill replicas over 1 and 2, keeping the "
+                    "model and workload fixed. Design the experiment matrix.",
+    turns=[
+        _turn("Sensing the environment.",
+              _tc("probe_environment", checks="all", namespace="llm-d-optimized-baseline")),
+        _turn("Reading the sweep playbook to pick real setup keys + warn on cost.",
+              _tc("read_knowledge", name="sweep_playbook")),
+        _turn("Cross-producting the prefill/decode replica split into a 2x2 setup matrix "
+              "(one run treatment held fixed).",
+              _tc("generate_doe_experiment",
+                  name="pd_split",
+                  setup_factors=[
+                      {"name": "dec", "key": "decode.replicas", "levels": [1, 2]},
+                      {"name": "pre", "key": "prefill.replicas", "levels": [1, 2]},
+                  ],
+                  run_factors=[{"name": "load", "key": "load.rate", "levels": [10]}])),
+        _turn("That's a 2x2 = 4-treatment full DoE; each setup treatment re-deploys "
+              "(standup+teardown), so I kept it small. Approve and I'll preview it with "
+              "`experiment --dry-run` before running anything."),
+    ],
+    required_tools=["generate_doe_experiment"],
+)
+
+
+# =============================================================================
+# 8) Analysis, comparison & history (INTERACTIVE_TEST_GUIDE §5/§6). The user
+#    hands the agent existing run dirs; we score that it reaches for the right
+#    analysis tool. In the hermetic sandbox the dirs don't exist (the tools
+#    return a graceful "no report" result), so there are zero significant
+#    commands — the substance is the tool CHOICE, which the live eval scores.
+# =============================================================================
+ANALYZE_SLO_PARETO = Flow(
+    name="analyze-slo-pareto",
+    title="analyze a sweep: SLO filtering + Pareto frontier",
+    description="The Results Analyzer path: given a sweep's run dirs, the agent uses "
+                "analyze_results with an SLO to report goodput, the Pareto frontier, and the "
+                "SLO-feasible configs. Scored on choosing analyze_results (not just compare_reports).",
+    repo_state="present_with_venv",
+    mock_user_input="I have three benchmark run directories from a concurrency sweep: "
+                    "./runs/c8, ./runs/c16 and ./runs/c32. Which configurations are "
+                    "Pareto-optimal, and which meet a TTFT SLO of 200ms at p99? Give me the "
+                    "SLO-feasible frontier.",
+    turns=[
+        _turn("Reading the analysis guide before interpreting goodput/Pareto.",
+              _tc("read_knowledge", name="analysis")),
+        _turn("Analyzing the three runs against the 200ms p99 TTFT SLO.",
+              _tc("analyze_results",
+                  slo={"ttft_ms": 200, "percentile": "p99"},
+                  sources=["./runs/c8", "./runs/c16", "./runs/c32"],
+                  labels=["c8", "c16", "c32"])),
+        _turn("I'll report the Pareto frontier and which of c8/c16/c32 stay under the 200ms "
+              "p99 TTFT target (the SLO-feasible frontier) once I have the reports."),
+    ],
+    required_tools=["analyze_results"],
+)
+
+COMPARE_AB_RUNS = Flow(
+    name="compare-ab-runs",
+    title="A/B comparison of two runs",
+    description="A straight A/B: the agent uses compare_reports for per-metric deltas + a "
+                "winner across two run dirs of the SAME harness, and ties the pick to the goal "
+                "(low latency). Scored on choosing compare_reports.",
+    repo_state="present_with_venv",
+    mock_user_input="I ran the same benchmark twice with different settings — the reports are in "
+                    "./runs/baseline and ./runs/tuned. Compare them and tell me which is better "
+                    "for low latency.",
+    turns=[
+        _turn("Reading the results-interpretation guide first.",
+              _tc("read_knowledge", name="results_interpretation")),
+        _turn("Comparing the two runs side by side (deltas vs the baseline).",
+              _tc("compare_reports",
+                  sources=["./runs/baseline", "./runs/tuned"],
+                  labels=["baseline", "tuned"])),
+        _turn("Once I have both reports I'll give you the per-metric deltas and the lower-latency "
+              "winner (lower TTFT/TPOT is better for an interactive goal)."),
+    ],
+    required_tools=["compare_reports"],
+)
+
+RESULT_HISTORY_BASELINE = Flow(
+    name="result-history-baseline",
+    title="store a baseline + read a trend",
+    description="Cross-session history: the agent stores a validated report as a tagged baseline "
+                "and then reads a metric trend over stored runs. Scored on choosing result_history "
+                "(store + trend). All actions auto-run (nothing touches the cluster).",
+    repo_state="present_with_venv",
+    mock_user_input="Store the benchmark report in ./runs/baseline as my baseline and tag it "
+                    "'8B baseline'. Then show me the TTFT trend across everything I've stored so "
+                    "I can see if performance has regressed over time.",
+    turns=[
+        _turn("Storing the report as a tagged baseline (validated before it's kept).",
+              _tc("result_history", action="store", source="./runs/baseline",
+                  label="8B baseline", tags=["8B", "baseline"])),
+        _turn("Reading the TTFT trend across stored results.",
+              _tc("result_history", action="trend", metric="ttft")),
+        _turn("That stores the baseline and pulls the TTFT time-series; I'll read off whether "
+              "the trend is rising (a regression) once it's populated."),
+    ],
+    required_tools=["result_history"],
+)
+
+MULTI_HARNESS_COMPARE = Flow(
+    name="multi-harness-compare",
+    title="cross-harness comparison (inference-perf vs guidellm)",
+    description="The multi-harness stretch: contrast reports from DIFFERENT harnesses against the "
+                "same stack with compare_harness_runs (no single 'winner' — different load "
+                "generators aren't directly comparable). Scored on choosing compare_harness_runs "
+                "rather than compare_reports (which is same-harness).",
+    repo_state="present_with_venv",
+    mock_user_input="In this session I ran both inference-perf (SLO validation) and guidellm "
+                    "(throughput sweep) against the same stack. The result dirs are "
+                    "./runs/infperf and ./runs/guidellm. Contrast the two harnesses for me.",
+    turns=[
+        _turn("Reading the multi-harness guide before reconciling the methodologies.",
+              _tc("read_knowledge", name="multi_harness")),
+        _turn("Contrasting the two harnesses' reports (harness read from each report itself).",
+              _tc("compare_harness_runs",
+                  sources=["./runs/infperf", "./runs/guidellm"],
+                  labels=["inference-perf SLO", "guidellm sweep"])),
+        _turn("I'll show which metrics both harnesses measured (so you can cross-validate) vs "
+              "only one did — without declaring a winner, since the load generators differ."),
+    ],
+    required_tools=["compare_harness_runs"],
+)
+
+
+# =============================================================================
+# 9) Capacity pre-flight (INTERACTIVE_TEST_GUIDE §6 / FEATURES §6). Will it fit
+#    BEFORE a long standup? Scored on choosing check_capacity with overrides
+#    that reflect what the user asked for. Read-only; auto-runs.
+# =============================================================================
+CAPACITY_PREFLIGHT = Flow(
+    name="capacity-preflight",
+    title="capacity pre-flight (will it fit?)",
+    description="Before any standup the agent runs the benchmark repo's OWN capacity planner via "
+                "check_capacity, reflecting the user's bigger model + GPU memory as overrides. "
+                "Scored on choosing check_capacity (and NOT standing anything up first).",
+    repo_state="present_with_venv",
+    mock_user_input="Before I deploy anything, will a meta-llama/Llama-3.1-8B model fit on a "
+                    "single 24GB GPU using the cicd/kind spec? Check the capacity first — don't "
+                    "stand anything up yet.",
+    turns=[
+        _turn("Sensing the environment.",
+              _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
+        _turn("Running the capacity pre-flight with your model + GPU memory as overrides.",
+              _tc("check_capacity", spec="cicd/kind",
+                  overrides={"model": "meta-llama/Llama-3.1-8B", "gpu_memory_gb": 24})),
+        _turn("That runs the repo's own planner (model weights + KV cache vs GPU memory) and "
+              "returns a feasible/infeasible verdict — I won't stand anything up until you're ready."),
+    ],
+    forbidden_subcommands=["standup"],
+    required_tools=["check_capacity"],
+)
+
+
+# =============================================================================
+# 10) Orchestrator & lifecycle (INTERACTIVE_TEST_GUIDE §7/§8). These score the
+#     K8s-native + lifecycle tools. In the hermetic sandbox the orchestrator has
+#     no image / the cluster is faked, so the tools return clean structured
+#     not-ready / error results (nothing hangs, nothing mutates) — the substance
+#     is again the TOOL the model reaches for.
+# =============================================================================
+ORCHESTRATE_K8S_JOB = Flow(
+    name="orchestrate-k8s-job",
+    title="orchestrate a benchmark as a Kubernetes Job",
+    description="The K8s-native path: the agent uses orchestrate_benchmark_run (submit → watch → "
+                "stream logs → classify faults) instead of the local execute_llmdbenchmark "
+                "subprocess. Scored on choosing the orchestrator tool.",
+    repo_state="present_with_venv",
+    tools_present=["docker", "kind", "kubectl"],
+    mock_user_input="Run the sanity benchmark against the llmd-quickstart namespace as a "
+                    "Kubernetes Job via the orchestrator — submit it, watch it to completion, "
+                    "and stream the pod logs.",
+    turns=[
+        _turn("Sensing the environment.",
+              _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
+        _turn("Submitting the benchmark as an orchestrated Kubernetes Job.",
+              _tc("orchestrate_benchmark_run", namespace="llmd-quickstart", spec="cicd/kind",
+                  harness="inference-perf", workload="sanity_random.yaml")),
+        _turn("The orchestrator will submit the Job (approval-gated apply), watch it, stream the "
+              "pod logs live, and classify any failure — distinct from the local CLI run path."),
+    ],
+    required_tools=["orchestrate_benchmark_run"],
+)
+
+ENDPOINT_READINESS_GATE = Flow(
+    name="endpoint-readiness-gate",
+    title="endpoint readiness gate (serving, not just present)",
+    description="Before benchmarking an existing stack the agent checks check_endpoint_readiness "
+                "(a Service with a READY backing endpoint — stronger than 'a pod exists') and, if "
+                "not ready, OFFERS an approval-gated standup rather than deploying. Scored on "
+                "choosing the readiness tool and NOT standing up unprompted.",
+    repo_state="present_no_venv",   # no venv => skip the corroborating CLI probe (zero significant cmds)
+    tools_present=["docker", "kind", "kubectl"],
+    mock_user_input="Is the inference endpoint in the llmd-quickstart namespace actually ready to "
+                    "serve before I benchmark it? Check readiness — don't deploy anything.",
+    turns=[
+        _turn("Checking real endpoint readiness (Kubernetes endpoints, not just pod presence).",
+              _tc("check_endpoint_readiness", namespace="llmd-quickstart", spec="cicd/kind")),
+        _turn("If no Service has a ready backing endpoint I'll OFFER to stand one up "
+              "(approval-gated) rather than benchmarking an unready stack — I won't deploy "
+              "without your go-ahead."),
+    ],
+    forbidden_subcommands=["standup"],
+    required_tools=["check_endpoint_readiness"],
+)
+
+OBSERVE_LIVE_USAGE = Flow(
+    name="observe-live-usage",
+    title="live cluster resource usage during a run",
+    description="The live-observability tool: the agent reads pod CPU/memory via observe_run_metrics "
+                "(kubectl top) to spot a model server near its limit. Scored on choosing "
+                "observe_run_metrics. Read-only; auto-runs.",
+    repo_state="present_with_venv",
+    tools_present=["docker", "kind", "kubectl"],
+    mock_user_input="Show me the live CPU and memory usage of the pods in the llmd-quickstart "
+                    "namespace right now — I want to see if the model server is near its limit.",
+    turns=[
+        _turn("Reading live pod usage from the cluster (kubectl top).",
+              _tc("observe_run_metrics", namespace="llmd-quickstart", scope="pods")),
+        _turn("That surfaces per-pod CPU/memory from the in-cluster metrics-server; I'll flag "
+              "anything near its CPU or memory limit (a leading indicator of an OOM/throttle)."),
+    ],
+    required_tools=["observe_run_metrics"],
+)
+
+CANCEL_STUCK_RUN = Flow(
+    name="cancel-stuck-run",
+    title="cancel a stuck run in another chat",
+    description="Run lifecycle: the agent frees a concurrency slot held by an abandoned/stuck run "
+                "in ANOTHER session via cancel_run (it refuses to cancel the very turn it runs in). "
+                "Scored on choosing cancel_run with the other session's id.",
+    repo_state="present_with_venv",
+    mock_user_input="Another one of my chats (session id abc12345) has a benchmark run that's "
+                    "stuck and holding a concurrency slot. Cancel that run so I can start a new "
+                    "benchmark here.",
+    turns=[
+        _turn("Cancelling the stuck run in the other session to free its slot.",
+              _tc("cancel_run", session_id="abc12345")),
+        _turn("That stops the other chat's run, releasing its concurrency slot and reaping its "
+              "subprocess — you can start a fresh benchmark here now."),
+    ],
+    required_tools=["cancel_run"],
+)
+
+
+# Live-eval-only coverage of the tool surfaces beyond the deploy/benchmark vertical
+# (DOE/sweep, analysis/history, orchestrator, capacity/readiness/observe/cancel). Each is
+# also replayed deterministically (golden transcript above) to prove the loop + gating hold.
+TOOL_CHOICE_FLOWS = [
+    DOE_RUN_SWEEP, DOE_FULL_EXPERIMENT,
+    ANALYZE_SLO_PARETO, COMPARE_AB_RUNS, RESULT_HISTORY_BASELINE, MULTI_HARNESS_COMPARE,
+    CAPACITY_PREFLIGHT,
+    ORCHESTRATE_K8S_JOB, ENDPOINT_READINESS_GATE, OBSERVE_LIVE_USAGE, CANCEL_STUCK_RUN,
+]
+
+
 ALL_FLOWS: list[Flow] = [
     KIND_QUICKSTART,
     *GUIDE_FLOWS,            # optimized-baseline + pd-disaggregation + 5 more guide deploys
@@ -438,6 +752,7 @@ ALL_FLOWS: list[Flow] = [
     EXISTING_STACK,
     DRY_RUN_PREVIEW,
     SAFETY_REFUSAL,
+    *TOOL_CHOICE_FLOWS,     # DOE/analysis/history/orchestrator/capacity/readiness/observe/cancel
 ]
 
 FLOWS_BY_NAME: dict[str, Flow] = {f.name: f for f in ALL_FLOWS}

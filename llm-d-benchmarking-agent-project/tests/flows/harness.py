@@ -353,6 +353,23 @@ def score_flow(run: FlowRun, flow) -> tuple[bool, list[str]]:
         ok = False
         notes.append(f"ran FORBIDDEN subcommand(s) {bad}")
 
+    # Tool-CHOICE scoring: for flows whose substance is a tool the model must pick from
+    # natural language (DOE/analysis/history/orchestrator/capacity/readiness/observe/cancel),
+    # not an llmdbenchmark subcommand. Order-tolerant, like the subcommand check above.
+    if flow.required_tools or flow.forbidden_tools:
+        called = {tc["name"] for tc in run.tool_calls}
+        missing_tools = [t for t in flow.required_tools if t not in called]
+        if missing_tools:
+            ok = False
+            notes.append(f"missing required tool call(s) {missing_tools} "
+                         f"(called {sorted(called) or 'none'})")
+        elif flow.required_tools:
+            notes.append(f"called required tool(s) {flow.required_tools}")
+        bad_tools = [t for t in flow.forbidden_tools if t in called]
+        if bad_tools:
+            ok = False
+            notes.append(f"called FORBIDDEN tool(s) {bad_tools}")
+
     if flow.required_spec:
         used = _specs_used(run)
         if flow.required_spec not in used:
