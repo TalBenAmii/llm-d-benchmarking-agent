@@ -138,6 +138,13 @@ body {
   flex: none; color: var(--muted); background: var(--panel-2);
   border-radius: 999px; padding: 1px 7px; font-size: 10px;
 }
+.conv-folder-del {
+  flex: none; border: none; background: transparent; color: var(--muted);
+  font-size: 15px; line-height: 1; padding: 1px 5px; border-radius: 6px;
+  opacity: 0; cursor: pointer;
+}
+.conv-folder-head:hover .conv-folder-del { opacity: 1; }
+.conv-folder-del:hover { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
 .conv-folder-body { padding-left: 8px; }
 .conv-folder.collapsed .conv-folder-body { display: none; }
 

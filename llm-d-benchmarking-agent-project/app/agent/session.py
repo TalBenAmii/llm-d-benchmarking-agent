@@ -29,6 +29,11 @@ from app.tools.context import ToolContext
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _TITLE_MAX = 60
 
+# The sidebar groups chats into one folder per namespace; chats with no namespace land in a
+# folder under this sentinel key. "no_namespace" can never collide with a real namespace
+# because RFC1123 namespace names forbid underscores. The frontend uses the same literal.
+NO_NAMESPACE = "no_namespace"
+
 
 def _is_valid_id(sid: str | None) -> TypeGuard[str]:
     return isinstance(sid, str) and bool(_ID_RE.match(sid))
@@ -42,6 +47,12 @@ def derive_title(messages: list[dict[str, Any]]) -> str:
             if text:
                 return text[:_TITLE_MAX] + ("…" if len(text) > _TITLE_MAX else "")
     return "New chat"
+
+
+def _effective_namespace(data: dict[str, Any]) -> str | None:
+    """The namespace a saved session belongs to. Falls back to the approved plan's namespace
+    so sessions persisted before the ``namespace`` field existed still group correctly."""
+    return data.get("namespace") or (data.get("approved_plan") or {}).get("namespace")
 
 
 # Keep the executed-command trail bounded so a long session's snapshot stays small.
@@ -121,6 +132,12 @@ class Session:
             )
         except OSError:
             pass
+
+
+# `SessionManager.list` (a method) shadows the builtin `list` inside the class body, so
+# `-> list[str]` there resolves to the method, not the type. Alias it out here at module scope,
+# where `list` is still the builtin, and annotate with the alias.
+_SessionIds = list[str]
 
 
 class SessionManager:
@@ -217,9 +234,7 @@ class SessionManager:
                     "title": data.get("title") or derive_title(messages),
                     "created_at": data.get("created_at"),
                     "updated_at": data.get("updated_at"),
-                    # Fall back to the approved plan's namespace so sessions persisted before this
-                    # field existed (but which already chose a namespace) still group correctly.
-                    "namespace": data.get("namespace") or (data.get("approved_plan") or {}).get("namespace"),
+                    "namespace": _effective_namespace(data),
                     "message_count": len(messages),
                 }
             )
@@ -236,3 +251,24 @@ class SessionManager:
             shutil.rmtree(d, ignore_errors=True)
             return True
         return False
+
+    def delete_namespace(self, namespace: str | None) -> _SessionIds:
+        """Delete every saved chat in one sidebar folder (a whole namespace at once).
+
+        ``namespace`` is the folder key the UI shows; the literal ``NO_NAMESPACE`` sentinel
+        removes the chats that have no namespace set. Returns the ids removed so the caller can
+        tear down any live turn per deleted session (mirrors what ``delete`` is paired with)."""
+        target = namespace or NO_NAMESPACE
+        deleted: _SessionIds = []
+        if not self._root.exists():
+            return deleted
+        for d in self._root.iterdir():
+            try:
+                data = json.loads((d / "state.json").read_text())
+            except (OSError, json.JSONDecodeError):
+                continue  # not a saved session (or corrupt) — skip
+            if (_effective_namespace(data) or NO_NAMESPACE) != target:
+                continue
+            if self.delete(data.get("id", d.name)):
+                deleted.append(data.get("id", d.name))
+        return deleted

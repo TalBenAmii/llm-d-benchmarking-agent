@@ -162,3 +162,57 @@ def test_list_namespace_none_when_unset(manager):
     state.write_text(json.dumps(data))
     summary = next(x for x in manager.list() if x["id"] == s.id)
     assert summary["namespace"] is None
+
+
+# ---- delete_namespace: remove a whole sidebar folder at once -----------------
+def _seed_ns(manager: SessionManager, text: str, ns: str | None):
+    s = _seed(manager, text)
+    s.namespace = ns  # override the conftest "test" default with the folder under test
+    s.persist()
+    return s
+
+
+def test_delete_namespace_removes_only_that_folder(manager):
+    keep = _seed_ns(manager, "other folder", "ns-b")
+    a1 = _seed_ns(manager, "first in a", "ns-a")
+    a2 = _seed_ns(manager, "second in a", "ns-a")
+
+    removed = manager.delete_namespace("ns-a")
+
+    assert set(removed) == {a1.id, a2.id}
+    assert {x["id"] for x in manager.list()} == {keep.id}
+
+
+def test_delete_namespace_no_namespace_sentinel(manager):
+    # The "no_namespace" folder holds chats with the namespace unset; the sentinel must delete
+    # exactly those, leaving namespaced chats alone.
+    unfiled = _seed_ns(manager, "unfiled", None)
+    filed = _seed_ns(manager, "filed", "ns-a")
+
+    removed = manager.delete_namespace("no_namespace")
+
+    assert removed == [unfiled.id]
+    assert {x["id"] for x in manager.list()} == {filed.id}
+
+
+def test_delete_namespace_unknown_returns_empty(manager):
+    _seed_ns(manager, "kept", "ns-a")
+    assert manager.delete_namespace("does-not-exist") == []
+    assert len(manager.list()) == 1
+
+
+def test_api_delete_namespace(tmp_path):
+    manager = make_manager(tmp_path)
+    a1 = _seed_ns(manager, "a one", "ns-a")
+    a2 = _seed_ns(manager, "a two", "ns-a")
+    keep = _seed_ns(manager, "b one", "ns-b")
+    with TestClient(app) as client:
+        client.app.state.sessions = manager
+        r = client.delete("/api/namespaces/ns-a")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["count"] == 2 and set(body["deleted"]) == {a1.id, a2.id}
+        remaining = {x["id"] for x in client.get("/api/sessions").json()["sessions"]}
+        assert remaining == {keep.id}
+        # The folder is now empty, so a second delete matches nothing => 404.
+        assert client.delete("/api/namespaces/ns-a").status_code == 404

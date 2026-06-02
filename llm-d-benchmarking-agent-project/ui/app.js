@@ -252,6 +252,11 @@ function renderFolder(ns, items) {
   head.appendChild(el("span", "conv-folder-caret", "▾"));   // CSS rotates it when collapsed
   head.appendChild(el("span", "conv-folder-name", ns));
   head.appendChild(el("span", "conv-folder-count", String(items.length)));
+  const del = el("button", "conv-folder-del", "×");
+  del.type = "button";
+  del.title = "Delete this folder and all its chats";
+  del.onclick = (e) => { e.stopPropagation(); deleteFolder(ns, items); };   // don't toggle the fold
+  head.appendChild(del);
   head.onclick = () => {
     if (collapsedFolders.has(ns)) collapsedFolders.delete(ns);
     else collapsedFolders.add(ns);
@@ -285,6 +290,18 @@ async function deleteSession(sid) {
   if (!confirm("Delete this conversation?")) return;
   try { await fetch(`/api/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" }); } catch (e) {}
   if (sid === currentSession) newChat();   // start fresh if we deleted the open one
+  else loadSessions();
+}
+
+// Remove a whole folder — every chat in one namespace at once. The "no_namespace" folder
+// deletes the un-namespaced chats (the backend maps that sentinel to "namespace unset").
+async function deleteFolder(ns, items) {
+  const where = ns === NO_NAMESPACE ? "with no namespace" : `in namespace "${ns}"`;
+  if (!confirm(`Delete all ${items.length} chat(s) ${where}? This can't be undone.`)) return;
+  try { await fetch(`/api/namespaces/${encodeURIComponent(ns)}`, { method: "DELETE" }); } catch (e) {}
+  collapsedFolders.delete(ns);                 // the folder's gone — forget its collapse state
+  saveCollapsedFolders(collapsedFolders);
+  if (items.some((s) => s.id === currentSession)) newChat();   // we deleted the open chat → start fresh
   else loadSessions();
 }
 
