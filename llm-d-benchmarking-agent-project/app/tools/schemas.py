@@ -124,6 +124,21 @@ class OrchestrateBenchmarkInput(BaseModel):
     )
     cpu: str = Field(default="1", description="CPU request/limit for the Job pod")
     memory: str = Field(default="1Gi", description="Memory request/limit for the Job pod")
+    scheduling: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional hardware/placement intent for the Job pod (see "
+                    "knowledge/resource_management.md for HOW to choose). Keys (all optional): "
+                    "gpu_count (int >=1, request N GPUs), gpu_resource (extended-resource name, "
+                    "default 'nvidia.com/gpu'), gpu_type_label ([label_key, value] to pin the GPU "
+                    "TYPE, e.g. ['nvidia.com/gpu.product','NVIDIA-A100-SXM4-80GB']), node_selector "
+                    "(dict of exact node-label matches), tolerations (list of K8s toleration dicts "
+                    "for tainted GPU pools), affinity (a raw K8s affinity block, merged verbatim), "
+                    "avoid_labels (dict — schedules the benchmark pod AWAY from nodes already "
+                    "running pods with these labels, e.g. the measured llm-d stack {'llm-d.ai/role':"
+                    "'decode'}, so the load generator never starves the system under test), "
+                    "avoid_topology_key (topology domain for avoid_labels, default "
+                    "'kubernetes.io/hostname'). Omit entirely for the generic cpu/memory baseline.",
+    )
     active_deadline_seconds: int | None = Field(
         default=None, description="Job timeout; exceeding it is classified as a timeout failure",
     )

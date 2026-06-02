@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.orchestrator.controller import BenchmarkOrchestrator, RunOutcome
-from app.orchestrator.job import JobSpec
+from app.orchestrator.job import JobSpec, Scheduling
 from app.orchestrator.kube import RealKubeClient
 from app.tools.context import ToolContext, ToolError
 
@@ -78,6 +78,7 @@ async def orchestrate_benchmark_run(
     command: list[str] | None = None,
     cpu: str = "1",
     memory: str = "1Gi",
+    scheduling: dict[str, Any] | None = None,
     active_deadline_seconds: int | None = None,
     max_attempts: int = 1,
     watch: bool = True,
@@ -97,6 +98,14 @@ async def orchestrate_benchmark_run(
     # in-cluster orchestrated run has exactly the RBAC it needs); empty → namespace default SA.
     sa = service_account if service_account is not None else (ctx.settings.orchestrator_service_account or None)
 
+    # Parse the agent's scheduling intent (node affinity / GPU selection / anti-starvation
+    # placement). PURE PARSING — the WHICH-GPU / WHERE-to-place choice is the agent's judgment
+    # (knowledge/resource_management.md); a malformed shape is a ToolError the agent self-corrects.
+    try:
+        sched = Scheduling.from_dict(scheduling)
+    except ValueError as exc:
+        raise ToolError(f"invalid scheduling: {exc}") from exc
+
     run_id = uuid.uuid4().hex[:8]
     spec_obj = JobSpec(
         run_id=run_id,
@@ -111,6 +120,7 @@ async def orchestrate_benchmark_run(
         cpu=cpu,
         memory=memory,
         service_account=sa,
+        scheduling=sched,
     )
 
     orch = BenchmarkOrchestrator(RealKubeClient(ctx), ctx.workspace)

@@ -234,8 +234,12 @@ _DESCRIPTIONS = {
         "deterministic faults never retry. Unlike execute_llmdbenchmark (which runs the CLI "
         "locally as a blocking subprocess), use this for K8s-native, restart-resilient, "
         "individually-retryable runs. Needs the orchestrator container image (config "
-        "ORCHESTRATOR_IMAGE or `image`). Call read_knowledge('orchestrator') to choose "
-        "between this and execute_llmdbenchmark and to interpret a failure classification."
+        "ORCHESTRATOR_IMAGE or `image`). Pass an optional `scheduling` object to request a "
+        "GPU type/count and to PLACE the Job so it does not starve the measured llm-d stack "
+        "(node affinity / tolerations / pod anti-affinity via `avoid_labels`) — call "
+        "read_knowledge('resource_management') for HOW to choose; omit it for the generic "
+        "cpu/memory baseline. Call read_knowledge('orchestrator') to choose between this and "
+        "execute_llmdbenchmark and to interpret a failure classification."
     ),
 }
 

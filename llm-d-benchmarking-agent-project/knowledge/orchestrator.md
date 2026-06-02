@@ -54,6 +54,16 @@ What this means for you:
   succeed even if no lines streamed. If the user saw nothing stream, that's not a failure —
   read the final outcome (and, for a `run_error`, the captured logs) instead.
 
+## Hardware & placement (the `scheduling` argument)
+
+`orchestrate_benchmark_run` takes an optional `scheduling` object to request the right
+hardware (a GPU type / count) and to place the Job so it does **not starve the llm-d stack
+being measured** (proposal §4). Omit it and the Job is the generic cpu/memory baseline. The
+full judgment — which GPU type, when to request a GPU at all, how to keep the load generator
+off the served nodes (`avoid_labels` → pod anti-affinity), node pools, taints, quotas — lives
+in [`knowledge/resource_management.md`](resource_management.md). Read it before setting
+`scheduling`, and verify the real node/pod label values on the target cluster first.
+
 ## Sweeps & retries
 
 - For a parameter sweep, prefer the CLI's native DoE (`execute_llmdbenchmark`
