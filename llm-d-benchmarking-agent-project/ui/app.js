@@ -711,29 +711,148 @@ function finishTool(data) {
   activeConsole = null;
 }
 
+// ---- report number formatting -------------------------------------------
+// The report payload carries raw floats (e.g. 0.00301993 s, 523.994 tok/s). These
+// turn them into the human-friendly forms the assistant uses in prose (3.0 ms, 524 tok/s).
+
+// Round a number to a sensible number of significant digits for display; pass
+// through anything non-numeric untouched.
+function fmtNum(v) {
+  if (typeof v !== "number" || !isFinite(v)) return v == null ? null : String(v);
+  const a = Math.abs(v);
+  if (a === 0) return "0";
+  if (a >= 1000) return Math.round(v).toLocaleString("en-US");
+  if (a >= 100) return v.toFixed(0);
+  if (a >= 10) return v.toFixed(1);
+  if (a >= 1) return v.toFixed(2);
+  if (a >= 0.001) return v.toFixed(3);
+  return v.toExponential(1);
+}
+
+// Pick a single display unit + scale for a metric from its `units` field. Sub-second
+// latency reads better in ms; token/request rates get short labels. Returns {unit, scale}.
+function statUnit(stat) {
+  const u = (stat && stat.units) || "";
+  if (u === "s" || u === "sec" || u === "seconds") {
+    if (typeof stat.mean === "number" && Math.abs(stat.mean) < 1) return { unit: "ms", scale: 1000 };
+    return { unit: "s", scale: 1 };
+  }
+  if (u === "ms") return { unit: "ms", scale: 1 };
+  if (u.indexOf("token") !== -1) return { unit: "tok/s", scale: 1 };
+  if (u.indexOf("quer") !== -1 || u.indexOf("req") !== -1) return { unit: "req/s", scale: 1 };
+  if (u === "percent" || u === "%") return { unit: "%", scale: 1 };
+  return { unit: u, scale: 1 };
+}
+
+// Format one value (`stat[key]`) of a `_stat` object with its unit, e.g. "3.0 ms".
+// Returns null when the value is absent so callers can skip the tile/cell cleanly.
+function fmtStat(stat, key) {
+  if (!stat || typeof stat !== "object") return null;
+  const v = stat[key];
+  if (typeof v !== "number" || !isFinite(v)) return null;
+  const { unit, scale } = statUnit(stat);
+  const n = fmtNum(v * scale);
+  if (unit === "%") return `${n}%`;
+  return unit ? `${n} ${unit}` : n;
+}
+
+// Parse the common ISO-8601 duration the harness emits ("PT40.151280278S", "PT1M5S")
+// into a readable "40.2s" / "1m 5s"; fall back to the raw string on no match.
+function fmtDuration(iso) {
+  if (typeof iso !== "string") return null;
+  const m = iso.match(/^P(?:T)?(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?$/i);
+  if (!m || (!m[1] && !m[2] && !m[3])) return iso;
+  const h = m[1] ? parseInt(m[1], 10) : 0;
+  const min = m[2] ? parseInt(m[2], 10) : 0;
+  const sec = m[3] ? parseFloat(m[3]) : 0;
+  const parts = [];
+  if (h) parts.push(`${h}h`);
+  if (min) parts.push(`${min}m`);
+  if (sec || !parts.length) parts.push(`${Number.isInteger(sec) ? sec : sec.toFixed(1)}s`);
+  return parts.join(" ");
+}
+
 function renderReportSummary(result) {
   const s = result.summary;
+  const L = s.latency || {}, T = s.throughput || {}, SM = s.standard_metrics || {};
   const wrap = el("div", "msg assistant");
   wrap.appendChild(el("div", "who", "report"));
   const bubble = el("div", "bubble");
   bubble.appendChild(el("strong", null, `Benchmark results — ${s.model || "model"}`));
+
+  // Context subline: which harness, the load it drove, and how long it ran.
+  const sub = [];
+  if (s.harness) sub.push(s.harness);
+  if (s.load && s.load.rate_qps != null) sub.push(`${fmtNum(s.load.rate_qps)} QPS`);
+  if (s.load && typeof s.load.concurrency === "number" && isFinite(s.load.concurrency)) sub.push(`concurrency ${s.load.concurrency}`);
+  const dur = fmtDuration(s.duration);
+  if (dur) sub.push(dur);
+  if (sub.length) bubble.appendChild(el("div", "report-sub", sub.join(" · ")));
+
+  // Headline tiles — the same metrics the assistant calls out in its written summary.
   const grid = el("div", "summary-grid");
   const add = (k, v) => { if (v == null) return; const c = el("div", "stat"); c.appendChild(el("div", "k", k)); c.appendChild(el("div", "v", v)); grid.appendChild(c); };
-  add("requests", s.requests_total);
-  add("success %", s.success_rate_pct);
-  const ttft = s.latency && s.latency.ttft;
-  if (ttft) add(`TTFT mean (${ttft.units || ""})`, ttft.mean);
-  const tput = s.throughput && s.throughput.total_token_rate;
-  if (tput) add(`tok/s (${tput.units || ""})`, tput.mean);
+  add("requests", s.requests_total != null
+    ? (s.requests_failures ? `${s.requests_total} (${s.requests_failures} failed)` : `${s.requests_total}`)
+    : null);
+  add("success %", s.success_rate_pct != null ? `${fmtNum(s.success_rate_pct)}%` : null);
+  add("TTFT mean", fmtStat(L.ttft, "mean"));
+  add("TTFT p99", fmtStat(L.ttft, "p99"));
+  add("latency mean", fmtStat(L.request_latency, "mean"));
+  add("latency p99", fmtStat(L.request_latency, "p99"));
+  add("per-token (TPOT)", fmtStat(L.tpot, "mean"));
+  add("total tok/s", fmtStat(T.total_token_rate, "mean"));
+  add("output tok/s", fmtStat(T.output_token_rate, "mean"));
+  add("req/s", fmtStat(T.request_rate, "mean"));
+  // §3.4 resource/serving metrics — only present when the harness emitted them.
+  const addStd = (key, label) => { const mt = SM[key]; if (mt && mt.value) add(label, fmtStat(mt.value, "mean")); };
+  addStd("kv_cache_hit_rate", "KV-cache hit");
+  addStd("gpu_utilization", "GPU util");
+  addStd("schedule_delay", "schedule delay");
   bubble.appendChild(grid);
+
+  renderPercentileTable(bubble, L, T);
   renderReportCharts(bubble, result.charts);
   wrap.appendChild(bubble);
   transcript.appendChild(wrap);
 }
 
+// Collapsible drill-down: the full percentile ladder for every latency/throughput metric
+// the report carries. One unit per row (header), bare numbers in the cells.
+function renderPercentileTable(bubble, L, T) {
+  const rows = [
+    ["TTFT", L.ttft], ["TPOT", L.tpot], ["ITL", L.itl], ["request latency", L.request_latency],
+    ["total tok/s", T.total_token_rate], ["output tok/s", T.output_token_rate], ["request rate", T.request_rate],
+  ].filter(([, st]) => st && typeof st === "object");
+  if (!rows.length) return;
+
+  const cols = ["mean", "p50", "p90", "p95", "p99", "p99p9"];
+  const colLabels = ["mean", "p50", "p90", "p95", "p99", "p99.9"];
+  const det = el("details", "pctl");
+  det.appendChild(el("summary", null, "All percentiles"));
+  const tbl = el("table", "pctl-table");
+  const head = el("tr");
+  head.appendChild(el("th", null, "metric"));
+  colLabels.forEach((c) => head.appendChild(el("th", null, c)));
+  tbl.appendChild(head);
+  rows.forEach(([name, st]) => {
+    const { unit, scale } = statUnit(st);
+    const tr = el("tr");
+    tr.appendChild(el("th", null, unit ? `${name} (${unit})` : name));
+    cols.forEach((k) => {
+      const v = st[k];
+      tr.appendChild(el("td", null, (typeof v === "number" && isFinite(v)) ? fmtNum(v * scale) : "—"));
+    });
+    tbl.appendChild(tr);
+  });
+  det.appendChild(tbl);
+  bubble.appendChild(det);
+}
+
 // Render the per-run chart images the harness produced (served by the backend artifact
 // route). `charts` is locate_and_parse_report's list of {title, session_id, path}; absent
-// on the CPU-sim quickstart / guidellm, in which case we show nothing.
+// on the CPU-sim quickstart / guidellm, in which case we show nothing. Each thumbnail is
+// click/keyboard-activatable and opens the full-size plot in a lightbox.
 function renderReportCharts(bubble, charts) {
   if (!Array.isArray(charts) || charts.length === 0) return;
   const wrap = el("div", "charts");
@@ -745,11 +864,54 @@ function renderReportCharts(bubble, charts) {
     img.loading = "lazy";
     img.alt = c.title || "benchmark chart";
     img.src = `/api/sessions/${encodeURIComponent(sid)}/artifact?path=${encodeURIComponent(c.path)}`;
+    img.tabIndex = 0;
+    img.setAttribute("role", "button");
+    img.setAttribute("aria-label", `Expand ${c.title || "chart"}`);
+    const open = () => openLightbox(img.src, c.title);
+    img.addEventListener("click", open);
+    img.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+    });
     fig.appendChild(img);
     if (c.title) fig.appendChild(el("figcaption", null, c.title));
     wrap.appendChild(fig);
   });
   if (wrap.childElementCount) bubble.appendChild(wrap);
+}
+
+// Lazily-created, reused modal that shows an enlarged chart. Native <dialog> gives us
+// Esc-to-close and focus handling for free; we add a close button and backdrop-click.
+let lightboxEls = null;
+function ensureLightbox() {
+  if (lightboxEls) return lightboxEls;
+  const dlg = document.createElement("dialog");
+  dlg.className = "lightbox";
+  const close = el("button", "close", "✕");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close");
+  close.addEventListener("click", () => dlg.close());
+  const fig = el("figure");
+  const img = document.createElement("img");
+  const cap = el("figcaption");
+  fig.appendChild(close);
+  fig.appendChild(img);
+  fig.appendChild(cap);
+  dlg.appendChild(fig);
+  // A click whose target is the dialog itself is on the backdrop/padding → dismiss.
+  dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+  document.body.appendChild(dlg);
+  lightboxEls = { dlg, img, cap };
+  return lightboxEls;
+}
+
+function openLightbox(src, title) {
+  const { dlg, img, cap } = ensureLightbox();
+  img.src = src;
+  img.alt = title || "benchmark chart";
+  cap.textContent = title || "";
+  cap.hidden = !title;
+  if (typeof dlg.showModal === "function") dlg.showModal();
+  else dlg.setAttribute("open", "");
 }
 
 function prettyJson(obj) {
