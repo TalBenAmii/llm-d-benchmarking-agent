@@ -20,6 +20,7 @@ from app.tools import (
     command,
     compare,
     config_artifact,
+    doe,
     execute,
     history,
     multiharness,
@@ -39,6 +40,7 @@ from app.tools.schemas import (
     EnsureReposInput,
     ExecuteInput,
     FetchKeyDocsInput,
+    GenerateDoeInput,
     ListCatalogInput,
     LocateReportInput,
     ObserveRunMetricsInput,
@@ -128,6 +130,22 @@ _DESCRIPTIONS = {
     "write_and_validate_config": (
         "Write a generated workload/run config into the session workspace and validate it. "
         "MVP uses stock profiles, so you rarely need this."
+    ),
+    "generate_doe_experiment": (
+        "AUTHOR a Design-of-Experiments (DoE) experiment YAML: you supply the FACTORS to "
+        "sweep — `run_factors` (workload knobs swept against one stack; REQUIRED) and "
+        "optional `setup_factors` (infrastructure knobs that change the deployment, each its "
+        "own standup/teardown) — where each factor is {name, dotted `key`, list of `levels`}. "
+        "The tool CROSS-PRODUCTS the levels into the full, deduped, named treatments matrix "
+        "(setup × run), writes a valid experiment YAML into the session workspace, and "
+        "validates it structurally against the repo's own experiment examples. Read-only "
+        "(only writes the workspace), auto-runs. Then pass the returned `path` as "
+        "flags.experiments to execute_llmdbenchmark (subcommand='experiment' for a full DoE, "
+        "or 'run' for a run-parameter sweep) — preview with flags.dry_run first. WHICH "
+        "factors/levels to sweep is YOUR judgment: call read_knowledge('sweep_playbook') to "
+        "pick them (e.g. the optimal prefill/decode ratio) and to elicit token characteristics "
+        "(input/output length distributions, system-prompt reuse → prefix sharing). Read the "
+        "repo's experiment examples (read_repo_doc) to pick real override keys."
     ),
     "execute_llmdbenchmark": (
         "Run the llmdbenchmark CLI: subcommand is one of plan/standup/smoketest/run/"
@@ -234,6 +252,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),
         ToolSpec("run_setup", _DESCRIPTIONS["run_setup"], RunSetupInput, repos.run_setup),
         ToolSpec("write_and_validate_config", _DESCRIPTIONS["write_and_validate_config"], WriteConfigInput, config_artifact.write_and_validate_config),
+        ToolSpec("generate_doe_experiment", _DESCRIPTIONS["generate_doe_experiment"], GenerateDoeInput, doe.generate_doe_experiment),
         ToolSpec("execute_llmdbenchmark", _DESCRIPTIONS["execute_llmdbenchmark"], ExecuteInput, execute.execute_llmdbenchmark),
         ToolSpec("run_command", _DESCRIPTIONS["run_command"], RunCommandInput, command.run_command),
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, probe.locate_and_parse_report),
