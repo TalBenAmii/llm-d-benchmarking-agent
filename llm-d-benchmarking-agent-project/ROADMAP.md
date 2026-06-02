@@ -395,3 +395,24 @@ Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is nev
   289 lines / +28 net tests; hermetic — fake kube endpoints, asserts ready/not-ready verdicts, the
   submit gate (submits nothing when unready), the standup suggestion, and the external-endpoint skip
   path). Prior baseline 568 passed / 7 skipped (Phase 22).
+
+## Phase 26 — llm-d-inference-sim integration tests (opt-in) — DONE
+- Closed the proposal §5.3/§7 testing gap: shipped an `tests/integration/` layer that exercises the
+  analyze/compare path against `llm-d-inference-sim` (the CPU-only mock server) **without making the
+  default suite non-hermetic**. Two parts: (1) an **always-running** hermetic check that builds a
+  sim-SHAPED Benchmark Report v0.2 fixture from `llm-d-benchmark`'s own BR v0.2 example (read live,
+  never vendored) and drives it through the real `analyze_results` / `compare_reports` tools (SLO
+  verdict, goodput, §3.4 standard metrics incl. KV-cache hit rate, an A/B delta, and a Pareto sweep);
+  and (2) a **live integration test that is opt-in and SKIPPED by default** — it stands up a real
+  `llm-d-inference-sim` only when `LLMD_SIM_INTEGRATION=1` is set AND the sim is locatable (binary on
+  `PATH` / `LLMD_SIM_BINARY`, or a runnable container image), otherwise it skips cleanly and NEVER
+  hangs reaching for an absent server. Sim discovery is pure data/policy (overridable, no hardcoded
+  path); the WHAT-to-test stays in code. Also added a **non-gating** CI job
+  (`.github/workflows/agent-flow-validation.yml`) and a `tests/test_quality_gates.py` assertion that
+  the integration layer is genuinely opt-in. Guidance lives in `knowledge/sim_integration.md`
+  (thin code / thick agent); docs in `docs/VALIDATION.md` + `docs/CONTRIBUTING.md`.
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — 9 purely additive files, no
+  existing tool/field/policy/knowledge line dropped); full suite **591 passed / 9 skipped / 0 failed**
+  (18.6s, no hang, exit 0), ruff clean, mypy clean (66 source files). The +2 skips are the opt-in live
+  integration tests correctly skipping when no sim is available. Prior baseline 584 passed / 7 skipped
+  (Phase 24).

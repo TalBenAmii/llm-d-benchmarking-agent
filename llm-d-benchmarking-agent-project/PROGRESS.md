@@ -8,6 +8,27 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-02 — Phase 26: llm-d-inference-sim integration tests (opt-in) — DONE
+Branch `feature/roadmap-v3-p26-sim-integration` → merged into `feature/roadmap-v3` (`--no-ff`, clean
+`ort`; 9 purely additive files — no existing tool/field/policy/knowledge line touched, no conflicts).
+- **Shipped:** the proposal §5.3/§7 integration-test layer (`tests/integration/`) exercising the
+  analyze/compare path against `llm-d-inference-sim` (the CPU-only mock server) while keeping the
+  default suite fully hermetic. An **always-running** check builds a sim-shaped Benchmark Report v0.2
+  fixture from `llm-d-benchmark`'s own BR v0.2 example (read live, never vendored) and drives it
+  through the real `analyze_results`/`compare_reports` tools (SLO, goodput, §3.4 standard metrics incl.
+  KV-cache hit rate, A/B delta, Pareto sweep). A **live integration test is opt-in and SKIPPED by
+  default** — it stands up a real sim only when `LLMD_SIM_INTEGRATION=1` AND the sim is locatable
+  (binary on `PATH`/`LLMD_SIM_BINARY` or a runnable container image), else skips cleanly and NEVER
+  hangs reaching an absent server. Discovery is overridable data/policy (no hardcoded path). Added a
+  **non-gating** CI job (`agent-flow-validation.yml`) + a `tests/test_quality_gates.py` assertion that
+  the layer is genuinely opt-in; guidance in `knowledge/sim_integration.md`, docs in
+  `docs/VALIDATION.md` + `docs/CONTRIBUTING.md`.
+- **Tests:** full integration suite **591 passed / 9 skipped / 0 failed** (18.6s, no hang, exit 0;
+  +`tests/integration/` 626 lines + `test_quality_gates.py` additions / +7 passed, +2 skipped — the
+  opt-in live sim tests correctly skip with no sim present). Prior baseline 584 passed / 7 skipped
+  (Phase 24). Ruff clean, mypy clean (66 source files). Authoritative run from the integration worktree
+  against the worktree app + shared venv, 600s timeout.
+
 ## 2026-06-02 — Phase 22: DOE checkpoint/resume for long sweeps — DONE
 Branch `feature/roadmap-v3-p22-checkpoint` → merged into `feature/roadmap-v3` (`--no-ff`, clean `ort`;
 P22 branched from the v3 HEAD already carrying P21/P23/P25, so no conflicts).

@@ -74,7 +74,7 @@
 | Ops/contrib docs: SECURITY, TROUBLESHOOTING, CONTRIBUTING, CHANGELOG | 🔄 | **v2 Phase 17** (in progress) |
 | CI/CD pipeline (GitHub Actions) | 🔶 | Exists at repo root (`/.github/workflows/agent-flow-validation.yml`, hermetic flow + opt-in live eval) |
 | CI: **linting (ruff) + type-checking (mypy) + coverage** | 🔄 | **v2 Phase 14** (in progress) |
-| CI: **integration tests with llm-d-inference-sim** | ⬜→v3 | §5.3/§7 explicit; all current tests are hermetic fakes — **P26** |
+| CI: **integration tests with llm-d-inference-sim** | ✅ | **v3 Phase 26** — opt-in env-gated `tests/integration/` layer (skipped by default; hermetic sim-shaped report coverage always runs) + non-gating CI job |
 | Upstream-PR-ready agent module | 🔶 | Structure aligns; strengthened by v2 docs + v3 features |
 
 ---
@@ -93,7 +93,7 @@ obeying thin-code/thick-agent + allowlist-as-data. Built by `roadmap-v3-autopilo
 | **P23** | Resource management | §4 | Extend `JobSpec`/`build_job_manifest` with optional `nodeSelector`/`affinity`/`tolerations` + GPU resource and anti-affinity so benchmark Jobs don't starve the measured stack; GPU/placement supplied at plan time via knowledge. |
 | **P24** | Endpoint health-check + optional auto-standup | §3.3 | Before submitting a benchmark Job, gate on inference-endpoint readiness; optionally trigger `standup` (approval-gated) when no healthy stack is present. |
 | **P25** | Analyzer metric completeness | §3.4 | Extract + surface KV-cache hit rate, schedule delay, and GPU utilization from BR-v0.2 / harness-native output (gracefully `None` when absent); include in summaries + Pareto objectives where sensible. |
-| **P26** | llm-d-inference-sim integration tests | §5.3, §7 | An **opt-in** integration layer (env-gated, skipped by default to keep the suite hermetic) that stands up `llm-d-inference-sim` and runs analyze/compare against a real mock report; plus a non-gating CI job. |
+| **P26** ✅ | llm-d-inference-sim integration tests | §5.3, §7 | An **opt-in** integration layer (env-gated, skipped by default to keep the suite hermetic) that stands up `llm-d-inference-sim` and runs analyze/compare against a real mock report; plus a non-gating CI job. |
 
 **Waves** (conflict- & dependency-ordered): `[[19,20,25],[21,23],[22,24],[26]]` — disjoint
 authoring/analyzer phases first; orchestrator run-loop phases sequenced (P21 before P22, both
