@@ -52,6 +52,14 @@ meaningful is not coverage. (Skipping an *optional external binary* check when t
 absent — like `helm`/`kustomize`/`promtool` — is the one acceptable skip, because the hermetic
 structural test already covers the contract.)
 
+**The one opt-in integration exception (`tests/integration/`).** The proposal's explicit
+"integration tests with `llm-d-inference-sim`" live here. The live test stands up the real
+sim, so it is **gated** on `LLMD_SIM_INTEGRATION=1` *and* the sim being locatable — it SKIPS
+cleanly by default (and never hangs reaching a server that isn't there). Crucially, its
+**wiring is still covered hermetically**: a sim-shaped BR v0.2 fixture (built from the repo's
+own example) is driven through the real analyze/compare tools in the default suite. So the
+integration logic is tested even when the sim is absent. See `knowledge/sim_integration.md`.
+
 Run the suite from your worktree:
 
 ```bash
