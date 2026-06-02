@@ -371,3 +371,15 @@ Branch `feature/roadmap-v2-p14-quality-gates` → merged into `feature/roadmap-v
   `tests/test_quality_gates.py` locks the config + thresholds + CI wiring so they can't silently drift.
 - **Gates:** ruff clean; mypy clean (61 files); coverage **88.90%** (gate 85%).
 - **Tests:** full suite **432 passed / 7 skipped / 0 failed** (prior baseline 424 passed / 7 skipped).
+
+## Phase 20 — Well-lit-path advisor — DONE
+Branch `feature/roadmap-v3-p20-welllit-advisor` → merged into `feature/roadmap-v3` (`--no-ff`, clean `ort`).
+- Added `knowledge/welllit_path_advisor.yaml` — workload-shape → llm-d well-lit-path scenario advisor
+  (prefix-heavy chat → precise-prefix-cache-routing, long-context RAG → pd-disaggregation, high-throughput
+  → optimized-baseline, agentic → agentic-tests, default → cicd/kind), each entry carrying the selecting
+  signals, a rationale, candidate `benchmark_workloads`, and a `deploy_path` reach flag. Wired into the
+  system prompt (`CORE_KNOWLEDGE`) and exposed via `read_knowledge`; `deploy_path_playbook.md` now
+  references it. Judgment is in the data, not in code (thin code / thick agent).
+- **Tests:** full suite **491 passed / 7 skipped / 0 failed** (prior baseline 477 passed / 7 skipped);
+  ruff clean, mypy clean (63 files). New hermetic `tests/test_welllit_advisor.py` (231 lines) validates the
+  required archetypes/fields/signals and that every referenced scenario/workload id is catalog-well-formed.

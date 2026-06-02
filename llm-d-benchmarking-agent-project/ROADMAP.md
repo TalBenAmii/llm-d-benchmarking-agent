@@ -290,3 +290,17 @@ Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is nev
 - Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — additive registry/schemas/knowledge,
   no entries dropped); full suite **477 passed / 7 skipped / 0 failed**, ruff clean, mypy clean
   (+`tests/test_doe.py`, 429 lines).
+
+## Phase 20 — Well-lit-path advisor — DONE
+- Shipped `knowledge/welllit_path_advisor.yaml` (the Well-lit-path advisor): ADVISORY DATA mapping a
+  workload SHAPE → the llm-d well-lit-path scenario worth benchmarking, with the SIGNALS that select it
+  (prefix-reuse, context length, concurrency, SLO emphasis), a plain-language rationale, candidate
+  `benchmark_workloads`, and a `deploy_path` reach flag (kind-local vs gpu-only). The judgment lives in
+  the data, not in any Python `if/elif`: the file is inlined into the system prompt (added to
+  `CORE_KNOWLEDGE` in `app/agent/prompt.py`) and served via `read_knowledge`. `deploy_path_playbook.md`
+  now points at the advisor so the agent consults it once a GPU deploy is in scope, while still
+  benchmarking `cicd/kind` for a local sanity pass. Thin code / thick agent — code only reads the file.
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — additive prompt/knowledge, no entries
+  dropped); full suite **491 passed / 7 skipped / 0 failed**, ruff clean, mypy clean (63 files)
+  (+`tests/test_welllit_advisor.py`, 231 lines; hermetic — validates every archetype's fields/signals and
+  that each `scenario`/`also_consider`/`benchmark_workloads` id resolves against the catalog snapshot).
