@@ -82,4 +82,7 @@ def get_provider(settings: Settings) -> LLMProvider:
     if provider in ("openai", "openai-compatible", "vllm"):
         from app.llm.openai_provider import OpenAIProvider
         return OpenAIProvider(settings)
+    if provider in ("claude-agent-sdk", "agent-sdk", "claude-max"):
+        from app.llm.agent_sdk_provider import AgentSdkProvider
+        return AgentSdkProvider(settings)
     raise ProviderError(f"unknown LLM_PROVIDER {settings.llm_provider!r}")

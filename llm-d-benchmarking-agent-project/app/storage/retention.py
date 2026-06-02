@@ -375,12 +375,23 @@ _PROVIDER_KEY_ATTR: dict[str, str] = {
     "vllm": "openai_api_key",
 }
 
+# Keyless providers: they authenticate via the local ``claude`` CLI subscription login, not an
+# API key in config. Coherent as long as the name is known; a missing CLI login surfaces as a
+# clear error on the first chat (we stay hermetic here and do not probe the CLI).
+_KEYLESS_PROVIDERS: frozenset[str] = frozenset({"claude-agent-sdk", "agent-sdk", "claude-max"})
+
 
 def _check_provider_coherent(settings: Settings) -> CheckOutcome:
     """The LLM provider name must be known AND its required key present. Surfaces the most
     common misconfiguration (provider set, key forgotten) at startup rather than on first chat.
     The check OBSERVES config only — it never contacts the provider (hermetic)."""
     provider = (settings.llm_provider or "anthropic").lower()
+    if provider in _KEYLESS_PROVIDERS:
+        return CheckOutcome(
+            "provider_coherent", True,
+            f"provider {provider!r} uses the Claude subscription via the claude CLI login (no API key)",
+            {"provider": provider, "key_attr": None, "has_key": True},
+        )
     key_attr = _PROVIDER_KEY_ATTR.get(provider)
     if key_attr is None:
         return CheckOutcome(
