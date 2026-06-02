@@ -277,3 +277,16 @@ Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never
 
 ## Roadmap v3 — proposal-completion features (Phases 19-26)
 Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is never touched directly) for the missing proposal-coverage features.
+
+## Phase 19 — DOE experiment-file generator + token-characteristics elicitation — DONE
+- Shipped a `generate_doe_experiment` tool (`app/tools/doe.py`) backed by pure mechanism in
+  `app/validation/doe.py`: the agent supplies factors (name, dotted override key, levels) for the
+  optional `setup` and required `run` phases; the tool cross-products factors × levels into the full
+  treatments matrix, emits a valid experiment YAML into the session workspace (never the read-only
+  repos), and validates it STRUCTURALLY against the llm-d-benchmark experiment example format read
+  LIVE from disk (no vendored copy). WHICH factors/levels to sweep is agent judgment grounded in an
+  expanded `knowledge/sweep_playbook.md`, which now adds explicit token-characteristics / prefix-reuse
+  elicitation guidance. Thin code / thick agent: no factor-selection logic in Python.
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — additive registry/schemas/knowledge,
+  no entries dropped); full suite **477 passed / 7 skipped / 0 failed**, ruff clean, mypy clean
+  (+`tests/test_doe.py`, 429 lines).

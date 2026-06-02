@@ -18,9 +18,9 @@
 | Knowledge-as-config (not hardcoded logic) | ✅ | All judgment in `knowledge/*.md|yaml`; `app/agent/prompt.py` loads at runtime |
 | Concrete `run` invocation output (selected triplet) | ✅ | `app/tools/execute.py` builds the `llmdbenchmark run` argv + dry-run preview |
 | Structured interview: scale, QoS/SLO, infra | ✅ | `SessionPlan` captures SLO (TTFT/TBT/P99/throughput), spec, harness, workload |
-| Structured interview: **token characteristics / prefix-reuse ratio** | ⬜→v3 | Not explicitly elicited; selected implicitly via workload profile (P19 knowledge) |
+| Structured interview: **token characteristics / prefix-reuse ratio** | ✅ | P19: explicit token-characteristics / prefix-reuse elicitation guidance in `knowledge/sweep_playbook.md` |
 | Harness **recommendation** (guidellm sweep vs inference-perf SLO) | 🔶 | Knowledge present (`multi_harness.md`); reasoned by the LLM, no dedicated surfacing — strengthened by P19/P20 |
-| **DOE experiment-FILE generation** (factors × levels → treatments matrix) | ⬜→v3 | §5.2 stretch #1. Agent can *run* an experiment YAML but cannot *author* the matrix — **P19** |
+| **DOE experiment-FILE generation** (factors × levels → treatments matrix) | ✅ | P19: `generate_doe_experiment` (`app/tools/doe.py`) cross-products factors × levels → treatments, emits + structurally validates the experiment YAML |
 | **Well-lit-path advisor** (workload shape → which scenario) | ⬜→v3 | §5.2 stretch. e.g. prefix-heavy chat → precise-prefix-cache-aware; long-context → pd-disaggregation — **P20** |
 
 ## §3.3 Benchmark Orchestrator (K8s Job Lifecycle)
@@ -86,7 +86,7 @@ obeying thin-code/thick-agent + allowlist-as-data. Built by `roadmap-v3-autopilo
 
 | # | Phase | Proposal ref | Delivers |
 |---|---|---|---|
-| **P19** | DOE experiment-file generator | §5.2 #1, §3.2 | A tool that authors a DOE experiment YAML — cross-products agent-chosen *factors × levels* into *treatments* (mechanism), validated structurally against the repo's experiment examples; **which** factors/levels live in `knowledge/`. Also adds explicit token-characteristics elicitation guidance. |
+| **P19** ✅ | DOE experiment-file generator | §5.2 #1, §3.2 | A tool that authors a DOE experiment YAML — cross-products agent-chosen *factors × levels* into *treatments* (mechanism), validated structurally against the repo's experiment examples; **which** factors/levels live in `knowledge/`. Also adds explicit token-characteristics elicitation guidance. |
 | **P20** | Well-lit-path advisor | §5.2 | `knowledge/wellllit_path_advisor.yaml` mapping workload shape → llm-d scenario guide (prefix-heavy→precise-prefix-cache-aware, long-context→pd-disaggregation, throughput→inference-scheduling); referenced scenarios verified against the catalog. |
 | **P21** | Real-time log streaming | §3.3, §4 | Wire `stream_logs(follow=True)` into the orchestrator run loop so benchmark-pod logs surface as live `output` events during a run (not just end-of-run). |
 | **P22** | DOE checkpoint/resume | §3.3, §4 | Persist completed/in-flight treatment IDs to a K8s resource (ConfigMap annotation), consistent with the stateless design; on reconstruct, resume a sweep skipping completed treatments. |

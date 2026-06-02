@@ -8,6 +8,27 @@ Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 s
 
 ---
 
+## 2026-06-02 — Phase 19: DOE experiment-file generator + token-characteristics elicitation — DONE
+Branch `feature/roadmap-v3-p19-doe-gen` → merged into `feature/roadmap-v3` (`--no-ff`).
+- **Shipped:** a `generate_doe_experiment` tool (`app/tools/doe.py`, 213 lines) over pure mechanism
+  in `app/validation/doe.py` (261 lines): the agent supplies factors (name + dotted override key +
+  levels) for the optional `setup` and required `run` phases; the tool cross-products factors × levels
+  into the full treatments matrix, emits a valid experiment YAML into the session workspace (never the
+  read-only repos), and validates it STRUCTURALLY against the llm-d-benchmark experiment example format
+  read LIVE from disk (no vendored copy; falls back to a static contract when examples are absent). Run
+  constants are emitted under `design.run.constants`. WHICH factors/levels live in an expanded
+  `knowledge/sweep_playbook.md`, which now adds explicit token-characteristics / prefix-reuse-ratio
+  elicitation guidance. Thin code / thick agent — no factor-selection logic in Python.
+- **Merge composition:** clean `ort` merge — the additive-registration files (`registry.py`,
+  `schemas.py`, `knowledge/sweep_playbook.md`) auto-merged as a union with no entries dropped; verified
+  no conflict markers and `generate_doe_experiment` registered alongside all prior tools. Branched off
+  current v3 tip (merge-base == v3 HEAD), so no stale-base risk.
+- **Tests:** full integration suite **477 passed / 7 skipped / 0 failed** (14.2s, no hang, exit 0;
+  +`tests/test_doe.py`, 429 lines). Authoritative run from the integration worktree (worktree app on
+  `PYTHONPATH`, real venv + .env, `REPOS_DIR` set, 600s timeout). Quality gates: **ruff clean**,
+  **mypy clean** (no issues in 63 source files). Prior v3 baseline 432 passed / 7 skipped (Phase 14
+  tip); the +45 delta is the v2 phases integrated after that entry plus Phase 19's new doe tests.
+
 ## 2026-06-02 — Phase 16: Run lifecycle & readiness — DONE
 Branch `feature/roadmap-v2-p16-run-lifecycle` → merged into `feature/roadmap-v2` (`--no-ff`).
 - **Shipped:** `app/agent/lifecycle.py` (a `RunRegistry` tracking each session's in-flight turn
