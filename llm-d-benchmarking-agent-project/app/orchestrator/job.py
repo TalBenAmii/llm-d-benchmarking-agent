@@ -12,6 +12,7 @@ Pure functions only — no cluster access (that's :mod:`app.orchestrator.kube`).
 """
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -36,6 +37,177 @@ ACTIVE = "active"
 SUCCEEDED = "succeeded"
 FAILED = "failed"
 ABSENT = "absent"
+
+# The conventional extended-resource name a GPU device-plugin advertises. The agent MAY
+# override it (e.g. ``amd.com/gpu``, ``habana.ai/gaudi``) at plan time — which accelerator a
+# scenario needs is JUDGMENT (knowledge/resource_management.md), not a Python branch.
+DEFAULT_GPU_RESOURCE = "nvidia.com/gpu"
+
+
+@dataclass
+class Scheduling:
+    """Optional Kubernetes scheduling intent for a benchmark Job — pure data the agent
+    supplies at plan time (informed by ``knowledge/resource_management.md``). This object is
+    **mechanism only**: it carries the operator's choices and renders them into the right Job
+    manifest paths. It holds NO placement judgment (which GPU, which node, how to avoid the
+    measured stack) — that decision is the agent's, expressed as these fields.
+
+    Fields (all optional; an empty ``Scheduling`` renders to nothing):
+      * ``node_selector`` — exact node-label match (``spec.template.spec.nodeSelector``).
+      * ``tolerations`` — tolerate node taints (e.g. a dedicated GPU pool taint).
+      * ``affinity`` — a raw, agent-supplied ``affinity`` block, merged verbatim (full power:
+        node affinity, pod affinity/anti-affinity). Use this for anything ``avoid_labels``
+        can't express.
+      * ``gpu_count`` / ``gpu_resource`` — request N GPUs of an extended resource on both
+        ``requests`` and ``limits`` (Kubernetes requires extended resources to match).
+      * ``gpu_type_label`` — a ``(key, value)`` node-label selector pinning the GPU TYPE
+        (e.g. ``("nvidia.com/gpu.product", "NVIDIA-A100-SXM4-80GB")``); merged into
+        ``nodeSelector``.
+      * ``avoid_labels`` — a convenience that mechanically renders **pod anti-affinity** so the
+        benchmark pod is NOT scheduled onto a node already running a pod carrying these labels
+        (e.g. the llm-d stack being measured: ``{"llm-d.ai/role": "decode"}``). This is the
+        anti-starvation lever from proposal §4 — keep the load generator off the nodes serving
+        the system under test so the measurement isn't self-contended.
+    """
+
+    node_selector: dict[str, str] = field(default_factory=dict)
+    tolerations: list[dict[str, Any]] = field(default_factory=list)
+    affinity: dict[str, Any] = field(default_factory=dict)
+    gpu_count: int | None = None
+    gpu_resource: str = DEFAULT_GPU_RESOURCE
+    gpu_type_label: tuple[str, str] | None = None
+    avoid_labels: dict[str, str] = field(default_factory=dict)
+    avoid_topology_key: str = "kubernetes.io/hostname"
+
+    def is_empty(self) -> bool:
+        return not (
+            self.node_selector
+            or self.tolerations
+            or self.affinity
+            or self.gpu_count
+            or self.gpu_type_label
+            or self.avoid_labels
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Scheduling | None:
+        """Parse agent-supplied scheduling intent (the tool's ``scheduling`` arg) into a
+        :class:`Scheduling`. PURE PARSING + shape validation — it accepts/rejects on TYPE, not
+        on policy (no "is this a good placement?" logic; that judgment is the agent's). Returns
+        ``None`` for ``None``/empty so the manifest is byte-for-byte the baseline when omitted.
+        Unknown keys are rejected so a typo'd field can't silently no-op."""
+        if not data:
+            return None
+        allowed = {
+            "node_selector", "tolerations", "affinity", "gpu_count", "gpu_resource",
+            "gpu_type_label", "avoid_labels", "avoid_topology_key",
+        }
+        unknown = set(data) - allowed
+        if unknown:
+            raise ValueError(f"unknown scheduling field(s): {sorted(unknown)}; allowed: {sorted(allowed)}")
+
+        node_selector = _as_str_map(data.get("node_selector"), "node_selector")
+        avoid_labels = _as_str_map(data.get("avoid_labels"), "avoid_labels")
+        tolerations = _as_dict_list(data.get("tolerations"), "tolerations")
+        affinity = data.get("affinity") or {}
+        if not isinstance(affinity, dict):
+            raise ValueError("scheduling.affinity must be a mapping (a Kubernetes affinity block)")
+
+        gpu_count_raw = data.get("gpu_count")
+        gpu_count: int | None = None
+        if gpu_count_raw is not None:
+            if isinstance(gpu_count_raw, bool) or not isinstance(gpu_count_raw, int):
+                raise ValueError("scheduling.gpu_count must be an integer")
+            if gpu_count_raw < 1:
+                raise ValueError("scheduling.gpu_count must be >= 1 (omit it to request no GPU)")
+            gpu_count = gpu_count_raw
+
+        # Present-but-invalid is rejected; absent falls back to the default (so a typo'd empty
+        # string can't silently no-op into the default).
+        gpu_resource = DEFAULT_GPU_RESOURCE
+        if "gpu_resource" in data:
+            gpu_resource = data["gpu_resource"]
+            if not isinstance(gpu_resource, str) or not gpu_resource:
+                raise ValueError("scheduling.gpu_resource must be a non-empty string")
+
+        gpu_type_label = _as_pair(data.get("gpu_type_label"), "gpu_type_label")
+        topo = "kubernetes.io/hostname"
+        if "avoid_topology_key" in data:
+            topo = data["avoid_topology_key"]
+            if not isinstance(topo, str) or not topo:
+                raise ValueError("scheduling.avoid_topology_key must be a non-empty string")
+
+        return cls(
+            node_selector=node_selector,
+            tolerations=tolerations,
+            affinity=copy.deepcopy(affinity),
+            gpu_count=gpu_count,
+            gpu_resource=gpu_resource,
+            gpu_type_label=gpu_type_label,
+            avoid_labels=avoid_labels,
+            avoid_topology_key=topo,
+        )
+
+    def node_selector_map(self) -> dict[str, str]:
+        """The effective nodeSelector = explicit labels + the GPU-type pin (if any)."""
+        out = dict(self.node_selector)
+        if self.gpu_type_label is not None:
+            out[self.gpu_type_label[0]] = self.gpu_type_label[1]
+        return out
+
+    def gpu_quantity(self) -> str | None:
+        """The GPU resource quantity to add to requests AND limits, or ``None`` for no GPU."""
+        return str(self.gpu_count) if self.gpu_count else None
+
+    def effective_affinity(self) -> dict[str, Any]:
+        """The merged affinity block: the agent's raw ``affinity`` plus a podAntiAffinity term
+        synthesized from ``avoid_labels`` (so the benchmark pod avoids nodes already running the
+        measured stack). Returns ``{}`` when neither is set. Mechanical assembly only."""
+        affinity: dict[str, Any] = copy.deepcopy(self.affinity)
+        if self.avoid_labels:
+            term = {
+                "labelSelector": {
+                    "matchExpressions": [
+                        {"key": k, "operator": "In", "values": [v]}
+                        for k, v in sorted(self.avoid_labels.items())
+                    ]
+                },
+                "topologyKey": self.avoid_topology_key,
+            }
+            anti = affinity.setdefault("podAntiAffinity", {})
+            required = anti.setdefault("requiredDuringSchedulingIgnoredDuringExecution", [])
+            required.append(term)
+        return affinity
+
+
+def _as_str_map(value: Any, label: str) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"scheduling.{label} must be a mapping of string->string")
+    out: dict[str, str] = {}
+    for k, v in value.items():
+        if not isinstance(k, str) or not isinstance(v, str):
+            raise ValueError(f"scheduling.{label} keys and values must be strings")
+        out[k] = v
+    return out
+
+
+def _as_dict_list(value: Any, label: str) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(x, dict) for x in value):
+        raise ValueError(f"scheduling.{label} must be a list of mappings")
+    return [copy.deepcopy(x) for x in value]
+
+
+def _as_pair(value: Any, label: str) -> tuple[str, str] | None:
+    if value is None:
+        return None
+    if (isinstance(value, (list, tuple)) and len(value) == 2
+            and all(isinstance(x, str) and x for x in value)):
+        return (value[0], value[1])
+    raise ValueError(f"scheduling.{label} must be a [key, value] pair of non-empty strings")
 
 
 def job_name(run_id: str) -> str:
@@ -76,6 +248,9 @@ class JobSpec:
     memory: str = "1Gi"
     env: dict[str, str] = field(default_factory=dict)
     service_account: str | None = None
+    # Optional scheduling intent (node affinity / GPU selection / anti-starvation placement).
+    # When None the rendered manifest is byte-for-byte the generic cpu/memory baseline.
+    scheduling: Scheduling | None = None
 
     def labels(self) -> dict[str, str]:
         out = {LABEL_MANAGED: MANAGED_BY, LABEL_RUN: self.run_id}
@@ -125,9 +300,30 @@ def build_job_manifest(spec: JobSpec) -> dict[str, Any]:
     if spec.env:
         container["env"] = [{"name": k, "value": v} for k, v in spec.env.items()]
 
+    # Optional GPU request — mechanism only: add the agent-chosen extended resource to BOTH
+    # requests and limits (Kubernetes requires extended-resource requests == limits).
+    sched = spec.scheduling
+    if sched is not None:
+        gpu_qty = sched.gpu_quantity()
+        if gpu_qty is not None:
+            container["resources"]["requests"][sched.gpu_resource] = gpu_qty
+            container["resources"]["limits"][sched.gpu_resource] = gpu_qty
+
     pod_spec: dict[str, Any] = {"restartPolicy": "Never", "containers": [container]}
     if spec.service_account:
         pod_spec["serviceAccountName"] = spec.service_account
+
+    # Optional placement — each block is added ONLY when non-empty, so an unset/empty
+    # Scheduling leaves the pod spec byte-for-byte identical to the generic baseline.
+    if sched is not None:
+        node_selector = sched.node_selector_map()
+        if node_selector:
+            pod_spec["nodeSelector"] = node_selector
+        affinity = sched.effective_affinity()
+        if affinity:
+            pod_spec["affinity"] = affinity
+        if sched.tolerations:
+            pod_spec["tolerations"] = [copy.deepcopy(t) for t in sched.tolerations]
 
     job_spec: dict[str, Any] = {
         "backoffLimit": 0,  # the orchestrator owns retries, not Kubernetes
