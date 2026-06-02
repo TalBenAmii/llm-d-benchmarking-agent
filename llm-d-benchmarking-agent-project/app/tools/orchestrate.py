@@ -12,6 +12,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.observability.resource_poller import resource_stats_poller
 from app.orchestrator.controller import BenchmarkOrchestrator, RunOutcome
 from app.orchestrator.job import JobSpec, Scheduling
 from app.orchestrator.kube import RealKubeClient
@@ -162,8 +163,12 @@ async def orchestrate_benchmark_run(
     # wired (e.g. a bare unit test) streaming is simply disabled.
     on_log_line = _live_log_sink(ctx)
 
-    outcome = await orch.run_with_retries(
-        spec_obj, max_attempts=max_attempts, poll_interval=poll_interval, max_wait=max_wait,
-        on_log_line=on_log_line,
-    )
+    # Stream live cluster CPU/memory for the run alongside it — backend-only, zero LLM cost (it
+    # never enters the message stream). Namespace-wide (the bench namespace is dedicated, so no
+    # run-id selector needed). No-op without a UI emitter or in simulate mode.
+    async with resource_stats_poller(ctx, namespace=namespace):
+        outcome = await orch.run_with_retries(
+            spec_obj, max_attempts=max_attempts, poll_interval=poll_interval, max_wait=max_wait,
+            on_log_line=on_log_line,
+        )
     return {"namespace": namespace, **_serialize_outcome(outcome)}

@@ -22,6 +22,7 @@ from app.agent.channel import Channel
 from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
+from app.agent.suggestions import load_suggestions
 from app.agent.ws_schemas import (
     ApprovalIn,
     CancelIn,
@@ -43,6 +44,7 @@ from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocke
 from app.security.runner import CommandRunner, SimRunner
 from app.storage.history import HistoryStore, available_metrics, trend
 from app.storage.retention import readiness, run_gc, self_check
+from app.tools.probe import probe_environment
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
 _PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -433,6 +435,23 @@ async def ws(websocket: WebSocket) -> None:
             if channel.ws is None and not channel.pending:
                 app.state.channels.pop(session.id, None)
 
+    async def _prewarm_env(s, ch) -> None:
+        """Background read-only environment pre-probe for a brand-new chat (W2).
+
+        Runs the same read-only probe the agent would otherwise call on its first turn, BEFORE
+        the user even sends a message, so the first turn starts environment-aware without an
+        extra LLM round-trip (loop.py injects the snapshot as a synthetic message). Wiring the
+        probe's auto-run `command` events through the channel keeps them in the executed-command
+        trail. Best-effort: any failure is swallowed (the agent just probes itself next turn)."""
+        try:
+            s.ctx.emit = ch.emit
+            s.env_snapshot = await probe_environment(s.ctx, checks=[
+                "container_runtime", "repos", "tools", "venv",
+                "kind_clusters", "kube_context", "cluster_info", "namespaces",
+            ])
+        except Exception:  # noqa: BLE001 — pre-probe is best-effort; never break connect
+            pass
+
     _running_task = app.state.running.get(session.id)
     await channel.emit("ready", {
         "session_id": session.id,
@@ -449,6 +468,16 @@ async def ws(websocket: WebSocket) -> None:
     })
     if resumed:
         await channel.emit("history", {"items": _history_items(session), "commands": session.commands})
+    else:
+        # Brand-new chat: surface the start-of-chat suggestion chips (W1) right after `ready`, and
+        # kick off a NON-blocking read-only environment pre-probe (W2) so the first turn starts
+        # environment-aware without an extra LLM round-trip. Neither blocks input-enable: the
+        # probe runs in the background and its snapshot is consumed on the first turn if ready.
+        chips = load_suggestions(get_settings())
+        if chips:
+            await channel.emit(ws_events.SUGGESTIONS, {"chips": chips})
+        if loop is not None:
+            asyncio.create_task(_prewarm_env(session, channel))
     # If a turn is still running on this session (the socket dropped mid-run), replay the
     # buffered LIVE events for that turn so a reconnecting client catches up to the live stream
     # — the events it missed, in order — then continues live, rather than waiting blind for the

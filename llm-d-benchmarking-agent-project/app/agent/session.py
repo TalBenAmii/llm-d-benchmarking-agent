@@ -86,6 +86,12 @@ class Session:
     total_output_tokens: int = 0         # generated tokens
     total_cache_read_tokens: int = 0     # input served from cache
     total_cache_write_tokens: int = 0    # input written to cache (Anthropic only)
+    # RUNTIME-ONLY (deliberately NOT persisted): the read-only environment snapshot the /ws
+    # handler pre-probes in the background on a brand-new session, and a one-shot flag the loop
+    # flips once it has injected that snapshot as a synthetic turn message. Both are scoped to
+    # the live process — a resumed chat re-probes fresh, so persisting them would be stale.
+    env_snapshot: dict[str, Any] | None = None
+    prewarmed: bool = False
 
     @property
     def session_total(self) -> int:

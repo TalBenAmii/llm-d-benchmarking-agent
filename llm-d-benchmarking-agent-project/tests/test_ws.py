@@ -20,6 +20,22 @@ class FakeProvider:
         return turn
 
 
+# Frames the background environment pre-probe (W2) can stream onto a brand-new connection while
+# we're asserting a specific protocol response: its auto-run read-only probes emit `command`
+# events (and, on a real cluster, the run-time poller could emit `resource_stats`/`output`).
+# Tests that read one expected frame after `ready` skip past this benign background noise.
+_BACKGROUND_TYPES = {"command", "resource_stats", "output"}
+
+
+def _next_protocol(ws):
+    """The next frame that is part of the protocol exchange, skipping background pre-probe noise."""
+    for _ in range(50):
+        ev = ws.receive_json()
+        if ev["type"] not in _BACKGROUND_TYPES:
+            return ev
+    raise AssertionError("only background frames received")
+
+
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_ws_approval_roundtrip():
     from app.main import app
@@ -145,10 +161,14 @@ def test_ws_malformed_frame_rejected_socket_survives():
         app.state.provider = FakeProvider([AssistantTurn(text="hi there", tool_calls=[])])
         with client.websocket_connect("/ws") as ws:
             assert ws.receive_json()["type"] == "ready"
+            # A brand-new connection now emits start-of-chat suggestion chips right after `ready`
+            # (W1) and may stream background pre-probe `command` events (W2). `_next_protocol`
+            # skips that benign noise so we assert the real protocol responses below.
+            assert _next_protocol(ws)["type"] == "suggestions"
 
             # (1) unknown message type -> structured protocol error, socket alive.
             ws.send_json({"type": "totally_bogus", "text": "x"})
-            err = ws.receive_json()
+            err = _next_protocol(ws)
             assert err["type"] == "error"
             assert err["data"].get("kind") == "protocol_error"
             assert "malformed message" in err["data"]["message"]
@@ -158,37 +178,37 @@ def test_ws_malformed_frame_rejected_socket_survives():
             # `receive_json()` would raise json.JSONDecodeError straight out of the handler and
             # tear the socket down, violating the spec's "do NOT crash the handler" requirement.
             ws.send_text("this is not json {{{")
-            err_nonjson = ws.receive_json()
+            err_nonjson = _next_protocol(ws)
             assert err_nonjson["type"] == "error"
             assert err_nonjson["data"].get("kind") == "protocol_error"
             assert "malformed message" in err_nonjson["data"]["message"]
 
             # (1c) an empty text frame is likewise non-JSON -> structured error, still alive.
             ws.send_text("")
-            err_empty = ws.receive_json()
+            err_empty = _next_protocol(ws)
             assert err_empty["type"] == "error"
             assert err_empty["data"].get("kind") == "protocol_error"
 
             # (1d) a binary frame carries no JSON text payload -> structured error, still alive.
             ws.send_bytes(b"\x00\x01\x02 not a frame")
-            err_bin = ws.receive_json()
+            err_bin = _next_protocol(ws)
             assert err_bin["type"] == "error"
             assert err_bin["data"].get("kind") == "protocol_error"
 
             # (2) a non-dict JSON frame (a bare list) -> structured error, still alive.
             ws.send_json(["not", "an", "object"])
-            err2 = ws.receive_json()
+            err2 = _next_protocol(ws)
             assert err2["type"] == "error" and err2["data"].get("kind") == "protocol_error"
 
             # (3) right type but a malformed body (missing required `request_id`) -> error.
             ws.send_json({"type": "approval", "approved": True})
-            err3 = ws.receive_json()
+            err3 = _next_protocol(ws)
             assert err3["type"] == "error" and err3["data"].get("kind") == "protocol_error"
             assert "request_id" in err3["data"]["message"]
 
             # (4) the socket is STILL usable: a valid ping is answered with a pong.
             ws.send_json({"type": "ping"})
-            assert ws.receive_json()["type"] == "pong"
+            assert _next_protocol(ws)["type"] == "pong"
 
             # (5) and a valid user_message still drives a real turn afterwards.
             ws.send_json({"type": "user_message", "text": "hello"})
@@ -407,3 +427,42 @@ def test_channel_buffer_excludes_lifecycle_frames():
     assert events.READY not in types
     assert events.HISTORY not in types
     assert events.PONG not in types
+
+
+# --- W1: start-of-chat suggestion chips ------------------------------------
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_new_connection_emits_suggestions_after_ready():
+    """A brand-new /ws connection emits a `suggestions` event (non-empty {label,prompt} chips)
+    right after `ready`. A resumed connection (?session=<existing>) emits NO suggestions."""
+    from app.main import app
+
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider([AssistantTurn(text="hi", tool_calls=[])])
+
+        # Brand-new chat: ready, then suggestions.
+        with client.websocket_connect("/ws") as ws:
+            ready = ws.receive_json()
+            assert ready["type"] == "ready" and ready["data"]["resumed"] is False
+            sid = ready["data"]["session_id"]
+            sugg = ws.receive_json()
+            assert sugg["type"] == "suggestions"
+            chips = sugg["data"]["chips"]
+            assert chips and all(c.get("label") and c.get("prompt") for c in chips)
+            # Drive one turn so the session is persisted on disk and can be resumed below.
+            ws.send_json({"type": "user_message", "text": "hello"})
+            for _ in range(20):
+                if ws.receive_json()["type"] == "done":
+                    break
+
+        # Resumed chat: ready (resumed True) is followed by history — never suggestions. The
+        # handler emits exactly ready+history with no turn running, so the frame right after
+        # ready must be `history` (the suggestions branch is gated on `not resumed`). A `ping`
+        # round-trip then confirms no stray frame (e.g. a suggestions) is queued ahead of `pong`.
+        with client.websocket_connect(f"/ws?session={sid}") as ws2:
+            ready2 = ws2.receive_json()
+            assert ready2["type"] == "ready" and ready2["data"]["resumed"] is True
+            assert ws2.receive_json()["type"] == "history"
+            ws2.send_json({"type": "ping"})
+            assert ws2.receive_json()["type"] == "pong"

@@ -9,9 +9,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.observability.resource_poller import resource_stats_poller
 from app.tools.context import ToolContext, ToolError
 
 _SUBCOMMANDS = {"plan", "standup", "smoketest", "run", "teardown", "results", "experiment"}
+
+# Subcommands that actually exercise the cluster long enough for live resource stats to be
+# meaningful; we poll ``kubectl top`` alongside them (namespace-wide). plan/dry_run/list_endpoints
+# are previews and never wrapped.
+_POLLED_SUBCOMMANDS = {"run", "experiment", "smoketest"}
 
 # Per-subcommand execution timeouts are now POLICY DATA: they live as `timeout_s` on each
 # llmdbenchmark subcommand in security/allowlist.yaml and are sourced from there by the
@@ -112,8 +118,14 @@ async def execute_llmdbenchmark(
 
     # No timeout override: ctx.run_command sources the per-command deadline from the
     # allowlist's `timeout_s` for this subcommand (data), falling back to the runner's
-    # global default when the policy declares none.
-    res = await ctx.run_command(argv)
+    # global default when the policy declares none. For the cluster-exercising subcommands,
+    # stream live resource stats alongside the run (backend-only, zero LLM cost; no-op without
+    # a UI emitter or in simulate mode).
+    if subcommand in _POLLED_SUBCOMMANDS and namespace:
+        async with resource_stats_poller(ctx, namespace=namespace):
+            res = await ctx.run_command(argv)
+    else:
+        res = await ctx.run_command(argv)
     results_dir = _result_location(
         subcommand, flags, _parse_results_dir(res.output), str(ctx.workspace / "results")
     )

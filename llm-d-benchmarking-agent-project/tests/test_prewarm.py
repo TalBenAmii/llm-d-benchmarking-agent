@@ -1,0 +1,115 @@
+"""W2 — environment pre-probe injection into the first turn.
+
+When the /ws handler pre-probed the environment (session.env_snapshot set, prewarmed False),
+loop.run_turn injects a synthetic "[environment pre-probe …]" user message BEFORE the real user
+text and flips prewarmed True. A second turn must NOT re-inject. Driven by the repo's scripted
+FakeProvider so no API key / cluster is needed.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from app.agent.loop import AgentLoop
+from app.agent.session import Session
+from app.config import get_settings
+from app.llm.provider import AssistantTurn
+from app.security.allowlist import Allowlist
+from app.security.runner import CommandRunner
+from app.tools.context import ToolContext
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+class FakeProvider:
+    """Returns a no-tool-call turn each time and records the messages it was handed, so the
+    test can inspect exactly what the loop assembled for the model."""
+    def __init__(self, n=4):
+        self.seen_messages: list[list[dict]] = []
+        self._n = n
+
+    async def chat(self, *, system, messages, tools, cache_key=None):
+        self.seen_messages.append([dict(m) for m in messages])
+        return AssistantTurn(text="ok", tool_calls=[])
+
+
+def _session(tmp_path) -> Session:
+    s = get_settings()
+    al = Allowlist.from_file(PROJECT_ROOT / "security" / "allowlist.yaml")
+    runner = CommandRunner(s.repo_paths)
+    ctx = ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
+    return Session(id="t", ctx=ctx)
+
+
+def _pre_probe_msgs(messages):
+    return [m for m in messages if m.get("role") == "user"
+            and str(m.get("content", "")).startswith("[environment pre-probe")]
+
+
+async def test_prewarm_snapshot_injected_before_user_text(tmp_path):
+    if not get_settings().bench_repo.is_dir():
+        pytest.skip("repo not present")
+    session = _session(tmp_path)
+    session.env_snapshot = {"tools": {"kubectl": True}, "kind_clusters": {"clusters": ["c1"]}}
+    assert session.prewarmed is False
+
+    provider = FakeProvider()
+
+    async def emit(t, p):
+        pass
+
+    async def approve(kind, payload):
+        return True
+
+    await AgentLoop(provider).run_turn(session, "benchmark a tiny model", emit=emit, request_approval=approve)
+
+    # The synthetic pre-probe message was appended, carrying the snapshot, immediately BEFORE the
+    # real user text — and prewarmed flipped.
+    msgs = session.messages
+    pre = _pre_probe_msgs(msgs)
+    assert len(pre) == 1
+    assert "kubectl" in pre[0]["content"]
+    idx = msgs.index(pre[0])
+    assert msgs[idx + 1] == {"role": "user", "content": "benchmark a tiny model"}
+    assert session.prewarmed is True
+
+
+async def test_prewarm_not_reinjected_on_second_turn(tmp_path):
+    if not get_settings().bench_repo.is_dir():
+        pytest.skip("repo not present")
+    session = _session(tmp_path)
+    session.env_snapshot = {"tools": {"kubectl": True}}
+
+    provider = FakeProvider()
+
+    async def emit(t, p):
+        pass
+
+    async def approve(kind, payload):
+        return True
+
+    await AgentLoop(provider).run_turn(session, "first", emit=emit, request_approval=approve)
+    await AgentLoop(provider).run_turn(session, "second", emit=emit, request_approval=approve)
+
+    # Exactly ONE pre-probe message across both turns.
+    assert len(_pre_probe_msgs(session.messages)) == 1
+
+
+async def test_no_snapshot_means_no_injection(tmp_path):
+    if not get_settings().bench_repo.is_dir():
+        pytest.skip("repo not present")
+    session = _session(tmp_path)
+    assert session.env_snapshot is None
+
+    provider = FakeProvider()
+
+    async def emit(t, p):
+        pass
+
+    async def approve(kind, payload):
+        return True
+
+    await AgentLoop(provider).run_turn(session, "go", emit=emit, request_approval=approve)
+    assert _pre_probe_msgs(session.messages) == []
+    assert session.prewarmed is False
