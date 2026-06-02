@@ -263,3 +263,14 @@ Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never
   Prometheus, and every referenced metric is one the app actually exports, derived live so it
   can't drift; the +1 skip is an optional `promtool` check skipped when the binary is absent.
   Prior baseline 415 passed / 6 skipped).
+
+
+## Phase 14 — Quality gates: ruff + mypy + coverage — DONE
+- Wired three CI-enforced quality gates into `pyproject.toml` / `Makefile` and a new
+  `.github/workflows/agent-flow-validation.yml`: **ruff** (lint, clean), **mypy** (strict typecheck
+  over `app`, no issues across 61 source files), and a **coverage-gated** pytest run
+  (`--cov=app --cov-fail-under=85`). Tightened types/lint across the tree (tools, validation,
+  observability, security, storage) so the gates pass with no behavior change; added
+  `tests/test_quality_gates.py` (146 lines) asserting the config/threshold/CI wiring stay in place.
+- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **432 passed / 7 skipped / 0 failed**
+  (ruff clean, mypy clean, coverage **88.90%** >= 85% gate; prior baseline 424 passed / 7 skipped).

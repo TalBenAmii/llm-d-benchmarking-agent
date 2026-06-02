@@ -339,3 +339,14 @@ Branch `feature/roadmap-v2-p17-ops-docs` → merged into `feature/roadmap-v2` (`
   `app.observability.instrument`, so it can't drift); an optional `promtool` lint skips when the
   binary is absent.
 - **Tests:** full suite **424 passed / 7 skipped / 0 failed** (prior baseline 415 passed / 6 skipped).
+
+
+## Phase 14 — Quality gates: ruff + mypy + coverage — DONE
+Branch `feature/roadmap-v2-p14-quality-gates` → merged into `feature/roadmap-v2` (`--no-ff`).
+- Added three enforced quality gates: `ruff check` (lint), `mypy app` (strict typecheck), and a
+  coverage-gated suite (`--cov=app --cov-fail-under=85`), surfaced via `Makefile` targets,
+  `pyproject.toml` config, and a new GitHub Actions workflow. Cleaned up types/lint across
+  tools/validation/observability/security/storage to make the gates green (no behavior change);
+  `tests/test_quality_gates.py` locks the config + thresholds + CI wiring so they can't silently drift.
+- **Gates:** ruff clean; mypy clean (61 files); coverage **88.90%** (gate 85%).
+- **Tests:** full suite **432 passed / 7 skipped / 0 failed** (prior baseline 424 passed / 7 skipped).
