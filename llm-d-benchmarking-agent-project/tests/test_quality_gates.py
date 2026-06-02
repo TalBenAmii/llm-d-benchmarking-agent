@@ -139,6 +139,36 @@ def test_ci_runs_all_three_gates_and_keeps_hermetic_job():
     )
 
 
+# ---- Phase 26: the opt-in, non-gating sim-integration CI job ---------------
+
+def test_ci_has_optin_nongating_sim_integration_job():
+    """The llm-d-inference-sim integration job exists, is dispatch-only, and never blocks."""
+    data = yaml.safe_load(CI_WORKFLOW.read_text())
+    jobs = data["jobs"]
+    assert "sim-integration" in jobs, "Phase 26 must add a sim-integration CI job"
+    job = jobs["sim-integration"]
+
+    # Non-gating: opt-in via manual dispatch + continue-on-error so it can't block the build.
+    assert job.get("continue-on-error") is True, "sim-integration must never block the build"
+    cond = str(job.get("if", ""))
+    assert "workflow_dispatch" in cond and "run_sim_integration" in cond, (
+        "sim-integration must only run on a manual dispatch with run_sim_integration"
+    )
+
+    # It actually runs the opt-in integration layer with the env flag set.
+    steps = job.get("steps", [])
+    runs = "\n".join(s.get("run", "") for s in steps)
+    assert "tests/integration/" in runs, "must run the tests/integration layer"
+    envs = " ".join(
+        f"{k}={v}" for s in steps for k, v in (s.get("env") or {}).items()
+    )
+    assert "LLMD_SIM_INTEGRATION" in envs, "must enable the opt-in integration flag"
+
+    # The dispatch input that gates it is declared.
+    inputs = data[True]["workflow_dispatch"]["inputs"]
+    assert "run_sim_integration" in inputs
+
+
 # ---- tomllib availability (the test's own dependency) ----------------------
 
 def test_tomllib_is_available_on_the_pinned_python():
