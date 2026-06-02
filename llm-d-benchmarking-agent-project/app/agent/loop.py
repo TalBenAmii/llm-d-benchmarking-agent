@@ -40,6 +40,20 @@ class AgentLoop:
         ctx = session.ctx
         ctx.emit = emit
         ctx.request_approval = request_approval
+        # If a read-only environment pre-probe ran in the background while the user typed their
+        # first message, hand its snapshot to the model as a synthetic user turn BEFORE the real
+        # message — so the agent starts environment-aware without spending an extra LLM turn (or
+        # re-running probe_environment this turn). One-shot: flip prewarmed so we never re-inject
+        # it on later turns. Mechanism only — what to DO with the snapshot is the model's judgment
+        # (guided by knowledge/conversation_style.md).
+        if session.env_snapshot is not None and not session.prewarmed:
+            session.messages.append({
+                "role": "user",
+                "content": ("[environment pre-probe — read-only snapshot, already gathered for "
+                            "you so you don't need to call probe_environment again this turn]\n"
+                            + json.dumps(session.env_snapshot)[:4000]),
+            })
+            session.prewarmed = True
         session.messages.append({"role": "user", "content": user_text})
 
         log.info("turn.start", extra={"session_id": session.id, "user_chars": len(user_text)})

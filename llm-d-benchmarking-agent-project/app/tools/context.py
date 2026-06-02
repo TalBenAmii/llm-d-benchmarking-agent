@@ -170,11 +170,18 @@ class ToolContext:
             return float(decision.timeout_s)
         return fallback
 
-    async def run_readonly(self, argv: list[str], *, timeout: float | None = 20.0) -> RunResult:
+    async def run_readonly(
+        self, argv: list[str], *, timeout: float | None = 20.0, quiet: bool = False
+    ) -> RunResult:
         """Validate + run a command that MUST be read-only. Raises if the allowlist
         would not classify it read-only (these are trusted probes, but we still gate).
         The policy's ``timeout_s`` (if declared) supersedes ``timeout``; probes default to
-        a short 20s bound when the policy declares none."""
+        a short 20s bound when the policy declares none.
+
+        ``quiet=True`` skips ONLY the ``command`` event emit — every gate (allowlist, read-only
+        classification, quota) still applies and the command still runs/records metrics. Used by
+        the live resource poller so its 5s ``kubectl top`` polls don't flood the persisted,
+        500-capped command trail with hundreds of identical rows."""
         decision = self.allowlist.validate(argv, catalog=self.catalog_for_allowlist())
         if not decision.allowed:
             raise ToolError(f"probe command denied by allowlist: {decision.reason}")
@@ -182,7 +189,8 @@ class ToolContext:
             raise ToolError(f"probe command is not read-only: {' '.join(argv)}")
         self._enforce_quota(decision)  # pre-exec refusal (data-driven cap, counter mechanism)
         entry = self.allowlist.executable(argv[0])
-        await self._emit_command(decision, auto_run=True)
+        if not quiet:
+            await self._emit_command(decision, auto_run=True)
         result = await self.runner.execute(
             argv, entry, timeout=self._effective_timeout(decision, timeout)
         )

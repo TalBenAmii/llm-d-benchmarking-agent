@@ -68,6 +68,9 @@ let busy = false;
 let activeConsole = null;     // <pre> for the currently-running command's output
 let currentSession = null;    // id of the chat we're attached to (null until "ready")
 let switching = false;        // true while intentionally closing to switch chats
+let welcomeCard = null;       // the start-of-chat suggestion-chips card, removed once a turn starts
+let readyNoteTimer = null;    // defers the plain "Session ready" note so chips can supersede it
+let resourcePanel = null;     // single live resource-stats panel, updated in place during a run
 
 const toolEls = {}; // id -> details element
 
@@ -147,6 +150,9 @@ function resetTranscript() {
   transcript.innerHTML = "";
   for (const k in toolEls) delete toolEls[k];
   activeConsole = null;
+  welcomeCard = null;          // cleared with the transcript; a new chat re-renders its own
+  resourcePanel = null;
+  if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }
   clearCmdlog();
   stopWorking();
 }
@@ -178,23 +184,29 @@ function handle(msg) {
       // Restore the persisted session token total so the header chip is correct on (re)connect.
       setSessionTokens((data.usage && data.usage.total) || 0);
       if (data.running) addNote("⏳ A benchmark is still running in this chat in the background. Reopen this chat once it finishes to see the results.");
-      else if (!data.resumed) addNote("Session ready. What would you like to benchmark?");
+      // A brand-new chat shows the welcome card with suggestion chips (a `suggestions` event
+      // follows `ready`). The plain note is only a FALLBACK for when no chips arrive — defer it
+      // briefly so the chips, if any, supersede it.
+      else if (!data.resumed) scheduleReadyNote();
       loadSessions();
       if (data.running) startWorking("Working");   // a turn is in flight — show the live indicator
       break;
     case "history": renderHistory(data.items || [], data.commands || []); break;
+    case "suggestions": renderSuggestions(data.chips || []); break;
     case "assistant_text":
+      removeWelcomeCard();                          // the conversation has started — clear the chips
       addBubble("assistant", data.text);
       if (!workingEl.hidden) resumeThinking();      // between steps: back to generic cycling
       break;
     case "tool_call": startTool(data); setWorkTool(data.name); break;
-    case "command": onCommand(data); setWorkActivity(data.text || (data.argv || []).join(" ")); break;
+    case "command": removeWelcomeCard(); onCommand(data); setWorkActivity(data.text || (data.argv || []).join(" ")); break;
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "approval_request": addApprovalCard(data); stopWorking(); break;  // now waiting on the user, not the model
     case "error": addBubble("error", data.message); stopWorking(); break;
     case "usage": onUsage(data); break;
-    case "done": setEnabled(true); activeConsole = null; appendTurnTokens(); loadSessions(); loadHistory(); stopWorking(); break;
+    case "resource_stats": renderResourceStats(data); break;
+    case "done": setEnabled(true); activeConsole = null; appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
     case "pong": break;
   }
   scroll();
@@ -523,6 +535,92 @@ function addBubble(role, text) {
 
 function addNote(text) { addBubble("assistant", text); }
 
+// ---- start-of-chat welcome card + suggestion chips -----------------------
+// On a brand-new chat the server emits a `suggestions` event right after `ready`. We show a
+// welcome card with one chip per suggestion; clicking a chip sends its prompt. The plain
+// "Session ready…" note is only a fallback shown when no chips arrive (or they arrive late).
+
+// Defer the plain note briefly so a `suggestions` event (which follows `ready`) can supersede
+// it. If chips render first, removeWelcomeNoteFallback cancels this; otherwise the note shows.
+function scheduleReadyNote() {
+  if (readyNoteTimer) clearTimeout(readyNoteTimer);
+  readyNoteTimer = setTimeout(() => {
+    readyNoteTimer = null;
+    if (!welcomeCard) addNote("Session ready. What would you like to benchmark?");
+  }, 400);
+}
+
+function renderSuggestions(chips) {
+  if (!Array.isArray(chips) || !chips.length) return;
+  if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }  // chips win over the note
+  removeWelcomeCard();
+  const card = el("div", "welcome-card");
+  card.appendChild(el("div", "welcome-heading",
+    "Hi! I can help you run a benchmark — try one of these, or just describe your use case:"));
+  const wrap = el("div", "welcome-chips");
+  for (const chip of chips) {
+    if (!chip || !chip.label || !chip.prompt) continue;
+    const btn = el("button", "chip", chip.label);
+    btn.type = "button";
+    btn.onclick = () => { sendUserMessage(chip.prompt); };   // sendUserMessage removes the card
+    wrap.appendChild(btn);
+  }
+  card.appendChild(wrap);
+  transcript.appendChild(card);
+  welcomeCard = card;
+  scroll();
+}
+
+function removeWelcomeCard() {
+  if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }
+  if (welcomeCard) { welcomeCard.remove(); welcomeCard = null; }
+}
+
+// ---- live resource-stats panel (backend-streamed during a run) -----------
+// One panel, updated in place from each `resource_stats` event (NOT appended per event), and
+// cleared on `done`. Zero agent/LLM cost — purely a backend-pushed view.
+function ensureResourcePanel() {
+  if (resourcePanel && resourcePanel.isConnected) return resourcePanel;
+  resourcePanel = el("div", "resource-panel");
+  transcript.appendChild(resourcePanel);
+  return resourcePanel;
+}
+
+function renderResourceStats(data) {
+  const panel = ensureResourcePanel();
+  panel.innerHTML = "";
+  if (data.available === false) {
+    panel.appendChild(el("div", "resource-note", data.note || "live resource stats unavailable"));
+    scroll();
+    return;
+  }
+  const rows = data.rows || [];
+  const head = el("div", "resource-head", `live resource usage${data.namespace ? " · " + data.namespace : ""}`);
+  panel.appendChild(head);
+  if (!rows.length) {
+    panel.appendChild(el("div", "resource-note", "no pods reporting yet"));
+    scroll();
+    return;
+  }
+  const table = el("table", "resource-table");
+  const thead = el("tr");
+  for (const h of ["pod", "cpu", "memory"]) thead.appendChild(el("th", null, h));
+  table.appendChild(thead);
+  for (const r of rows) {
+    const tr = el("tr");
+    tr.appendChild(el("td", "resource-name", r["name"] || ""));
+    tr.appendChild(el("td", null, r["cpu(cores)"] || ""));
+    tr.appendChild(el("td", null, r["memory(bytes)"] || ""));
+    table.appendChild(tr);
+  }
+  panel.appendChild(table);
+  scroll();
+}
+
+function clearResourceStats() {
+  if (resourcePanel) { resourcePanel.remove(); resourcePanel = null; }
+}
+
 function renderHistory(items, commands) {
   for (const it of items) {
     if (it.role === "user") addBubble("user", it.text);
@@ -806,17 +904,26 @@ function resumeThinking() {        // back between steps — resume generic cycl
 
 // ---- input --------------------------------------------------------------
 
+// Send a user message — shared by the composer form and a clicked suggestion chip, so the two
+// paths never drift. Appends the user bubble, sends the frame, and flips the UI into "working".
+function sendUserMessage(text) {
+  text = (text || "").trim();
+  if (!text || busy || !ws || ws.readyState !== WebSocket.OPEN) return;
+  removeWelcomeCard();              // the conversation has started — clear any suggestion chips
+  addBubble("user", text);
+  ws.send(JSON.stringify({ type: "user_message", text }));
+  setEnabled(false);
+  startWorking();
+  scroll();
+}
+
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text || busy || !ws || ws.readyState !== WebSocket.OPEN) return;
-  addBubble("user", text);
-  ws.send(JSON.stringify({ type: "user_message", text }));
+  sendUserMessage(text);
   input.value = "";
   input.style.height = "auto";
-  setEnabled(false);
-  startWorking();
-  scroll();
 });
 
 input.addEventListener("keydown", (e) => {

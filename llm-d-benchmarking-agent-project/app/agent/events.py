@@ -22,6 +22,14 @@ Server -> client:
                                             event emitted on every LLM call (the live UI line
                                             ticks up): turn.* are the RUNNING totals for the
                                             in-progress turn, session.* the running session totals.
+  suggestions      {chips:[{label,prompt}]}— start-of-chat suggestion chips, emitted ONCE on a
+                                            brand-new connection (never on resume) right after
+                                            `ready`. A connection-lifecycle frame, not a turn event.
+  resource_stats   {available, namespace?, rows?, note?}
+                                           — LIVE cluster CPU/memory for the running benchmark's
+                                            pods, streamed by the backend resource poller during a
+                                            run at a fixed interval. ZERO LLM cost (it never enters
+                                            the message stream). Frequent — see NON_TURN_EVENTS.
   done             {}                      — the agent finished this turn
 
 Client -> server (validated against app.agent.ws_schemas; a malformed frame is rejected with
@@ -45,6 +53,8 @@ SESSION_PLAN = "session_plan"
 ERROR = "error"
 CANCELLED = "cancelled"
 USAGE = "usage"
+SUGGESTIONS = "suggestions"
+RESOURCE_STATS = "resource_stats"
 DONE = "done"
 
 # Connection-lifecycle frames: emitted by the /ws handler on (re)connect, NOT part of any
@@ -55,7 +65,14 @@ READY = "ready"
 HISTORY = "history"
 PONG = "pong"
 
-# Event types that are NOT buffered into the per-turn live ring (lifecycle frames above). The
-# buffer holds only in-flight TURN events so replay_live reproduces the missed live stream
-# faithfully, without re-sending handshake/keep-alive frames.
-NON_TURN_EVENTS = frozenset({READY, HISTORY, PONG})
+# Event types that are NOT buffered into the per-turn live ring. Two kinds:
+#   * lifecycle frames (ready/history/pong/suggestions) — emitted by the /ws handler on
+#     (re)connect, not part of any turn's live stream; buffering them would replay a stale
+#     handshake on a second mid-turn reconnect;
+#   * resource_stats — the live resource poller streams these every few seconds during a run.
+#     They are frequent and disposable; buffering them would evict the REAL turn events (tool
+#     calls, command lines, assistant text) from the bounded ring, so a mid-turn reconnect would
+#     replay a wall of stat samples instead of the progress it actually missed.
+# The buffer therefore holds only the in-flight TURN's meaningful events, exactly as replay_live
+# promises.
+NON_TURN_EVENTS = frozenset({READY, HISTORY, PONG, SUGGESTIONS, RESOURCE_STATS})
