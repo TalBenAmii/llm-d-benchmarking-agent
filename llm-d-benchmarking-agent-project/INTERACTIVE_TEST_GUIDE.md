@@ -323,10 +323,23 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
   Treat failures as **signal** (a prompt/knowledge gap or a genuinely wrong choice), not a hard
   build break — a live model is nondeterministic.
 
-> **Gap to know about:** the live-eval flow set in `tests/flows/flows.py` does **not** yet include
-> a DOE scenario, so §4's "does the agent choose the DOE tools" is currently only checkable by the
-> manual click-through above. Adding a `Flow(...)` with `required_subcommands=["experiment"]` would
-> automate it.
+> **What the live eval now covers:** beyond the deploy/benchmark vertical (§3), the flow set in
+> `tests/flows/flows.py` includes **tool-choice flows** for the rest of the surfaces, each scored
+> on the tool the model picks from natural language (a `required_tools` hint, the analogue of
+> `required_subcommands` for non-`llmdbenchmark` tools):
+> - **§4 DoE/sweep** — `doe-run-sweep` (run-parameter sweep) and `doe-full-experiment` (full DoE
+>   with setup factors) → `generate_doe_experiment`.
+> - **§5/§6 analysis & history** — `analyze-slo-pareto` → `analyze_results`; `compare-ab-runs` →
+>   `compare_reports`; `result-history-baseline` → `result_history`; `multi-harness-compare` →
+>   `compare_harness_runs`; `capacity-preflight` → `check_capacity`.
+> - **§7/§8 orchestrator & lifecycle** — `orchestrate-k8s-job` → `orchestrate_benchmark_run`;
+>   `endpoint-readiness-gate` → `check_endpoint_readiness`; `observe-live-usage` →
+>   `observe_run_metrics`; `cancel-stuck-run` → `cancel_run`.
+>
+> These run in the SAME hermetic sandbox as §3 (no cluster/repos), so they score the model's
+> *choice*, not real numbers — the manual click-throughs above still own end-to-end execution.
+> Each is also replayed deterministically (a golden transcript) by `make test`, so the loop +
+> approval gating are CI-gated even though the live scoring is opt-in.
 
 ---
 

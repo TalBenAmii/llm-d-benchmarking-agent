@@ -112,6 +112,29 @@ def test_every_flow_is_uniquely_named():
     assert len(FLOWS_BY_NAME) == len(ALL_FLOWS), "duplicate flow name(s)"
 
 
+def test_required_and_forbidden_tools_are_real():
+    """Every tool a flow scores the live model on must be a real registered tool — a typo'd
+    name would silently never match (and so never fail the live eval), defeating the check."""
+    from app.tools.registry import REGISTRY
+    for flow in ALL_FLOWS:
+        for name in (*flow.required_tools, *flow.forbidden_tools):
+            assert name in REGISTRY, f"[{flow.name}] names unknown tool {name!r} (not in the registry)"
+
+
+def test_required_tools_appear_in_golden_transcript():
+    """A flow's golden transcript must itself call every tool the live eval requires — so the
+    deterministic replay is a faithful exemplar of the behavior we score the real model on, and
+    a drift between the scripted ideal and the live-eval hint can't go unnoticed."""
+    for flow in ALL_FLOWS:
+        if not flow.required_tools:
+            continue
+        scripted = {tc.name for turn in flow.turns for tc in turn.tool_calls}
+        missing = [t for t in flow.required_tools if t not in scripted]
+        assert not missing, (
+            f"[{flow.name}] required_tools {missing} are never called in its golden transcript"
+        )
+
+
 def test_expected_commands_reference_real_catalog_items():
     """Every spec/harness/workload a flow's expected commands name must exist in the
     frozen snapshot (catches a typo'd fixture before it can mask a real regression)."""
