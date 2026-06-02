@@ -408,3 +408,20 @@ Branch `feature/roadmap-v3-p21-log-stream` → merged into `feature/roadmap-v3` 
   +`tests/test_orchestrator_logstream.py`, 213 lines + `test_orchestrator_tool.py` additions). Prior
   baseline 509 passed / 7 skipped (Phase 25). Ruff clean, mypy clean (63 source files). Authoritative
   run from the integration worktree against the worktree app + shared venv, 600s timeout.
+
+## Phase 23 — Resource management: node affinity / GPU selection / anti-starvation — DONE
+Branch `feature/roadmap-v3-p23-resource-mgmt` → merged into `feature/roadmap-v3` (`--no-ff`; one
+additive conflict in `knowledge/orchestrator.md` resolved by keeping BOTH sides — Phase 21
+log-streaming + Phase 23 hardware/placement sections; `orchestrate.py` auto-merged streaming +
+scheduling into one run path).
+- Added an OPTIONAL `Scheduling` value object to `JobSpec`/`build_job_manifest`: a benchmark Job can
+  request hardware (GPU resource/count, GPU-type node label) and be placed so it does NOT starve the
+  measured llm-d stack — `node_selector`, `tolerations`, raw `affinity`, and pod anti-affinity from
+  `avoid_labels` (proposal §4). Unset ⇒ byte-for-byte the cpu/memory baseline manifest. Mechanism only;
+  the WHICH-GPU/WHERE judgment is DATA in `knowledge/resource_management.md` (thin code / thick agent).
+  `orchestrate_benchmark_run` threads a validated `scheduling` dict through; schema field + tool
+  description guide the agent. No allowlist change (existing `kubectl apply` surface).
+- **Tests:** full integration suite **556 passed / 7 skipped / 0 failed** (17.2s, no hang, exit 0;
+  +`tests/test_resource_management.py`, 347 lines / +37 tests). Prior baseline 519 passed / 7 skipped
+  (Phase 21). Ruff clean, mypy clean (63 source files). Authoritative run from the integration worktree
+  against the worktree app + shared venv, 600s timeout.

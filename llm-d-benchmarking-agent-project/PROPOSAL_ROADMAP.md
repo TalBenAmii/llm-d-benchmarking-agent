@@ -35,7 +35,7 @@
 | Cleanup of terminal Jobs / ConfigMaps; preserve artifacts | ✅ | `controller.py` `cleanup` (terminal-only default; results PVC preserved) |
 | **Real-time log streaming** from pods → UI | ✅ | P21: `controller.run_with_retries`/`run_attempt` now tail the benchmark pod's live logs (`kube.stream_logs`) into per-line `output` events during the run; `orchestrate_benchmark_run` wires a `ctx.emit("output", …)` sink — same transport as streamed command output, best-effort (a failing tail never breaks the run) |
 | **Checkpoint/resume for long DOE experiments** | ⬜→v3 | §3.3 + §4 explicit; zero implementation. Biggest 40%-grade omission — **P22** |
-| **Resource management** (node affinity, GPU-type selection, anti-starvation) | ⬜→v3 | `JobSpec` has only generic cpu/memory; no `nodeSelector`/`affinity`/GPU — **P23** |
+| **Resource management** (node affinity, GPU-type selection, anti-starvation) | ✅ | P23: optional `Scheduling` on `JobSpec`/`build_job_manifest` — `node_selector`/`tolerations`/raw `affinity`/GPU resource+type label + pod anti-affinity from `avoid_labels`; unset ⇒ baseline manifest; judgment as DATA in `knowledge/resource_management.md` |
 | Dependency mgmt: **endpoint health-check before submit** + optional auto-standup | 🔶→v3 | Only pod-presence probe today; no endpoint readiness gate — **P24** |
 | Job monitoring via Watch API | ◽ | Implemented poll-based by design (documented in `controller.py`); acceptable — left as-is |
 
@@ -55,7 +55,7 @@
 | Feature | Status | Evidence / Notes |
 |---|---|---|
 | Job scheduling / fault tolerance / stateless design | ✅ | See §3.3 (retry, dead-letter, reconstruct) |
-| Resource management (quotas, affinity, no starvation) | ⬜→v3 | **P23** |
+| Resource management (quotas, affinity, no starvation) | ✅ | P23: optional `Scheduling` — node affinity/GPU selection/anti-starvation placement on benchmark Jobs |
 | Observability — Prometheus/Grafana, live metrics during runs | ✅ | Phase 7: `/metrics`, `observe_run_metrics`, Grafana dashboard |
 | Observability — real-time benchmark-pod log streaming | ✅ | P21: `stream_logs(follow=True)` wired into the orchestrator run loop → live `output` events during a run |
 | Harness catalog: inference-perf, guidellm, vLLM, InferenceMAX, nop | ✅ | Runtime-discovered from the repo; any catalog harness invocable (no hardcoded whitelist) |

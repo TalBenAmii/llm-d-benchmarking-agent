@@ -334,3 +334,21 @@ Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is nev
   clean (63 files) (+`tests/test_orchestrator_logstream.py`, 213 lines + `test_orchestrator_tool.py`
   additions; hermetic — fake kube client streams lines, asserts ordering/`output`-event shape, the
   no-emitter disable path, and that a raising tail is swallowed without failing the run).
+
+## Phase 23 — Resource management: node affinity / GPU selection / anti-starvation — DONE
+- Added an OPTIONAL `Scheduling` value object to `JobSpec`/`build_job_manifest` so a benchmark Job
+  can request the right hardware (GPU resource + count, GPU-type node label) and be placed so it does
+  **not starve the measured llm-d stack** — via `node_selector`, `tolerations`, a raw agent-supplied
+  `affinity` block, and pod anti-affinity synthesized from `avoid_labels` (proposal §4). With
+  `scheduling` unset the rendered manifest is byte-for-byte the cpu/memory baseline. Mechanism only:
+  `Scheduling.from_dict` accepts/rejects on TYPE; the WHICH-GPU / WHERE-to-place judgment lives as
+  DATA in `knowledge/resource_management.md` (thin code / thick agent). `orchestrate_benchmark_run`
+  threads a validated `scheduling` dict through; the schema field + tool description guide the agent.
+  No allowlist change (the manifest goes through the existing `kubectl apply` surface).
+- Merged into `feature/roadmap-v3` (`--no-ff`; one additive conflict in `knowledge/orchestrator.md`
+  resolved by keeping BOTH sides — Phase 21 log-streaming section + Phase 23 hardware/placement
+  section; `orchestrate.py` auto-merged the streaming + scheduling wiring into one coherent run path);
+  full suite **556 passed / 7 skipped / 0 failed** (17.2s, no hang, exit 0), ruff clean, mypy clean
+  (63 files) (+`tests/test_resource_management.py`, 347 lines / +37 tests; hermetic — baseline manifest
+  unchanged when unset, GPU/node-selector/toleration/affinity/anti-affinity rendering, and
+  type-validation rejection). Prior baseline 519 passed / 7 skipped (Phase 21).
