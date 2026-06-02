@@ -7,10 +7,12 @@ through the allowlist gate (defense in depth — nothing bypasses validation).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from app.config import Settings
 from app.observability import instrument
@@ -125,16 +127,14 @@ class ToolContext:
         mode + exe + duration + exit code (per Phase 11) and — via the contextvars filter —
         the turn's corr_id/session_id/tool automatically."""
         exe = decision.argv[0] if decision.argv else ""
-        try:
+        with contextlib.suppress(Exception):  # metrics must not affect the run
             instrument.record_command(
                 exe=exe,
                 mode=decision.mode,
                 auto_run=auto_run,
                 duration_s=result.duration_s,
             )
-        except Exception:  # noqa: BLE001 — metrics must not affect the run
-            pass
-        try:
+        with contextlib.suppress(Exception):  # logging must not affect the run
             log.info("command.exec", extra={
                 "exe": exe,
                 "mode": decision.mode,
@@ -143,8 +143,6 @@ class ToolContext:
                 "exit_code": result.exit_code,
                 "timed_out": result.timed_out,
             })
-        except Exception:  # noqa: BLE001 — logging must not affect the run
-            pass
 
     def _enforce_quota(self, decision: Decision) -> None:
         """Refuse, BEFORE execution, if this command would exceed its allowlist-declared

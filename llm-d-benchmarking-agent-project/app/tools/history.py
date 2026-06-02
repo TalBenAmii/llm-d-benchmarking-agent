@@ -57,7 +57,12 @@ async def _store(
     if not source:
         return {"stored": False, "reason": "store requires `source` (a report file or run dir)"}
     p = Path(source)
-    report_path = p if p.is_file() else (find_reports([p], newest_only=True) or [None])[0]
+    report_path: Path | None
+    if p.is_file():
+        report_path = p
+    else:
+        found = find_reports([p], newest_only=True)
+        report_path = found[0] if found else None
     if report_path is None:
         return {"stored": False, "reason": f"no Benchmark Report found under {source!r}"}
 

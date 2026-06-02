@@ -21,8 +21,8 @@ from app.capacity.planner import (
     plan_config_for_spec,
     resolve_scenario_file,
 )
-from app.config import Settings, get_settings
-from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
+from app.config import get_settings
+from app.security.allowlist import READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunnerError
 from app.tools.capacity import _parse_bridge_output, check_capacity
 from app.tools.context import ToolContext, ToolError

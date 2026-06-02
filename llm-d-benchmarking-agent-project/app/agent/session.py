@@ -17,7 +17,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from app.config import Settings
 from app.security.allowlist import Allowlist
@@ -30,7 +30,7 @@ _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _TITLE_MAX = 60
 
 
-def _is_valid_id(sid: str | None) -> bool:
+def _is_valid_id(sid: str | None) -> TypeGuard[str]:
     return isinstance(sid, str) and bool(_ID_RE.match(sid))
 
 

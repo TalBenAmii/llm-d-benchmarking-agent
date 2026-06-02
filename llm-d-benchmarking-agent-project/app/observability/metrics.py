@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import math
 import threading
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Mapping, Sequence, Tuple
 
 # A label set is an ordered tuple of (name, value) pairs — ordered+hashable so it keys a dict.
-LabelKey = Tuple[Tuple[str, str], ...]
+LabelKey = tuple[tuple[str, str], ...]
 
 
 def _normalize_labels(labels: Mapping[str, str] | None) -> LabelKey:
@@ -53,7 +53,7 @@ def _format_value(value: float) -> str:
     return repr(value)
 
 
-def _render_labels(label_key: LabelKey, extra: Sequence[Tuple[str, str]] = ()) -> str:
+def _render_labels(label_key: LabelKey, extra: Sequence[tuple[str, str]] = ()) -> str:
     pairs = list(label_key) + list(extra)
     if not pairs:
         return ""
@@ -67,7 +67,7 @@ class _Series:
 
     value: float = 0.0
     # Histogram-only: cumulative bucket counts keyed by upper bound, plus sum and count.
-    buckets: Dict[float, int] = field(default_factory=dict)
+    buckets: dict[float, int] = field(default_factory=dict)
     hist_sum: float = 0.0
     hist_count: int = 0
 
@@ -77,11 +77,11 @@ class _Metric:
 
     metric_type = "untyped"
 
-    def __init__(self, name: str, help_text: str, registry: "MetricsRegistry"):
+    def __init__(self, name: str, help_text: str, registry: MetricsRegistry):
         self.name = name
         self.help_text = help_text
         self._registry = registry
-        self._series: Dict[LabelKey, _Series] = {}
+        self._series: dict[LabelKey, _Series] = {}
 
     def _series_for(self, label_key: LabelKey) -> _Series:
         s = self._series.get(label_key)
@@ -90,7 +90,7 @@ class _Metric:
             self._series[label_key] = s
         return s
 
-    def snapshot(self) -> Dict[LabelKey, _Series]:
+    def snapshot(self) -> dict[LabelKey, _Series]:
         # Caller holds the registry lock; return the live mapping (rendered immediately).
         return self._series
 
@@ -129,7 +129,7 @@ class Gauge(_Metric):
 
 # Default histogram buckets (seconds) tuned for command/run durations: sub-second probes up to
 # multi-hour benchmark runs. +Inf is always appended by render.
-DEFAULT_DURATION_BUCKETS: Tuple[float, ...] = (
+DEFAULT_DURATION_BUCKETS: tuple[float, ...] = (
     0.05, 0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800, 3600,
 )
 
@@ -140,14 +140,14 @@ class Histogram(_Metric):
 
     metric_type = "histogram"
 
-    def __init__(self, name: str, help_text: str, registry: "MetricsRegistry",
+    def __init__(self, name: str, help_text: str, registry: MetricsRegistry,
                  buckets: Sequence[float] = DEFAULT_DURATION_BUCKETS):
         super().__init__(name, help_text, registry)
         # Sorted, de-duplicated finite upper bounds; +Inf is implicit and added at render time.
-        self._bounds: Tuple[float, ...] = tuple(sorted({float(b) for b in buckets}))
+        self._bounds: tuple[float, ...] = tuple(sorted({float(b) for b in buckets}))
 
     @property
-    def bounds(self) -> Tuple[float, ...]:
+    def bounds(self) -> tuple[float, ...]:
         return self._bounds
 
     def observe(self, value: float, *, labels: Mapping[str, str] | None = None) -> None:
@@ -155,7 +155,7 @@ class Histogram(_Metric):
         with self._registry.lock:
             s = self._series_for(key)
             if not s.buckets:
-                s.buckets = {b: 0 for b in self._bounds}
+                s.buckets = dict.fromkeys(self._bounds, 0)
             for b in self._bounds:
                 if value <= b:
                     s.buckets[b] += 1
@@ -169,7 +169,7 @@ class MetricsRegistry:
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self._metrics: Dict[str, _Metric] = {}
+        self._metrics: dict[str, _Metric] = {}
 
     def _register(self, metric: _Metric) -> _Metric:
         existing = self._metrics.get(metric.name)
@@ -218,7 +218,7 @@ def render_prometheus(registry: MetricsRegistry) -> str:
 
 
 def _render_histogram(lines: list[str], metric: Histogram,
-                      series: Dict[LabelKey, _Series]) -> None:
+                      series: dict[LabelKey, _Series]) -> None:
     for label_key in sorted(series):
         s = series[label_key]
         cumulative = 0

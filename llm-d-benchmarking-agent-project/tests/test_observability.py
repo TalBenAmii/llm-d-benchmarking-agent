@@ -8,8 +8,6 @@ leaks between tests or into the process REGISTRY.
 """
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from app.config import Settings
@@ -19,7 +17,6 @@ from app.security.allowlist import Allowlist
 from app.tools.context import ApprovalRejected, ToolContext
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
-
 
 # ---- helpers ---------------------------------------------------------------
 
@@ -103,8 +100,8 @@ async def test_command_count_increments_across_invocations(tmp_path):
 # ---- orchestrator instrumentation (through the real controller) ------------
 
 def _orch_ctx(tmp_path):
-    from tests.orchestrator_fakes import FakeKubeClient  # local import (test-only fakes)
     from app.orchestrator.controller import BenchmarkOrchestrator
+    from tests.orchestrator_fakes import FakeKubeClient  # local import (test-only fakes)
 
     fake = FakeKubeClient()
     orch = BenchmarkOrchestrator(fake, tmp_path / "ws")
@@ -155,8 +152,8 @@ async def test_oom_run_records_dead_letter_and_fault_kind(tmp_path):
 async def test_transient_retry_records_two_submits_and_attempts(tmp_path):
     """An evicted (transient) attempt retries as a fresh Job, then succeeds: two submits, two
     terminal attempts (failed then succeeded), one successful run outcome."""
-    from tests.orchestrator_fakes import make_pod
     from app.orchestrator.faults import EVICTED
+    from tests.orchestrator_fakes import make_pod
 
     reg = MetricsRegistry()
     with instrument.use_registry(reg):
@@ -190,6 +187,7 @@ async def test_submit_only_counts_submitted_but_no_outcome(tmp_path):
 
 def test_metrics_endpoint_exposes_prometheus_text(tmp_path):
     from fastapi.testclient import TestClient
+
     from app.config import get_settings
 
     if not get_settings().bench_repo.is_dir():

@@ -19,7 +19,7 @@ from __future__ import annotations
 import secrets
 import threading
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, Request, WebSocket, status
 from starlette.requests import HTTPConnection
@@ -175,7 +175,7 @@ class RateLimiter:
     @classmethod
     def from_settings(
         cls, settings: Settings, *, clock: Callable[[], float] = time.monotonic
-    ) -> "RateLimiter":
+    ) -> RateLimiter:
         return cls(
             enabled=settings.rate_limit_enabled,
             rps=settings.rate_limit_rps,

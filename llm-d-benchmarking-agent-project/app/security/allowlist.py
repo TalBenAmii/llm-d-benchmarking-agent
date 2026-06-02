@@ -133,7 +133,7 @@ class Allowlist:
 
     # ---- construction -----------------------------------------------------
     @classmethod
-    def from_file(cls, path: str | Path) -> "Allowlist":
+    def from_file(cls, path: str | Path) -> Allowlist:
         try:
             data = yaml.safe_load(Path(path).read_text())
         except yaml.YAMLError as exc:

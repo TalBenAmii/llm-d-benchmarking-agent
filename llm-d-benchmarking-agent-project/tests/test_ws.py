@@ -308,7 +308,7 @@ def test_ws_reconnect_does_not_double_send_approval():
                     approvals += 1
                     rid = ev["data"]["request_id"]
                     break
-            assert approvals == 1, "exactly one approval card expected on reconnect, got %d" % approvals
+            assert approvals == 1, f"exactly one approval card expected on reconnect, got {approvals}"
             # Finish cleanly so no background task is left parked.
             ws2.send_json({"type": "approval", "request_id": rid, "approved": True})
             for _ in range(40):

@@ -7,8 +7,9 @@ definitions (name/description/JSON-Schema) are exported for the LLM providers.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import BaseModel, ValidationError
 

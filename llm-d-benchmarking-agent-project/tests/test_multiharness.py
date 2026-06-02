@@ -27,7 +27,6 @@ from app.validation.report import (
     summarize_report,
 )
 
-
 # ---- helpers ---------------------------------------------------------------
 
 def _summary(harness, *, model="m", ttft_ms=None, out_rate=None, req_rate=None,

@@ -11,7 +11,6 @@ from app.tools import command, probe
 from app.tools.context import ApprovalRejected, ToolError
 from app.tools.registry import dispatch
 
-
 # ---- run_command (the generic allowlisted-command tool) -------------------
 
 async def test_run_command_denies_non_allowlisted(tool_ctx):

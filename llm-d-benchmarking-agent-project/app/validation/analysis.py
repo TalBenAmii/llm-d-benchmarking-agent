@@ -26,7 +26,7 @@ be honest with the user. No extrapolation beyond the reported percentiles.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -88,7 +88,7 @@ class SLOTargets(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _at_least_one(self) -> "SLOTargets":
+    def _at_least_one(self) -> SLOTargets:
         if not any(
             v is not None
             for v in (self.ttft_ms, self.tpot_ms, self.itl_ms, self.request_latency_ms,
@@ -169,7 +169,7 @@ def _goodput_for_latency(metric_obj: dict[str, Any], target_canonical: float, un
     if target_canonical >= ladder[-1][0]:
         return ladder[-1][1], "percentile-interpolation (>= max reported percentile)"
     # Interpolate between the bracketing percentiles.
-    for (lat_lo, frac_lo), (lat_hi, frac_hi) in zip(ladder, ladder[1:]):
+    for (lat_lo, frac_lo), (lat_hi, frac_hi) in zip(ladder, ladder[1:], strict=False):
         if lat_lo <= target_canonical <= lat_hi:
             if lat_hi == lat_lo:
                 return frac_hi, "percentile-interpolation"
@@ -190,7 +190,7 @@ def evaluate_slo(summary: dict[str, Any], slo: SLOTargets) -> dict[str, Any]:
     verdicts: list[MetricVerdict] = []
     latency_goodputs: list[float] = []
 
-    for path, field_name, unit in _LATENCY_SLOS:
+    for path, field_name, _unit in _LATENCY_SLOS:
         target = getattr(slo, field_name)
         if target is None:
             continue
@@ -210,7 +210,7 @@ def evaluate_slo(summary: dict[str, Any], slo: SLOTargets) -> dict[str, Any]:
             goodput_fraction=gp, goodput_method=method,
         ))
 
-    for path, field_name, unit in _THROUGHPUT_SLOS:
+    for path, field_name, _unit in _THROUGHPUT_SLOS:
         target = getattr(slo, field_name)
         if target is None:
             continue
@@ -372,10 +372,11 @@ def pareto_analysis(
             "objectives": points[i],
             "on_frontier": label in frontier,
         }
-        if slo_eval[i] is not None:
-            item["slo_met"] = slo_eval[i]["overall_met"]
-            item["goodput_pct"] = slo_eval[i]["goodput"]["estimate_pct"]
-            item["slo_eval"] = slo_eval[i]
+        ev = slo_eval[i]
+        if ev is not None:
+            item["slo_met"] = ev["overall_met"]
+            item["goodput_pct"] = ev["goodput"]["estimate_pct"]
+            item["slo_eval"] = ev
         runs_out.append(item)
 
     result: dict[str, Any] = {
@@ -387,7 +388,10 @@ def pareto_analysis(
 
     # SLO-feasible frontier: best trade-offs among only the runs that meet the SLOs.
     if slo is not None:
-        feasible_idx = [i for i in range(len(entries)) if slo_eval[i] and slo_eval[i]["overall_met"]]
+        feasible_idx = [
+            i for i in range(len(entries))
+            if (ev := slo_eval[i]) is not None and ev["overall_met"]
+        ]
         feasible_labels = [labels[i] for i in feasible_idx]
         result["slo_feasible"] = feasible_labels
         if len(feasible_idx) >= 1:

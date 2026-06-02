@@ -135,7 +135,7 @@ class FakeKubeClient:
     async def list_jobs(self, *, namespace: str, selector: str | None = None) -> list[dict]:
         sel = _parse_selector(selector)
         out: list[dict] = []
-        for (ns, rid), rec in self._runs.items():
+        for (ns, _rid), rec in self._runs.items():
             if ns != namespace:
                 continue
             snaps = rec["snapshots"]
@@ -150,7 +150,7 @@ class FakeKubeClient:
     async def list_pods(self, *, namespace: str, selector: str | None = None) -> list[dict]:
         sel = _parse_selector(selector)
         out: list[dict] = []
-        for (ns, rid), pods in self._pods.items():
+        for (ns, _rid), pods in self._pods.items():
             if ns != namespace:
                 continue
             for p in pods:
