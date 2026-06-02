@@ -135,6 +135,38 @@ def test_required_tools_appear_in_golden_transcript():
         )
 
 
+async def test_simulate_mode_skips_command_gate_without_breaking_invariants(tmp_path):
+    """SIMULATE mode deliberately skips the per-command approval gate (mutating commands run
+    as harmless no-ops so the walk isn't stalled — see ``app/tools/context.py``). So
+    ``gating_problems`` must NOT flag an un-gated mutating command when ``run.simulate`` is set,
+    while STILL upholding deny-bypass / read-only-gating. We assert on a flow that genuinely
+    drives a mutating command, so the tolerance is actually exercised — and on the SAME flow run
+    normally as a control, to prove we didn't just disable the invariant everywhere."""
+    from app.security.allowlist import MUTATING
+
+    flow = next((f for f in ALL_FLOWS if any(e.mode == MUTATING for e in flow_expected(f))), None)
+    assert flow is not None, "need ≥1 flow with a mutating command to exercise simulate gating"
+
+    sim = await run_flow(flow, tmp_path=tmp_path, simulate=True)
+    assert sim.simulate is True
+    muts = [c for c in sim.commands if c.mode == MUTATING]
+    assert muts, f"[{flow.name}] expected ≥1 mutating command under simulate"
+    assert all(not c.approved for c in muts), "simulate must NOT route mutating commands through the gate"
+    assert not (g := gating_problems(sim)), "simulate gating should be clean:\n" + "\n".join(g)
+
+    # Control: the same flow run normally still approval-gates every mutating command.
+    normal = await run_flow(flow, tmp_path=tmp_path)
+    assert normal.simulate is False
+    assert all(c.approved for c in normal.commands if c.mode == MUTATING), \
+        "non-simulate run must approval-gate every mutating command"
+    assert not gating_problems(normal)
+
+
+def flow_expected(flow):
+    """The flow's expected (golden) command list — tolerates flows that omit it."""
+    return getattr(flow, "expected", None) or []
+
+
 def test_expected_commands_reference_real_catalog_items():
     """Every spec/harness/workload a flow's expected commands name must exist in the
     frozen snapshot (catches a typo'd fixture before it can mask a real regression)."""

@@ -11,6 +11,14 @@ NON-GATING: skipped unless ``LLM_EVAL_LIVE=1`` and a key is configured. Run it w
     LLM_EVAL_LIVE=1 .venv/bin/python -m pytest tests/flows/test_flows_live.py -v
     # or: make validate-live
 
+Set ``LLM_EVAL_SIMULATE=1`` as well to drive every flow in the app's SIMULATE mode — the
+agent is told (via the system prompt's SIMULATE_NOTE) to walk the WHOLE workflow end-to-end
+without pausing for confirmations or missing hardware (no GPU/Docker/kind needed; the sandbox
+already executes nothing). This lets the multi-step deploy/teardown flows be scored on the
+subcommands/specs they choose, which they otherwise can't reach in a single eval turn::
+
+    LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 .venv/bin/python -m pytest tests/flows/test_flows_live.py -v --timeout=300
+
 Because a live model is nondeterministic, treat failures as signal to investigate (a
 prompt/knowledge gap, or a genuinely wrong choice), not as a hard build break.
 """
@@ -27,6 +35,7 @@ from .flows import ALL_FLOWS
 from .harness import run_flow, score_flow
 
 _LIVE = os.getenv("LLM_EVAL_LIVE") == "1"
+_SIMULATE = os.getenv("LLM_EVAL_SIMULATE") == "1"
 _LIVE_FLOWS = [f for f in ALL_FLOWS if f.live_eval]
 
 pytestmark = pytest.mark.skipif(
@@ -54,12 +63,13 @@ async def test_live_flow_drives_the_right_commands(flow, tmp_path):
                     "`claude` CLI for LLM_PROVIDER=claude-agent-sdk")
 
     provider = get_provider(get_settings())
-    run = await run_flow(flow, tmp_path=tmp_path, provider=provider)
+    run = await run_flow(flow, tmp_path=tmp_path, provider=provider, simulate=_SIMULATE)
     passed, notes = score_flow(run, flow)
 
+    mode = "SIMULATE" if _SIMULATE else "live"
     detail = "\n".join(f"  - {n}" for n in notes)
     commands = "\n".join(f"  $ {' '.join(c.argv)}  [{c.mode}]" for c in run.significant) or "  (no significant commands)"
     assert passed, (
-        f"[{flow.name}] live eval failed:\n{detail}\n"
+        f"[{flow.name}] {mode} eval failed:\n{detail}\n"
         f"commands the model chose:\n{commands}"
     )
