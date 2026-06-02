@@ -396,3 +396,15 @@ Branch `feature/roadmap-v3-p25-analyzer-metrics` → merged into `feature/roadma
   +`tests/test_standard_metrics.py`, 293 lines / +18 tests). Prior baseline 491 passed / 7 skipped
   (Phase 20). Ruff clean, mypy clean (63 source files). Authoritative run from the integration worktree
   against the worktree app + shared venv, 600s timeout.
+
+## Phase 21 — Real-time benchmark-pod log streaming — DONE
+Branch `feature/roadmap-v3-p21-log-stream` → merged into `feature/roadmap-v3` (`--no-ff`, clean `ort`).
+- Wired `kube.stream_logs(follow=True)` into the orchestrator run loop (`controller.run_with_retries`/
+  run-attempt) so live benchmark-pod log lines forward through an optional `on_log_line` sink;
+  `orchestrate_benchmark_run` builds that sink from `ctx.emit`, surfacing each line to the UI as an
+  `output` event (same transport as streamed command output) — real-time progress during the run, not
+  just end-of-run. Best-effort: a failing tail never breaks the run; no emitter ⇒ streaming disabled.
+- **Tests:** full suite **519 passed / 7 skipped / 0 failed** (17.3s, no hang, exit 0;
+  +`tests/test_orchestrator_logstream.py`, 213 lines + `test_orchestrator_tool.py` additions). Prior
+  baseline 509 passed / 7 skipped (Phase 25). Ruff clean, mypy clean (63 source files). Authoritative
+  run from the integration worktree against the worktree app + shared venv, 600s timeout.

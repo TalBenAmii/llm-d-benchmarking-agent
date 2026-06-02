@@ -319,3 +319,18 @@ Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is nev
   (+`tests/test_standard_metrics.py`, 293 lines; hermetic — standardized + native extraction, catalog
   preference order, graceful degradation on absent/garbage reports, real BR v0.2 surfacing, and the
   informational-only Pareto behavior).
+
+## Phase 21 — Real-time benchmark-pod log streaming — DONE
+- Wired the existing `kube.stream_logs(follow=True)` into the orchestrator run loop: while a
+  benchmark Job runs, `controller` tails the pod's live log lines and forwards each through an
+  optional `on_log_line` sink. `orchestrate_benchmark_run` builds that sink from `ctx.emit`, so
+  every line surfaces to the UI as an `output` event — the SAME transport the runner already uses
+  for streamed command output, so the user watches benchmark progress in real time instead of only
+  at end-of-run. Best-effort: a failing/closed tail never breaks the run (guarded in the
+  orchestrator), and with no emitter wired (bare unit tests, non-UI callers) streaming is simply
+  disabled — behavior otherwise unchanged.
+- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — structural-wiring of the run loop,
+  no existing behavior dropped); full suite **519 passed / 7 skipped / 0 failed**, ruff clean, mypy
+  clean (63 files) (+`tests/test_orchestrator_logstream.py`, 213 lines + `test_orchestrator_tool.py`
+  additions; hermetic — fake kube client streams lines, asserts ordering/`output`-event shape, the
+  no-emitter disable path, and that a raising tail is swallowed without failing the run).

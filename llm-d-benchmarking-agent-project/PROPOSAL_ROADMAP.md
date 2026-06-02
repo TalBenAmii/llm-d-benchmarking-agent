@@ -33,7 +33,7 @@
 | Parallel DOE sweeps w/ concurrency limit | ✅ | `controller.py` `run_sweep` (`asyncio.Semaphore`) |
 | **Stateless design — reconstruct state from cluster** | ✅ | `controller.py` `reconstruct` from Job/pod labels (`LABEL_SESSION/SWEEP/TREATMENT`) — the 40% centerpiece |
 | Cleanup of terminal Jobs / ConfigMaps; preserve artifacts | ✅ | `controller.py` `cleanup` (terminal-only default; results PVC preserved) |
-| **Real-time log streaming** from pods → UI | ⬜→v3 | `kube.py` `stream_logs` exists but is **never called** in the run loop — **P21** |
+| **Real-time log streaming** from pods → UI | ✅ | P21: `controller.run_with_retries`/`run_attempt` now tail the benchmark pod's live logs (`kube.stream_logs`) into per-line `output` events during the run; `orchestrate_benchmark_run` wires a `ctx.emit("output", …)` sink — same transport as streamed command output, best-effort (a failing tail never breaks the run) |
 | **Checkpoint/resume for long DOE experiments** | ⬜→v3 | §3.3 + §4 explicit; zero implementation. Biggest 40%-grade omission — **P22** |
 | **Resource management** (node affinity, GPU-type selection, anti-starvation) | ⬜→v3 | `JobSpec` has only generic cpu/memory; no `nodeSelector`/`affinity`/GPU — **P23** |
 | Dependency mgmt: **endpoint health-check before submit** + optional auto-standup | 🔶→v3 | Only pod-presence probe today; no endpoint readiness gate — **P24** |
@@ -57,7 +57,7 @@
 | Job scheduling / fault tolerance / stateless design | ✅ | See §3.3 (retry, dead-letter, reconstruct) |
 | Resource management (quotas, affinity, no starvation) | ⬜→v3 | **P23** |
 | Observability — Prometheus/Grafana, live metrics during runs | ✅ | Phase 7: `/metrics`, `observe_run_metrics`, Grafana dashboard |
-| Observability — real-time benchmark-pod log streaming | ⬜→v3 | **P21** |
+| Observability — real-time benchmark-pod log streaming | ✅ | P21: `stream_logs(follow=True)` wired into the orchestrator run loop → live `output` events during a run |
 | Harness catalog: inference-perf, guidellm, vLLM, InferenceMAX, nop | ✅ | Runtime-discovered from the repo; any catalog harness invocable (no hardcoded whitelist) |
 | guidellm multimodal (image/video/audio) guidance | ◽ | Low-value stretch; documented as out-of-scope below |
 
@@ -88,7 +88,7 @@ obeying thin-code/thick-agent + allowlist-as-data. Built by `roadmap-v3-autopilo
 |---|---|---|---|
 | **P19** ✅ | DOE experiment-file generator | §5.2 #1, §3.2 | A tool that authors a DOE experiment YAML — cross-products agent-chosen *factors × levels* into *treatments* (mechanism), validated structurally against the repo's experiment examples; **which** factors/levels live in `knowledge/`. Also adds explicit token-characteristics elicitation guidance. |
 | **P20** ✅ | Well-lit-path advisor | §5.2 | `knowledge/welllit_path_advisor.yaml` mapping workload shape → llm-d scenario guide (prefix-heavy→precise-prefix-cache-routing, long-context→pd-disaggregation, throughput→optimized-baseline); referenced scenarios verified against the catalog; inlined into the system prompt + served via `read_knowledge`. |
-| **P21** | Real-time log streaming | §3.3, §4 | Wire `stream_logs(follow=True)` into the orchestrator run loop so benchmark-pod logs surface as live `output` events during a run (not just end-of-run). |
+| **P21** ✅ | Real-time log streaming | §3.3, §4 | Wired `stream_logs(follow=True)` into the orchestrator run loop so benchmark-pod logs surface as live `output` events during a run (not just end-of-run); `orchestrate_benchmark_run` forwards each line via `ctx.emit("output", …)` — best-effort, a failing tail never breaks the run. |
 | **P22** | DOE checkpoint/resume | §3.3, §4 | Persist completed/in-flight treatment IDs to a K8s resource (ConfigMap annotation), consistent with the stateless design; on reconstruct, resume a sweep skipping completed treatments. |
 | **P23** | Resource management | §4 | Extend `JobSpec`/`build_job_manifest` with optional `nodeSelector`/`affinity`/`tolerations` + GPU resource and anti-affinity so benchmark Jobs don't starve the measured stack; GPU/placement supplied at plan time via knowledge. |
 | **P24** | Endpoint health-check + optional auto-standup | §3.3 | Before submitting a benchmark Job, gate on inference-endpoint readiness; optionally trigger `standup` (approval-gated) when no healthy stack is present. |
