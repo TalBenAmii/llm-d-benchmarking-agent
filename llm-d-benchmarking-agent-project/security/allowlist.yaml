@@ -125,6 +125,14 @@ value_constraints:
   repo_path:       { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+$" }
   # experiment (DoE) extras:
   namespaces:      { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(,[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$" }  # one or two (deploy,bench)
+  # ---- multi-stack subset (Phase 33): --stack value ----
+  # A comma-separated list of ONE OR MORE stack names (NAME[,NAME...]) selecting which pools of a
+  # multi-stack scenario (e.g. guides/multi-model-wva: qwen3-06b,llama-31-8b) to operate on. Each
+  # name is an RFC1123 label (same per-name shape as `namespace`/`namespaces`); this generalizes the
+  # two-name `namespaces` regex to N names. WHICH stack(s) is the agent's judgment
+  # (knowledge/multi_stack.md), not an enumerable table — names come from the scenario's `scenario:`
+  # list. The metacharacter screen additionally rejects any shell-dangerous token.
+  stack_list:      { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(,[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*$" }  # one or more (NAME[,NAME...])
   overrides:       { regex: "^[A-Za-z0-9_.,=:/+-]+$" }   # param=value,param=value
   positive_int:    { regex: "^[0-9]+$" }
   # ---- step selection / re-run (Phase 31): -s/--step value ----
@@ -598,6 +606,13 @@ executables:
           # Phase 31: step selection / re-run a single failed step (or range) of the phase.
           "-s": { takes_value: true, value: { ref: step_list } }
           "--step": { takes_value: true, value: { ref: step_list } }
+          # Phase 33: multi-stack SUBSET (--stack NAME[,NAME...], standup/smoketest/run/teardown
+          # upstream) restricts a multi-stack scenario to specific pools; --parallel <int>
+          # (standup/smoketest/experiment upstream) caps how many stacks deploy in parallel
+          # (default 4). Both are value-pinned DATA — WHICH stack(s) / HOW MANY at once is the
+          # agent's judgment (knowledge/multi_stack.md).
+          "--stack": { takes_value: true, value: { ref: stack_list } }
+          "--parallel": { takes_value: true, value: { ref: positive_int } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       smoketest:
@@ -614,6 +629,10 @@ executables:
           # Phase 31: step selection / re-run a single failed step (or range) of the phase.
           "-s": { takes_value: true, value: { ref: step_list } }
           "--step": { takes_value: true, value: { ref: step_list } }
+          # Phase 33: multi-stack SUBSET (--stack) + per-pool parallelism CAP (--parallel).
+          # smoketest accepts both upstream. Value-pinned DATA; judgment in knowledge/multi_stack.md.
+          "--stack": { takes_value: true, value: { ref: stack_list } }
+          "--parallel": { takes_value: true, value: { ref: positive_int } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       run:
@@ -663,6 +682,12 @@ executables:
           # instead of the synthetic workload profile. Value constrained to dataset_url.
           "-x": { takes_value: true, value: { ref: dataset_url } }
           "--dataset": { takes_value: true, value: { ref: dataset_url } }
+          # Phase 33: multi-stack SUBSET (--stack NAME[,NAME...]) — benchmark a single pool of a
+          # multi-stack scenario WITHOUT re-deploying siblings (endpoint URL auto-resolves for the
+          # selected stack). `run` accepts --stack upstream but NOT --parallel — run uses the
+          # SEPARATE --parallelism/-j (parallel harness PODS) above; do NOT add --parallel here.
+          # Value-pinned DATA; WHICH stack is judgment in knowledge/multi_stack.md.
+          "--stack": { takes_value: true, value: { ref: stack_list } }
           "--list-endpoints": { read_only_trigger: true }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
@@ -680,6 +705,12 @@ executables:
           # Phase 31: step selection / re-run a single failed step (or range) of the phase.
           "-s": { takes_value: true, value: { ref: step_list } }
           "--step": { takes_value: true, value: { ref: step_list } }
+          # Phase 33: multi-stack SUBSET (--stack NAME[,NAME...]) — tear down one pool of a
+          # multi-stack scenario while leaving siblings in place (when set, the per-namespace WVA
+          # controller is preserved; --deep overrides this). teardown accepts --stack but NOT
+          # --parallel upstream — do NOT add --parallel here. Value-pinned DATA; judgment in
+          # knowledge/multi_stack.md.
+          "--stack": { takes_value: true, value: { ref: stack_list } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       results:

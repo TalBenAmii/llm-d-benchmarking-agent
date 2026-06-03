@@ -273,7 +273,13 @@ _DESCRIPTIONS = {
         "— see knowledge/collect_only.md for WHEN. "
         "To REPLAY a real dataset instead of a synthetic workload profile (run/experiment only), "
         "set flags.dataset to its URL/path — it emits `-x`; WHEN to replay vs stay synthetic is "
-        "your judgment, see knowledge/dataset_replay.md."
+        "your judgment, see knowledge/dataset_replay.md. "
+        "For a MULTI-STACK scenario (N model pools behind one gateway, e.g. guides/multi-model-wva), "
+        "set flags.stack to a stack name or comma-separated subset (NAME[,NAME...]) to target ONE "
+        "pool — it emits `--stack` on standup/smoketest/run/teardown; and set flags.parallel to an "
+        "int to CAP how many stacks deploy in parallel (emits `--parallel` on standup/smoketest/"
+        "experiment; lower it on a small/Kind node). WHICH stack(s) and HOW MANY at once is your "
+        "judgment — see knowledge/multi_stack.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "
