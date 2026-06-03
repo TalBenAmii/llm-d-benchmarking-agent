@@ -13,6 +13,21 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 64 (ROADMAP_V4): Provider-aware precondition pack (oc-vs-kubectl, GPU taints/tolerations,
+  GMP/known-issues). Added a read-only `provider_detection` capability to the `probe_environment` tool
+  (`app/tools/probe.py`, registered in `app/tools/registry.py`, enum widened in `app/tools/schemas.py`) that reuses the
+  already-allowlisted `kubectl get nodes -o json` to emit FACTS only — the detected cloud `provider`
+  (openshift/gke/doks/aks vs a `kind` default), `providers_seen`, per-node `gpu_taints` `{node,key,value,effect}`, and
+  per-node label/taint facts — via a plain label-prefix membership lookup (the mechanism prefix table is kept in lockstep
+  with the knowledge file by a test), with NO provider `if/elif` in Python. `security/allowlist.yaml` (DATA only) gains an
+  `oc:` tool entry carrying the SAME constrained read-only subcommands as `kubectl` (shared `kubectl_resource`/
+  `output_format`/`namespace`/`label_selector` refs — DATA, no oc-vs-kubectl branching). The per-provider playbook (which
+  CLI, which taint/toleration to author, which known issue — GMP / "Undetected platform" / NVSHMEM — applies) is pure
+  JUDGMENT in new `knowledge/infra_providers.yaml`, cross-linked from `knowledge/preconditions.md`; any toleration/patch is
+  authored into the session workspace and applied only as an approval-gated mutating step. New hermetic suites
+  `tests/test_provider_pack.py` + `tests/test_allowlist.py` (oc validates against the same read-only constraints as
+  kubectl; mutating/unknown subcommands denied) — no GPU, no live cluster, no real benchmark run. Merged into
+  `feature/roadmap-v4`. Suite **903 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
 - 2026-06-03 — Phase 48 (ROADMAP_V4): Parse + surface `results.session_performance` (multi-turn). `app/validation/report.py`
   gained `extract_session_performance`, which mechanically pulls the `results.session_performance.sessions` stats block
   (session_rate/duration, events/tokens per session) with field-name discovery as DATA in `knowledge/standard_metrics.yaml`
