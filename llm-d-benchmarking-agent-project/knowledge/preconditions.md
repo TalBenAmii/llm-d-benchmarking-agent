@@ -57,6 +57,40 @@ ready it includes a `standup_suggestion`.
 `orchestrate_benchmark_run` applies this same gate automatically before submitting a Job
 (see knowledge/orchestrator.md).
 
+## Targeting a remote cluster (-k / kubeconfig, URL, token)
+By default every `llmdbenchmark` command runs against your **ambient kube context** — for the
+quickstart that is the local Kind cluster `probe_environment` already sees. You only need to
+target a **different** cluster when the user explicitly points you at a remote one (e.g. "run
+this on our GKE/OpenShift staging cluster", "use this kubeconfig", "here's an API URL + token").
+WHEN to do this is the user's call — never reach for a remote cluster on your own.
+
+There are two ways to target a non-ambient cluster, both threaded through `execute_llmdbenchmark`:
+
+1. **A non-default kubeconfig FILE** — the simplest and preferred lever. Pass the top-level
+   `kubeconfig="<path>"` argument; it is emitted as the CLI's `-k/--kubeconfig <path>` (upstream
+   `LLMDBENCH_KUBECONFIG`) and is valid on every subcommand. The path is a **non-secret** file
+   path (allowlist-pinned, no `..` traversal); it appears normally in the command trail. Use this
+   whenever the user already has a kubeconfig for the target cluster — it also carries the right
+   context, CA, and auth in one file.
+2. **An API-server URL + bearer TOKEN** — when there is no kubeconfig file, pass
+   `flags={"cluster_url": "https://api.cluster:6443", "cluster_token": "<token>"}`. These are
+   carried **backend-only** as the `LLMDBENCH_CLUSTER_URL` / `LLMDBENCH_CLUSTER_TOKEN` child-env
+   vars; the benchmark CLI's `kube_connect` uses them as the API host + `Bearer` token.
+
+**The token is a SECRET. Treat it exactly like an HF token:**
+- It is **never** a CLI flag and **never** an argv token, so it can never appear in a `command`
+  event, the executed-command trail, a log line, or anything the browser sees. It rides only the
+  scrubbed backend child env.
+- **Never echo the token back to the user**, never put it in a plan summary, and never read it
+  into any other tool's arguments. If the user pastes a token in chat, use it via
+  `flags.cluster_token` and do not repeat it.
+- The cluster **URL** is not secret (you may name it); only the token is.
+
+Whichever lever you use, the cluster you target is still subject to all the usual gates — run
+`probe_environment` / `check_endpoint_readiness` against it first, and keep the same
+"don't redeploy a healthy stack" and approval-before-mutation rules below. Prefer `kubeconfig`
+when a file exists; use URL+token only when that's all the user has.
+
 ## Infra precondition gate (before a real-cluster standup)
 Before committing to a **long real-cluster standup** — especially a sidecar-based prefill/decode
 (P/D) guide — run `probe_environment` with `checks=["cluster_preconditions"]` and the planned

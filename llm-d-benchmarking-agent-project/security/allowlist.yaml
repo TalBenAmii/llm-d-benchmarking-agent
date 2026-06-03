@@ -105,6 +105,15 @@ value_constraints:
   # additionally rejects shell-dangerous tokens. WHICH model is valid is the agent + the
   # capacity pre-flight's job (HF config lookup), not an enumerable on-disk catalog.
   model_id:        { regex: "^[A-Za-z0-9._/-]+$" }
+  # ---- cluster access (Phase 29): -k/--kubeconfig value ----
+  # A path to a NON-DEFAULT kubeconfig FILE (targets a remote cluster). It is a plain,
+  # NON-SECRET file path — same safe charset as output_dir/json_path, with NO `..` traversal so
+  # only a normal absolute/relative path is expressible (never a directory-climbing escape). The
+  # cluster URL + bearer TOKEN route is deliberately NOT a flag here: the token is a SECRET that
+  # must never be expressible as an argv token, so it travels ONLY as a backend-only, scrubbed
+  # child env var (LLMDBENCH_CLUSTER_URL/_TOKEN) — see the cluster-access non-leak note on the
+  # llmdbenchmark entry below and knowledge/preconditions.md for the WHEN-to-target judgment.
+  kubeconfig_path: { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+$" }
   output_format:   { enum: [json, yaml, wide, name] }
   methods:         { enum: [standalone, modelservice, kustomize, fma] }
   # experiment (DoE) extras:
@@ -489,6 +498,16 @@ executables:
       - { value: { ref: modelserver_probe_url } }
 
   # ---- the benchmark CLI (the primary target) ---------------------------
+  # CLUSTER ACCESS (Phase 29): each subcommand permits `-k`/`--kubeconfig <path>` to target a
+  # NON-DEFAULT kubeconfig FILE (a remote cluster), value-pinned by `kubeconfig_path` (a plain,
+  # non-secret path with no `..` traversal). build_argv emits `-k` AFTER the subcommand, so the
+  # flagspec lives on each subcommand (parallel to the Phase 28 `-m` model override). The cluster
+  # URL + bearer TOKEN route is DELIBERATELY NOT a flag anywhere here: the token is a SECRET and
+  # must never be an argv token. It travels ONLY as the backend-only, scrubbed child-env vars
+  # LLMDBENCH_CLUSTER_URL/LLMDBENCH_CLUSTER_TOKEN (forwarded by runner._build_env's LLMDBENCH_*
+  # passthrough) — ToolContext._emit_command emits only argv/text/mode, so the token never reaches
+  # the browser, a `command` event, or a log (same non-leak rationale as the HF token in
+  # provision_hf_secret.py). WHEN to target a remote cluster is JUDGMENT in knowledge/preconditions.md.
   llmdbenchmark:
     cwd_must_be: "repo:llm-d-benchmark"
     runner: { invoke: "venv-bin", venv: "repo:llm-d-benchmark/.venv", bin: "llmdbenchmark" }
@@ -510,6 +529,9 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 29: target a non-default kubeconfig FILE (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           # Phase 28: preview a model override; upstream spells it --models on plan, -m is the short form.
           "-m": { takes_value: true, value: { ref: model_id } }
           "--models": { takes_value: true, value: { ref: model_id } }
@@ -524,6 +546,9 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 29: target a non-default kubeconfig FILE (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "--skip-smoketest": {}
           "-t": { takes_value: true, value: { ref: methods } }
           "--methods": { takes_value: true, value: { ref: methods } }
@@ -545,6 +570,9 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 29: target a non-default kubeconfig FILE (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "-t": { takes_value: true, value: { ref: methods } }
           "--methods": { takes_value: true, value: { ref: methods } }
           "-n": { read_only_trigger: true }
@@ -559,6 +587,9 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 29: target a non-default kubeconfig FILE (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "-l": { takes_value: true, value: { ref_catalog: harnesses } }
           "--harness": { takes_value: true, value: { ref_catalog: harnesses } }
           "-w": { takes_value: true, value: { ref_catalog: workloads } }
@@ -588,6 +619,9 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 29: target a non-default kubeconfig FILE (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "-t": { takes_value: true, value: { ref: methods } }
           "--methods": { takes_value: true, value: { ref: methods } }
           "-n": { read_only_trigger: true }
@@ -609,6 +643,10 @@ executables:
           "--experiments": { takes_value: true, value: { ref: output_dir } }
           "-p": { takes_value: true, value: { ref: namespaces } }
           "--namespace": { takes_value: true, value: { ref: namespaces } }
+          # Phase 29: target a non-default kubeconfig FILE for every per-treatment standup/run/
+          # teardown in the sweep (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "-l": { takes_value: true, value: { ref_catalog: harnesses } }
           "--harness": { takes_value: true, value: { ref_catalog: harnesses } }
           "-w": { takes_value: true, value: { ref_catalog: workloads } }
