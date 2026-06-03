@@ -77,6 +77,19 @@ def build_argv(
     knowledge/dataset_replay.md, never an if/elif on the value here. We set NO env var: the CLI
     itself derives LLMDBENCH_RUN_DATASET_DIR/_FILE from the URL during profile rendering.
 
+    ``flags["analyze"]`` (Phase 40) emits a bare ``--analyze`` ONLY on ``run``. Upstream defines
+    ``--analyze`` (store_true, env ``LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY=1``) SOLELY on the
+    ``run`` subparser (llmdbenchmark/interface/run.py) — the shared parser and experiment/standup/
+    plan do NOT carry it — so we guard on ``subcommand == "run"`` and emit nothing elsewhere. When
+    set, the CLI runs its optional workstation matplotlib analysis on the collected results,
+    producing three EXTRA plot families UNDER ``analysis/`` — per-request distributions
+    (``analysis/distributions/``), session-lifecycle bar charts (``analysis/session/``), and
+    Prometheus time-series (``analysis/graphs/``) — IN ADDITION to the harness's own PNGs. These
+    are SUPPLEMENTARY visualizations; they do NOT change the run's mutating mode and do NOT touch
+    the agent's own SLO/goodput/Pareto math. This is pure MECHANISM — WHEN to ask for it is the
+    agent's judgment (knowledge/analysis.md), never an if/elif on the value. Omitted/None/False
+    emits nothing.
+
     ``flags["repo_path"]`` (Phase 46) emits ``--llmd-repo-path <path>`` — a real ``standup``
     argparse flag — pointing the KUSTOMIZE deploy method (``-t kustomize``) at a LOCAL llm-d
     clone instead of letting upstream clone ``https://github.com/llm-d/llm-d.git`` into
@@ -187,6 +200,16 @@ def build_argv(
     # ``-z`` (the -m precedent). Emission is unconditional mechanism — no if/elif on the value.
     if flags.get("skip"):
         argv.append("-z")
+    # Local analysis plot families (Phase 40): emit a bare ``--analyze`` so the CLI ALSO runs its
+    # optional workstation matplotlib analysis on the collected results, writing three EXTRA plot
+    # families under analysis/ (per-request distributions, session-lifecycle, Prometheus
+    # time-series) IN ADDITION to the harness PNGs. Upstream defines ``--analyze`` (store_true) on
+    # the ``run`` subparser ALONE, so we guard on the subcommand; experiment/standup/plan reject
+    # it. It does NOT change a run's mutating mode (a real run still loads + needs approval), and
+    # the agent's own SLO/goodput/Pareto math is untouched. PURE MECHANISM — WHEN to ask for it is
+    # the agent's judgment (knowledge/analysis.md), never an if/elif on the value.
+    if flags.get("analyze") and subcommand == "run":
+        argv.append("--analyze")
     if flags.get("dry_run"):
         argv.append("--dry-run")
     argv += list(extra or [])

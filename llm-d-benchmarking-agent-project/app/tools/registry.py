@@ -273,7 +273,12 @@ _DESCRIPTIONS = {
         "— see knowledge/collect_only.md for WHEN. "
         "To REPLAY a real dataset instead of a synthetic workload profile (run/experiment only), "
         "set flags.dataset to its URL/path — it emits `-x`; WHEN to replay vs stay synthetic is "
-        "your judgment, see knowledge/dataset_replay.md."
+        "your judgment, see knowledge/dataset_replay.md. "
+        "To ALSO generate the CLI's local matplotlib plot families (per-request distributions, "
+        "session-lifecycle, Prometheus time-series) beside the harness PNGs, set flags={'analyze': "
+        "True} on a `run` — it emits `--analyze`; the plots are surfaced via the artifact route and "
+        "are SUPPLEMENTARY (your SLO/goodput/Pareto math is unchanged). WHEN to ask for them is "
+        "your judgment, see knowledge/analysis.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "

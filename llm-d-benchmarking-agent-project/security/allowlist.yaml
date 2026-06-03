@@ -659,6 +659,13 @@ executables:
           # like --list-endpoints / --dry-run. Upstream defines -z/--skip on `run` ALONE.
           "-z": { read_only_trigger: true }
           "--skip": { read_only_trigger: true }
+          # Phase 40: activate the CLI's local matplotlib analysis (extra plot families written
+          # under analysis/{distributions,session,graphs}: per-request distributions,
+          # session-lifecycle, Prometheus time-series) IN ADDITION to the harness PNGs. A plain
+          # boolean flag — NO read_only_trigger, so a real `run` stays mutating/approval-gated.
+          # Run-only upstream; supplementary to the harness charts (the agent's own analyzer math
+          # is unchanged).
+          "--analyze": {}
           # Phase 41: dataset-replay URL (run/experiment only upstream) — REPLAY a real dataset
           # instead of the synthetic workload profile. Value constrained to dataset_url.
           "-x": { takes_value: true, value: { ref: dataset_url } }
