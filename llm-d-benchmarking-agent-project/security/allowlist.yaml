@@ -98,6 +98,21 @@ value_constraints:
   namespace:       { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" }   # RFC1123 label
   llmd_clone_url:  { regex: "^https://github\\.com/llm-d/(llm-d|llm-d-benchmark)(\\.git)?$" }
   output_dir:      { regex: "^[A-Za-z0-9._/-]+$" }
+  # ---- cloud results sink (Phase 39): the `run -r/--output` DESTINATION KEYWORD ----
+  # This is the value of `run`'s -r/--output: a DESTINATION KEYWORD, NOT a filesystem path.
+  # Accepts EITHER the local default (`local`, or a bare safe-charset path) OR an OPT-IN cloud
+  # bucket URI — `gs://bucket/prefix` (GCS) / `s3://bucket/prefix` (S3). The cloud schemes are
+  # OPT-IN ONLY: the agent emits a `gs://`/`s3://` value ONLY when the USER explicitly says they
+  # have a bucket and want results there; when the agent omits `output`, execute_llmdbenchmark
+  # defaults it to `local`, so the LOCAL default stands. This is a DEDICATED constraint (NOT a
+  # widening of output_dir): output_dir is shared by --workspace/--ws/-e/--experiments, which are
+  # genuine filesystem paths that must NOT accept a `gs://`/`s3://` scheme. The blanket
+  # metacharacter screen in app/security/allowlist.py still rejects shell-dangerous tokens
+  # (`;|&$<>(){}[]*?` etc.) regardless. The actual upload runs INSIDE the benchmark CLI subprocess
+  # (gcloud storage cp / aws s3 cp, using the USER's own cloud credentials) — that is the DEFERRED
+  # Phase 47, NOT built/allowlisted here. WHETHER the user has a bucket (and WHICH) is the agent's
+  # judgment in knowledge/cloud_results_sink.md, not data here.
+  results_sink:    { regex: "^(gs|s3)://[A-Za-z0-9._/-]+$|^[A-Za-z0-9._/-]+$" }
   endpoint_url:    { regex: "^https?://[A-Za-z0-9._:/-]+$" }
   # ---- model override (Phase 28): -m/--models/--model value ----
   # A HuggingFace model id or short name (org/name), e.g. facebook/opt-125m,
@@ -667,8 +682,13 @@ executables:
           "--methods": { takes_value: true, value: { ref: methods } }
           "-U": { takes_value: true, value: { ref: endpoint_url } }
           "--endpoint-url": { takes_value: true, value: { ref: endpoint_url } }
-          "-r": { takes_value: true, value: { ref: output_dir } }
-          "--output": { takes_value: true, value: { ref: output_dir } }
+          # Phase 39: -r/--output is the results-sink DESTINATION KEYWORD. results_sink permits the
+          # LOCAL default (`local`/bare path) OR an OPT-IN `gs://`/`s3://` cloud bucket URI. This is
+          # the ONLY flagspec pointed at results_sink: --workspace/--ws/-e/--experiments below stay
+          # on output_dir (genuine filesystem paths, no cloud scheme). Default stays local — see
+          # knowledge/cloud_results_sink.md. The upload itself is the deferred Phase 47, not here.
+          "-r": { takes_value: true, value: { ref: results_sink } }
+          "--output": { takes_value: true, value: { ref: results_sink } }
           # Phase 28: model override stored against the run plan. Upstream spells it --model
           # (singular) on run; -m is the short form valid here too.
           "-m": { takes_value: true, value: { ref: model_id } }

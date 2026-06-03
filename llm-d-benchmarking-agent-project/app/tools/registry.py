@@ -286,7 +286,10 @@ _DESCRIPTIONS = {
         "kustomize_deploy_timeout/pvc_bind_timeout on standup; fma_teardown_timeout on teardown. "
         "Each is a DEEPER bound that MUST stay below the runner deadline for that subcommand so "
         "the two timeout layers don't fight — WHEN/WHAT to set is your judgment, see "
-        "knowledge/phase_timeouts.md."
+        "knowledge/phase_timeouts.md. "
+        "To send a `run`'s results to a CLOUD bucket instead of local-only, set flags.output to a "
+        "`gs://bucket/...` or `s3://bucket/...` URI (default is `local`); this is OPT-IN — WHETHER "
+        "the user has a bucket and WHICH one is their choice, see knowledge/cloud_results_sink.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "
