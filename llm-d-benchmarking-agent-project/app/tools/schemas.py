@@ -135,12 +135,22 @@ class WriteConfigInput(BaseModel):
                     "vllmCommon.priorityClassName, vllmCommon.ephemeralStorage, "
                     "vllmCommon.networkResource, affinity.* (enabled/nodeSelector/podAffinity/"
                     "podAntiAffinity), schedulerName, routing.servicePort, and per-section "
-                    "decode.*/prefill.* (schedulerName, priorityClassName, ...). The knobs are "
-                    "SHAPE-validated against the repo's own scenario examples (read live). WHICH "
-                    "knobs to set is JUDGMENT — call read_knowledge('vllm_overrides') first; the "
-                    "repos stay read-only (authored into the session workspace). Preview the "
-                    "authored file via execute_llmdbenchmark(subcommand='plan'/'run', "
-                    "flags={'dry_run': True}).",
+                    "decode.*/prefill.* (schedulerName, priorityClassName, ...). To author a "
+                    "KUSTOMIZE-method deploy (Phase 46), set the kustomize.* family instead: "
+                    "kustomize.enabled (true ⇒ deploy the upstream llm-d guide directly — this "
+                    "OVERRIDES the rest of the scenario), kustomize.guideName (required; the "
+                    "guides/<name> dir), kustomize.repoPath (a local llm-d clone; else upstream "
+                    "clones it), kustomize.repoRef, kustomize.acceleratorBackend, "
+                    "kustomize.monitoring, kustomize.overlayPath, kustomize.extraHelmValues, "
+                    "kustomize.extraHelmSets, kustomize.guideVariableOverrides, and "
+                    "kustomize.patches (a LIST of {patch: <inline YAML>} strategic-merge patches "
+                    "against the guide's modelserver base). The knobs are SHAPE-validated against "
+                    "the repo's own scenario examples (read live). WHICH knobs to set is JUDGMENT "
+                    "— call read_knowledge('vllm_overrides') for vLLM tuning, or "
+                    "read_knowledge('deploy_path_playbook') for WHICH guide/overlay/patches/repo "
+                    "the kustomize block should carry; the repos stay read-only (authored into "
+                    "the session workspace). Preview the authored file via "
+                    "execute_llmdbenchmark(subcommand='plan'/'run', flags={'dry_run': True}).",
     )
 
 
@@ -165,11 +175,21 @@ class ExecuteInput(BaseModel):
     )
     flags: dict[str, Any] | None = Field(
         default=None,
-        description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "
-                    "endpoint_url, monitoring, harness_cpu_nr}. `output` is a DESTINATION "
+        description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, repo_path, "
+                    "output, endpoint_url, monitoring, harness_cpu_nr}. `output` is a DESTINATION "
                     "KEYWORD — 'local' (default), 'gs://bucket/...', or 's3://bucket/...' — NOT a "
                     "filesystem path; a `run` defaults to local output anchored under the session "
-                    "workspace. `monitoring` activates results.observability (metrics scraping): "
+                    "workspace. `methods` picks the deploy method (-t): one of standalone/"
+                    "modelservice/kustomize/fma. `repo_path` is a LOCAL llm-d clone path threaded "
+                    "as `--llmd-repo-path` for the KUSTOMIZE deploy method (`methods='kustomize'`, "
+                    "standup only) — the CLI fallback for the scenario block's kustomize.repoPath; "
+                    "omit it and upstream clones https://github.com/llm-d/llm-d.git into the "
+                    "workspace. The kustomize.* config BLOCK (guideName/repoPath/repoRef/patches/"
+                    "overlayPath/extraHelmValues/guideVariableOverrides) is AUTHORED via "
+                    "write_and_validate_config(artifact_type='scenario') using DOTTED kustomize.* "
+                    "keys, NOT here; WHICH guide/overlay/patches is judgment in "
+                    "knowledge/deploy_path_playbook.md. `monitoring` activates "
+                    "results.observability (metrics scraping): "
                     "True => emit --monitoring (creates PodMonitor/ServiceMonitor + EPP verbosity "
                     "on standup; scrapes vLLM /metrics on run/experiment) so KV-cache hit rate / "
                     "queue depth / GPU util appear in the report; False => --no-monitoring on "

@@ -40,3 +40,57 @@ which maps a workload shape → an llm-d scenario/guide with the SIGNALS that se
 The advisor is loaded into your context; consult it (and confirm names with `list_catalog`)
 when recommending a scenario. The GPU-only entries are DEPLOY-PATH guidance on the local
 kind/CPU path — recommend them, but benchmark `cicd/kind` for a local sanity pass.
+
+## Kustomize deploy method (`-t kustomize` + the `kustomize.*` block)
+
+`-t kustomize` deploys an upstream **llm-d guide** by applying the guide's own manifests
+(`guides/<guideName>` in the llm-d repo) instead of rendering the modelservice/standalone
+templates. Ground every choice in `llm-d-benchmark/docs/kustomize.md` (read it with
+`read_repo_doc('llm-d-benchmark/docs/kustomize.md')`) and the named guide's own
+`guides/<guideName>/README.md` + `guides/<guideName>/modelserver/<backend>/` — the valid patch
+targets and helm keys are **specific to that guide**, never arbitrary.
+
+### When to choose kustomize (vs modelservice)
+- Choose kustomize when the user wants to benchmark a **published llm-d well-lit-path guide
+  exactly as authored** (the guide's manifests verbatim), or when an upstream guide is the
+  source of truth and you should not re-render it.
+- Choose the default **modelservice** method for anything you tune through the scenario
+  (model, replicas, parallelism, gateway, vLLM knobs) — under kustomize **all of that is
+  ignored** (the guide's manifests define everything). The *only* way to modify a kustomize
+  deploy is the `kustomize.*` keys.
+- **Multi-model / multi-stack is NOT supported under kustomize** (the deploy is keyed on
+  `guideName` with no per-stack uniquification — stacks collide). Use modelservice (e.g.
+  `examples/multi-model-wva`) for multi-model; keep kustomize scenarios single-stack.
+
+### How to author it (mechanism is `write_and_validate_config`, judgment is yours)
+Author the block as a scenario via `write_and_validate_config(artifact_type='scenario', …)`
+with DOTTED `kustomize.*` override keys, then GATE it through `plan`/`--dry-run`. The knobs:
+
+- `kustomize.enabled: true` — REQUIRED to deploy (equivalent to `-t kustomize`; false ⇒ inert).
+- `kustomize.guideName` — REQUIRED; the `guides/<name>` dir (confirm it exists in the llm-d
+  repo). Match it to the workload shape via `welllit_path_advisor.yaml`
+  (e.g. `optimized-baseline`, `precise-prefix-cache-routing`, `pd-disaggregation`).
+- `kustomize.repoPath` — a LOCAL llm-d clone path. Prefer threading the **same** path as the
+  `flags.repo_path` (`--llmd-repo-path`) on the standup so the CLI fallback and the block agree;
+  empty ⇒ upstream clones `https://github.com/llm-d/llm-d.git` into `workspace/llm-d`.
+- `kustomize.repoRef` — git ref to clone (default `main`); pin it for reproducibility.
+- `kustomize.patches` — a LIST of `{patch: <inline strategic-merge YAML>}` against the guide's
+  **modelserver** base, matched by apiVersion+kind+metadata.name. Use a patch to change replica
+  count (`metadata.name: decode`, `spec.replicas`) or, for a **gated model**, to inject the
+  `HF_TOKEN` env from the `llm-d-hf-token` secret (provision it first via `provision_hf_secret`).
+  Read the guide's `modelserver/<backend>/` to learn the real resource names — do not guess.
+- `kustomize.overlayPath` — a directory overlay for the modelserver (combinable with `patches`).
+- `kustomize.extraHelmValues` / `kustomize.extraHelmSets` — apply ONLY to the **router/GAIE**
+  helm release the guide installs (`-f <file>` / `--set k=v`); read the guide README's helm step
+  for valid keys.
+- `kustomize.guideVariableOverrides` — override/fill the guide README's `${VAR}` tokens; it
+  CANNOT introduce new variables, and `GUIDE_NAME`/`NAMESPACE`/`GAIE_VERSION` are forced.
+- `kustomize.acceleratorBackend` (default `gpu/vllm`), `kustomize.monitoring`,
+  `kustomize.deployTimeout`, `kustomize.gaieVersion` — tune as the guide/cluster requires.
+
+### Threading the local clone at standup
+When deploying with `-t kustomize`, set `flags.repo_path` on `execute_llmdbenchmark` so the CLI
+emits `--llmd-repo-path <path>` (it points the kustomize step at your local llm-d clone — the
+fallback for `kustomize.repoPath`). On the kind/CPU MVP path the kustomize guides are GPU
+deploys: author + `--dry-run` to validate the block, but benchmark `cicd/kind` for a local
+sanity pass and set expectations honestly (no GPU on the kind node).

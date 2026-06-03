@@ -107,6 +107,13 @@ value_constraints:
   model_id:        { regex: "^[A-Za-z0-9._/-]+$" }
   output_format:   { enum: [json, yaml, wide, name] }
   methods:         { enum: [standalone, modelservice, kustomize, fma] }
+  # ---- kustomize deploy method (Phase 46): --llmd-repo-path value ----
+  # A LOCAL filesystem path to an llm-d clone, threaded as `--llmd-repo-path` for the kustomize
+  # deploy method (`-t kustomize`). It is the CLI fallback for the scenario block's
+  # kustomize.repoPath (see llm-d-benchmark/docs/kustomize.md); empty/unset ⇒ upstream clones
+  # https://github.com/llm-d/llm-d.git into workspace/llm-d. Same safe charset as output_dir,
+  # with NO '..' traversal; the metacharacter screen additionally rejects shell-dangerous tokens.
+  repo_path:       { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+$" }
   # experiment (DoE) extras:
   namespaces:      { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(,[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$" }  # one or two (deploy,bench)
   overrides:       { regex: "^[A-Za-z0-9_.,=:/+-]+$" }   # param=value,param=value
@@ -527,6 +534,14 @@ executables:
           "--skip-smoketest": {}
           "-t": { takes_value: true, value: { ref: methods } }
           "--methods": { takes_value: true, value: { ref: methods } }
+          # Phase 46 (kustomize deploy method): point `-t kustomize` at a LOCAL llm-d clone.
+          # `--llmd-repo-path` is a real standup argparse flag (the CLI fallback for the scenario
+          # block's kustomize.repoPath — llm-d-benchmark/docs/kustomize.md); without it upstream
+          # clones https://github.com/llm-d/llm-d.git into workspace/llm-d. Promoted here from an
+          # unconstrained unknown flag to a KNOWN, path-constrained one (no '..' traversal). It is
+          # standup-only upstream (NOT on plan), so it is not added under plan; the kustomize.*
+          # config BLOCK is authored as a scenario and GATED through plan/--dry-run separately.
+          "--llmd-repo-path": { takes_value: true, value: { ref: repo_path } }
           # Phase 28: deploy/serve a model OVERRIDING the spec default. Upstream spells it
           # --models on standup; -m is the short form. The capacity pre-flight must validate
           # the SAME id (knowledge/model_override.md + knowledge/capacity.md).
