@@ -242,7 +242,10 @@ _DESCRIPTIONS = {
         "knowledge/model_override.md. "
         "To RE-COLLECT/RE-ANALYZE the results of a prior `run` WITHOUT re-running the benchmark "
         "load, set flags={'skip': True} on a `run` (emits -z; collect-only, read-only/auto-runs) "
-        "— see knowledge/collect_only.md for WHEN."
+        "— see knowledge/collect_only.md for WHEN. "
+        "To REPLAY a real dataset instead of a synthetic workload profile (run/experiment only), "
+        "set flags.dataset to its URL/path — it emits `-x`; WHEN to replay vs stay synthetic is "
+        "your judgment, see knowledge/dataset_replay.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "

@@ -179,7 +179,8 @@ class ExecuteInput(BaseModel):
     flags: dict[str, Any] | None = Field(
         default=None,
         description="Optional: {skip, skip_smoketest, dry_run, list_endpoints, methods, output, "
-                    "endpoint_url, monitoring, harness_cpu_nr, cluster_url, cluster_token, step}. "
+                    "endpoint_url, monitoring, harness_cpu_nr, cluster_url, cluster_token, step, "
+                    "dataset}. "
                     "`skip` => emit -z/--skip on a `run` to SKIP load execution and only "
                     "COLLECT/ANALYZE data from the EXISTING results of a prior run in the same "
                     "workspace (re-collect/re-analyze that run WITHOUT re-running the benchmark "
@@ -218,7 +219,12 @@ class ExecuteInput(BaseModel):
                     "re-run and the per-phase step numbering are judgment in "
                     "knowledge/step_select.md (read_knowledge('step_select') first); -s does NOT "
                     "change a command's mode, so re-running mutating steps stays approval-gated. "
-                    "For subcommand='experiment' (a DoE sweep over a "
+                    "`dataset` is a dataset-replay URL/path (run/experiment "
+                    "ONLY) emitted as `-x <url>`; its presence makes the harness REPLAY a real "
+                    "dataset instead of the synthetic workload profile, omit it to keep synthetic "
+                    "profiles driving the load. WHETHER to replay a dataset and WHICH one is "
+                    "knowledge-driven (read_knowledge('dataset_replay')). For subcommand='experiment' "
+                    "(a DoE sweep over a "
                     "treatments file): {experiments (path to the experiment YAML), workspace (dir "
                     "for outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, "
                     "skip_teardown}.",
