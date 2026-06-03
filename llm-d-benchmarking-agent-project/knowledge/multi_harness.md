@@ -2,10 +2,10 @@
 
 Use this when the user wants more than a single benchmark angle — e.g. "is it fast enough
 for chat AND how much throughput can it push?", "validate my SLOs and find the max load",
-or just "benchmark this thoroughly". The proposal's stretch goal is to run **two harnesses
-in one session** and contrast them. The mechanism is the existing tools plus
-`compare_harness_runs`; the judgment — which harness for which question, how to read each,
-how to reconcile their different methods — is here.
+or just "benchmark this thoroughly". The goal: run **two harnesses in one session** and
+contrast them. The mechanism is the existing tools plus `compare_harness_runs`; the
+judgment — which harness for which question, how to read each, how to reconcile their
+different methods — is here.
 
 ## Why two harnesses, not one
 
@@ -97,6 +97,6 @@ harness actually produced a valid report, the tool refuses and points you at `co
 
 On the simulated CPU engine the absolute numbers aren't representative of GPU serving (see
 `knowledge/analysis.md`). A multi-harness session on the quickstart demonstrates the
-*methodology* — that you can validate SLOs with inference-perf and sweep throughput with
-guidellm against one stack and reconcile them — not real-world performance. The identical
-flow is what you'd run against a real GPU stack.
+*methodology* (validate SLOs with inference-perf, sweep throughput with guidellm, reconcile
+them) — not real-world performance. The identical flow is what you'd run against a real GPU
+stack.

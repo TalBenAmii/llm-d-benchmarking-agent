@@ -56,10 +56,9 @@ pass/fail + reason). Probes:
   request 401s). Mirrors the fail-loud startup guard as a structured readiness signal.
 
 `/readyz` returns **200** when ready, **503** with the structured reasons when not. Liveness stays
-on `/healthz`; readiness is the deploy/orchestrator gate. `readiness()` is the minimal
-contribution a Phase 16 `/readyz` composer can fold in. When `STARTUP_SELF_CHECK=false`, readiness
-reports ready with the self-check marked skipped (an operator who turned it off isn't held
-un-ready).
+on `/healthz`; readiness is the deploy/orchestrator gate. `readiness()` folds this self-check into
+the `/readyz` composer. When `STARTUP_SELF_CHECK=false`, readiness reports ready with the
+self-check marked skipped (an operator who turned it off isn't held un-ready).
 
 ### Reading a failure
 A 503 from `/readyz` is a **configuration** problem, not a transient one — the listed reasons name

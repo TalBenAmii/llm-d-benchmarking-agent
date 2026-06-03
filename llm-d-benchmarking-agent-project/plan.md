@@ -23,43 +23,23 @@
 ## Implementation status
 
 **Built:** the full MVP vertical — chat UI → agent loop → schema-validated, approval-gated
-tools → real `llmdbenchmark` execution → validated Benchmark Report summary.
+tools → real `llmdbenchmark` execution → validated Benchmark Report summary. The project
+has since grown to **22 tools** through Phase 26; see [`ROADMAP.md`](ROADMAP.md) /
+[`PROGRESS.md`](PROGRESS.md) for the authoritative, current status. The MVP step record
+below is preserved for tracking; the design sections after it are the original design
+reference (kept as written).
 
-| Plan step | Status | Notes |
-|---|---|---|
-| 1. Scaffold + docs | ✅ | `CLAUDE.md`, `plan.md`, `README.md`, `pyproject.toml`, `.env.example`, `.gitignore`, package tree |
-| 2. Security core | ✅ | `security/allowlist.yaml` + `app/security/allowlist.py` (pure validator) + `runner.py`; 23 allowlist tests |
-| 3. Read-only tools + validation | ✅ | `probe_environment`, `list_catalog`, `read_repo_doc`, `locate_and_parse_report`; `app/validation/report.py`; catalog from disk |
-| 4. Provider + agent loop | ✅ | `app/llm/` (Anthropic + OpenAI-compatible), `app/agent/{loop,session,prompt,events}.py`, registry + pydantic tool schemas, `SessionPlan` |
-| 5. Mutating tools | ✅ | `ensure_repos`, `run_setup`, `execute_llmdbenchmark` (single gated CLI runner), `write_and_validate_config` (MVP stub) |
-| 6. Knowledge files | ✅ | `knowledge/`: quickstart_playbook, preconditions, results_interpretation, deploy_path_playbook, glossary, usecase_to_profile.yaml |
-| 7. Chat UI + FastAPI | ✅ | `ui/{index.html,app.js,styles.css}`, `app/main.py` (WebSocket, approval round-trip, static serving) |
-| 8. Verify | ✅ | `pytest tests/` → **44 passed**; live checks below |
+MVP plan steps (all 8 complete):
+- 1. Scaffold + docs (`CLAUDE.md`, `plan.md`, `README.md`, `pyproject.toml`, `.env.example`, `.gitignore`, package tree) — done
+- 2. Security core (`security/allowlist.yaml` + `app/security/allowlist.py` validator + `runner.py`; allowlist tests) — done
+- 3. Read-only tools + validation (`probe_environment`, `list_catalog`, `read_repo_doc`, `locate_and_parse_report`; `app/validation/report.py`) — done
+- 4. Provider + agent loop (`app/llm/`, `app/agent/{loop,session,prompt,events}.py`, registry + pydantic tool schemas, `SessionPlan`) — done
+- 5. Mutating tools (`ensure_repos`, `run_setup`, `execute_llmdbenchmark`, `write_and_validate_config`) — done
+- 6. Knowledge files (`knowledge/` playbooks + `usecase_to_profile.yaml`) — done
+- 7. Chat UI + FastAPI (`ui/`, `app/main.py` WebSocket + approval round-trip + static serving) — done
+- 8. Verify (`pytest tests/`; live checks) — done
 
-**Final layout (net-new files):**
-```
-app/  config.py main.py
-      security/{allowlist,runner}.py
-      validation/{report,session_plan}.py
-      tools/{catalog,context,probe,repos,execute,config_artifact,plan,schemas,registry}.py
-      llm/{provider,anthropic_provider,openai_provider}.py
-      agent/{prompt,session,loop,events}.py
-security/allowlist.yaml
-knowledge/*.md|*.yaml   ui/{index.html,app.js,styles.css}
-tests/{test_allowlist,test_catalog,test_report_validation,test_schemas,test_loop,test_ws}.py
-```
-
-**Verified:**
-- 44 pytest tests pass (allowlist denial/classification, catalog enumeration, report
-  validation against the repo's real example, tool-schema round-trips, full agent loop
-  with a fake provider, real WebSocket approval round-trip).
-- **Live:** real `llmdbenchmark:0.6.0` executes via the bench repo's `.venv`; the
-  existing-stack guard detects the running `llmd-quickstart` (5/5 pods) and would not
-  redeploy; `uvicorn app.main:app` boots and serves the UI + `/healthz`.
-- **Safety:** `rm`, `kubectl delete`, shell metacharacters, non-llm-d clone URLs, and bad
-  namespaces are denied; mutating commands never run without an explicit Approve.
-
-**Design notes / findings during build:**
+**Design notes / findings during build (still relevant):**
 - The repo's committed `br_v0_2_json_schema.json` is generated from pydantic
   (`extra="forbid"`) and is **stale vs its own example** (`session_performance`). So
   `validate_report` treats `additionalProperties` violations as non-fatal *deviations*
@@ -71,12 +51,12 @@ tests/{test_allowlist,test_catalog,test_report_validation,test_schemas,test_loop
   URL-restricted `git clone`, and read-only `docker`/`kind`/`kubectl`) so the quickstart is
   actually reachable — as agreed.
 
-**Not yet done / deferred:**
-- A real LLM session needs `ANTHROPIC_API_KEY` (or OpenAI-compatible creds) in `.env`; only
-  the fake-provider loop has been exercised end-to-end.
-- GPU / `llm-d/guides/*` deploy paths, DoE/`experiment` sweeps, multi-harness & A/B
-  comparison, bespoke generated workloads, cloud output stores. Interfaces exist; these are
-  the next milestones.
+> **Note:** the MVP-era "deferred" items DoE/`experiment` sweeps, multi-harness & A/B
+> comparison, capacity pre-flight, history, observability, and generated workloads have
+> since shipped — see ROADMAP.md / PROGRESS.md. GPU / `llm-d/guides/*` deploy execution
+> remains future work (path 2 is advisory-only per `knowledge/deploy_path_playbook.md`; the
+> Kustomize/WVA guide knobs are tracked in `ROADMAP_V4.md`). The current forward-looking gap
+> roadmap is [`ROADMAP_V4.md`](ROADMAP_V4.md) (Phases 27-58).
 
 ---
 

@@ -60,6 +60,10 @@ For each flow the harness runs the **real agent loop** and asserts:
 
 ## The flows today
 
+`tests/flows/flows.py` defines 23 flows (`ALL_FLOWS`), in three groups.
+
+**Deploy + benchmark vertical** — the kind quickstart plus seven guide deploys:
+
 | Flow | What it validates |
 |------|-------------------|
 | `kind-quickstart` | Fresh machine → clone → `install.sh --uv` → `standup`/`smoketest`/`run` on `cicd/kind`, then parse the report. |
@@ -70,16 +74,39 @@ For each flow the harness runs the **real agent loop** and asserts:
 | `wide-ep-lws` | The wide expert-parallelism + LeaderWorkerSet guide (`guides/wide-ep-lws`). |
 | `workload-autoscaling` | The workload autoscaling guide (`guides/workload-autoscaling`, guidellm harness). |
 | `predicted-latency-routing` | The predicted-latency routing guide (`guides/predicted-latency-routing`, concurrent load). |
-| `teardown` | `teardown` runs; deeper `kind delete cluster` is **offered**, never run silently. |
-| `existing-stack-benchmark-only` | Probe detects a running stack → benchmark it directly, **no** `standup`/`smoketest`. |
-| `dry-run-preview` | `plan` + `standup --dry-run` only — read-only, no approval prompt, nothing changed. |
-| `safety-refusal` | Unknown spec / injected namespace / disallowed flag are **refused**; direct allowlist assertions that dangerous commands are denied and the legit ones are still allowed. |
 
 The seven guide deploys share one factory (`_guide_deploy_flow`) — they're the same
 command shape, differing only by `--spec` / harness / workload / namespace. The
 GPU-requiring guides are `live_eval=False` (a careful agent would refuse to deploy them on
 a GPU-less env, which would make a live score misleading); their command shape is still
 validated deterministically.
+
+**Lifecycle & safety:**
+
+| Flow | What it validates |
+|------|-------------------|
+| `teardown` | `teardown` runs; deeper `kind delete cluster` is **offered**, never run silently. |
+| `existing-stack-benchmark-only` | Probe detects a running stack → benchmark it directly, **no** `standup`/`smoketest`. |
+| `dry-run-preview` | `plan` + `standup --dry-run` only — read-only, no approval prompt, nothing changed. |
+| `safety-refusal` | Unknown spec / injected namespace / disallowed flag are **refused**; direct allowlist assertions that dangerous commands are denied and the legit ones are still allowed. |
+
+**Tool-choice coverage** (`TOOL_CHOICE_FLOWS`) — the tool surfaces beyond the deploy
+vertical. Each is replayed deterministically (golden transcript + gating) and is also a
+live-eval target:
+
+| Flow | What it validates |
+|------|-------------------|
+| `doe-run-sweep` | DoE run-parameter sweep against one stood-up stack (`generate_doe_experiment` → N runs). |
+| `doe-full-experiment` | Full Design-of-Experiments where the deployment itself changes per treatment. |
+| `analyze-slo-pareto` | Results Analyzer: SLO filtering + Pareto frontier over a sweep's run dirs. |
+| `compare-ab-runs` | A straight A/B via `compare_reports` — per-metric deltas. |
+| `result-history-baseline` | Cross-session history: store a validated report as a tagged baseline + read a trend. |
+| `multi-harness-compare` | Cross-harness comparison (inference-perf vs guidellm) via `compare_harness_runs`. |
+| `capacity-preflight` | Capacity pre-flight ("will it fit?") via the benchmark repo's own planner. |
+| `orchestrate-k8s-job` | K8s-native path: `orchestrate_benchmark_run` (submit → watch → collect). |
+| `endpoint-readiness-gate` | `check_endpoint_readiness` — endpoint is actually serving, not just present. |
+| `observe-live-usage` | `observe_run_metrics` — live pod CPU/memory during a run. |
+| `cancel-stuck-run` | Run lifecycle: `cancel_run` frees a concurrency slot held by a stuck run. |
 
 ## Adding a flow
 
@@ -96,8 +123,7 @@ No harness or CI changes are needed — the tests and the CLI pick it up automat
 > **More flows are cheap.** For another guide deploy, add one `_guide_deploy_flow(...)`
 > line. Still unmodeled and available in the repos: `guides/agentic-tests`, the
 > `examples/gpu` / `examples/cpu` / `examples/sim` specs, and the other CI clusters
-> `cicd/ocp` / `cicd/gke` / `cicd/cks`. A sweeps/experiment (DoE) + A/B-compare flow is
-> worth adding once the `feature/sweeps-ab-compare` capability lands on main.
+> `cicd/ocp` / `cicd/gke` / `cicd/cks`.
 
 ## CI
 

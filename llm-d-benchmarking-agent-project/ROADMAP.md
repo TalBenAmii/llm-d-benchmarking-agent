@@ -1,418 +1,79 @@
 # ROADMAP — llm-d Benchmarking Agent
 
-> **Living document.** Updated at the end of every phase. Tracks the autonomous build-out
-> that takes the project from "MVP chat agent that drives the `llmdbenchmark` CLI" toward
-> the full vision in [`llm-d-benchmarking-agent-proposal.md`](llm-d-benchmarking-agent-proposal.md):
-> a Kubernetes-native **conversational agent + benchmark orchestrator + results analyzer**.
+> **Tracking record (all phases below are DONE).** Tracks the autonomous build-out that took the
+> project from "MVP chat agent that drives the `llmdbenchmark` CLI" to the full vision in
+> [`llm-d-benchmarking-agent-proposal.md`](llm-d-benchmarking-agent-proposal.md): a
+> Kubernetes-native **conversational agent + benchmark orchestrator + results analyzer**.
+> See [`PROGRESS.md`](PROGRESS.md) for the per-session work log and
+> [`docs/CHANGELOG.md`](docs/CHANGELOG.md) for the released changelog. Forward-looking gap work
+> now lives in [`ROADMAP_V4.md`](ROADMAP_V4.md) (Phases 27+, none done).
 >
-> **Approved 2026-06-01.** Worked autonomously on branch `feature/roadmap` (integration
-> branch; **never merged to `main`** during this effort). Each phase lands as one or more
-> commits / merges into `feature/roadmap`.
+> **Approved 2026-06-01.** v1 (Phases 0–10) and v2 (Phases 11–18) were developed on integration
+> branches `feature/roadmap` / `feature/roadmap-v2`; v3 (Phases 19–26) on `feature/roadmap-v3`.
+> v1, v2 and v3 were ultimately merged into `main`. Latest DONE: **Phase 26**.
 
 ## Why this order
 
-The proposal is a Technion Parallel & Distributed Systems lab project with an explicit
-grading rubric. Priorities below are driven by it plus the user's `todo` file:
+The proposal is a Technion Parallel & Distributed Systems lab project with an explicit grading
+rubric, which (plus the user's `todo` file) drove the ordering: quick user-requested wins first
+(better demo + Observability story + on-ramp to orchestration), then the 40%-weighted K8s
+orchestrator, then analyzer differentiators, then stretch goals and packaging/docs.
 
-| Grade dimension | Weight | Status at start |
-|---|---|---|
-| Kubernetes job orchestration (lifecycle, OOM/timeout/eviction, restart-resilience) | **40%** | mostly missing — CLI runs as a blocking subprocess |
-| System design & API quality | 25% | strong (clean tool/allowlist/validation boundaries) |
-| End-to-end functionality | 20% | partial (single quickstart works; goodput/Pareto missing) |
-| Code quality & documentation | 15% | partial (good tests; no Helm chart / deploy docs) |
+| Grade dimension | Weight |
+|---|---|
+| Kubernetes job orchestration (lifecycle, OOM/timeout/eviction, restart-resilience) | **40%** |
+| System design & API quality | 25% |
+| End-to-end functionality | 20% |
+| Code quality & documentation | 15% |
 
-Quick user-requested wins come first (they improve the demo and the Observability story and
-are an on-ramp to orchestration), then the 40%-weighted K8s orchestrator, then the analyzer
-differentiators, then stretch goals and packaging/docs deliverables.
-
-## Status legend
-`TODO` · `IN-PROGRESS` · `DONE` · `DEFERRED`
-
----
-
-## Phase 0 — Autonomous scaffolding — **DONE**
-*Setup for the autonomous effort.*
-- [x] Integration worktree `../kind-quickstart-guide-roadmap` on `feature/roadmap` (off `main`).
-- [x] Worktree-portable tests: `tests/conftest.py` now resolves the read-only sibling repo via
-      the app's own `get_settings()` (honors `REPOS_DIR`/`.env`), so the full suite runs in any
-      worktree instead of failing on the empty sibling gitlinks. Backward-compatible with the
-      primary checkout. Worktree suite: **110 passed / 6 skipped / 0 failed** (the 1 extra skip
-      vs the primary checkout is the catalog-drift guard, which deliberately skips when the repo
-      isn't at the canonical sibling path).
-- [x] `ROADMAP.md` + `PROGRESS.md` living docs; status headers refreshed.
-
-## Phase 1 — Command transparency, debug mode, UI polish — **DONE**
-*User todos #2/#3/#4 · proposal "Observability".*
-- [x] `command` event emitted for **every** executed command (centralized in ToolContext, so
-      auto-run read-only probes are no longer invisible); for mutating commands it fires only
-      after approval (records what truly ran). Persisted on the session + replayed on resume.
-- [x] UI: inline `$ cmd` lines in each tool console + a global "Executed commands" log with
-      read-only/mutating badges; a **Debug-mode** toggle showing only the executed-command
-      trail (persisted, pre-paint, aria-live). (#2, #3)
-- [x] Slider audit (#4): no slider elements exist in the UI (confirmed in tree + git history).
-      Rather than invent parameter sliders that embed judgment in the UI (against thin-code),
-      added a reusable styled range-input foundation; real sliders land where they genuinely fit
-      (Phase 2 concurrency cap / Phase 4 SLO targets the agent proposes and the user fine-tunes).
-- [x] Tests: 3-agent adversarial review; command-event/exec parity asserted across all 12 flows,
-      probe-visibility (6 read-only probes), full-deploy command surfacing, persist/replay path.
-      Suite: **119 passed / 6 skipped**.
-
-## Phase 2 — Parallel sessions & parallel benchmark runs — **DONE**
-*User todo #1 · proposal "parallel treatments w/ configurable concurrency", Distributed Coordination.*
-- [x] Configurable cross-session concurrency cap (`settings.max_concurrent_runs`, default 2):
-      a shared `asyncio.Semaphore` wraps only MUTATING executions; read-only probes never capped.
-      `SessionManager` wires the shared cap + isolated per-session workspaces into every session.
-- [x] Background-safe runs: an approved in-flight turn is no longer cancelled on WS disconnect —
-      it finishes server-side; result replayed from history on reconnect. A `connected` gate
-      auto-rejects post-disconnect approvals (no hang); a per-session running-turn registry blocks
-      a 2nd connection's concurrent turn (prevents transcript corruption); `ready.running` drives
-      a UI note.
-- [x] Review fix (real latent bug): the runner now bounds the **whole** process lifecycle under
-      the deadline (was: `proc.wait()` ran after the stdout-pump timeout → a stdout-closing daemon
-      could hang forever and pin a slot); SIGKILLs the process group on timeout.
-- [x] Tests: 8 hermetic concurrency tests. Suite: **127 passed / 6 skipped**.
-- **Deferred to Phase 3** (orchestrator territory): (a) an abandoned long run (e.g. a 4h
-  `experiment` the user navigated away from) holds a cap slot until its timeout — needs a
-  cancel/reattach path or operator visibility; (b) a reconnecting client only sees the result
-  replayed at the end, not the live stream — needs a per-session pub/sub event buffer.
-
-## Phase 3 — Kubernetes-native Benchmark Orchestrator — **DONE**  *(the 40% centerpiece)*
-*Proposal §3.3 · grade dimension 1. Built in `app/orchestrator/` + the `orchestrate_benchmark_run` tool.*
-- [x] 3a. **KubeClient** abstraction over the allowlisted `kubectl` runner (NOT the Python
-      client — keeps the deny-by-default + approval + env-scrub model). Allowlist gained
-      `kubectl apply/logs/delete job` (tight: delete is job-by-name-only, `-f` is `.yaml` +
-      no `..` + workspace-confined). Research confirmed `llmdbenchmark run` submits the harness
-      as a bare Pod via `kubectl apply` and shells out for everything.
-- [x] 3b. Job model + controller: submit (write manifest → apply), **poll-based watch** to
-      terminal (wall-clock bounded), pod-log streaming, cluster-only **reconstruction** from
-      labels.
-- [x] 3c. **Fault classification**: OOM / timeout / eviction / unschedulable / image / run
-      error, priority-ordered, facts-only (remediation lives in `knowledge/orchestrator.md`).
-- [x] 3d. **Retry + dead-letter**: transient faults retry as fresh distinct Jobs (`-aN`);
-      deterministic faults dead-letter immediately. Stateless reconstruction = source of truth.
-- [x] 3e. **Parallel sweep** (concurrency-capped, per-treatment dead-letter) + **cleanup**
-      (terminal-only by default; preserves the results PVC). Wired as the agent tool
-      `orchestrate_benchmark_run` (+ `knowledge/orchestrator.md`).
-- [x] 3-agent adversarial review; fixed a watch busy-loop, sweep exception-isolation, a
-      classify gap, + security hardening. Tested hermetically (FakeKubeClient + CaptureRunner),
-      no GPU/live runs. Suite: **190 passed / 6 skipped**.
-- **Deferred to Phase 8 (packaging):** the in-cluster benchmark image + a least-privilege
-  ServiceAccount/RBAC (so an orchestrated Job actually runs live); image pinning.
-
-## Phase 4 — Results Analyzer: goodput, SLO filtering, Pareto/DoE analysis — **DONE**
-*Proposal §3.4 · grade dimension 3.*
-- **Result:** `analyze_results` tool + `app/validation/analysis.py` (SLOTargets captured in
-  the SessionPlan; per-run SLO verdict over the full percentile ladder; honest goodput estimate;
-  Pareto-optimal config selection + SLO-feasible frontier across a DoE sweep), grounded in the
-  new `knowledge/analysis.md`. Read-only, schema-validated (BR v0.2), never scrapes logs.
-- Capture SLO targets (TTFT / TBT / P99 / throughput floor) in the SessionPlan.
-- Compute **goodput** (proposal's "key differentiator").
-- Identify **Pareto-optimal** configs across a sweep matrix; richer comparison + plain-language
-  explanation tied to `knowledge/analysis.md`.
-
-## Phase 5 — Historical result storage + trends UI — **DONE**
-*Proposal stretch "historical storage + trend visualization".*
-- Persist validated reports across sessions; results-browser / trends view in the UI.
-- **Result:** validated reports persisted to a cross-session history store via a single
-  `result_history` tool (store/list/get/trend/delete) plus a UI results-browser/trends view;
-  merged into `feature/roadmap`, full suite **297 passed / 6 skipped / 0 failed**.
-
-## Phase 6 — Configuration Explorer / Capacity Planner pre-flight — **DONE**
-*Proposal §2.2 stretch.*
-- Use the repo's capacity planner to pre-validate feasibility before a run (surface
-  "will this fit?" at the plan gate); reduces OOM failures.
-- **Result:** `check_capacity` tool runs a memory/feasibility pre-flight (KV + weights +
-  activation vs accelerator memory) over the rendered spec at the plan gate, advisory or
-  enforced; merged into `feature/roadmap`, full suite **245 passed / 6 skipped / 0 failed**.
-
-## Phase 7 — Observability: Prometheus/Grafana — **DONE**
-*Proposal stretch + Observability dimension.*
-- Export agent/orchestrator metrics; optional Grafana dashboard; live system metrics during runs.
-- **Result:** Prometheus `/metrics` endpoint + instrumentation across the agent/orchestrator,
-  a new read-only `observe_run_metrics` tool (live `kubectl top` pod/node usage during a run),
-  Grafana dashboard + scrape config under `deploy/observability/`; merged into `feature/roadmap`,
-  full suite **269 passed / 6 skipped / 0 failed**.
-
-## Phase 8 — Packaging: container image + Helm/Kustomize single-command deploy — **DONE**
-*Proposal §5.3 deliverable.*
-- Production image for the agent service; Helm chart / Kustomize for one-command K8s deploy.
-- **Result:** hardened non-root Dockerfile + Helm chart and Kustomize base/overlay rendering
-  Deployment/Service/ServiceAccount + namespaced least-privilege Role/RoleBinding (exactly the
-  kubectl verbs RealKubeClient uses), resolving the Phase-3 RBAC deferral; orchestrated Jobs now
-  run under the deploy's SA. Suite 315 passed / 6 skipped / 0 failed.
-
-## Phase 9 — Documentation suite + upstream-PR readiness — **DONE**
-*Grade dimension 4 · §10.*
-- Architecture doc, API reference, deployment & user guides; polish toward the upstream
-  `llm-d-benchmark` PR path.
-- **Result:** added `docs/` suite (ARCHITECTURE, API, DEPLOYMENT, USER_GUIDE, README index) plus
-  refreshed root README/CLAUDE.md; docs-only, no code changes — suite stays green at 329 passed / 6 skipped.
-
-## Phase 10 — Multi-harness orchestration in one session — **DONE**
-*Proposal stretch.*
-- Agent recommends + runs both inference-perf (SLO validation) and guidellm (throughput sweep)
-  in one session, then compares.
-- **Result:** new read-only `compare_harness_runs` tool + pure `compare_across_harnesses()` group
-  runs by detected harness, cross-validate shared metrics (no cross-harness winner), backed by
-  `knowledge/multi_harness.md`; `summarize_report` now surfaces producing harness + load point.
-
----
-
-## Autonomous execution rules (self-imposed)
-- **Branching:** `feature/roadmap` is the integration branch and "home" worktree. Each phase is
-  developed on a `feature/roadmap-pN-<slug>` branch and merged into `feature/roadmap`. When a
-  phase decomposes into independent parts, subagents work in **separate worktrees partitioned by
-  file/module** (no collisions) and their branches merge back into the phase branch.
-  **`main` is never touched.**
-- **Tests:** pytest only. No long/real benchmark runs, no GPU. The orchestrator is validated with
-  a fake kube client and the hermetic CaptureRunner harness.
-- **Commits:** one after every legitimate feature; clear scoped messages; `Co-Authored-By` trailer.
+## Autonomous execution rules (still in force)
+- **Branching:** each wave has an integration branch (`feature/roadmap[-v2/-v3]`); each phase is a
+  `feature/roadmap*-pN-<slug>` branch merged in after its full-suite gate is green. Independent
+  parts use **separate worktrees partitioned by file/module**. `main` is touched only by the final
+  wave merge.
+- **Tests:** pytest only — no long/real benchmark runs, no GPU. The orchestrator is validated with a
+  fake kube client and the hermetic CaptureRunner harness.
+- **Thin code, thick agent** is the law: mechanism in Python, judgment in `knowledge/`.
 - **Docs:** `ROADMAP.md` + `PROGRESS.md` (and affected `.md`/knowledge files) updated each phase.
-- **Context hygiene:** after each phase commit, if context > 150k tokens, document first, then
-  compact (if context still needed) or clear (if not).
-- **Thin code, thick agent** stays the law: mechanism in Python, judgment in `knowledge/`.
 
 ---
 
-## Roadmap v2 — production operability, trust & quality (Phases 11-18)
+## v1 — MVP → orchestrator + analyzer (Phases 0–10) — branch `feature/roadmap` → main
 
-Phases 11-18 are developed on the integration branch `feature/roadmap-v2` (never `main`); each phase merges in after its full-suite gate is green.
+- **Phase 0 — Autonomous scaffolding** — done. Worktree-portable tests (conftest resolves the sibling repo via `get_settings()`); `ROADMAP.md`/`PROGRESS.md` living docs.
+- **Phase 1 — Command transparency, debug mode, UI polish** — done. `command` event for every executed command (read-only + post-approval mutating), persisted/replayed; inline `$ cmd` consoles + global executed-command log + Debug-mode toggle; reusable range-input foundation (no invented sliders).
+- **Phase 2 — Parallel sessions & parallel benchmark runs** — done. Configurable cross-session concurrency cap (`max_concurrent_runs`, mutating-only semaphore); background-safe runs survive WS disconnect + replay on reconnect; runner bounds the whole process lifecycle under the deadline. (Its two deferrals — abandoned-run slot hold + live stream on reconnect — were closed by Phases 16 and 15.)
+- **Phase 3 — Kubernetes-native Benchmark Orchestrator** — done *(the 40% centerpiece)*. `app/orchestrator/` + `orchestrate_benchmark_run`: KubeClient over allowlisted `kubectl`, poll-based job watch, fault classification (OOM/timeout/eviction/unschedulable/image/run-error), retry + dead-letter, parallel sweep + cleanup, stateless cluster reconstruction. Judgment in `knowledge/orchestrator.md`. (Its RBAC/in-cluster-image deferral was closed by Phase 8.)
+- **Phase 4 — Results Analyzer: goodput, SLO filtering, Pareto/DoE** — done. `analyze_results` + `app/validation/analysis.py`: SLOTargets in the SessionPlan, per-run SLO verdict over the percentile ladder, honest goodput, Pareto-optimal selection + SLO-feasible frontier; grounded in `knowledge/analysis.md`.
+- **Phase 5 — Historical result storage + trends UI** — done. Cross-session history store via one `result_history` tool (store/list/get/trend/delete) + UI results-browser/trends view.
+- **Phase 6 — Configuration Explorer / Capacity Planner pre-flight** — done. `check_capacity` tool runs a memory/feasibility pre-flight (KV + weights + activation vs accelerator memory) at the plan gate, advisory or enforced.
+- **Phase 7 — Observability: Prometheus/Grafana** — done. `/metrics` endpoint + agent/orchestrator instrumentation, `observe_run_metrics` tool (live `kubectl top` during a run), Grafana dashboard + scrape config under `deploy/observability/`.
+- **Phase 8 — Packaging: container image + Helm/Kustomize** — done. Hardened non-root Dockerfile + Helm chart and Kustomize base/overlay (Deployment/Service/SA + namespaced least-privilege Role/RoleBinding matching the kubectl verbs used); resolves the Phase-3 RBAC deferral.
+- **Phase 9 — Documentation suite + upstream-PR readiness** — done. `docs/` suite (ARCHITECTURE, API, DEPLOYMENT, USER_GUIDE, README index) + refreshed root README/CLAUDE.md; docs-only.
+- **Phase 10 — Multi-harness orchestration in one session** — done. `compare_harness_runs` tool + `compare_across_harnesses()` (group by detected harness, cross-validate shared metrics, no cross-harness winner), backed by `knowledge/multi_harness.md`.
 
-## Phase 11 — Structured logging + correlation IDs — DONE
-- Shipped stdlib-only structured logging (`app/observability/logging.py` JSON formatter — one
-  JSON object per line — + `logctx.py` contextvars carrier). A fresh `corr_id` is minted at the
-  WebSocket boundary and rides via `contextvars` (snapshotted by `create_task`) into the agent
-  loop (`turn.start/end`, `tool.call.start/result`), every tool dispatch (`tool=<name>`), and the
-  command runner (`command.exec`, `runner.exec.*`) — so one turn is traceable end-to-end by
-  grepping its `corr_id`. `LOG_LEVEL`/`LOG_FORMAT` (json default, text for dev) added to config;
-  `setup_logging()` wired once in the lifespan. Secrets never logged (exe = argv[0] only). No new
-  runtime dependency. Judgment in `knowledge/logging.md`.
-- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **339 passed / 6 skipped / 0 failed**
-  (+7 hermetic logging tests; prior baseline 332 passed / 6 skipped).
+---
 
-## Phase 12 — API trust: auth + rate-limit + CORS — DONE
-- Shipped stdlib-only, default-off API-trust controls (NO new dependency) so the FastAPI surface is
-  safe to expose while staying frictionless locally: optional Bearer auth (constant-time
-  `secrets.compare_digest`; an app-level dependency guards every HTTP route and the `/ws` handshake
-  is guarded in-handler — bad/missing token → 401 / WS close 1008) and a `TokenBucket`/`RateLimiter`
-  with an injectable monotonic clock guarding `/api/*` intake (empty bucket → 429; `/healthz` +
-  `/metrics` never throttled), plus `CORSMiddleware` wired only when `CORS_ALLOW_ORIGINS` is set.
-  `app/config.py` adds `AUTH_ENABLED`/`AUTH_TOKEN`/`RATE_LIMIT_*`/`CORS_ALLOW_ORIGINS`; lifespan
-  fails loud if `AUTH_ENABLED` with empty `AUTH_TOKEN`. Judgment in `knowledge/api_trust.md`.
-- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **351 passed / 6 skipped / 0 failed**
-  (+12 hermetic api-trust tests; prior baseline 339 passed / 6 skipped).
+## v2 — production operability, trust & quality (Phases 11–18) — branch `feature/roadmap-v2` → main
 
-## Phase 13 — Allowlist governance: per-command timeouts + quotas — DONE
-- Moved execution limits out of Python and into `security/allowlist.yaml` as data: optional
-  `timeout_s` and `quota {per_session, per_day}` on an executable and/or subcommand (subcommand
-  overrides executable). `allowlist.py` schema-validates both fields at startup (malformed
-  allowlist → clear load-time error) and rides the resolved limits on the `Decision`. The runner
-  now sources its per-command deadline from `Decision.timeout_s`, REMOVING the parallel
-  `app/tools/execute.py::_TIMEOUTS` table (one mechanism, not two; a sane global default remains).
-  New `app/security/quota.py` is a pure per-session/per-day usage counter; `ToolContext` refuses an
-  over-quota command with a structured `QuotaError` BEFORE execution/approval and the loop relays it.
-  Judgment in `knowledge/governance.md`.
-- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **378 passed / 6 skipped / 0 failed**
-  (+27 hermetic governance tests; prior baseline 351 passed / 6 skipped).
+- **Phase 11 — Structured logging + correlation IDs** — done. Stdlib-only JSON logging (`app/observability/logging.py`) + `logctx` contextvars; `corr_id` minted at the WS boundary rides into the agent loop / every tool / the command runner so one turn is grep-traceable. `LOG_LEVEL`/`LOG_FORMAT` config; secrets never logged. Judgment in `knowledge/logging.md`.
+- **Phase 12 — API trust: auth + rate-limit + CORS** — done. Stdlib-only, default-off controls: optional Bearer auth (constant-time, guards HTTP + `/ws`), `TokenBucket`/`RateLimiter` on `/api/*` (429 on empty; `/healthz`+`/metrics` exempt), `CORSMiddleware` when `CORS_ALLOW_ORIGINS` set. Config `AUTH_ENABLED`/`AUTH_TOKEN`/`RATE_LIMIT_*`/`CORS_ALLOW_ORIGINS`. Judgment in `knowledge/api_trust.md`.
+- **Phase 13 — Allowlist governance: per-command timeouts + quotas** — done. `timeout_s` + `quota{per_session,per_day}` as DATA in `security/allowlist.yaml` (validated at startup), removed the parallel `_TIMEOUTS` table; `app/security/quota.py` refuses over-quota before execution with `QuotaError`. Judgment in `knowledge/governance.md`.
+- **Phase 14 — Quality gates: ruff + mypy + coverage** — done. CI-enforced gates in `pyproject.toml`/`Makefile`/`.github/workflows/agent-flow-validation.yml`: ruff (clean), mypy strict over `app`, coverage `--cov-fail-under=85` (achieved 88.90%). `tests/test_quality_gates.py` pins the wiring.
+- **Phase 15 — WebSocket protocol hardening + live event buffer** — done. `/ws` validates inbound frames against a Pydantic tagged union (`app/agent/ws_schemas.py`, `extra="forbid"`); malformed → `protocol_error`, socket kept alive. Bounded per-turn live ring buffer so a mid-turn reconnect replays missed events; unified outbound envelope; `ping`→`pong`. (Closes a Phase-2 deferral.)
+- **Phase 16 — Run lifecycle & readiness** — done. `app/agent/lifecycle.py` `RunRegistry` + `cancel_run` tool cancels another session's running turn from outside (frees the cap slot, reaps the child process group, no orphaned Job); SIGTERM graceful-shutdown cancels in-flight runs; `/readyz` gains `runner_ok`. *When* to cancel is judgment in `knowledge/run_lifecycle.md`. (Closes Phase-2 deferrals.)
+- **Phase 17 — Operability docs + alert rules** — done. `docs/SECURITY`, `docs/TROUBLESHOOTING`, `docs/CONTRIBUTING`, a Keep-a-Changelog, all linked from the docs index; `deploy/observability/alerts.rules.yaml` (5 Prometheus rules over existing metrics). Docs+data only.
+- **Phase 18 — Workspace lifecycle: retention/GC + startup self-check** — done. `app/storage/retention.py` config-driven GC over scratch areas (policy as DATA, excludes live sessions), one-shot at startup; structured `self_check` surfaced via a new `/readyz` probe (liveness stays on `/healthz`).
 
-## Phase 15 — WebSocket protocol hardening + live event buffer — DONE
-- The `/ws` boundary now validates every inbound frame against an explicit Pydantic tagged union
-  (`app/agent/ws_schemas.py`: `user_message`/`approval`/`ping`, `extra="forbid"`); a malformed or
-  non-dict frame is rejected with a structured `error` event of `kind="protocol_error"` and the
-  socket is KEPT alive instead of silently no-op'ing or crashing. The `Channel` gained a bounded
-  per-turn live ring buffer (`deque(maxlen=...)`): every emitted turn event is fanned out live AND
-  appended, so a client reconnecting mid-turn replays the missed live stream and continues live;
-  lifecycle frames (`ready`/`history`/`pong`) are excluded so reconnects don't replay stale
-  handshakes. Outbound envelope unified via `outbound()`; `ping` answered with `pong`.
-- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **384 passed / 6 skipped / 0 failed**
-  (+`tests/test_ws.py`, 280 lines; prior baseline 378 passed / 6 skipped).
+---
 
-## Phase 18 — Workspace lifecycle: retention/GC + startup self-check — DONE
-- Added `app/storage/retention.py`: a config-driven retention/GC over the workspace scratch areas
-  (sessions, history, orchestrator `workspace/jobs/*.yaml`) — policy as DATA in `config.py`
-  (`retention_max_age_days`/`max_items`/`max_bytes`, unlimited by default), walk/counter as the
-  mechanism. The FastAPI `lifespan` runs a one-shot GC at startup (`retention_gc_on_startup`, ON by
-  default, never blocks startup) that excludes any live/running session. Also a structured startup
-  `self_check` (workspace writable, provider coherent, repos resolvable, auth coherent) surfaced via
-  a new `/readyz` readiness probe (200/503 + structured reasons); liveness stays on `/healthz`.
-- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **404 passed / 6 skipped / 0 failed**
-  (+20 hermetic tests in `test_retention.py` + `test_readyz.py`; prior baseline 384 passed / 6 skipped).
+## v3 — proposal-completion features (Phases 19–26) — branch `feature/roadmap-v3` → main
 
-## Phase 16 — Run lifecycle & readiness — DONE
-- Closes Phase 2's two deferrals with pure mechanism (`app/agent/lifecycle.py`: a `RunRegistry`
-  of in-flight turn tasks). A new `cancel_run` tool (`app/tools/cancel.py`) cancels another
-  session's running turn from OUTSIDE itself — `asyncio` unwinds the concurrency-cap semaphore so
-  the slot is freed, and the runner reaps the child process group on `CancelledError` so no K8s
-  Job / subprocess is orphaned. The `lifespan` now installs a SIGTERM graceful-shutdown that
-  cancels every in-flight run (composed with Phase 18's startup self-check + retention GC); a
-  `cancelled` event + a cancel control message round out the surface, and `/readyz` gains a
-  `runner_ok` component. `knowledge/run_lifecycle.md` holds the JUDGMENT of *when* to cancel.
-- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **415 passed / 6 skipped / 0 failed**
-  (+`tests/test_run_lifecycle.py`, 384 lines; prior baseline 404 passed / 6 skipped).
-
-## Phase 17 — Operability docs + alert rules — DONE
-- Shipped the four operability docs under `docs/` (SECURITY: threat model, trust boundaries,
-  allowlist/approval model, secret scrubbing, network-exposure; TROUBLESHOOTING: symptom->fix
-  keyed to the structured logs/`corr_id` + `/healthz`//`readyz`//`metrics`; CONTRIBUTING:
-  thin-code + allowlist-as-data laws + the hermetic-test rule; a Keep-a-Changelog) linked from
-  the docs index, plus `deploy/observability/alerts.rules.yaml` (5 Prometheus rules over the
-  EXISTING exported metrics — slow commands, elevated run-failure/fault rates, stuck in-flight
-  runs, target down). Docs + data only; no app behavior change.
-- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **424 passed / 7 skipped / 0 failed**
-  (+`tests/test_ops_docs.py`, 224 lines — asserts docs/sections exist, the rule YAML is valid
-  Prometheus, and every referenced metric is one the app actually exports, derived live so it
-  can't drift; the +1 skip is an optional `promtool` check skipped when the binary is absent.
-  Prior baseline 415 passed / 6 skipped).
-
-
-## Phase 14 — Quality gates: ruff + mypy + coverage — DONE
-- Wired three CI-enforced quality gates into `pyproject.toml` / `Makefile` and a new
-  `.github/workflows/agent-flow-validation.yml`: **ruff** (lint, clean), **mypy** (strict typecheck
-  over `app`, no issues across 61 source files), and a **coverage-gated** pytest run
-  (`--cov=app --cov-fail-under=85`). Tightened types/lint across the tree (tools, validation,
-  observability, security, storage) so the gates pass with no behavior change; added
-  `tests/test_quality_gates.py` (146 lines) asserting the config/threshold/CI wiring stay in place.
-- Merged into `feature/roadmap-v2` (`--no-ff`); full suite **432 passed / 7 skipped / 0 failed**
-  (ruff clean, mypy clean, coverage **88.90%** >= 85% gate; prior baseline 424 passed / 7 skipped).
-
-## Roadmap v3 — proposal-completion features (Phases 19-26)
-Integration branch `feature/roadmap-v3` off `main` (the chosen base; main is never touched directly) for the missing proposal-coverage features.
-
-## Phase 19 — DOE experiment-file generator + token-characteristics elicitation — DONE
-- Shipped a `generate_doe_experiment` tool (`app/tools/doe.py`) backed by pure mechanism in
-  `app/validation/doe.py`: the agent supplies factors (name, dotted override key, levels) for the
-  optional `setup` and required `run` phases; the tool cross-products factors × levels into the full
-  treatments matrix, emits a valid experiment YAML into the session workspace (never the read-only
-  repos), and validates it STRUCTURALLY against the llm-d-benchmark experiment example format read
-  LIVE from disk (no vendored copy). WHICH factors/levels to sweep is agent judgment grounded in an
-  expanded `knowledge/sweep_playbook.md`, which now adds explicit token-characteristics / prefix-reuse
-  elicitation guidance. Thin code / thick agent: no factor-selection logic in Python.
-- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — additive registry/schemas/knowledge,
-  no entries dropped); full suite **477 passed / 7 skipped / 0 failed**, ruff clean, mypy clean
-  (+`tests/test_doe.py`, 429 lines).
-
-## Phase 20 — Well-lit-path advisor — DONE
-- Shipped `knowledge/welllit_path_advisor.yaml` (the Well-lit-path advisor): ADVISORY DATA mapping a
-  workload SHAPE → the llm-d well-lit-path scenario worth benchmarking, with the SIGNALS that select it
-  (prefix-reuse, context length, concurrency, SLO emphasis), a plain-language rationale, candidate
-  `benchmark_workloads`, and a `deploy_path` reach flag (kind-local vs gpu-only). The judgment lives in
-  the data, not in any Python `if/elif`: the file is inlined into the system prompt (added to
-  `CORE_KNOWLEDGE` in `app/agent/prompt.py`) and served via `read_knowledge`. `deploy_path_playbook.md`
-  now points at the advisor so the agent consults it once a GPU deploy is in scope, while still
-  benchmarking `cicd/kind` for a local sanity pass. Thin code / thick agent — code only reads the file.
-- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — additive prompt/knowledge, no entries
-  dropped); full suite **491 passed / 7 skipped / 0 failed**, ruff clean, mypy clean (63 files)
-  (+`tests/test_welllit_advisor.py`, 231 lines; hermetic — validates every archetype's fields/signals and
-  that each `scenario`/`also_consider`/`benchmark_workloads` id resolves against the catalog snapshot).
-
-## Phase 25 — Analyzer metric completeness: KV-cache hit rate, schedule delay, GPU utilization — DONE
-- Extended `summarize_report`/`analysis` to PARSE and SURFACE the §3.4 standard serving metrics that
-  were previously ignored — KV-cache hit rate, schedule delay (queue-depth proxy), and GPU utilization —
-  mechanically extracting the first present candidate from EITHER the BR v0.2 standardized
-  `observability.components[].aggregate` shape OR a harness-native per-metric entry, with field-name
-  discovery as DATA in `knowledge/standard_metrics.yaml` (thin code / thick agent); gracefully `None`
-  when a harness doesn't emit them — never fabricated. Surfaced in the human summary
-  (`summary.standard_metrics`), per-run in `analyze_results`, and as INFORMATIONAL Pareto objectives kept
-  deliberately OUT of dominance — goodput/SLO/Pareto behavior unchanged.
-- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — additive analyzer/knowledge, no
-  entries dropped); full suite **509 passed / 7 skipped / 0 failed**, ruff clean, mypy clean (63 files)
-  (+`tests/test_standard_metrics.py`, 293 lines; hermetic — standardized + native extraction, catalog
-  preference order, graceful degradation on absent/garbage reports, real BR v0.2 surfacing, and the
-  informational-only Pareto behavior).
-
-## Phase 21 — Real-time benchmark-pod log streaming — DONE
-- Wired the existing `kube.stream_logs(follow=True)` into the orchestrator run loop: while a
-  benchmark Job runs, `controller` tails the pod's live log lines and forwards each through an
-  optional `on_log_line` sink. `orchestrate_benchmark_run` builds that sink from `ctx.emit`, so
-  every line surfaces to the UI as an `output` event — the SAME transport the runner already uses
-  for streamed command output, so the user watches benchmark progress in real time instead of only
-  at end-of-run. Best-effort: a failing/closed tail never breaks the run (guarded in the
-  orchestrator), and with no emitter wired (bare unit tests, non-UI callers) streaming is simply
-  disabled — behavior otherwise unchanged.
-- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — structural-wiring of the run loop,
-  no existing behavior dropped); full suite **519 passed / 7 skipped / 0 failed**, ruff clean, mypy
-  clean (63 files) (+`tests/test_orchestrator_logstream.py`, 213 lines + `test_orchestrator_tool.py`
-  additions; hermetic — fake kube client streams lines, asserts ordering/`output`-event shape, the
-  no-emitter disable path, and that a raising tail is swallowed without failing the run).
-
-## Phase 23 — Resource management: node affinity / GPU selection / anti-starvation — DONE
-- Added an OPTIONAL `Scheduling` value object to `JobSpec`/`build_job_manifest` so a benchmark Job
-  can request the right hardware (GPU resource + count, GPU-type node label) and be placed so it does
-  **not starve the measured llm-d stack** — via `node_selector`, `tolerations`, a raw agent-supplied
-  `affinity` block, and pod anti-affinity synthesized from `avoid_labels` (proposal §4). With
-  `scheduling` unset the rendered manifest is byte-for-byte the cpu/memory baseline. Mechanism only:
-  `Scheduling.from_dict` accepts/rejects on TYPE; the WHICH-GPU / WHERE-to-place judgment lives as
-  DATA in `knowledge/resource_management.md` (thin code / thick agent). `orchestrate_benchmark_run`
-  threads a validated `scheduling` dict through; the schema field + tool description guide the agent.
-  No allowlist change (the manifest goes through the existing `kubectl apply` surface).
-- Merged into `feature/roadmap-v3` (`--no-ff`; one additive conflict in `knowledge/orchestrator.md`
-  resolved by keeping BOTH sides — Phase 21 log-streaming section + Phase 23 hardware/placement
-  section; `orchestrate.py` auto-merged the streaming + scheduling wiring into one coherent run path);
-  full suite **556 passed / 7 skipped / 0 failed** (17.2s, no hang, exit 0), ruff clean, mypy clean
-  (63 files) (+`tests/test_resource_management.py`, 347 lines / +37 tests; hermetic — baseline manifest
-  unchanged when unset, GPU/node-selector/toleration/affinity/anti-affinity rendering, and
-  type-validation rejection). Prior baseline 519 passed / 7 skipped (Phase 21).
-
-## Phase 22 — DOE checkpoint/resume for long sweeps — DONE
-- Added cluster-backed checkpoint/resume to `run_sweep` (proposal §3.3/§4 — the biggest 40%-grade
-  omission). A new `app/orchestrator/checkpoint.py` (`SweepCheckpoint`/`CheckpointStore`) persists each
-  treatment's completed/in-flight state + terminal outcome to a per-sweep **ConfigMap** (the cluster
-  source of truth, consistent with the stateless design — no local file), read/written over the same
-  allowlisted `kubectl` surface (`cm/configmaps` added to the read-only enum; `kube.list_configmaps`).
-  When `run_sweep` is given a `sweep_id` (+`namespace`) it loads the checkpoint, **skips** every
-  treatment already recorded COMPLETED (its prior outcome reconstructed into the merged result so the
-  result still covers all N), marks each remaining treatment in-flight before it runs and completed
-  after — so re-invoking with the same `sweep_id` resumes idempotently from where an interrupted sweep
-  stopped. `reconstruct_sweep(sweep_id)` rebuilds progress purely from the ConfigMap. Reconciles cleanly
-  on top of the Phase 21 streaming run loop (per-treatment `on_log_line` tagging preserved). Omitting
-  `sweep_id` ⇒ the original stateless (no-checkpoint) behavior, byte-for-byte. WHICH/WHEN to checkpoint
-  is documented as guidance in `knowledge/orchestrator.md` (thin code / thick agent).
-- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — P22 branched from the v3 HEAD that
-  already included P21/P23/P25, no conflicts); full suite **568 passed / 7 skipped / 0 failed**
-  (17.6s, no hang, exit 0), ruff clean, mypy clean (64 files) (+`tests/test_orchestrator_checkpoint.py`,
-  264 lines / +12 tests; hermetic — fake kube ConfigMap store, asserts skip-completed, in-flight
-  persistence, idempotent resume, all-N merged result, and no-`sweep_id` stateless path). Prior baseline
-  556 passed / 7 skipped (Phase 23).
-
-## Phase 24 — Endpoint health-check before submit (+ optional auto-standup) — DONE
-- Closed the proposal §3.3 dependency-management gap: the orchestrator no longer benchmarks an
-  unready stack. A new `app/orchestrator/readiness.py` reads the authoritative K8s signal
-  (`kubectl get endpoints`) and asks whether any Service in the namespace has a **ready backing
-  endpoint** (a live address that can receive traffic), corroborated by the benchmark CLI's
-  read-only `run --list-endpoints`, returning a structured `ready` verdict with per-service
-  ready/not-ready counts. The read-only `check_endpoint_readiness` tool exposes it (auto-runs), and
-  `orchestrate_benchmark_run` now **gates on it automatically** (`require_ready_endpoint=true` by
-  default): if the endpoint isn't ready it submits NOTHING, mutates nothing, and returns
-  `{submitted:false, ready:false, readiness:{…}, standup_suggestion:{…}}` — the standup is only an
-  approval-gated *suggestion*, never auto-run. `ep/endpoints` was already in the read-only kubectl
-  enum; WHEN to skip the gate (external `-U` endpoint) and HOW to act on a not-ready verdict is
-  guidance in `knowledge/orchestrator.md` + `knowledge/preconditions.md` (thin code / thick agent).
-- Merged into `feature/roadmap-v3` (`--no-ff`; one additive conflict in `security/allowlist.yaml`
-  resolved by keeping BOTH sides — the Phase 22 `cm/configmaps` enum entries AND the Phase 24
-  `ep/endpoints` readiness comment; `knowledge/orchestrator.md` auto-merged the checkpoint +
-  readiness sections into one coherent doc); full suite **584 passed / 7 skipped / 0 failed**
-  (17.6s, no hang, exit 0), ruff clean, mypy clean (66 files) (+`tests/test_endpoint_readiness.py`,
-  289 lines / +28 net tests; hermetic — fake kube endpoints, asserts ready/not-ready verdicts, the
-  submit gate (submits nothing when unready), the standup suggestion, and the external-endpoint skip
-  path). Prior baseline 568 passed / 7 skipped (Phase 22).
-
-## Phase 26 — llm-d-inference-sim integration tests (opt-in) — DONE
-- Closed the proposal §5.3/§7 testing gap: shipped an `tests/integration/` layer that exercises the
-  analyze/compare path against `llm-d-inference-sim` (the CPU-only mock server) **without making the
-  default suite non-hermetic**. Two parts: (1) an **always-running** hermetic check that builds a
-  sim-SHAPED Benchmark Report v0.2 fixture from `llm-d-benchmark`'s own BR v0.2 example (read live,
-  never vendored) and drives it through the real `analyze_results` / `compare_reports` tools (SLO
-  verdict, goodput, §3.4 standard metrics incl. KV-cache hit rate, an A/B delta, and a Pareto sweep);
-  and (2) a **live integration test that is opt-in and SKIPPED by default** — it stands up a real
-  `llm-d-inference-sim` only when `LLMD_SIM_INTEGRATION=1` is set AND the sim is locatable (binary on
-  `PATH` / `LLMD_SIM_BINARY`, or a runnable container image), otherwise it skips cleanly and NEVER
-  hangs reaching for an absent server. Sim discovery is pure data/policy (overridable, no hardcoded
-  path); the WHAT-to-test stays in code. Also added a **non-gating** CI job
-  (`.github/workflows/agent-flow-validation.yml`) and a `tests/test_quality_gates.py` assertion that
-  the integration layer is genuinely opt-in. Guidance lives in `knowledge/sim_integration.md`
-  (thin code / thick agent); docs in `docs/VALIDATION.md` + `docs/CONTRIBUTING.md`.
-- Merged into `feature/roadmap-v3` (`--no-ff`, clean `ort` merge — 9 purely additive files, no
-  existing tool/field/policy/knowledge line dropped); full suite **591 passed / 9 skipped / 0 failed**
-  (18.6s, no hang, exit 0), ruff clean, mypy clean (66 source files). The +2 skips are the opt-in live
-  integration tests correctly skipping when no sim is available. Prior baseline 584 passed / 7 skipped
-  (Phase 24).
+- **Phase 19 — DOE experiment-file generator + token-characteristics elicitation** — done. `generate_doe_experiment` tool + `app/validation/doe.py`: cross-products agent-supplied factors×levels into a treatments matrix, emits experiment YAML into the session workspace, validates structurally against the live llm-d-benchmark example (no vendored copy). Factor/level selection is judgment in `knowledge/sweep_playbook.md`.
+- **Phase 20 — Well-lit-path advisor** — done. `knowledge/welllit_path_advisor.yaml`: ADVISORY DATA mapping workload SHAPE → llm-d well-lit-path scenario with selecting signals, rationale, candidate workloads, `deploy_path` reach flag; inlined via `CORE_KNOWLEDGE` and served by `read_knowledge`. `deploy_path_playbook.md` points at it. (`tests/test_welllit_advisor.py` asserts every archetype resolves.)
+- **Phase 21 — Real-time benchmark-pod log streaming** — done. Wired `kube.stream_logs(follow=True)` into the run loop via an optional `on_log_line` sink; `orchestrate_benchmark_run` builds it from `ctx.emit` so each line surfaces as an `output` event. Best-effort: a failing tail never breaks the run; no emitter ⇒ disabled.
+- **Phase 22 — DOE checkpoint/resume for long sweeps** — done. `app/orchestrator/checkpoint.py` persists each treatment's state to a per-sweep **ConfigMap** (cluster source of truth, over allowlisted `kubectl`); `run_sweep(sweep_id, namespace)` skips COMPLETED treatments and resumes idempotently; omitting `sweep_id` ⇒ original stateless behavior byte-for-byte. Judgment in `knowledge/orchestrator.md`.
+- **Phase 23 — Resource management: node affinity / GPU selection / anti-starvation** — done. Optional `Scheduling` on `JobSpec`/`build_job_manifest` (GPU resource+count, GPU-type node label, `node_selector`, `tolerations`, raw `affinity`, anti-affinity from `avoid_labels`); unset ⇒ manifest byte-for-byte the cpu/memory baseline. WHICH-GPU/WHERE judgment is DATA in `knowledge/resource_management.md`. No allowlist change.
+- **Phase 24 — Endpoint health-check before submit (+ optional auto-standup)** — done. `app/orchestrator/readiness.py` reads `kubectl get endpoints` (corroborated by `run --list-endpoints`) for a `ready` verdict; `check_endpoint_readiness` tool; `orchestrate_benchmark_run` gates on it by default (`require_ready_endpoint=true`) — submits nothing if unready, returns an approval-gated standup *suggestion*. Judgment in `knowledge/orchestrator.md` + `knowledge/preconditions.md`.
+- **Phase 25 — Analyzer metric completeness: KV-cache hit rate, schedule delay, GPU utilization** — done. `summarize_report`/`analysis` parse and surface the §3.4 metrics from either the BR v0.2 `observability.components[].aggregate` shape or a harness-native entry (field discovery as DATA in `knowledge/standard_metrics.yaml`), `None` when absent — never fabricated; informational-only Pareto objectives (out of dominance).
+- **Phase 26 — llm-d-inference-sim integration tests (opt-in)** — done. `tests/integration/`: an always-running hermetic check driving a sim-shaped BR v0.2 fixture (read live) through `analyze_results`/`compare_reports`, plus a live test that is SKIPPED by default (runs only when `LLMD_SIM_INTEGRATION=1` and the sim is locatable, never hangs). Non-gating CI job; guidance in `knowledge/sim_integration.md`; docs in `docs/VALIDATION.md` + `docs/CONTRIBUTING.md`.
