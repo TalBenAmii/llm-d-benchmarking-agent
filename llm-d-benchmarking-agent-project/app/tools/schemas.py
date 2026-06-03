@@ -166,7 +166,7 @@ class ExecuteInput(BaseModel):
     flags: dict[str, Any] | None = Field(
         default=None,
         description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "
-                    "endpoint_url, monitoring, harness_cpu_nr}. `output` is a DESTINATION "
+                    "endpoint_url, monitoring, harness_cpu_nr, step}. `output` is a DESTINATION "
                     "KEYWORD — 'local' (default), 'gs://bucket/...', or 's3://bucket/...' — NOT a "
                     "filesystem path; a `run` defaults to local output anchored under the session "
                     "workspace. `monitoring` activates results.observability (metrics scraping): "
@@ -183,7 +183,15 @@ class ExecuteInput(BaseModel):
                     "schedule so the launcher pod doesn't sit in FailedScheduling/Pending. WHEN and "
                     "to WHAT (given probe_environment's node_capacity and the harness) is judgment "
                     "in knowledge/harness_sizing.md; omit it to keep the default 16. It never "
-                    "reaches the browser. For subcommand='experiment' (a DoE sweep over a "
+                    "reaches the browser. `step` is a step-list STRING (comma-separated numbers "
+                    "and/or N-M ranges, e.g. '5', '5-9', '3,7', '3-5,9') emitted as `-s <spec>`, "
+                    "valid on standup/smoketest/run/teardown — use it to RE-RUN a single failed "
+                    "step (or range) after a mid-phase failure instead of tearing down and "
+                    "redoing the whole phase; omit it to run the whole phase. WHICH step to "
+                    "re-run and the per-phase step numbering are judgment in "
+                    "knowledge/step_select.md (read_knowledge('step_select') first); -s does NOT "
+                    "change a command's mode, so re-running mutating steps stays approval-gated. "
+                    "For subcommand='experiment' (a DoE sweep over a "
                     "treatments file): {experiments (path to the experiment YAML), workspace (dir "
                     "for outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, "
                     "skip_teardown}.",

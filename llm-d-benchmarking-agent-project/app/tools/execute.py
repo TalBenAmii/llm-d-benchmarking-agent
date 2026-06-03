@@ -52,7 +52,13 @@ def build_argv(
     sole subcommand whose upstream argparse — BooleanOptionalAction — accepts it; run/experiment/
     plan are store_true, so an opt-out there just omits the flag); ``None``/absent emits nothing
     (scenario defaults). Whether to set it is the agent's judgment (knowledge/observability.md),
-    not Python's."""
+    not Python's.
+
+    ``flags["step"]`` (Phase 31) emits ``-s <spec>`` to RE-RUN a single step or step range —
+    e.g. ``'5'``, ``'5-9'``, ``'3,7'``, ``'3-5,9'`` (the upstream step-list grammar: numbers,
+    ``N-M`` ranges, and comma-separated combos). Valid upstream on standup/smoketest/run/teardown
+    only; ``None``/absent emits nothing (the whole phase runs). WHICH step to re-run after a
+    mid-phase failure is the agent's judgment (knowledge/step_select.md), not Python's."""
     flags = flags or {}
     argv: list[str] = ["llmdbenchmark"]
     if spec:
@@ -105,6 +111,17 @@ def build_argv(
         argv.append("--monitoring")
     elif monitoring is False and subcommand == "standup":
         argv.append("--no-monitoring")
+    # Step selection / re-run (Phase 31): emit -s <spec> so the agent can re-run a single
+    # failed step or step range instead of redoing the whole phase. PURE MECHANISM — we emit
+    # whatever step-spec the agent chose; WHICH step to re-run (and per-phase step numbering)
+    # is judgment in knowledge/step_select.md, never an if/elif on the value. -s is the short
+    # form valid upstream on standup/smoketest/run/teardown; the step-list grammar (N / N-M
+    # ranges / N,M lists / combos like 3-5,9) is parsed by the CLI's StepExecutor. An unknown
+    # -s on a subcommand that doesn't accept it is screened by the allowlist (only the four
+    # accepting subcommands permit it). Re-running mutating steps stays approval-gated — -s
+    # does not change a command's mode.
+    if flags.get("step"):
+        argv += ["-s", str(flags["step"])]
     if flags.get("list_endpoints"):
         argv.append("--list-endpoints")
     if flags.get("dry_run"):
