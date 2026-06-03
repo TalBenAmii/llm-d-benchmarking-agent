@@ -19,10 +19,32 @@ _SUBCOMMANDS = {"plan", "standup", "smoketest", "run", "teardown", "results", "e
 # are previews and never wrapped.
 _POLLED_SUBCOMMANDS = {"run", "experiment", "smoketest"}
 
-# Per-subcommand execution timeouts are now POLICY DATA: they live as `timeout_s` on each
+# Per-subcommand RUNNER execution timeouts are POLICY DATA: they live as `timeout_s` on each
 # llmdbenchmark subcommand in security/allowlist.yaml and are sourced from there by the
-# command runner (via the Decision). There is intentionally no Python timeout table here —
-# one mechanism, not two (Phase 13).
+# command runner (via the Decision). That is the OUTER, host-side deadline (asyncio.wait_for
+# in runner.execute) — one mechanism, not two (Phase 13). It is unchanged here.
+#
+# Distinct from that: the llmdbenchmark CLI accepts its OWN per-phase timeout flags (Phase 38)
+# — a DEEPER, in-process bound the CLI enforces on a specific deploy/wait/data-access/teardown
+# phase. The table below is the static flags-key -> (CLI flag, upstream-accepting subcommands)
+# mapping that build_argv iterates as PURE MECHANISM. It carries NO judgment: WHEN/WHAT to set,
+# and the rule that every value must stay BELOW the runner `timeout_s` ceiling so the two layers
+# do not fight, live in knowledge/phase_timeouts.md. Flag spellings + type=int + accepting
+# subcommands are verified against llm-d-benchmark/llmdbenchmark/interface/{standup,run,
+# experiment,teardown}.py and are value-pinned (positive_int) in security/allowlist.yaml.
+_PHASE_TIMEOUT_FLAGS: dict[str, tuple[str, tuple[str, ...]]] = {
+    # standup phases (modelservice / standalone / kustomize deploy + PVC bind)
+    "standalone_deploy_timeout": ("--standalone-deploy-timeout", ("standup",)),
+    "gateway_deploy_timeout": ("--gateway-deploy-timeout", ("standup",)),
+    "modelservice_deploy_timeout": ("--modelservice-deploy-timeout", ("standup",)),
+    "kustomize_deploy_timeout": ("--kustomize-deploy-timeout", ("standup",)),
+    "pvc_bind_timeout": ("--pvc-bind-timeout", ("standup",)),
+    # harness wait / data-access (run + experiment)
+    "wait_timeout": ("--wait-timeout", ("run", "experiment")),
+    "data_access_timeout": ("--data-access-timeout", ("run", "experiment")),
+    # teardown (FMA launcher/requester drain)
+    "fma_teardown_timeout": ("--fma-teardown-timeout", ("teardown",)),
+}
 
 
 def build_argv(
@@ -76,6 +98,19 @@ def build_argv(
     is pure MECHANISM — WHETHER to replay a dataset, and WHICH one, is the agent's judgment in
     knowledge/dataset_replay.md, never an if/elif on the value here. We set NO env var: the CLI
     itself derives LLMDBENCH_RUN_DATASET_DIR/_FILE from the URL during profile rendering.
+
+    The per-phase CLI timeout keys (Phase 38) — ``flags["wait_timeout"]``,
+    ``flags["data_access_timeout"]``, ``flags["standalone_deploy_timeout"]``,
+    ``flags["gateway_deploy_timeout"]``, ``flags["modelservice_deploy_timeout"]``,
+    ``flags["kustomize_deploy_timeout"]``, ``flags["pvc_bind_timeout"]``,
+    ``flags["fma_teardown_timeout"]`` — each emit the matching ``--*-timeout <seconds>`` CLI
+    flag, but ONLY on the subcommand(s) upstream accepts it on (the ``_PHASE_TIMEOUT_FLAGS``
+    table: standup owns the deploy/bind timeouts; run+experiment own wait/data-access; teardown
+    owns fma). These are the CLI's OWN per-phase bound — a DEEPER timeout the CLI enforces
+    internally — and must stay BELOW the runner's per-command ``timeout_s`` ceiling so the two
+    layers do not fight. Emission is pure MECHANISM (no if/elif on the value); WHEN/WHAT to set
+    is the agent's judgment in knowledge/phase_timeouts.md. Omitted ⇒ nothing emitted (the CLI's
+    own defaults / env stand) and the runner deadline still bounds the whole process.
 
     ``flags["repo_path"]`` (Phase 46) emits ``--llmd-repo-path <path>`` — a real ``standup``
     argparse flag — pointing the KUSTOMIZE deploy method (``-t kustomize``) at a LOCAL llm-d
@@ -214,6 +249,23 @@ def build_argv(
     # (knowledge/dataset_replay.md), never an if/elif on the value.
     if flags.get("dataset") and subcommand in ("run", "experiment"):
         argv += ["-x", str(flags["dataset"])]
+    # Per-phase CLI timeouts (Phase 38): emit the CLI's OWN per-phase timeout flags (seconds)
+    # so a slow deploy / data-access / teardown phase can be given a longer DEEPER bound than
+    # the host's blunt per-command runner deadline. This is pure MECHANISM driven by the
+    # _PHASE_TIMEOUT_FLAGS table below (flags-key -> CLI flag + the upstream-accepting
+    # subcommands) — there is NO if/elif on the value. The table mirrors the upstream argparse:
+    # standup owns the five deploy/bind timeouts; run+experiment own --wait-timeout /
+    # --data-access-timeout; teardown owns --fma-teardown-timeout. A timeout key set on a
+    # subcommand that does not accept it emits NOTHING (guarded by the subcommand tuple, like
+    # dataset above), so an out-of-place key is silently dropped instead of producing a flag the
+    # CLI would reject. WHEN/WHAT to set — and the CRITICAL reconcile rule that each value must
+    # stay BELOW the runner's `timeout_s` ceiling for that subcommand (3600 standup/run, 900
+    # teardown, 14400 experiment) so the two timeout layers do not fight — is the agent's
+    # judgment in knowledge/phase_timeouts.md, never encoded here.
+    for key, (cli_flag, accepts) in _PHASE_TIMEOUT_FLAGS.items():
+        value = flags.get(key)
+        if value is not None and subcommand in accepts:
+            argv += [cli_flag, str(value)]
     if flags.get("list_endpoints"):
         argv.append("--list-endpoints")
     # Collect-only / skip-execution mode (Phase 36): emit ``-z`` to SKIP the harness/load

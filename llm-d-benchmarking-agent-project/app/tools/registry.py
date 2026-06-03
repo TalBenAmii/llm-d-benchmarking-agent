@@ -279,7 +279,14 @@ _DESCRIPTIONS = {
         "pool — it emits `--stack` on standup/smoketest/run/teardown; and set flags.parallel to an "
         "int to CAP how many stacks deploy in parallel (emits `--parallel` on standup/smoketest/"
         "experiment; lower it on a small/Kind node). WHICH stack(s) and HOW MANY at once is your "
-        "judgment — see knowledge/multi_stack.md."
+        "judgment — see knowledge/multi_stack.md. "
+        "To give one slow PHASE more rope (or fail it faster), set the CLI's per-phase timeout "
+        "keys in flags (seconds): wait_timeout/data_access_timeout on run+experiment; "
+        "standalone_deploy_timeout/gateway_deploy_timeout/modelservice_deploy_timeout/"
+        "kustomize_deploy_timeout/pvc_bind_timeout on standup; fma_teardown_timeout on teardown. "
+        "Each is a DEEPER bound that MUST stay below the runner deadline for that subcommand so "
+        "the two timeout layers don't fight — WHEN/WHAT to set is your judgment, see "
+        "knowledge/phase_timeouts.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "

@@ -613,6 +613,17 @@ executables:
           # agent's judgment (knowledge/multi_stack.md).
           "--stack": { takes_value: true, value: { ref: stack_list } }
           "--parallel": { takes_value: true, value: { ref: positive_int } }
+          # Phase 38: the CLI's OWN per-phase standup deploy/bind timeouts (seconds, type=int
+          # upstream). Each is a DEEPER bound the CLI enforces on one deploy phase — it MUST
+          # stay BELOW this subcommand's runner `timeout_s` ceiling (3600 above) so the two
+          # timeout layers do not fight (the runner deadline still bounds the whole process).
+          # WHEN/WHAT-to-set judgment lives in knowledge/phase_timeouts.md. Value-pinned to a
+          # positive integer (reuses the existing positive_int constraint).
+          "--standalone-deploy-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--gateway-deploy-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--modelservice-deploy-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--kustomize-deploy-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--pvc-bind-timeout": { takes_value: true, value: { ref: positive_int } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       smoketest:
@@ -688,6 +699,12 @@ executables:
           # SEPARATE --parallelism/-j (parallel harness PODS) above; do NOT add --parallel here.
           # Value-pinned DATA; WHICH stack is judgment in knowledge/multi_stack.md.
           "--stack": { takes_value: true, value: { ref: stack_list } }
+          # Phase 38: the CLI's OWN per-phase wait / data-access timeouts (seconds, type=int
+          # upstream; run + experiment only). A DEEPER bound the CLI enforces internally — each
+          # MUST stay BELOW this subcommand's runner `timeout_s` ceiling (3600 above) so the two
+          # timeout layers do not fight. WHEN/WHAT judgment in knowledge/phase_timeouts.md.
+          "--wait-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--data-access-timeout": { takes_value: true, value: { ref: positive_int } }
           "--list-endpoints": { read_only_trigger: true }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
@@ -711,6 +728,12 @@ executables:
           # --parallel upstream — do NOT add --parallel here. Value-pinned DATA; judgment in
           # knowledge/multi_stack.md.
           "--stack": { takes_value: true, value: { ref: stack_list } }
+          # Phase 38: the CLI's OWN teardown-drain timeout (seconds, type=int upstream) — how
+          # long to wait for the FMA launcher/requester pods to terminate before the Helm
+          # uninstall removes the controller. A DEEPER bound under this subcommand's runner
+          # `timeout_s` ceiling (900 above) so the two timeout layers do not fight. WHEN/WHAT
+          # judgment in knowledge/phase_timeouts.md.
+          "--fma-teardown-timeout": { takes_value: true, value: { ref: positive_int } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       results:
@@ -751,6 +774,10 @@ executables:
           "-j": { takes_value: true, value: { ref: positive_int } }
           "--parallelism": { takes_value: true, value: { ref: positive_int } }
           "--parallel": { takes_value: true, value: { ref: positive_int } }
+          # Phase 38: the CLI's OWN per-phase wait / data-access timeouts (seconds, type=int
+          # upstream) — a DEEPER bound under this subcommand's runner `timeout_s` ceiling
+          # (14400 above) so the two timeout layers do not fight. WHEN/WHAT judgment in
+          # knowledge/phase_timeouts.md. (Already present before Phase 38; tagged for parity.)
           "--wait-timeout": { takes_value: true, value: { ref: positive_int } }
           "--data-access-timeout": { takes_value: true, value: { ref: positive_int } }
           "--stop-on-error": {}
