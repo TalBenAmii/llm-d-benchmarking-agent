@@ -179,7 +179,12 @@ _DESCRIPTIONS = {
         "auto-run; standup/run/teardown/experiment are mutating and require approval. "
         "'experiment' runs a full DoE sweep (standup+run+teardown per treatment) over an "
         "experiment YAML you pass via flags.experiments; its per-treatment reports land in "
-        "the session workspace. Results from a 'run' are written into the session workspace too."
+        "the session workspace. Results from a 'run' are written into the session workspace too. "
+        "To serve a NON-DEFAULT model (not the spec's scenario default), set the top-level "
+        "`models` field (a HF id/short name) — it emits `-m`; FIRST run "
+        "check_capacity(overrides={'model': <same id>}) so the pre-flight validates that EXACT "
+        "model (sizing + gated access). WHICH model is your judgment — see "
+        "knowledge/model_override.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "

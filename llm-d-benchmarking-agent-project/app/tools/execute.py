@@ -32,11 +32,20 @@ def build_argv(
     namespace: str | None = None,
     harness: str | None = None,
     workload: str | None = None,
+    models: str | None = None,
     flags: dict[str, Any] | None = None,
     extra: list[str] | None = None,
 ) -> list[str]:
     """Assemble the logical argv. Global flags (``--spec``, ``--workspace``) precede the
     subcommand; everything else follows it.
+
+    ``models`` (Phase 28) emits ``-m <id>`` after the subcommand to OVERRIDE the spec's
+    scenario-default model for THIS standup (or plan/run/experiment). Upstream spells this
+    ``--models`` on standup/plan/experiment but ``--model`` on run; ``-m`` is the single short
+    form valid on all of them, so we always emit ``-m``. Omitted ⇒ the spec's default model
+    stands. WHICH model is the agent's judgment (knowledge/model_override.md), not Python's —
+    this is pure mechanism. The SAME id must be passed to check_capacity(overrides={'model': …})
+    so the pre-flight validates the identical model (HF config lookup + gated-access).
 
     ``flags["monitoring"]`` is SUBCOMMAND-AWARE (Phase 27): ``True`` emits ``--monitoring`` for
     standup/run/experiment/plan; ``False`` emits ``--no-monitoring`` only for ``standup`` (the
@@ -57,6 +66,13 @@ def build_argv(
         argv += ["-l", harness]
     if workload:
         argv += ["-w", workload]
+    # Model override (Phase 28): select a model per standup, OVERRIDING the spec's scenario
+    # default. PURE MECHANISM — we emit whatever id the agent chose; WHICH model is judgment
+    # (knowledge/model_override.md), never an if/elif on the value. Always the short ``-m``
+    # (the one form valid across standup/plan/run/experiment, where upstream uses --models on
+    # standup/plan/experiment but --model on run). Omitted ⇒ the spec's default model stands.
+    if models:
+        argv += ["-m", str(models)]
     if flags.get("methods"):
         argv += ["-t", str(flags["methods"])]
     if flags.get("output"):
@@ -105,6 +121,7 @@ async def execute_llmdbenchmark(
     namespace: str | None = None,
     harness: str | None = None,
     workload: str | None = None,
+    models: str | None = None,
     flags: dict[str, Any] | None = None,
     extra: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -128,7 +145,7 @@ async def execute_llmdbenchmark(
 
     argv = build_argv(
         subcommand, spec=spec, namespace=namespace, harness=harness,
-        workload=workload, flags=flags, extra=extra,
+        workload=workload, models=models, flags=flags, extra=extra,
     )
 
     # Right-size the harness launcher's CPU request for small/Kind nodes. This is an ENV VAR
