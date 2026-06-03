@@ -273,7 +273,10 @@ _DESCRIPTIONS = {
         "— see knowledge/collect_only.md for WHEN. "
         "To REPLAY a real dataset instead of a synthetic workload profile (run/experiment only), "
         "set flags.dataset to its URL/path — it emits `-x`; WHEN to replay vs stay synthetic is "
-        "your judgment, see knowledge/dataset_replay.md."
+        "your judgment, see knowledge/dataset_replay.md. "
+        "To send a `run`'s results to a CLOUD bucket instead of local-only, set flags.output to a "
+        "`gs://bucket/...` or `s3://bucket/...` URI (default is `local`); this is OPT-IN — WHETHER "
+        "the user has a bucket and WHICH one is their choice, see knowledge/cloud_results_sink.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "
