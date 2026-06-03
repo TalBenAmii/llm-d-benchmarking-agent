@@ -13,6 +13,15 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 53 (ROADMAP_V4): convert-guide (guide → scenario/experiment file generation).
+  Shipped `convert_guide_to_scenario` (`app/tools/convert_guide.py`), the workspace-only variant of upstream
+  `skills/convert-guide`: emits `ai.<name>.sh` (sorted, `shlex.quote`-safe `export LLMDBENCH_*` lines with
+  `# SOURCE:` provenance) plus a validatable companion `ai.<name>.yaml`/`.spec.yaml` (reusing the Phase-45
+  config_artifact mechanism so plan/--dry-run has a real `--spec` target). `LLMDBENCH_*` mappings + standard
+  practices are DATA in `knowledge/convert_guide.md` (thin code); all four outputs confined to `ctx.workspace`
+  — the read-only repos are never written, no allowlist change. Registered in `registry.py`/`schemas.py`;
+  28 new hermetic tests in `tests/test_convert_guide.py`. Merged into `feature/roadmap-v4`. Suite
+  **1105 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 - 2026-06-04 — Phase 41 (ROADMAP_V4): Dataset replay URL (`-x`/`--dataset`). Promoted real-dataset
   replay from unsupported (synthetic profiles only) to a modeled `flags["dataset"]`; `build_argv`
   (`app/tools/execute.py`, `schemas.py`) emits `-x <url>` ONLY on `run`/`experiment` (the two subcommands

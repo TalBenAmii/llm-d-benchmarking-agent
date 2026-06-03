@@ -533,8 +533,17 @@ skipped / 0 failed**; ruff + mypy clean.
 - **HERMETIC-TEST:** the replay invocation is allowlisted; a fixture trace yields a parsed
   by-turn report.
 
-## Phase 53 — convert-guide (guide → scenario/experiment file generation) — TODO
+## Phase 53 — convert-guide (guide → scenario/experiment file generation) — DONE
 *Catalog ref: Area C — "convert-guide skill" (⬜; constrained by the read-only-repo rule).*
+
+> **DONE (Phase 53):** Shipped `convert_guide_to_scenario` (`app/tools/convert_guide.py`), the
+> workspace-only variant of upstream `skills/convert-guide`. `LLMDBENCH_*` mappings + standard
+> practices live as DATA in `knowledge/convert_guide.md` (thin code). The tool emits `ai.<name>.sh`
+> (sorted, `shlex.quote`-safe export lines with `# SOURCE:` provenance) plus a validatable companion
+> `ai.<name>.yaml`/`ai.<name>.spec.yaml` (reusing the Phase-45 config_artifact mechanism so the
+> plan/--dry-run gate has a real `--spec` target) — all confined to `ctx.workspace`; the read-only
+> repos are never written. Registered in `registry.py`/`schemas.py`; 28 new hermetic tests in
+> `tests/test_convert_guide.py`. Suite **1105 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 
 - **GOAL:** generate a benchmark scenario/experiment file from an arbitrary llm-d guide.
 - **BUILD:** author `ai.<name>.sh` / `ai.<name>.yaml` from a guide URL/path **into the session
