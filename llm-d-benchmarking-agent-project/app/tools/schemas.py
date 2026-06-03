@@ -154,6 +154,63 @@ class WriteConfigInput(BaseModel):
     )
 
 
+class ConvertGuideInput(BaseModel):
+    name: str = Field(
+        ...,
+        description="The guide/scenario name token (letters/digits/_/-/. only). It becomes "
+                    "ai.<name>.sh + ai.<name>.yaml in the SESSION WORKSPACE — the upstream "
+                    "'ai.' prefix marks an agent-generated scenario. The read-only repos are "
+                    "NEVER written; output goes to the session workspace only.",
+    )
+    env: dict[str, str] = Field(
+        ...,
+        description="REQUIRED. The already-resolved LLMDBENCH_* -> value map you derived from "
+                    "the guide. Each key MUST start with 'LLMDBENCH_' (e.g. "
+                    "{'LLMDBENCH_DEPLOY_MODEL_LIST': 'Qwen/Qwen3-32B', "
+                    "'LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS': '2'}); >=1 entry. The "
+                    "mapping JUDGMENT — WHICH Helm/kustomize path maps to WHICH LLMDBENCH_* var, "
+                    "the standard practices (DECODE_MODEL_COMMAND=custom, REPLACE_ENV_* "
+                    "placeholders, the preprocess command), and which defaults to override — is "
+                    "read_knowledge('convert_guide'), NOT this tool. The tool only EMITS the "
+                    "sorted, shell-quoted exports into the workspace .sh.",
+    )
+    sources: dict[str, str] | None = Field(
+        default=None,
+        description="Optional per-LLMDBENCH_* var -> a short source-trace string (e.g. "
+                    "'ms/values.yaml lines 23-24'), emitted as a '# SOURCE:' comment above "
+                    "each export for upstream's traceability requirement. Keys not present in "
+                    "`env` are ignored.",
+    )
+    scenario: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional per-knob dotted-path overrides for the VALIDATABLE companion YAML "
+                    "twin (same shape as write_and_validate_config content for "
+                    "artifact_type='scenario': a 'name' is forced to <name>, plus >=1 DOTTED "
+                    "upstream scenario field path, e.g. {'model.shortName': 'qwen3-32b', "
+                    "'decode.parallelism.tensor': 2}). The twin is what the determinism gate "
+                    "(plan/--dry-run) actually validates — a bare .sh is NOT gate-able. Omit it "
+                    "to derive a minimal twin carrying just the scenario name.",
+    )
+    harness: str | None = Field(
+        default=None,
+        description="Optional harness recorded into the .sh as LLMDBENCH_HARNESS_NAME. "
+                    "Defaults to 'inference-perf' (the upstream convert-guide default).",
+    )
+    profile: str | None = Field(
+        default=None,
+        description="Optional workload profile recorded into the .sh as "
+                    "LLMDBENCH_HARNESS_EXPERIMENT_PROFILE. Defaults to 'sanity_random.yaml' "
+                    "(the upstream convert-guide default).",
+    )
+    source_ref: str | None = Field(
+        default=None,
+        description="Optional guide URL/path, recorded only as a provenance header comment in "
+                    "the .sh (e.g. 'https://github.com/llm-d/llm-d/tree/main/guides/"
+                    "inference-scheduling'). Not fetched by this tool — you read the guide "
+                    "yourself via read_repo_doc / run_command git clone / your own file reads.",
+    )
+
+
 class ExecuteInput(BaseModel):
     subcommand: Literal["plan", "standup", "smoketest", "run", "teardown", "results", "experiment"]
     spec: str | None = Field(default=None, description="Spec name from the catalog, e.g. 'cicd/kind'")

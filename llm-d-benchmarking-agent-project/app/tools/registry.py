@@ -20,6 +20,7 @@ from app.tools import (
     command,
     compare,
     config_artifact,
+    convert_guide,
     doe,
     execute,
     hf_secret,
@@ -41,6 +42,7 @@ from app.tools.schemas import (
     CheckEndpointReadinessInput,
     CompareHarnessRunsInput,
     CompareReportsInput,
+    ConvertGuideInput,
     EnsureReposInput,
     ExecuteInput,
     FetchKeyDocsInput,
@@ -217,6 +219,27 @@ _DESCRIPTIONS = {
         "patches/repo choice. Then preview the returned `path` via the determinism gate: "
         "execute_llmdbenchmark(subcommand='plan'/'run', flags.dry_run=True)."
     ),
+    "convert_guide_to_scenario": (
+        "Convert an arbitrary llm-d deployment guide into a benchmark scenario, authored "
+        "WORKSPACE-ONLY (the agent's variant of upstream's skills/convert-guide, which writes "
+        "ai.<name>.sh + ai.<name>.yaml INTO the read-only benchmark repo — this NEVER does "
+        "that). FIRST read the guide yourself (read_repo_doc / run_command git clone / your own "
+        "file reads) and resolve its Helm/kustomize config to the LLMDBENCH_* env map using "
+        "read_knowledge('convert_guide') — WHICH vars map to what, the standard practices "
+        "(DECODE_MODEL_COMMAND=custom, REPLACE_ENV_* placeholders, preprocess) and the default "
+        "inference-perf / sanity_random.yaml are KNOWLEDGE, not this tool. Then pass the "
+        "resolved `env` map (+ optional per-var `sources` provenance, `harness`/`profile`, "
+        "`source_ref`, and an optional `scenario` dotted-knob override for the validatable "
+        "twin). It writes FOUR files into the session workspace — ai.<name>.sh (the "
+        "upstream-shaped scenario of sorted, shell-quoted LLMDBENCH_* exports), ai.<name>.yaml "
+        "(a structurally-validated scenario twin), and ai.<name>.spec.yaml (its companion "
+        "--spec) — NEVER the read-only repo. A bare .sh is NOT consumable by the determinism "
+        "gate, so the YAML+spec twin is the gate-able artifact: GATE it via "
+        "execute_llmdbenchmark(subcommand='plan', spec=<spec_path>, flags={'dry_run': True}) "
+        "BEFORE any standup. To then deploy the converted guide, stand up directly off the "
+        "workspace YAML via --spec=<spec_path> (the standup -c/--scenario .sh route is not "
+        "modeled here)."
+    ),
     "generate_doe_experiment": (
         "AUTHOR a Design-of-Experiments (DoE) experiment YAML: you supply the FACTORS to "
         "sweep — `run_factors` (workload knobs swept against one stack; REQUIRED) and "
@@ -358,6 +381,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),
         ToolSpec("run_setup", _DESCRIPTIONS["run_setup"], RunSetupInput, repos.run_setup),
         ToolSpec("write_and_validate_config", _DESCRIPTIONS["write_and_validate_config"], WriteConfigInput, config_artifact.write_and_validate_config),
+        ToolSpec("convert_guide_to_scenario", _DESCRIPTIONS["convert_guide_to_scenario"], ConvertGuideInput, convert_guide.convert_guide_to_scenario),
         ToolSpec("generate_doe_experiment", _DESCRIPTIONS["generate_doe_experiment"], GenerateDoeInput, doe.generate_doe_experiment),
         ToolSpec("execute_llmdbenchmark", _DESCRIPTIONS["execute_llmdbenchmark"], ExecuteInput, execute.execute_llmdbenchmark),
         ToolSpec("run_command", _DESCRIPTIONS["run_command"], RunCommandInput, command.run_command),
