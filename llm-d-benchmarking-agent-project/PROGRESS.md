@@ -13,6 +13,20 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 66 (ROADMAP_V4): EPP HTTP-header decoder (interpret 429s + `x-llm-d-request-dropped-reason`).
+  DATA-only. New `knowledge/epp_headers.yaml` catalogues every EPP request/response header — the SLO set-headers
+  `x-llm-d-slo-ttft-ms`/`x-llm-d-slo-tpot-ms` + `x-llm-d-inference-objective`/`x-llm-d-inference-fairness-id` — and the
+  `x-llm-d-request-dropped-reason` enum → plain-language cause/remedy (`rejected-saturated` = at admission capacity, shed
+  before serving → lower concurrency or scale out; `evicted-priority` = preempted mid-flight by higher-priority work →
+  raise this request's inference-objective priority or add capacity), plus the deprecated header aliases. Wired into
+  `CORE_KNOWLEDGE` (`app/agent/prompt.py`) so it's reachable via `read_knowledge("epp_headers")`, and
+  `knowledge/results_interpretation.md` now routes failed-request/429 interpretation there, reframing a non-100%
+  `success_rate` as an admission/eviction (capacity) signal rather than "the system was broken." The
+  rejected-vs-evicted-vs-broken classification lives entirely in `knowledge/` — no Python `if/elif`. New hermetic
+  `tests/test_epp_headers.py` (15 tests) asserts the YAML loads, is reachable via `read_knowledge`, documents both
+  drop-reason enum values (`rejected-saturated`, `evicted-priority`) + the four SLO/objective/fairness header names, and
+  is listed in `CORE_KNOWLEDGE` — no GPU, no live cluster, no real benchmark run. Merged into `feature/roadmap-v4`. Suite
+  **938 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
 - 2026-06-03 — Phase 65 (ROADMAP_V4): Gateway-mode readiness gate (Gateway PROGRAMMED + InferencePool
   Accepted/ResolvedRefs). Extended `check_endpoint_readiness` to the Gateway-API control plane via a new `check_gateway`
   flag (on by default; `app/tools/schemas.py`, registered in `app/tools/registry.py`). In gateway-mode deploys
