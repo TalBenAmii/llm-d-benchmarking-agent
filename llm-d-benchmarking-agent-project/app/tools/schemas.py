@@ -426,6 +426,41 @@ class OrchestrateBenchmarkInput(BaseModel):
     )
 
 
+class DiscoverStackInput(BaseModel):
+    endpoint_url: str = Field(
+        ...,
+        description="REQUIRED. The OpenAI-compatible endpoint URL of the deployed stack to trace, "
+                    "e.g. 'https://model.example.com/v1' or an in-cluster service URL. Phase 56: "
+                    "this OPTIONAL tool runs the standalone stack-discovery tool "
+                    "(`llm-d-discover <url> -f benchmark-report`) to capture the LIVE stack as "
+                    "BR-v0.2 scenario.stack components (model/role/replicas/parallelism/"
+                    "accelerator) for richer ENVIRONMENT capture than the agent's own endpoint "
+                    "probing. It COMPLEMENTS — it does NOT replace — probe_environment / "
+                    "check_endpoint_readiness, which remain the default. WHEN to use it is "
+                    "read_knowledge('stack_discovery'). Value-pinned by the allowlist endpoint_url "
+                    "constraint (same as `run -U/--endpoint-url`).",
+    )
+    kubeconfig: str | None = Field(
+        default=None,
+        description="Optional path to a NON-DEFAULT kubeconfig FILE to target a remote cluster "
+                    "(emitted as `-k`). A plain, NON-SECRET file path, value-pinned by the "
+                    "allowlist (no `..` traversal); omit it to use the ambient kube context. The "
+                    "secret cluster-by-URL+TOKEN route is NOT exposed here — it stays backend-only "
+                    "(as for execute_llmdbenchmark).",
+    )
+    context: str | None = Field(
+        default=None,
+        description="Optional Kubernetes context name to use (emitted as `-c`). Omit to use the "
+                    "current context.",
+    )
+    filter_type: str | None = Field(
+        default=None,
+        description="Optional component-type filter to narrow the discovered components (emitted "
+                    "as `--filter`, e.g. 'Pod', 'Service', 'vllm'). Omit to capture all "
+                    "components.",
+    )
+
+
 class CheckEndpointReadinessInput(BaseModel):
     namespace: str = Field(
         ...,

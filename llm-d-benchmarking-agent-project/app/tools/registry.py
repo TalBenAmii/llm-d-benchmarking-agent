@@ -21,6 +21,7 @@ from app.tools import (
     compare,
     config_artifact,
     convert_guide,
+    discover,
     doe,
     execute,
     hf_secret,
@@ -43,6 +44,7 @@ from app.tools.schemas import (
     CompareHarnessRunsInput,
     CompareReportsInput,
     ConvertGuideInput,
+    DiscoverStackInput,
     EnsureReposInput,
     ExecuteInput,
     FetchKeyDocsInput,
@@ -189,6 +191,24 @@ _DESCRIPTIONS = {
         "benchmark against an existing stack; orchestrate_benchmark_run also gates on it "
         "automatically. This is the mechanism; WHEN to stand up is your judgment — "
         "read_knowledge('orchestrator')."
+    ),
+    "discover_stack": (
+        "OPTIONAL richer ENVIRONMENT capture: trace the LIVE llm-d stack behind an "
+        "OpenAI-compatible endpoint URL and capture it as BR-v0.2 scenario.stack components. "
+        "Read-only; auto-runs. It runs the standalone stack-discovery tool "
+        "(`llm-d-discover <url> -f benchmark-report`), which connects with its OWN read-only "
+        "Kubernetes RBAC + env-var redaction and emits the deployed stack's components "
+        "(model / role / replicas / parallelism / accelerator) — then writes a "
+        "`{scenario: {stack: [...]}}` capture into the session workspace and returns structured "
+        "stack FACTS (component/model/role counts, per-engine replicas + parallelism). This "
+        "COMPLEMENTS — it does NOT replace — probe_environment / check_endpoint_readiness, which "
+        "stay the unconditional default for sensing the environment; use this only when you want "
+        "a precise capture of what is actually deployed (e.g. a remote/pre-existing stack you did "
+        "not stand up). It needs llm_d_stack_discovery installed in the benchmark venv (a "
+        "self-contained subpackage install.sh does NOT install — `pip install -e "
+        "llm-d-benchmark/llm_d_stack_discovery`); if absent it returns ran=False with how to "
+        "install it. WHEN to use it (vs endpoint probing) is your judgment — "
+        "read_knowledge('stack_discovery')."
     ),
     "ensure_repos": (
         "Clone the llm-d-benchmark and/or llm-d repos if missing (mutating; needs approval). "
@@ -405,6 +425,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("check_capacity", _DESCRIPTIONS["check_capacity"], CheckCapacityInput, capacity.check_capacity),
         ToolSpec("provision_hf_secret", _DESCRIPTIONS["provision_hf_secret"], ProvisionHfSecretInput, hf_secret.provision_hf_secret),
         ToolSpec("check_endpoint_readiness", _DESCRIPTIONS["check_endpoint_readiness"], CheckEndpointReadinessInput, readiness.check_endpoint_readiness),
+        ToolSpec("discover_stack", _DESCRIPTIONS["discover_stack"], DiscoverStackInput, discover.discover_stack),
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),
         ToolSpec("run_setup", _DESCRIPTIONS["run_setup"], RunSetupInput, repos.run_setup),
         ToolSpec("write_and_validate_config", _DESCRIPTIONS["write_and_validate_config"], WriteConfigInput, config_artifact.write_and_validate_config),

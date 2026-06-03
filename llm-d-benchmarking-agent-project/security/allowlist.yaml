@@ -114,6 +114,14 @@ value_constraints:
   # judgment in knowledge/cloud_results_sink.md, not data here.
   results_sink:    { regex: "^(gs|s3)://[A-Za-z0-9._/-]+$|^[A-Za-z0-9._/-]+$" }
   endpoint_url:    { regex: "^https?://[A-Za-z0-9._:/-]+$" }
+  # ---- stack discovery (Phase 56): llm-d-discover -f/--output-format value ----
+  # The standalone stack-discovery tool's output format. We drive it with
+  # `benchmark-report` (a JSON LIST of BR-v0.2 scenario.stack[] Component dicts) to capture the
+  # LIVE stack for richer ENVIRONMENT capture than endpoint probing; the other formats are the
+  # upstream-supported set. Pinned to the exact upstream click.Choice enum (cli.py) so no other
+  # value is expressible.
+  discovery_output_format:
+    enum: [json, yaml, summary, native, native-yaml, benchmark-report]
   # ---- model override (Phase 28): -m/--models/--model value ----
   # A HuggingFace model id or short name (org/name), e.g. facebook/opt-125m,
   # meta-llama/Llama-3.1-8B. Same safe charset as output_dir; the metacharacter screen
@@ -555,6 +563,52 @@ executables:
       "--max-time": { takes_value: true, value: { ref: positive_int } }
     positionals:
       - { value: { ref: modelserver_probe_url } }
+
+  # ---- stack discovery (Phase 56): the standalone llm-d-discover tool ----
+  # OPTIONAL richer ENVIRONMENT capture: given an OpenAI-compatible endpoint URL,
+  # `llm-d-discover <url> -f benchmark-report` traces the LIVE llm-d stack behind it and emits
+  # BR-v0.2 scenario.stack[] Component dicts (model/role/replicas/parallelism/accelerator). The
+  # agent feeds that into the report/scenario-capture path (app/tools/discover.py) for a richer
+  # picture than its own endpoint probing — but endpoint probing (probe_environment /
+  # check_endpoint_readiness) stays the UNCONDITIONAL default; this only adds detail.
+  #
+  # READ-ONLY by nature, so it AUTO-RUNS and never mutates the cluster: upstream connects with
+  # its OWN read-only Kubernetes RBAC and applies env-var REDACTION on the configs it reads
+  # (llm_d_stack_discovery), so a discovery trace only READS the live stack. We model it as a
+  # `read_only` flat executable, so no approval prompt is needed.
+  #
+  # The console script `llm-d-discover` (its setup.py console_scripts entry) lands in the
+  # benchmark venv when the user `pip install -e`s llm_d_stack_discovery (a self-contained
+  # subpackage with its OWN setup.py/requirements — install.sh does NOT install it). The
+  # `venv-bin` runner raises a clear "not set up yet" error if the binary is absent (same
+  # fail-loud rationale as capacity_check.py / the llmdbenchmark venv binary). WHEN to run
+  # discovery vs rely on endpoint probing is JUDGMENT in knowledge/stack_discovery.md, not here.
+  #
+  # The positional URL reuses the EXISTING endpoint_url constraint (the OpenAI endpoint URL,
+  # same as `run -U/--endpoint-url`). `-k/--kubeconfig` is a NON-SECRET kubeconfig FILE path
+  # (kubeconfig_path, no `..`), exactly as on llmdbenchmark; the secret cluster-by-URL+TOKEN
+  # route stays BACKEND-ONLY (never an argv token here, same as for llmdbenchmark). `-o/--output`
+  # writes the discovery JSON into the session workspace (output_dir). The metacharacter screen
+  # still rejects shell-dangerous tokens regardless.
+  llm-d-discover:
+    flat: true
+    mode: read_only
+    timeout_s: 120
+    runner: { invoke: "venv-bin", venv: "repo:llm-d-benchmark/.venv", bin: "llm-d-discover" }
+    flags:
+      "-f": { takes_value: true, value: { ref: discovery_output_format } }
+      "--output-format": { takes_value: true, value: { ref: discovery_output_format } }
+      "-o": { takes_value: true, value: { ref: output_dir } }
+      "--output": { takes_value: true, value: { ref: output_dir } }
+      "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+      "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
+      "-c": { takes_value: true, value: { ref: resource_name } }
+      "--context": { takes_value: true, value: { ref: resource_name } }
+      "--filter": { takes_value: true, value: { regex: "^[A-Za-z0-9._-]+$" } }
+      "-v": {}
+      "--verbose": {}
+    positionals:
+      - { value: { ref: endpoint_url } }
 
   # ---- the benchmark CLI (the primary target) ---------------------------
   # CLUSTER ACCESS (Phase 29): each subcommand permits `-k`/`--kubeconfig <path>` to target a
