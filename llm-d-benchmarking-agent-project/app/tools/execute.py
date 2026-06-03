@@ -52,7 +52,15 @@ def build_argv(
     sole subcommand whose upstream argparse — BooleanOptionalAction — accepts it; run/experiment/
     plan are store_true, so an opt-out there just omits the flag); ``None``/absent emits nothing
     (scenario defaults). Whether to set it is the agent's judgment (knowledge/observability.md),
-    not Python's."""
+    not Python's.
+
+    ``flags["dataset"]`` (Phase 41) emits ``-x <url>`` to REPLAY a real dataset instead of the
+    synthetic workload profile. It is SUBCOMMAND-AWARE: upstream ``-x``/``--dataset`` exists ONLY
+    on ``run`` and ``experiment`` (standup/plan/smoketest/teardown reject it), so we emit it for
+    those two ONLY; omitted/None emits nothing (the synthetic profile still drives the load). This
+    is pure MECHANISM — WHETHER to replay a dataset, and WHICH one, is the agent's judgment in
+    knowledge/dataset_replay.md, never an if/elif on the value here. We set NO env var: the CLI
+    itself derives LLMDBENCH_RUN_DATASET_DIR/_FILE from the URL during profile rendering."""
     flags = flags or {}
     argv: list[str] = ["llmdbenchmark"]
     if spec:
@@ -105,6 +113,13 @@ def build_argv(
         argv.append("--monitoring")
     elif monitoring is False and subcommand == "standup":
         argv.append("--no-monitoring")
+    # Dataset replay (Phase 41): emit -x <url> so the harness REPLAYS a real dataset instead of
+    # the synthetic workload profile. Upstream -x/--dataset is accepted ONLY on run/experiment, so
+    # we guard on the subcommand; an absent/None dataset emits nothing (synthetic profile stands).
+    # PURE MECHANISM — WHICH dataset / dataset-vs-synthetic is the agent's judgment
+    # (knowledge/dataset_replay.md), never an if/elif on the value.
+    if flags.get("dataset") and subcommand in ("run", "experiment"):
+        argv += ["-x", str(flags["dataset"])]
     if flags.get("list_endpoints"):
         argv.append("--list-endpoints")
     if flags.get("dry_run"):

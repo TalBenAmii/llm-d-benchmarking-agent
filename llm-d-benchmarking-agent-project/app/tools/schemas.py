@@ -166,7 +166,7 @@ class ExecuteInput(BaseModel):
     flags: dict[str, Any] | None = Field(
         default=None,
         description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "
-                    "endpoint_url, monitoring, harness_cpu_nr}. `output` is a DESTINATION "
+                    "endpoint_url, monitoring, harness_cpu_nr, dataset}. `output` is a DESTINATION "
                     "KEYWORD — 'local' (default), 'gs://bucket/...', or 's3://bucket/...' — NOT a "
                     "filesystem path; a `run` defaults to local output anchored under the session "
                     "workspace. `monitoring` activates results.observability (metrics scraping): "
@@ -183,7 +183,12 @@ class ExecuteInput(BaseModel):
                     "schedule so the launcher pod doesn't sit in FailedScheduling/Pending. WHEN and "
                     "to WHAT (given probe_environment's node_capacity and the harness) is judgment "
                     "in knowledge/harness_sizing.md; omit it to keep the default 16. It never "
-                    "reaches the browser. For subcommand='experiment' (a DoE sweep over a "
+                    "reaches the browser. `dataset` is a dataset-replay URL/path (run/experiment "
+                    "ONLY) emitted as `-x <url>`; its presence makes the harness REPLAY a real "
+                    "dataset instead of the synthetic workload profile, omit it to keep synthetic "
+                    "profiles driving the load. WHETHER to replay a dataset and WHICH one is "
+                    "knowledge-driven (read_knowledge('dataset_replay')). For subcommand='experiment' "
+                    "(a DoE sweep over a "
                     "treatments file): {experiments (path to the experiment YAML), workspace (dir "
                     "for outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, "
                     "skip_teardown}.",

@@ -239,7 +239,10 @@ _DESCRIPTIONS = {
         "`models` field (a HF id/short name) — it emits `-m`; FIRST run "
         "check_capacity(overrides={'model': <same id>}) so the pre-flight validates that EXACT "
         "model (sizing + gated access). WHICH model is your judgment — see "
-        "knowledge/model_override.md."
+        "knowledge/model_override.md. "
+        "To REPLAY a real dataset instead of a synthetic workload profile (run/experiment only), "
+        "set flags.dataset to its URL/path — it emits `-x`; WHEN to replay vs stay synthetic is "
+        "your judgment, see knowledge/dataset_replay.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "

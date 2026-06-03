@@ -158,6 +158,17 @@ value_constraints:
   modelserver_probe_url:
     regex: "^http://[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?\\.svc(\\.cluster\\.local)?:(8000|8200)(/v1/models|/health)$"
   http_get_verb:   { enum: [GET] }
+  # ---- dataset replay (Phase 41): -x/--dataset value ----
+  # The URL/path of a real dataset the harness REPLAYS instead of the synthetic workload
+  # profile (upstream -x/--dataset, run/experiment only). Accepts the remote schemes the
+  # harness fetches from — http(s)://, hf:// (HuggingFace), gs:// (GCS), s3:// (S3) — OR a
+  # bare workspace/cluster filesystem path. The safe charset matches the README's `-x DATASET`
+  # examples (e.g. a https://.../qwen_traceA_blksz_16.jsonl trace URL); the blanket
+  # metacharacter screen in app/security/allowlist.py already rejects `;|&$<>(){}[]*?` etc. as
+  # defense-in-depth, so no shell-dangerous token is expressible regardless. WHICH dataset (and
+  # dataset-vs-synthetic) is the agent's judgment in knowledge/dataset_replay.md, not data here.
+  dataset_url:
+    regex: "^(https?|hf|gs|s3)://[A-Za-z0-9._:/@~-]+$|^[A-Za-z0-9._/~-]+$"
 
 executables:
 
@@ -579,6 +590,10 @@ executables:
           # Phase 27: activate results.observability (vLLM /metrics scraping + pod log capture).
           # run uses store_true upstream, so only --monitoring is real here (no --no-monitoring).
           "--monitoring": {}
+          # Phase 41: dataset-replay URL (run/experiment only upstream) — REPLAY a real dataset
+          # instead of the synthetic workload profile. Value constrained to dataset_url.
+          "-x": { takes_value: true, value: { ref: dataset_url } }
+          "--dataset": { takes_value: true, value: { ref: dataset_url } }
           "--list-endpoints": { read_only_trigger: true }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
@@ -633,5 +648,9 @@ executables:
           # Phase 27: activate results.observability (PodMonitor + vLLM /metrics scraping per
           # treatment). experiment uses store_true upstream, so only --monitoring is real here.
           "--monitoring": {}
+          # Phase 41: dataset-replay URL (run/experiment only upstream) — REPLAY a real dataset
+          # instead of the synthetic workload profile. Value constrained to dataset_url.
+          "-x": { takes_value: true, value: { ref: dataset_url } }
+          "--dataset": { takes_value: true, value: { ref: dataset_url } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
