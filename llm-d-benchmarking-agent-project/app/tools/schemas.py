@@ -163,10 +163,31 @@ class ExecuteInput(BaseModel):
                     "(HF config lookup, sizing, gated-access) you are about to deploy. Omit it to "
                     "keep the spec's default model.",
     )
+    kubeconfig: str | None = Field(
+        default=None,
+        description="Phase 29 — path to a NON-DEFAULT kubeconfig FILE to target a remote cluster "
+                    "for THIS command instead of the ambient kube context. Emitted as `-k <path>` "
+                    "(upstream --kubeconfig, sourced from LLMDBENCH_KUBECONFIG). Valid on every "
+                    "subcommand. It is a plain (non-secret) file path, value-pinned by the "
+                    "allowlist (no `..` traversal). WHEN/WHICH cluster to target is YOUR judgment, "
+                    "grounded in knowledge/preconditions.md — there is no enumerable cluster "
+                    "catalog. Omit it to use the ambient context (the local Kind cluster for the "
+                    "quickstart). To target a cluster by API URL + bearer TOKEN instead of a "
+                    "kubeconfig file, see flags.cluster_url / flags.cluster_token below — the "
+                    "TOKEN is a SECRET and travels backend-only (never argv, never shown).",
+    )
     flags: dict[str, Any] | None = Field(
         default=None,
         description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "
-                    "endpoint_url, monitoring, harness_cpu_nr}. `output` is a DESTINATION "
+                    "endpoint_url, monitoring, harness_cpu_nr, cluster_url, cluster_token}. "
+                    "`cluster_url`/`cluster_token` (Phase 29) target a remote cluster by its "
+                    "API-server URL + bearer token (an alternative to the `kubeconfig` file above). "
+                    "They are carried BACKEND-ONLY as the LLMDBENCH_CLUSTER_URL / "
+                    "LLMDBENCH_CLUSTER_TOKEN child-env vars — NEVER as a CLI flag/argv — so the "
+                    "TOKEN never reaches the browser, a `command` event, or a log (it is scrubbed "
+                    "exactly like HF_TOKEN). The cluster URL is non-secret; the token is a SECRET, "
+                    "so never echo it back to the user. WHEN to target a remote cluster is "
+                    "knowledge-driven (knowledge/preconditions.md). `output` is a DESTINATION "
                     "KEYWORD — 'local' (default), 'gs://bucket/...', or 's3://bucket/...' — NOT a "
                     "filesystem path; a `run` defaults to local output anchored under the session "
                     "workspace. `monitoring` activates results.observability (metrics scraping): "

@@ -33,6 +33,7 @@ def build_argv(
     harness: str | None = None,
     workload: str | None = None,
     models: str | None = None,
+    kubeconfig: str | None = None,
     flags: dict[str, Any] | None = None,
     extra: list[str] | None = None,
 ) -> list[str]:
@@ -46,6 +47,14 @@ def build_argv(
     stands. WHICH model is the agent's judgment (knowledge/model_override.md), not Python's —
     this is pure mechanism. The SAME id must be passed to check_capacity(overrides={'model': …})
     so the pre-flight validates the identical model (HF config lookup + gated-access).
+
+    ``kubeconfig`` (Phase 29) emits ``-k <path>`` after the subcommand to target a NON-DEFAULT
+    kubeconfig FILE (upstream ``--kubeconfig``, sourced from ``LLMDBENCH_KUBECONFIG``) — i.e. a
+    remote cluster instead of the ambient context. It is valid on every subcommand. PURE
+    MECHANISM: we emit whatever path the agent chose; WHEN/WHICH cluster to target is judgment
+    (knowledge/preconditions.md), never an if/elif on the value. It is a plain (non-secret) file
+    path; the cluster URL/token route stays BACKEND-ONLY (see ``execute_llmdbenchmark``) and is
+    NEVER an argv token. Omitted ⇒ the ambient kube context stands.
 
     ``flags["monitoring"]`` is SUBCOMMAND-AWARE (Phase 27): ``True`` emits ``--monitoring`` for
     standup/run/experiment/plan; ``False`` emits ``--no-monitoring`` only for ``standup`` (the
@@ -73,6 +82,15 @@ def build_argv(
     # standup/plan/experiment but --model on run). Omitted ⇒ the spec's default model stands.
     if models:
         argv += ["-m", str(models)]
+    # Cluster access (Phase 29): target a NON-DEFAULT kubeconfig FILE for this command, OVERRIDING
+    # the ambient kube context. PURE MECHANISM — we emit whatever path the agent chose; WHEN/WHICH
+    # cluster to target is judgment (knowledge/preconditions.md), never an if/elif on the value.
+    # `-k` is the short form of --kubeconfig and is valid on every subcommand (standup/run/
+    # smoketest/teardown/plan/experiment/results). A plain (non-secret) file path; the cluster
+    # URL/token route stays BACKEND-ONLY (see execute_llmdbenchmark) and is NEVER an argv token.
+    # Omitted ⇒ the ambient context stands.
+    if kubeconfig:
+        argv += ["-k", str(kubeconfig)]
     if flags.get("methods"):
         argv += ["-t", str(flags["methods"])]
     if flags.get("output"):
@@ -122,6 +140,7 @@ async def execute_llmdbenchmark(
     harness: str | None = None,
     workload: str | None = None,
     models: str | None = None,
+    kubeconfig: str | None = None,
     flags: dict[str, Any] | None = None,
     extra: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -145,7 +164,7 @@ async def execute_llmdbenchmark(
 
     argv = build_argv(
         subcommand, spec=spec, namespace=namespace, harness=harness,
-        workload=workload, models=models, flags=flags, extra=extra,
+        workload=workload, models=models, kubeconfig=kubeconfig, flags=flags, extra=extra,
     )
 
     # Right-size the harness launcher's CPU request for small/Kind nodes. This is an ENV VAR
@@ -156,9 +175,28 @@ async def execute_llmdbenchmark(
     # CPU and the harness (inference-perf's multi-process launcher needs more headroom than
     # vllm-benchmark's single-process one) — is judgment sourced from knowledge/harness_sizing.md,
     # never an if/elif here. Omitted when the agent didn't supply it (default 16 stands).
-    child_env: dict[str, str] | None = None
+    child_env: dict[str, str] = {}
     if flags.get("harness_cpu_nr") is not None:
-        child_env = {"LLMDBENCH_HARNESS_CPU_NR": str(flags["harness_cpu_nr"])}
+        child_env["LLMDBENCH_HARNESS_CPU_NR"] = str(flags["harness_cpu_nr"])
+
+    # Remote-cluster access by API-server URL + bearer TOKEN (Phase 29). These ride the SAME
+    # backend-only `env=child_env` overlay as LLMDBENCH_HARNESS_CPU_NR — they are ENV VARS, NOT
+    # CLI flags, so they bypass the allowlist and NEVER enter argv. The token is a SECRET: it is
+    # therefore deliberately NOT an allowlisted flag (it could never be expressed as an argv
+    # token) and it never appears in a `command` event — `_emit_command` emits only argv/text/
+    # mode, so the browser/log/persisted trail never sees it (mirrors the HF_TOKEN non-leak
+    # rationale in scripts/provision_hf_secret.py + settings.extra_subprocess_env). The benchmark
+    # CLI consumes cluster_url/cluster_token via its ExecutionContext (utilities/cluster.kube_connect
+    # honours host + bearer token); we forward them as LLMDBENCH_CLUSTER_URL/_TOKEN. PURE MECHANISM
+    # — WHEN/WHETHER to target a remote cluster is judgment in knowledge/preconditions.md.
+    if flags.get("cluster_url"):
+        child_env["LLMDBENCH_CLUSTER_URL"] = str(flags["cluster_url"])
+    if flags.get("cluster_token"):
+        child_env["LLMDBENCH_CLUSTER_TOKEN"] = str(flags["cluster_token"])
+    # A non-default kubeconfig FILE is ALSO honoured upstream via LLMDBENCH_KUBECONFIG; we already
+    # emit it as the `-k` argv flag (build_argv), which is the canonical, non-secret path. No env
+    # duplication is needed — the flag is the single source for the file-path case.
+    child_env_or_none: dict[str, str] | None = child_env or None
 
     # Validate up front for a clean, specific error message before any approval prompt.
     decision = ctx.allowlist.validate(argv, catalog=ctx.catalog_for_allowlist())
@@ -172,9 +210,9 @@ async def execute_llmdbenchmark(
     # a UI emitter or in simulate mode).
     if subcommand in _POLLED_SUBCOMMANDS and namespace:
         async with resource_stats_poller(ctx, namespace=namespace):
-            res = await ctx.run_command(argv, env=child_env)
+            res = await ctx.run_command(argv, env=child_env_or_none)
     else:
-        res = await ctx.run_command(argv, env=child_env)
+        res = await ctx.run_command(argv, env=child_env_or_none)
     results_dir = _result_location(
         subcommand, flags, _parse_results_dir(res.output), str(ctx.workspace / "results")
     )
