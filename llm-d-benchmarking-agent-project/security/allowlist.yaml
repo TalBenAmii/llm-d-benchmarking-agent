@@ -487,6 +487,30 @@ executables:
     positionals:
       - { value: { ref: json_path } }
 
+  # Cross-run aggregation (Phase 51): a vetted project script that surfaces the benchmark
+  # repo's OWN standalone docs/analysis/aggregate_runs.py against an EXISTING results dir to
+  # report run-to-run mean/std/min/max. It imports the repo's own module (never reimplements
+  # the math), READS the BR v0.2 reports under the results dir, and writes
+  # aggregated_summary.{txt,json} ONLY into a session-workspace output dir the calling tool
+  # supplies — the read-only repos and the results dir are never written. Read-only (it only
+  # reads results + writes a workspace summary, like capacity_check.py), so it auto-runs (no
+  # approval). `python_via` runs it with the benchmark venv's interpreter (the upstream module
+  # uses an optional `yaml`). The single argument is constrained to a workspace-confined .json
+  # request file (no '..'), so there is no arbitrary-code surface beyond this audited script and
+  # the read-only upstream module it imports — the calling tool (app/tools/aggregate_runs.py)
+  # confines the OUTPUT dir to the session workspace. The interactive notebook + the
+  # to_be_incorporated/ plot templates are deliberately NOT scripted here (pointer-only).
+  # WHEN to aggregate (>=2 repeats of the same benchmark) is JUDGMENT in knowledge/analysis.md.
+  aggregate_runs.py:
+    flat: true
+    mode: read_only
+    runner:
+      invoke: "project-script"
+      script: "scripts/aggregate_runs.py"
+      python_via: "repo:llm-d-benchmark/.venv"
+    positionals:
+      - { value: { ref: json_path } }
+
   # Gated-model HF secret provisioner (Phase 30): a vetted project script that creates/
   # updates the cluster's HuggingFace token Secret a GATED-model standup needs, exactly as
   # llm-d/helpers/hf-token.md does (`kubectl create secret generic <name> --from-literal=

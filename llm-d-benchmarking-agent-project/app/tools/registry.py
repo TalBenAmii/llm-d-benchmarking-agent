@@ -14,6 +14,9 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.tools import (
+    aggregate_runs as aggregate_runs_tool,
+)
+from app.tools import (
     analyze,
     cancel,
     capacity,
@@ -36,6 +39,7 @@ from app.tools import (
 from app.tools.context import ToolContext
 from app.tools.schemas import (
     AdviseAcceleratorsInput,
+    AggregateRunsInput,
     AnalyzeResultsInput,
     CancelRunInput,
     CheckCapacityInput,
@@ -111,7 +115,14 @@ _DESCRIPTIONS = {
     ),
     "read_repo_doc": (
         "Read a documentation or spec file from inside the (read-only) repos, e.g. the "
-        "quickstart guide. Use to confirm the authoritative flow/flags before acting."
+        "quickstart guide. Use to confirm the authoritative flow/flags before acting. Also "
+        "use this to SURFACE the benchmark repo's exploratory analysis tooling to the user — "
+        "read_repo_doc('llm-d-benchmark/docs/analysis/README.md') (how to set up the venv + "
+        "launch the interactive analysis.ipynb notebook against their results) or "
+        "read_repo_doc('llm-d-benchmark/docs/analysis.md') (the full analysis-pipeline overview). "
+        "Those notebook/scripts are user-driven power-user exploration you POINT AT, not part of "
+        "the automated run flow — see knowledge/analysis.md (and the aggregate_runs tool for the "
+        "one script the agent itself may run)."
     ),
     "fetch_key_docs": (
         "Fetch the LIVE content of the authoritative docs pinned in knowledge/key_docs.yaml "
@@ -150,6 +161,20 @@ _DESCRIPTIONS = {
         "standing anything up — it catches OOM / won't-load / can't-serve AND can't-pull-"
         "weights cases before a long standup fails opaquely. Call read_knowledge('capacity') "
         "to interpret BOTH verdicts. (Needs the benchmark venv: run_setup installs it.)"
+    ),
+    "aggregate_runs": (
+        "OPTIONAL cross-run aggregation: when the user has run the SAME benchmark MULTIPLE "
+        "times and wants the run-to-run variance (mean/std/min/max across repeats), run the "
+        "benchmark repo's OWN standalone docs/analysis/aggregate_runs.py against an EXISTING "
+        "results dir. Read-only; auto-runs. Pass results_prefix (the existing results dir), "
+        "harness, stack, and run_ids (>=2). It reads the BR v0.2 reports for those runs and "
+        "writes aggregated_summary.{txt,json} ONLY into a session-workspace subdir (the "
+        "read-only repos and the results dir are never written), returning the per-metric "
+        "mean/std/min/max. This is EXPLORATORY (it does NOT run a benchmark and does NOT "
+        "replace analyze_results' SLO/goodput/Pareto verdicts) — it is the ONE exploratory "
+        "analysis script the agent runs itself; the interactive Jupyter notebook and the "
+        "to_be_incorporated/ plot templates are POINTER-ONLY (surface them with read_repo_doc, "
+        "never run them). WHEN to aggregate is your judgment — read_knowledge('analysis')."
     ),
     "provision_hf_secret": (
         "APPROVAL-GATED MUTATING step: create/update the cluster's HuggingFace token Secret "
@@ -403,6 +428,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("fetch_key_docs", _DESCRIPTIONS["fetch_key_docs"], FetchKeyDocsInput, probe.fetch_key_docs),
         ToolSpec("propose_session_plan", _DESCRIPTIONS["propose_session_plan"], SessionPlan, plan.propose_session_plan),
         ToolSpec("check_capacity", _DESCRIPTIONS["check_capacity"], CheckCapacityInput, capacity.check_capacity),
+        ToolSpec("aggregate_runs", _DESCRIPTIONS["aggregate_runs"], AggregateRunsInput, aggregate_runs_tool.aggregate_runs),
         ToolSpec("provision_hf_secret", _DESCRIPTIONS["provision_hf_secret"], ProvisionHfSecretInput, hf_secret.provision_hf_secret),
         ToolSpec("check_endpoint_readiness", _DESCRIPTIONS["check_endpoint_readiness"], CheckEndpointReadinessInput, readiness.check_endpoint_readiness),
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),

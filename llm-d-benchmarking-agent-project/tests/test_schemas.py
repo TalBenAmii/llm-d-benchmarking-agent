@@ -13,7 +13,7 @@ def test_tool_definitions_complete():
     expected = {
         "probe_environment", "list_catalog", "advise_accelerators",
         "read_knowledge", "read_repo_doc", "fetch_key_docs",
-        "propose_session_plan", "check_capacity", "provision_hf_secret",
+        "propose_session_plan", "check_capacity", "aggregate_runs", "provision_hf_secret",
         "check_endpoint_readiness",
         "ensure_repos", "run_setup",
         "write_and_validate_config", "convert_guide_to_scenario",

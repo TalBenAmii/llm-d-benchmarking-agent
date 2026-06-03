@@ -502,6 +502,37 @@ class CheckCapacityInput(BaseModel):
     )
 
 
+class AggregateRunsInput(BaseModel):
+    results_prefix: str = Field(
+        ...,
+        description="An EXISTING results dir holding the per-run result directories from "
+                    "completed runs (the upstream naming convention is "
+                    "'{results_prefix}/{harness}_{run_id}_{stack}'). This tool READS the "
+                    "Benchmark Report v0.2 files there; it does NOT run a benchmark.",
+    )
+    harness: str = Field(
+        ...,
+        description="The harness whose repeated runs to aggregate (e.g. 'inference-perf') — "
+                    "part of the per-run directory name.",
+    )
+    stack: str = Field(
+        ...,
+        description="The stack name the runs targeted (e.g. 'llm-d-7b-base') — part of the "
+                    "per-run directory name.",
+    )
+    run_ids: list[str] = Field(
+        ...,
+        description="The run IDs to combine (>=2 — aggregation needs repeated runs of the SAME "
+                    "benchmark to report run-to-run mean/std/min/max).",
+    )
+    output_name: str | None = Field(
+        default=None,
+        description="Optional subdir name (under the session workspace) to write the "
+                    "aggregated_summary.{txt,json} into. Defaults to 'aggregated'. Must stay "
+                    "within the workspace (no '..').",
+    )
+
+
 class ProvisionHfSecretInput(BaseModel):
     namespace: str = Field(
         ...,
