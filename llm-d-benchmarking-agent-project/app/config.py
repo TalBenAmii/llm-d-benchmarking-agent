@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # Claude subscription (e.g. a Max plan) via the logged-in ``claude`` CLI — no API key needed.
     # The SDK's own built-in tools stay disabled; the app's tools + agent loop are unchanged.
     # ``claude_cli_path`` is optional (the SDK auto-discovers the CLI on PATH when unset).
-    agent_sdk_model: str = "claude-sonnet-4-6"
+    agent_sdk_model: str = "claude-haiku-4-5"
     claude_cli_path: str | None = None
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"

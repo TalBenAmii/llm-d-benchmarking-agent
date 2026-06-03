@@ -80,7 +80,7 @@ def test_to_sdk_messages_renders_history_as_user_assistant_text_turns():
 # ---- chat() orchestration via a monkeypatched query ----------------------------------------
 
 def _settings() -> Settings:
-    return Settings(llm_provider="claude-agent-sdk", agent_sdk_model="claude-sonnet-4-6")
+    return Settings(llm_provider="claude-agent-sdk", agent_sdk_model="claude-haiku-4-5")
 
 
 def _fake_query(messages, *, raises: Exception | None = None):
@@ -103,7 +103,7 @@ def tools():
 async def test_chat_text_only_turn(monkeypatch, tools):
     msgs = [
         sdk.AssistantMessage(content=[sdk.TextBlock(text="All set — your cluster is ready.")],
-                             model="claude-sonnet-4-6"),
+                             model="claude-haiku-4-5"),
         sdk.ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
                           num_turns=1, session_id="s",
                           usage={"input_tokens": 10, "output_tokens": 8,
@@ -124,7 +124,7 @@ async def test_chat_tool_turn_captures_calls_strips_prefix_and_swallows_maxturns
             content=[sdk.TextBlock(text="probing now"),
                      sdk.ToolUseBlock(id="toolu_1", name="mcp__benchtools__probe_environment",
                                       input={"namespace": "llm-d"})],
-            model="claude-sonnet-4-6"),
+            model="claude-haiku-4-5"),
         sdk.ResultMessage(subtype="error_max_turns", duration_ms=1, duration_api_ms=1, is_error=True,
                           num_turns=1, session_id="s",
                           usage={"input_tokens": 3, "output_tokens": 101,
