@@ -23,6 +23,7 @@ _ALL_CHECKS = [
     "prometheus_crds",
     "node_capacity",
     "cluster_preconditions",
+    "provider_detection",
 ]
 
 # The Prometheus-operator CRDs the benchmark's --monitoring path needs (PodMonitor +
@@ -45,6 +46,30 @@ _ACCELERATOR_RESOURCE_KEYS = (
     "gpu.intel.com/i915",
     "gpu.intel.com/xe",
 )
+
+# Node-label PREFIX -> cloud-provider name. Pure MECHANISM: the provider_detection probe does a
+# plain longest-prefix membership lookup against this table (no decision branches). This list
+# MIRRORS knowledge/infra_providers.yaml:detection.label_prefix_to_provider — the source of truth
+# is the knowledge file; the agent's per-provider PLAYBOOK (which CLI, which toleration, which
+# known issue) lives ENTIRELY there, NOT here. A node matching no prefix counts toward the `kind`
+# default (kind/local nodes carry no cloud-provider labels). Order does not affect correctness
+# (the longest matching prefix wins) but is kept stable for readability. Mirroring tests in
+# tests/test_provider_pack.py assert this table stays in lockstep with the knowledge file.
+_PROVIDER_LABEL_HINTS: tuple[tuple[str, str], ...] = (
+    ("node.openshift.io/", "openshift"),
+    ("machine.openshift.io/", "openshift"),
+    ("cloud.google.com/", "gke"),
+    ("doks.digitalocean.com/", "doks"),
+    ("kubernetes.azure.com/", "aks"),
+    ("minikube.k8s.io/", "minikube"),
+)
+_PROVIDER_DEFAULT = "kind"
+
+# Taint keys whose presence names a GPU node. A model-server pod stays Pending against such a
+# tainted node until a MATCHING toleration is authored — the per-provider toleration to author is
+# JUDGMENT in knowledge/infra_providers.yaml. We reuse the accelerator resource keys (a GPU taint
+# is conventionally keyed by the same extended-resource name, e.g. nvidia.com/gpu).
+_GPU_TAINT_KEYS = frozenset(_ACCELERATOR_RESOURCE_KEYS)
 
 
 async def probe_environment(
@@ -82,6 +107,8 @@ async def probe_environment(
         out["node_capacity"] = await _probe_node_capacity(ctx)
     if "cluster_preconditions" in wanted:
         out["cluster_preconditions"] = await _probe_cluster_preconditions(ctx, spec)
+    if "provider_detection" in wanted:
+        out["provider_detection"] = await _probe_provider_detection(ctx)
     return out
 
 
@@ -252,6 +279,60 @@ async def _probe_cluster_preconditions(ctx: ToolContext, spec: str | None) -> di
         "spec": spec,
         "server_version": server_version,
         "image_tags": image_tags,
+    }
+
+
+async def _probe_provider_detection(ctx: ToolContext) -> dict[str, Any]:
+    """Report the cloud-PROVIDER facts a provider-aware precondition pack needs: which provider
+    the cluster is (openshift / gke / doks / aks / minikube vs kind) inferred from node LABELS,
+    and each node's GPU TAINTS — the taints that leave a model-server pod Pending until a matching
+    toleration is authored.
+
+    MECHANISM ONLY — it reports facts, never a verdict and never a command choice. WHICH CLI to
+    prefer (``oc`` on OpenShift vs ``kubectl``), WHICH toleration to author for a GPU taint, and
+    WHICH known issue (GKE Google-Managed-Prometheus / "Undetected platform" / NVSHMEM) applies is
+    the agent's judgment, grounded in knowledge/infra_providers.yaml — there is NO provider
+    ``if/elif`` here. The label-prefix→provider mapping is a plain membership lookup against
+    ``_PROVIDER_LABEL_HINTS`` (mirrored from that same knowledge file).
+
+    Uses the already-allowlisted read-only ``kubectl get nodes -o json`` (no allowlist change).
+    Never raises; the sibling repos stay read-only. Returns:
+      - ``provider``        the single detected provider (the GPU-relevant one if mixed, else the
+                            most common; ``kind`` when no node carries a cloud-provider label).
+      - ``providers_seen``  the sorted set of every provider hint seen across nodes.
+      - ``gpu_taints``      per-node ``{node, key, value, effect}`` for each taint whose key names
+                            a GPU — what the agent authors a toleration against.
+      - ``nodes``           per-node ``{name, provider, labels_seen, taints}`` facts."""
+    if not shutil.which("kubectl"):
+        return {
+            "available": False,
+            "provider": _PROVIDER_DEFAULT,
+            "providers_seen": [],
+            "gpu_taints": [],
+            "nodes": [],
+        }
+    res = await ctx.run_readonly(["kubectl", "get", "nodes", "-o", "json"], timeout=12.0)
+    if res.exit_code != 0:
+        return {
+            "available": False,
+            "provider": _PROVIDER_DEFAULT,
+            "providers_seen": [],
+            "gpu_taints": [],
+            "nodes": [],
+        }
+    nodes = _node_provider_summaries(res.output)
+    providers_seen = sorted({n["provider"] for n in nodes if n["provider"] != _PROVIDER_DEFAULT})
+    gpu_taints: list[dict[str, Any]] = []
+    for n in nodes:
+        for taint in n["taints"]:
+            if taint.get("key") in _GPU_TAINT_KEYS:
+                gpu_taints.append({"node": n["name"], **taint})
+    return {
+        "available": True,
+        "provider": _detect_cluster_provider(nodes),
+        "providers_seen": providers_seen,
+        "gpu_taints": gpu_taints,
+        "nodes": nodes,
     }
 
 
@@ -700,6 +781,75 @@ def _node_accelerator_summaries(text: str) -> list[dict[str, Any]]:
             "cpu_only": not accelerators,
         })
     return out
+
+
+def _detect_provider(labels: dict[str, Any]) -> tuple[str, list[str]]:
+    """Map a node's labels to a provider name by LONGEST-prefix membership against
+    ``_PROVIDER_LABEL_HINTS`` (mirrored from knowledge/infra_providers.yaml). PURE MECHANISM:
+    a plain dict-key prefix scan, no provider decision logic. Returns ``(provider, hits)`` where
+    ``hits`` is the sorted set of provider names any label matched (a node could in theory carry
+    labels from more than one prefix); ``provider`` is the one whose matched prefix is LONGEST
+    (most specific), or ``_PROVIDER_DEFAULT`` (kind) when nothing matches."""
+    best_prefix = ""
+    best_provider = _PROVIDER_DEFAULT
+    hits: set[str] = set()
+    for key in labels:
+        key_s = str(key)
+        for prefix, provider in _PROVIDER_LABEL_HINTS:
+            if key_s.startswith(prefix):
+                hits.add(provider)
+                if len(prefix) > len(best_prefix):
+                    best_prefix = prefix
+                    best_provider = provider
+    return best_provider, sorted(hits)
+
+
+def _node_provider_summaries(text: str) -> list[dict[str, Any]]:
+    """Per-node provider facts from ``kubectl get nodes -o json``: the detected provider (from
+    ``metadata.labels`` via ``_detect_provider``) and ``spec.taints`` (each as
+    ``{key, value, effect}``). EXTRACTION ONLY — the which-CLI / which-toleration / which-known-
+    issue judgment is the agent's, over knowledge/infra_providers.yaml (no provider branch here)."""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    out: list[dict[str, Any]] = []
+    for item in data.get("items", []):
+        labels = item.get("metadata", {}).get("labels", {}) or {}
+        provider, labels_seen = _detect_provider(labels)
+        taints = []
+        for taint in item.get("spec", {}).get("taints", []) or []:
+            if not isinstance(taint, dict):
+                continue
+            taints.append({
+                "key": _as_str(taint.get("key")),
+                "value": _as_str(taint.get("value")),
+                "effect": _as_str(taint.get("effect")),
+            })
+        out.append({
+            "name": item.get("metadata", {}).get("name", ""),
+            "provider": provider,
+            "labels_seen": labels_seen,
+            "taints": taints,
+        })
+    return out
+
+
+def _detect_cluster_provider(nodes: list[dict[str, Any]]) -> str:
+    """Reduce per-node providers to one cluster-level provider. MECHANISM: prefers the most
+    common NON-default provider seen across nodes (the GPU/model-server nodes drive the verdict),
+    falling back to ``_PROVIDER_DEFAULT`` (kind) when no node carries a cloud-provider label. The
+    mixed-cluster judgment (which provider to ultimately trust) is the agent's via
+    ``providers_seen`` + knowledge/infra_providers.yaml — this only picks a sensible default."""
+    counts: dict[str, int] = {}
+    for n in nodes:
+        prov = n.get("provider", _PROVIDER_DEFAULT)
+        if prov != _PROVIDER_DEFAULT:
+            counts[prov] = counts.get(prov, 0) + 1
+    if not counts:
+        return _PROVIDER_DEFAULT
+    # Most-frequent non-default provider; ties broken by name for determinism.
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
 
 
 def _pod_summaries(text: str) -> list[dict[str, Any]]:
