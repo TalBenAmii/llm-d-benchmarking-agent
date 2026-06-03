@@ -336,7 +336,7 @@ skipped / 0 failed**; ruff + mypy clean.
 - **HERMETIC-TEST:** `build_argv` emits `--analyze`; allowlist permits it; the artifact lister
   surfaces the new PNG families from a fixture results dir.
 
-## Phase 41 — Dataset replay URL (-x/--dataset) — TODO
+## Phase 41 — Dataset replay URL (-x/--dataset) — DONE
 *Catalog ref: Area A — "Dataset replay URL (-x/--dataset)" (⬜).*
 
 - **GOAL:** support replaying a real dataset instead of only synthetic workload profiles.
@@ -345,6 +345,13 @@ skipped / 0 failed**; ruff + mypy clean.
   `knowledge/`.
 - **ACCEPTANCE:** the agent can run a dataset-replay workload; synthetic profiles still work.
 - **HERMETIC-TEST:** `build_argv` emits `-x`; allowlist permits it.
+- **RESULT:** shipped the modeled `flags.dataset` key — `build_argv` emits `-x <url>` ONLY on
+  `run`/`experiment` (the two subcommands upstream accepts it on), `-x`/`--dataset` are
+  allowlisted with a `dataset_url` value constraint (http(s)/hf/gs/s3 scheme or bare path) on
+  both `run` and `experiment`, and `knowledge/dataset_replay.md` documents WHEN to replay vs stay
+  synthetic. No env var set — the CLI derives `LLMDBENCH_RUN_DATASET_DIR/_FILE` from the URL.
+  New hermetic suite `tests/test_dataset_replay.py` (+21 tests). Full suite **1063 passed / 20
+  skipped / 0 failed**; ruff + mypy clean.
 
 ## Phase 42 — Round-trip the CLI's run-config (--generate-config / -c) — TODO
 *Catalog ref: Area A — "Generate / reuse a run config YAML (--generate-config / -c)" (🟡).*

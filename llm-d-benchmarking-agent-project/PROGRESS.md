@@ -13,6 +13,18 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 41 (ROADMAP_V4): Dataset replay URL (`-x`/`--dataset`). Promoted real-dataset
+  replay from unsupported (synthetic profiles only) to a modeled `flags["dataset"]`; `build_argv`
+  (`app/tools/execute.py`, `schemas.py`) emits `-x <url>` ONLY on `run`/`experiment` (the two subcommands
+  upstream accepts it on) so the harness REPLAYS a real dataset instead of the synthetic workload profile,
+  omitted ⇒ synthetic still drives the load. `-x`/`--dataset` are allowlisted on both subcommands with a
+  `dataset_url` value constraint (http(s)/hf/gs/s3 scheme or bare path; `security/allowlist.yaml`, DATA-only);
+  no env var is set here — the CLI derives `LLMDBENCH_RUN_DATASET_DIR/_FILE` from the URL. `knowledge/dataset_replay.md`
+  documents WHEN to replay vs stay synthetic; new hermetic suite `tests/test_dataset_replay.py` (+21 tests).
+  Merged into `feature/roadmap-v4` (no-ff); resolved additive/structural conflicts vs Phases 29/31/36 by
+  composing the union (kept every existing flag + the new `dataset` one). Full suite **1063 passed / 20 skipped
+  / 0 failed**; ruff + mypy clean. Branch `feature/roadmap-v4-p41-dataset-replay`. — done
+
 - 2026-06-04 — Phase 36 (ROADMAP_V4): First-class skip / collect-only mode (`-z`/`--skip`). Promoted
   collect/analyze-only from the raw `extra` passthrough to a modeled `flags["skip"]`; `build_argv`
   (`app/tools/execute.py`, `schemas.py`) emits a bare `-z` on `run` so the agent can re-collect/re-analyze the
