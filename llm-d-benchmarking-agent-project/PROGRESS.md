@@ -13,6 +13,16 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 36 (ROADMAP_V4): First-class skip / collect-only mode (`-z`/`--skip`). Promoted
+  collect/analyze-only from the raw `extra` passthrough to a modeled `flags["skip"]`; `build_argv`
+  (`app/tools/execute.py`, `schemas.py`) emits a bare `-z` on `run` so the agent can re-collect/re-analyze the
+  EXISTING results of a prior run WITHOUT re-running the benchmark load. `-z`/`--skip` are allowlisted as
+  `read_only_trigger` on `run` ALONE (`security/allowlist.yaml`, DATA-only) so it auto-runs like
+  `--list-endpoints`/`--dry-run`. Added `knowledge/collect_only.md` (when to re-collect vs re-run). Merged into
+  feature/roadmap-v4 — resolved additive conflicts in `schemas.py` (flag-list union kept Phase 29/31
+  cluster_url/cluster_token/step) and `allowlist.yaml` (kept both the Phase 31 `-s` and Phase 36 `-z` blocks); the
+  Phase 27/29/31/36 build_argv wiring auto-merged into one coherent function. Suite **1042 passed / 20 skipped**
+  (+11 new `tests/test_collect_only.py`), ruff + mypy clean. Branch `feature/roadmap-v4-p36-skip-collect`. — done
 - 2026-06-04 — Phase 31 (ROADMAP_V4): First-class step selection / re-run (`-s`/`--step`). Promoted step
   selection from the raw `extra` passthrough to a modeled `flags["step"]` (step-list grammar `N / N-M / comma`,
   e.g. `5`, `5-9`, `3-5,9`); `build_argv` (`app/tools/execute.py`, `schemas.py`) emits `-s <spec>` on

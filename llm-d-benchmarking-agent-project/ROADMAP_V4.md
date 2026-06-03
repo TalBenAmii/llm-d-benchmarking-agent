@@ -273,7 +273,7 @@ skipped / 0 failed**; ruff + mypy clean.
 - **HERMETIC-TEST:** standup `build_argv` emits the monitoring flag; CRD-less opt-out selected
   from a probed environment.
 
-## Phase 36 — First-class skip / collect-only mode (-z/--skip) — TODO
+## Phase 36 — First-class skip / collect-only mode (-z/--skip) — DONE
 *Catalog ref: Area A/C — "Skip experiment execution / collect existing results (-z/--skip)" (🟡, via extra passthrough only).*
 
 - **GOAL:** promote collect/analyze-only from `extra` to a modeled flag.
@@ -281,6 +281,11 @@ skipped / 0 failed**; ruff + mypy clean.
   widen `security/allowlist.yaml` (DATA); document the collect-only flow in `knowledge/`.
 - **ACCEPTANCE:** the agent can re-collect/analyze existing results without re-running the load.
 - **HERMETIC-TEST:** `build_argv` emits `-z`; allowlist permits it.
+- **RESULT:** shipped the modeled `flags.skip` key — `build_argv` emits a bare `-z` on `run`,
+  `-z`/`--skip` are allowlisted as `read_only_trigger` (collect-only, so it auto-runs) on `run`
+  alone, and `knowledge/collect_only.md` documents WHEN to re-collect without re-running load.
+  New hermetic suite `tests/test_collect_only.py` (+11 tests). Full suite **1042 passed / 20
+  skipped / 0 failed**; ruff + mypy clean.
 
 ## Phase 37 — Harness debug mode (-d/--debug, sleep infinity) — TODO
 *Catalog ref: Area A/C — "Harness debug mode" (⬜).*
