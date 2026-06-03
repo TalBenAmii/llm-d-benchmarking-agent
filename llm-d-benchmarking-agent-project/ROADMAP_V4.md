@@ -233,14 +233,21 @@ skipped / 0 failed**; ruff + mypy clean.
   knowledge, not Python branches.
 - **HERMETIC-TEST:** `build_argv` emits `--gateway-class` from the enum; allowlist validates it.
 
-## Phase 33 — Multi-stack scenarios + --stack subset + --parallel — TODO
-*Catalog ref: Area A — "Multi-stack scenarios (N models behind one gateway)" (⬜).*
+## Phase 33 — Multi-stack scenarios + --stack subset + --parallel — DONE
+*Catalog ref: Area A — "Multi-stack scenarios (N models behind one gateway)" (⬜→✅).*
 
 - **GOAL:** target a subset of stacks and cap per-pool parallelism for multi-stack specs.
 - **BUILD:** model `--stack NAME[,NAME...]` + `--parallel` → emit in `build_argv`; widen
   `security/allowlist.yaml` (DATA); add multi-stack run guidance to `knowledge/`.
 - **ACCEPTANCE:** the agent can run/target one stack of a multi-stack spec and cap parallelism.
 - **HERMETIC-TEST:** `build_argv` emits `--stack`/`--parallel`; allowlist permits them.
+- **RESULT:** `build_argv` (`app/tools/execute.py`) now emits subcommand-aware `--stack <names>`
+  (standup/smoketest/run/teardown) to restrict a multi-stack scenario to a subset, and
+  `--parallel <int>` (standup/smoketest/experiment, `is not None` so explicit 0 is honored) to cap
+  how many stacks deploy at once — kept DISTINCT from the existing `--parallelism`/`-j` harness-pod
+  count. Both modeled in `schemas.py`/`registry.py` (judgment in `knowledge/multi_stack.md`);
+  allowlist (DATA) gains a `stack_list` constraint + the two flags on the right subcommands.
+  Merged into `feature/roadmap-v4`. Suite **1153 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 
 ## Phase 34 — Workload Variant Autoscaler (WVA) enablement (-u/--wva) — DEFERRED
 *Catalog ref: Area A/WVA — "WVA enablement" (🟡; OpenShift-only, out of the kind/CPU MVP).*

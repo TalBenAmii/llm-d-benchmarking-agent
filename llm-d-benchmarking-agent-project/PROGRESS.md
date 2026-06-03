@@ -13,6 +13,19 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 33 (ROADMAP_V4): Multi-stack scenarios + `--stack` subset + `--parallel` cap.
+  Modeled two previously-unmodeled multi-stack flags as pure mechanism + DATA (judgment in `knowledge/`):
+  `build_argv` (`app/tools/execute.py`) now emits subcommand-aware `--stack <names>` on standup/smoketest/
+  run/teardown to restrict a multi-stack scenario (N model pools behind one gateway) to a single stack or a
+  comma-separated subset, and `--parallel <int>` on standup/smoketest/experiment (an `is not None` guard so an
+  explicit `0` is honored) to cap how many stacks deploy at once — kept DISTINCT from the existing
+  `--parallelism`/`-j` harness-pod count (no regression). `schemas.py`/`registry.py` document both flags and
+  point at the judgment; `security/allowlist.yaml` (DATA) gains a `stack_list` value constraint (N RFC1123
+  labels) + the two flags on the matching subcommands. `knowledge/multi_stack.md` carries the WHICH-subset /
+  WHEN-to-cap judgment; `tests/test_multi_stack.py` adds 48 hermetic tests (emission, subcommand guards,
+  explicit-0, `-j` non-regression, allowlist value pinning + injection refusal, schema, knowledge
+  discoverability). Merged into `feature/roadmap-v4` (no-ff; no conflicts — branch was directly ahead of HEAD).
+  Suite **1153 passed / 20 skipped / 0 failed**; ruff + mypy clean. Branch `feature/roadmap-v4-p33-multi-stack`. — done
 - 2026-06-04 — Phase 53 (ROADMAP_V4): convert-guide (guide → scenario/experiment file generation).
   Shipped `convert_guide_to_scenario` (`app/tools/convert_guide.py`), the workspace-only variant of upstream
   `skills/convert-guide`: emits `ai.<name>.sh` (sorted, `shlex.quote`-safe `export LLMDBENCH_*` lines with
