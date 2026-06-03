@@ -340,6 +340,21 @@ class Allowlist:
         if constraint is None:
             return  # any value (already metachar-screened)
         constraint = self._resolve(constraint)
+        # Alternation: the value satisfies the flag if it satisfies ANY listed sub-constraint.
+        # Pure DATA — used so e.g. `--spec` can be EITHER a live-catalog name OR a
+        # workspace-confined authored spec path, without baking either rule into Python.
+        if "any_of" in constraint:
+            alternatives = constraint["any_of"]
+            errs: list[str] = []
+            for alt in alternatives:
+                try:
+                    self._check_value(value, alt, catalog, ctx=ctx)
+                    return
+                except _Reject as exc:
+                    errs.append(str(exc))
+            raise _Reject(
+                f"value {value!r} for {ctx} matched no allowed form ({'; '.join(errs)})"
+            )
         if "enum" in constraint:
             if value not in constraint["enum"]:
                 raise _Reject(f"value {value!r} for {ctx} not in {constraint['enum']}")
