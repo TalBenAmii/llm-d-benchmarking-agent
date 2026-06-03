@@ -15,7 +15,9 @@ class ProbeEnvironmentInput(BaseModel):
         description="Which checks to run, or 'all'. Options: container_runtime, repos, "
                     "tools, venv, kind_clusters, kube_context, cluster_info, namespaces, stack, "
                     "prometheus_crds (are the Prometheus-operator PodMonitor/ServiceMonitor CRDs "
-                    "installed? read it before deciding --monitoring vs --no-monitoring)",
+                    "installed? read it before deciding --monitoring vs --no-monitoring), "
+                    "node_capacity (per-node allocatable/capacity CPU + the min allocatable across "
+                    "nodes — read it to right-size LLMDBENCH_HARNESS_CPU_NR for a small/Kind node)",
     )
     namespace: str | None = Field(default=None, description="Namespace to check for an existing stack")
 
@@ -96,20 +98,27 @@ class ExecuteInput(BaseModel):
     flags: dict[str, Any] | None = Field(
         default=None,
         description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "
-                    "endpoint_url, monitoring}. `output` is a DESTINATION KEYWORD — 'local' "
-                    "(default), 'gs://bucket/...', or 's3://bucket/...' — NOT a filesystem path; a "
-                    "`run` defaults to local output anchored under the session workspace. "
-                    "`monitoring` activates results.observability (metrics scraping): True => emit "
-                    "--monitoring (creates PodMonitor/ServiceMonitor + EPP verbosity on standup; "
-                    "scrapes vLLM /metrics on run/experiment) so KV-cache hit rate / queue depth / "
-                    "GPU util appear in the report; False => --no-monitoring on STANDUP ONLY (a "
-                    "clean opt-out for clusters lacking the Prometheus-operator CRDs — run/"
-                    "experiment have no such flag and simply skip scraping); omit to use scenario "
-                    "defaults. WHEN to set it is knowledge-driven, default ON (see "
+                    "endpoint_url, monitoring, harness_cpu_nr}. `output` is a DESTINATION "
+                    "KEYWORD — 'local' (default), 'gs://bucket/...', or 's3://bucket/...' — NOT a "
+                    "filesystem path; a `run` defaults to local output anchored under the session "
+                    "workspace. `monitoring` activates results.observability (metrics scraping): "
+                    "True => emit --monitoring (creates PodMonitor/ServiceMonitor + EPP verbosity "
+                    "on standup; scrapes vLLM /metrics on run/experiment) so KV-cache hit rate / "
+                    "queue depth / GPU util appear in the report; False => --no-monitoring on "
+                    "STANDUP ONLY (a clean opt-out for clusters lacking the Prometheus-operator "
+                    "CRDs — run/experiment have no such flag and simply skip scraping); omit to use "
+                    "scenario defaults. WHEN to set it is knowledge-driven, default ON (see "
                     "knowledge/observability.md; probe prometheus_crds first to decide the opt-out). "
-                    "For subcommand='experiment' (a DoE sweep over a treatments "
-                    "file): {experiments (path to the experiment YAML), workspace (dir for "
-                    "outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, skip_teardown}.",
+                    "`harness_cpu_nr` is a backend-only INT that sets the LLMDBENCH_HARNESS_CPU_NR "
+                    "ENV VAR (NOT a CLI flag) on the launcher subprocess — the harness default is "
+                    "16; lower it to what a small/single-node cluster (e.g. Kind) can actually "
+                    "schedule so the launcher pod doesn't sit in FailedScheduling/Pending. WHEN and "
+                    "to WHAT (given probe_environment's node_capacity and the harness) is judgment "
+                    "in knowledge/harness_sizing.md; omit it to keep the default 16. It never "
+                    "reaches the browser. For subcommand='experiment' (a DoE sweep over a "
+                    "treatments file): {experiments (path to the experiment YAML), workspace (dir "
+                    "for outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, "
+                    "skip_teardown}.",
     )
     extra: list[str] | None = None
 

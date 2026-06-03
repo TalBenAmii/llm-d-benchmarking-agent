@@ -207,6 +207,7 @@ class ToolContext:
         cwd: str | Path | None = None,
         stream: bool = True,
         on_line: Callable[[str], Awaitable[None]] | None = None,
+        env: dict[str, str] | None = None,
     ) -> RunResult:
         """Validate, gate (approval if mutating), then run a command — streaming output
         to the UI. Read-only commands auto-run; mutating commands require approval via
@@ -215,7 +216,12 @@ class ToolContext:
         ``on_line`` (when given) receives each output line as it arrives and OVERRIDES the
         default UI ``output`` emission (so the caller — e.g. the orchestrator's live log tail —
         owns where each line goes, while still passing through the SAME allowlist/runner path).
-        ``stream`` still gates the default UI emission when ``on_line`` is not supplied."""
+        ``stream`` still gates the default UI emission when ``on_line`` is not supplied.
+
+        ``env`` is a BACKEND-ONLY per-run env overlay merged last into the child process
+        environment (e.g. a right-sized ``LLMDBENCH_HARNESS_CPU_NR`` for a small Kind node).
+        It is never surfaced to the browser: ``_emit_command`` emits only argv/text/mode, so
+        the env never appears in any ``command`` event, log, or scrubbed UI surface."""
         decision = self.allowlist.validate(argv, catalog=self.catalog_for_allowlist())
         if not decision.allowed:
             raise ToolError(f"command denied by allowlist: {decision.reason}")
@@ -241,9 +247,13 @@ class ToolContext:
         # Bound concurrent heavy runs across sessions (read-only commands run uncapped).
         if self.run_semaphore is not None and decision.mode == MUTATING:
             async with self.run_semaphore:
-                result = await self.runner.execute(argv, entry, on_line=on_line, timeout=deadline, cwd=cwd)
+                result = await self.runner.execute(
+                    argv, entry, on_line=on_line, timeout=deadline, cwd=cwd, extra_env=env
+                )
         else:
-            result = await self.runner.execute(argv, entry, on_line=on_line, timeout=deadline, cwd=cwd)
+            result = await self.runner.execute(
+                argv, entry, on_line=on_line, timeout=deadline, cwd=cwd, extra_env=env
+            )
         # Tally the use only after it actually ran (an approved, executed command).
         if decision.quota_key is not None:
             self.quota.record(decision.quota_key)

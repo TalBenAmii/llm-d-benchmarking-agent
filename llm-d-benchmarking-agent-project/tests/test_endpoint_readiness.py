@@ -166,8 +166,8 @@ async def test_tool_cluster_unreachable_is_structured_not_ready(tmp_path):
     """A non-zero kubectl exit (unreachable cluster / missing ns) yields a structured
     not-ready verdict with a standup suggestion — never a crash."""
     class _FailRunner(CaptureRunner):
-        async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None):
-            res = await super().execute(logical_argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)
+        async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
+            res = await super().execute(logical_argv, entry, on_line=on_line, timeout=timeout, cwd=cwd, extra_env=extra_env)
             if logical_argv[:3] == ["kubectl", "get", "endpoints"]:
                 from app.security.runner import RunResult
                 return RunResult(exit_code=1, duration_s=0.0, real_argv=list(logical_argv),

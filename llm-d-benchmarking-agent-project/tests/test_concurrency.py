@@ -42,7 +42,7 @@ class _GatedRunner(CommandRunner):
         self.peak = 0
         self.started = 0  # how many calls actually ENTERED execute (past the semaphore)
 
-    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None):
+    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
         self.started += 1
         self.active += 1
         self.peak = max(self.peak, self.active)
@@ -145,7 +145,7 @@ class _ThreadGatedRunner(CommandRunner):
         self._started = started
         self._gate = gate
 
-    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None):
+    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
         self._started.set()
         while not self._gate.is_set():
             await asyncio.sleep(0.01)

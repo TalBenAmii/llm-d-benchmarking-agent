@@ -128,13 +128,13 @@ async def test_tool_retries_transient_then_succeeds(tmp_path):
             self._gj = [failed_job, SUCCEEDED_JOB]
             self._i = 0
 
-        async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None):
+        async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
             if "get jobs" in " ".join(logical_argv):
                 out = self._gj[min(self._i, len(self._gj) - 1)]
                 self._i += 1
                 self.calls.append({"argv": list(logical_argv), "entry": entry, "cwd": None})
                 return RunResult(exit_code=0, duration_s=0.0, real_argv=list(logical_argv), cwd=None, output=out)
-            return await super().execute(logical_argv, entry, on_line=on_line, timeout=timeout, cwd=cwd)
+            return await super().execute(logical_argv, entry, on_line=on_line, timeout=timeout, cwd=cwd, extra_env=extra_env)
 
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos",
                         workspace_dir=tmp_path / "ws", orchestrator_image="img")

@@ -73,9 +73,14 @@ class CaptureRunner(CommandRunner):
         self.calls: list[dict[str, Any]] = []
         self._canned = dict(canned or {})
 
-    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None):
+    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
         argv = list(logical_argv)
-        self.calls.append({"argv": argv, "entry": entry, "cwd": str(cwd) if cwd else None})
+        self.calls.append({
+            "argv": argv,
+            "entry": entry,
+            "cwd": str(cwd) if cwd else None,
+            "extra_env": dict(extra_env) if extra_env else None,
+        })
 
         self._maybe_simulate_clone(argv, cwd)
 

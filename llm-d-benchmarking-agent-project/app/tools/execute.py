@@ -131,6 +131,18 @@ async def execute_llmdbenchmark(
         workload=workload, flags=flags, extra=extra,
     )
 
+    # Right-size the harness launcher's CPU request for small/Kind nodes. This is an ENV VAR
+    # (LLMDBENCH_HARNESS_CPU_NR), NOT a CLI flag and NOT an executable, so it bypasses the
+    # allowlist entirely and is carried backend-only through the child env — it never reaches
+    # the browser (no `command` event emits env). PURE MECHANISM: we forward whatever value the
+    # agent chose; WHETHER to lower it from the default (16) and to WHAT — given the probed node
+    # CPU and the harness (inference-perf's multi-process launcher needs more headroom than
+    # vllm-benchmark's single-process one) — is judgment sourced from knowledge/harness_sizing.md,
+    # never an if/elif here. Omitted when the agent didn't supply it (default 16 stands).
+    child_env: dict[str, str] | None = None
+    if flags.get("harness_cpu_nr") is not None:
+        child_env = {"LLMDBENCH_HARNESS_CPU_NR": str(flags["harness_cpu_nr"])}
+
     # Validate up front for a clean, specific error message before any approval prompt.
     decision = ctx.allowlist.validate(argv, catalog=ctx.catalog_for_allowlist())
     if not decision.allowed:
@@ -143,9 +155,9 @@ async def execute_llmdbenchmark(
     # a UI emitter or in simulate mode).
     if subcommand in _POLLED_SUBCOMMANDS and namespace:
         async with resource_stats_poller(ctx, namespace=namespace):
-            res = await ctx.run_command(argv)
+            res = await ctx.run_command(argv, env=child_env)
     else:
-        res = await ctx.run_command(argv)
+        res = await ctx.run_command(argv, env=child_env)
     results_dir = _result_location(
         subcommand, flags, _parse_results_dir(res.output), str(ctx.workspace / "results")
     )
