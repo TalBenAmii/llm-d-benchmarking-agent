@@ -267,6 +267,15 @@ class CheckEndpointReadinessInput(BaseModel):
                     "(best-effort; the Kubernetes endpoint-address readiness is the gate). Set "
                     "False to skip it (e.g. the benchmark venv isn't installed yet).",
     )
+    check_gateway: bool = Field(
+        default=True,
+        description="In gateway-mode deploys, ALSO read the Gateway-API control plane "
+                    "(gateway/gatewayclass/inferencepool/httproute) and surface the PROGRAMMED + "
+                    "Accepted/ResolvedRefs/Reconciled condition FACTS (read-only). This tells "
+                    "'the model pods are Ready' apart from 'traffic can actually reach them' — "
+                    "pods can be Ready while the Gateway is still PROGRAMMED:False. Set False on "
+                    "non-gateway/Kind deploys to skip the four extra kubectl reads.",
+    )
 
 
 class AnalyzeResultsInput(BaseModel):

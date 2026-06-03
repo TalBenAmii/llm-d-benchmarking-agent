@@ -15,6 +15,14 @@ Both are read-only (auto-run, no approval) and mutate nothing. When the stack is
 the result carries a ``standup_suggestion`` so the agent can OFFER an approval-gated standup
 — but this tool never stands anything up itself. The DECISION to stand up (and the approval
 gate) is the agent's judgment; see ``knowledge/orchestrator.md`` / ``knowledge/preconditions.md``.
+
+In GATEWAY-mode deploys (GKE/Istio/agentgateway) it ALSO reads the Gateway-API control plane —
+``kubectl get gateway,gatewayclass,inferencepool,httproute -o json`` — and folds the PROGRAMMED /
+Accepted / ResolvedRefs / Reconciled status conditions into ``gateway`` (Phase 65). That extends
+the gate from "the model pods are Ready" to "traffic can actually REACH them": pods can be Ready
+while the Gateway is still ``PROGRAMMED:False`` (or the InferencePool is unresolved), so no traffic
+flows yet. Those are FACTS only; the wait-vs-stand-up-vs-config-error JUDGMENT lives in
+``knowledge/gateway_readiness.md`` (``read_knowledge('gateway_readiness')``), never a Python branch.
 """
 from __future__ import annotations
 
@@ -24,8 +32,10 @@ from typing import Any
 
 from app.orchestrator.readiness import (
     EndpointReadiness,
+    GatewayReadiness,
     ServingReadiness,
     analyze_endpoints,
+    analyze_gateway,
     classify_serving_readiness,
 )
 from app.security.runner import RunResult
@@ -179,12 +189,49 @@ async def _serving_readiness(
     )
 
 
+async def _gateway_readiness(ctx: ToolContext, namespace: str) -> GatewayReadiness:
+    """Read the Gateway-API control plane for ``namespace`` and fold it into condition FACTS.
+
+    Runs four already-allowlisted, read-only ``kubectl get <res> -o json`` probes — ``gateway``,
+    ``inferencepool`` and ``httproute`` (namespaced), and ``gatewayclass`` (cluster-scoped, so NO
+    ``-n``). Each is best-effort: a non-zero exit (gateway CRDs absent on a Kind cluster, namespace
+    missing, cluster unreachable) degrades that resource to an empty string, never raises — a
+    Gateway-API probe that cannot run must not break the endpoint-readiness gate. The verbatim
+    PROGRAMMED / Accepted / ResolvedRefs / Reconciled conditions are extracted by the pure
+    :func:`analyze_gateway`; whether ``PROGRAMMED:False`` means "still provisioning — keep waiting"
+    vs "misconfigured — surface a config error" is the LLM's call over
+    ``knowledge/gateway_readiness.md``, NOT a branch here."""
+    async def _get(resource: str, *, namespaced: bool) -> str:
+        argv = ["kubectl", "get", resource]
+        if namespaced:
+            argv += ["-n", namespace]
+        argv += ["-o", "json"]
+        try:
+            res = await ctx.run_readonly(argv, timeout=15.0)
+        except ToolError:
+            return ""
+        return res.output if res.exit_code == 0 else ""
+
+    gateway_json = await _get("gateway", namespaced=True)
+    gatewayclass_json = await _get("gatewayclass", namespaced=False)  # cluster-scoped
+    inferencepool_json = await _get("inferencepool", namespaced=True)
+    httproute_json = await _get("httproute", namespaced=True)
+    return analyze_gateway(
+        namespace=namespace,
+        gateway_json=gateway_json,
+        gatewayclass_json=gatewayclass_json,
+        inferencepool_json=inferencepool_json,
+        httproute_json=httproute_json,
+    )
+
+
 async def check_endpoint_readiness(
     ctx: ToolContext,
     *,
     namespace: str,
     spec: str | None = None,
     probe_cli_endpoints: bool = True,
+    check_gateway: bool = True,
 ) -> dict[str, Any]:
     """Structured inference-endpoint readiness for ``namespace``. Read-only; auto-runs.
 
@@ -199,7 +246,17 @@ async def check_endpoint_readiness(
     ``/health`` (process-alive) — on the model-server port. Those facts ride on
     ``serving_readiness``; the loading-vs-broken VERDICT (still loading weights — keep waiting —
     vs wedged/broken — stop) is the agent's, driven by ``knowledge/readiness_probes.md``
-    (``read_knowledge('readiness_probes')``), never a Python branch."""
+    (``read_knowledge('readiness_probes')``), never a Python branch.
+
+    In GATEWAY-mode deploys (``check_gateway=True``, the default), it ALSO reads the Gateway-API
+    control plane — ``kubectl get gateway,gatewayclass,inferencepool,httproute -o json`` — and folds
+    the PROGRAMMED / Accepted / ResolvedRefs / Reconciled conditions onto ``gateway`` (Phase 65).
+    This distinguishes "the model pods are Ready" from "traffic can actually REACH them": pods can be
+    Ready while the Gateway is still ``PROGRAMMED:False`` (or the InferencePool is unresolved), so no
+    traffic flows yet. Those are FACTS; when the control plane is not wired the result carries a
+    ``gateway_readiness_guidance`` pointer — the wait-vs-stand-up-vs-config-error JUDGMENT lives in
+    ``knowledge/gateway_readiness.md`` (``read_knowledge('gateway_readiness')``), never a Python
+    branch. Set ``check_gateway=False`` on non-gateway/Kind deploys to skip the four extra reads."""
     if not shutil.which("kubectl"):
         raise ToolError("kubectl is not on PATH — cannot check endpoint readiness")
 
@@ -214,6 +271,11 @@ async def check_endpoint_readiness(
     if verdict.reason == "endpoints_not_ready":
         verdict.serving_readiness = await _serving_readiness(ctx, namespace, verdict)
 
+    # Gateway-mode: read the Gateway-API control plane so the agent can tell "pods Ready" from
+    # "traffic reaches them" (PROGRAMMED / Accepted / ResolvedRefs facts). Read-only; best-effort.
+    if check_gateway:
+        verdict.gateway = await _gateway_readiness(ctx, namespace)
+
     out = verdict.as_dict()
     if not verdict.ready:
         out["standup_suggestion"] = _standup_suggestion(namespace, spec, verdict.reason)
@@ -227,6 +289,19 @@ async def check_endpoint_readiness(
                        "knowledge/readiness_probes.md to decide 'still loading weights (keep "
                        "waiting)' vs 'wedged/broken (stop)' before submitting a benchmark.",
             }
+    # Gateway control-plane not wired (a FACT from the conditions): point the agent at the
+    # judgment knowledge so it narrates "pods up but traffic can't reach them yet" and picks
+    # wait-vs-stand-up-vs-config-error — even when the endpoints themselves look ready.
+    if verdict.gateway is not None and verdict.gateway.not_ready_reason is not None:
+        out["gateway_readiness_guidance"] = {
+            "read_knowledge": "gateway_readiness",
+            "reason": verdict.gateway.not_ready_reason,
+            "why": "the model pods may be Ready, but the Gateway-API control plane is not wired "
+                   f"({verdict.gateway.not_ready_reason}) — no traffic reaches the pods yet. Read "
+                   "knowledge/gateway_readiness.md to decide 'still provisioning (keep waiting)' "
+                   "vs 'stand up the missing piece' vs 'surface a config error' before targeting "
+                   "the Gateway with a benchmark.",
+        }
     return out
 
 
