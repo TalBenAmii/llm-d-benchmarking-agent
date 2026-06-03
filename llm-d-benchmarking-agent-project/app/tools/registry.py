@@ -273,7 +273,14 @@ _DESCRIPTIONS = {
         "— see knowledge/collect_only.md for WHEN. "
         "To REPLAY a real dataset instead of a synthetic workload profile (run/experiment only), "
         "set flags.dataset to its URL/path — it emits `-x`; WHEN to replay vs stay synthetic is "
-        "your judgment, see knowledge/dataset_replay.md."
+        "your judgment, see knowledge/dataset_replay.md. "
+        "To give one slow PHASE more rope (or fail it faster), set the CLI's per-phase timeout "
+        "keys in flags (seconds): wait_timeout/data_access_timeout on run+experiment; "
+        "standalone_deploy_timeout/gateway_deploy_timeout/modelservice_deploy_timeout/"
+        "kustomize_deploy_timeout/pvc_bind_timeout on standup; fma_teardown_timeout on teardown. "
+        "Each is a DEEPER bound that MUST stay below the runner deadline for that subcommand so "
+        "the two timeout layers don't fight — WHEN/WHAT to set is your judgment, see "
+        "knowledge/phase_timeouts.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "
