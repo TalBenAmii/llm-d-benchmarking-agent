@@ -13,6 +13,15 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 59 (ROADMAP_V4): Model-load serving-readiness gate (`/v1/models` vs `/health` + stuck-pod
+  diagnostics). Extended the endpoint-readiness path (`app/orchestrator/readiness.py`, `app/tools/readiness.py`,
+  `app/tools/registry.py`) to classify a `Running`-but-`NotReady` model server as "still loading weights (keep
+  waiting)" vs "wedged/broken (stop waiting)" from pod readiness conditions / `restartCount` / age (8000 prefill,
+  8200 decode) plus a GET-only `curl` probe pinned by `security/allowlist.yaml` to the enum `{/v1/models, /health}`
+  on in-namespace `*.svc` URLs. The loading-vs-broken JUDGMENT lives in the new `knowledge/readiness_probes.md`
+  (no Python `if/elif`). Hermetic fixtures only (canned `kubectl`/`curl` bodies). Suite: 723 passed, 20 skipped,
+  0 failed (ruff + mypy clean).
+
 - 2026-06-03 — Phase 27 (ROADMAP_V4): Default-enable benchmark `--monitoring` + surface `results.observability`
   (THE headline observability gap — closed). Added a subcommand-aware `monitoring` flag to `ExecuteInput.flags` +
   `build_argv`: `--monitoring` for standup/run/experiment/plan, `--no-monitoring` only for standup (matching upstream
