@@ -165,11 +165,17 @@ class ExecuteInput(BaseModel):
     )
     flags: dict[str, Any] | None = Field(
         default=None,
-        description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "
-                    "endpoint_url, monitoring, harness_cpu_nr}. `output` is a DESTINATION "
-                    "KEYWORD — 'local' (default), 'gs://bucket/...', or 's3://bucket/...' — NOT a "
-                    "filesystem path; a `run` defaults to local output anchored under the session "
-                    "workspace. `monitoring` activates results.observability (metrics scraping): "
+        description="Optional: {skip, skip_smoketest, dry_run, list_endpoints, methods, output, "
+                    "endpoint_url, monitoring, harness_cpu_nr}. `skip` => emit -z/--skip on a "
+                    "`run` to SKIP load execution and only COLLECT/ANALYZE data from the EXISTING "
+                    "results of a prior run in the same workspace (re-collect/re-analyze that run "
+                    "WITHOUT re-running the benchmark load); run-subcommand ONLY (upstream defines "
+                    "-z/--skip on `run` alone). It is collect-only/read-only, so it auto-runs. WHEN "
+                    "to use it is knowledge-driven (knowledge/collect_only.md). `output` is a "
+                    "DESTINATION KEYWORD — 'local' (default), 'gs://bucket/...', or 's3://bucket/...' "
+                    "— NOT a filesystem path; a `run` defaults to local output anchored under the "
+                    "session workspace. `monitoring` activates results.observability "
+                    "(metrics scraping): "
                     "True => emit --monitoring (creates PodMonitor/ServiceMonitor + EPP verbosity "
                     "on standup; scrapes vLLM /metrics on run/experiment) so KV-cache hit rate / "
                     "queue depth / GPU util appear in the report; False => --no-monitoring on "

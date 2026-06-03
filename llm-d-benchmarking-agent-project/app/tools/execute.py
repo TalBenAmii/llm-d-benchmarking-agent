@@ -107,6 +107,16 @@ def build_argv(
         argv.append("--no-monitoring")
     if flags.get("list_endpoints"):
         argv.append("--list-endpoints")
+    # Collect-only / skip-execution mode (Phase 36): emit ``-z`` to SKIP the harness/load
+    # execution and only collect + analyze data from the EXISTING results of a prior run in
+    # the same workspace (upstream help: "Skip execution and only collect data from existing
+    # results"). This is pure MECHANISM — WHETHER to set it is the agent's judgment
+    # (knowledge/collect_only.md): use it to re-collect/re-analyze a run that already loaded,
+    # WITHOUT re-running the benchmark. Upstream defines ``-z``/``--skip`` on the ``run``
+    # subcommand ALONE (run.py), so the agent only sets it for a ``run``; we emit the short
+    # ``-z`` (the -m precedent). Emission is unconditional mechanism — no if/elif on the value.
+    if flags.get("skip"):
+        argv.append("-z")
     if flags.get("dry_run"):
         argv.append("--dry-run")
     argv += list(extra or [])
