@@ -22,6 +22,7 @@ from app.tools import (
     config_artifact,
     doe,
     execute,
+    hf_secret,
     history,
     multiharness,
     observe,
@@ -49,6 +50,7 @@ from app.tools.schemas import (
     ObserveRunMetricsInput,
     OrchestrateBenchmarkInput,
     ProbeEnvironmentInput,
+    ProvisionHfSecretInput,
     ReadKnowledgeInput,
     ReadRepoDocInput,
     ResultHistoryInput,
@@ -144,6 +146,20 @@ _DESCRIPTIONS = {
         "standing anything up — it catches OOM / won't-load / can't-serve AND can't-pull-"
         "weights cases before a long standup fails opaquely. Call read_knowledge('capacity') "
         "to interpret BOTH verdicts. (Needs the benchmark venv: run_setup installs it.)"
+    ),
+    "provision_hf_secret": (
+        "APPROVAL-GATED MUTATING step: create/update the cluster's HuggingFace token Secret "
+        "(default name 'llm-d-hf-token') in a namespace so a GATED-model standup can pull the "
+        "gated weights — the natural follow-on to check_capacity's gated-access pre-flight. "
+        "The HF token stays BACKEND-ONLY: it is read from the backend HF_TOKEN env by the "
+        "vetted script and is NEVER an input here, never in the argv, never in any command "
+        "event or log. Requires approval (it writes a Secret to the cluster). Call this ONLY "
+        "after a check_capacity GATED+UNAUTHORIZED verdict whose reason says NO token is "
+        "configured cluster-side — NEVER for a public model, and NEVER when a token merely "
+        "LACKS access (that needs a HuggingFace access request, not a secret). After it "
+        "succeeds, re-run check_capacity to confirm authorization, THEN stand up. WHEN to use "
+        "it is knowledge/capacity.md ('Gated-model access pre-flight'); this is only the "
+        "mechanism."
     ),
     "check_endpoint_readiness": (
         "Endpoint READINESS gate: is the inference endpoint in a namespace actually SERVING — "
@@ -317,6 +333,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("fetch_key_docs", _DESCRIPTIONS["fetch_key_docs"], FetchKeyDocsInput, probe.fetch_key_docs),
         ToolSpec("propose_session_plan", _DESCRIPTIONS["propose_session_plan"], SessionPlan, plan.propose_session_plan),
         ToolSpec("check_capacity", _DESCRIPTIONS["check_capacity"], CheckCapacityInput, capacity.check_capacity),
+        ToolSpec("provision_hf_secret", _DESCRIPTIONS["provision_hf_secret"], ProvisionHfSecretInput, hf_secret.provision_hf_secret),
         ToolSpec("check_endpoint_readiness", _DESCRIPTIONS["check_endpoint_readiness"], CheckEndpointReadinessInput, readiness.check_endpoint_readiness),
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),
         ToolSpec("run_setup", _DESCRIPTIONS["run_setup"], RunSetupInput, repos.run_setup),

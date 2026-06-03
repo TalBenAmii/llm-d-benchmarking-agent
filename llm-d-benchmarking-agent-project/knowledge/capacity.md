@@ -100,6 +100,43 @@ Read the three situations and say this (the **decision is here, not in Python**)
     pre-flight once granted. (Provisioning a *different* token with access is also valid.)
   Either way, retry `check_capacity` after the fix to confirm `authorized: true` before
   standing up.
+
+  ### Provisioning the cluster HF secret (`provision_hf_secret`)
+
+  The "no token" case has a concrete, in-agent fix. A gated-model standup pulls the weights
+  using a cluster Secret (the upstream `llm-d-hf-token`); if the backend HAS a real
+  `HF_TOKEN` configured but that Secret was never created in the target namespace, the
+  standup fails minutes in with an opaque image-pull/weights error. When the gated verdict's
+  `gated_reason` indicates **no token is configured cluster-side** (vs. a token that simply
+  lacks access), OFFER the approval-gated mutating step:
+
+  > `provision_hf_secret(namespace=<the plan's namespace>, name='llm-d-hf-token')`
+
+  This materializes the cluster HF token Secret from the backend's `HF_TOKEN`, exactly as
+  `llm-d/helpers/hf-token.md` does. It is **approval-gated** (it writes a Secret to the
+  cluster), so propose it and let the user Approve — never run it unprompted. State plainly:
+
+  - It must run **before** the standup (a gated standup can't pull weights without it).
+  - You **never see the token** — it is read backend-side and never shown, never logged,
+    never in the argv/command events. You only see kubectl's confirmation line.
+  - After it succeeds, **re-run `check_capacity`** (same model/overrides) to confirm
+    `authorized: true`, and only THEN proceed to standup.
+  - `name` defaults to the upstream `llm-d-hf-token`; only override it if the deployment was
+    configured to read a differently-named Secret.
+
+  ### Boundaries (when NOT to provision)
+
+  - **Never for a PUBLIC model** (`gated: false`). A public model needs no token and no
+    Secret — say nothing about tokens and just proceed to the sizing verdict.
+  - **A token that merely LACKS access is NOT a provisioning case.** If `gated_reason` says
+    the configured token does not have access to this model, a new Secret won't help — the
+    account isn't approved. Point the user to `https://huggingface.co/<model>` to request
+    access (or to provide a *different* token that has access), then retry `check_capacity`.
+    Provisioning the same access-less token would just re-create a Secret that still can't
+    pull the weights.
+  - **Only when the backend actually has an `HF_TOKEN`.** If none is configured at all, the
+    provisioning step can't materialize a Secret (it reports that plainly) — the user must
+    first set `HF_TOKEN` in the backend env (it stays backend-only), then provision.
 - **UNKNOWN** (`gated: null`) — the gating check couldn't run (HF unreachable / offline, or
   the repo's gating util wasn't importable). `gated_reason` says "gated check unavailable".
   Treat it like the `ran: false` capacity case: **not a green light** — tell the user the
