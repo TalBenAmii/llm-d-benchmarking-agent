@@ -13,6 +13,16 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 61 (ROADMAP_V4): Right-size the harness launcher CPU for small/Kind clusters. Added a read-only
+  `node_capacity` probe (per-node allocatable/capacity CPU + min-allocatable across nodes via `kubectl get nodes -o
+  json`) to `probe_environment` (`app/tools/probe.py`), and a backend-only `harness_cpu_nr` flag plumbed as the
+  `LLMDBENCH_HARNESS_CPU_NR` env var through `execute.py` → `context.run_command(env=)` → `runner._build_env` (merged
+  last so it wins; never an allowlist flag, never reaches the browser); the lower-it-or-not / to-what (inference-perf
+  multi-process vs vllm-benchmark single-process) judgment lives in `knowledge/harness_sizing.md`, not Python. Turns a
+  silent `FailedScheduling`/`Pending` launcher pod into a scheduled run on the MVP Kind path. Merge into
+  `feature/roadmap-v4` reconciled the two newly-added probes against Phase 27/59 (probe-emit/exec parity count 7→8:
+  `prometheus_crds` + `node_capacity`). Branch `feature/roadmap-v4-p61-harness-cpu-size`. Suite **735 passed / 20
+  skipped / 0 failed**; ruff + mypy clean. — done
 - 2026-06-03 — Phase 59 (ROADMAP_V4): Model-load serving-readiness gate (`/v1/models` vs `/health` + stuck-pod
   diagnostics). Extended the endpoint-readiness path (`app/orchestrator/readiness.py`, `app/tools/readiness.py`,
   `app/tools/registry.py`) to classify a `Running`-but-`NotReady` model server as "still loading weights (keep
