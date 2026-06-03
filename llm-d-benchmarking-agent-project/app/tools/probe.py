@@ -31,6 +31,21 @@ _ALL_CHECKS = [
 # --monitoring vs --no-monitoring DECISION is the agent's (knowledge/observability.md).
 _PROMETHEUS_CRDS = ("podmonitors.monitoring.coreos.com", "servicemonitors.monitoring.coreos.com")
 
+# Accelerator extended-resource keys a node may advertise under status.capacity/allocatable.
+# Detecting WHICH of these a node advertises (vs CPU-only) is pure MECHANISM; the canonical
+# per-vendor key list AND the can-my-hardware-run-this judgment (CUDA/driver minimums,
+# Device-Plugin vs DRA, the real-CPU 64c/64GB floor, the Kind/sim exemption) live in
+# knowledge/accelerators.yaml — there is NO feasibility branch in this module. These siblings
+# mirror the keys already referenced in app/orchestrator/job.py + knowledge/resource_management.md.
+_ACCELERATOR_RESOURCE_KEYS = (
+    "nvidia.com/gpu",
+    "amd.com/gpu",
+    "habana.ai/gaudi",
+    "google.com/tpu",
+    "gpu.intel.com/i915",
+    "gpu.intel.com/xe",
+)
+
 
 async def probe_environment(
     ctx: ToolContext,
@@ -237,6 +252,51 @@ async def _probe_cluster_preconditions(ctx: ToolContext, spec: str | None) -> di
         "spec": spec,
         "server_version": server_version,
         "image_tags": image_tags,
+    }
+
+
+async def advise_accelerators(ctx: ToolContext, *, namespace: str | None = None) -> dict[str, Any]:
+    """Report each node's ADVERTISED accelerator / CPU / memory facts so the agent can answer
+    "can my hardware actually run this?" BEFORE a standup — complementing check_capacity's
+    GPU-memory sizing. MECHANISM ONLY: it extracts which extended-resource key each node
+    advertises (nvidia.com/gpu or the amd/gaudi/tpu/xpu siblings) vs CPU-only, plus per-node
+    status.capacity/allocatable cpu + memory. The can-it-run JUDGMENT — the CUDA/driver
+    minimums, Device-Plugin vs DRA, the real (non-sim) CPU-only 64c/64GB-per-replica floor, and
+    the Kind/CPU-sim exemption — lives in knowledge/accelerators.yaml (read_knowledge), NEVER as
+    a Python branch here.
+
+    Uses the already-allowlisted read-only ``kubectl get nodes -o json`` (no allowlist change).
+    Returns a structured, never-raising result: ``any_accelerator`` is True if ANY node
+    advertises a known accelerator resource, ``cpu_only`` is True if NO node does, and
+    ``advertised_resources`` is the sorted union of accelerator keys seen across nodes."""
+    if not shutil.which("kubectl"):
+        return {
+            "available": False,
+            "nodes": [],
+            "any_accelerator": False,
+            "cpu_only": True,
+            "advertised_resources": [],
+        }
+    res = await ctx.run_readonly(["kubectl", "get", "nodes", "-o", "json"], timeout=12.0)
+    if res.exit_code != 0:
+        return {
+            "available": False,
+            "nodes": [],
+            "any_accelerator": False,
+            "cpu_only": True,
+            "advertised_resources": [],
+        }
+    nodes = _node_accelerator_summaries(res.output)
+    advertised: set[str] = set()
+    for n in nodes:
+        advertised.update(n["accelerators"].keys())
+    any_accel = bool(advertised)
+    return {
+        "available": True,
+        "nodes": nodes,
+        "any_accelerator": any_accel,
+        "cpu_only": (not any_accel) if nodes else True,
+        "advertised_resources": sorted(advertised),
     }
 
 
@@ -597,6 +657,49 @@ def _collect_image_tags(node: Any, *, parent: str, dotted: str, out: list[dict[s
 
 def _as_str(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+def _node_accelerator_summaries(text: str) -> list[dict[str, Any]]:
+    """Per-node advertised-resource facts from ``kubectl get nodes -o json``: cpu (in cores),
+    memory (the RAW K8s quantity verbatim, e.g. '64Gi' — NOT converted; mechanism only), and any
+    accelerator extended-resource keys (``_ACCELERATOR_RESOURCE_KEYS``) with their advertised
+    quantity. ``accelerated`` is True if the node advertises ANY accelerator resource; ``cpu_only``
+    is its negation. This is extraction ONLY — the can-it-run-this judgment is the agent's, over
+    knowledge/accelerators.yaml (no feasibility threshold is applied here)."""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    out: list[dict[str, Any]] = []
+    for item in data.get("items", []):
+        status = item.get("status", {})
+        capacity = status.get("capacity", {}) or {}
+        allocatable = status.get("allocatable", {}) or {}
+
+        def _slot(block: dict[str, Any]) -> dict[str, Any]:
+            slot: dict[str, Any] = {
+                # CPU parsed into whole cores (reuse the CPU-quantity parser); memory kept
+                # verbatim as the raw K8s string so we never lossily convert units.
+                "cpu": _parse_cpu_quantity(block.get("cpu")),
+                "memory": block.get("memory"),
+            }
+            for key in _ACCELERATOR_RESOURCE_KEYS:
+                if key in block:
+                    slot[key] = block[key]
+            return slot
+
+        # Accelerators are advertised under capacity; allocatable mirrors them. Surface the
+        # capacity-advertised quantities (the observable "this node has these devices" fact).
+        accelerators = {k: capacity[k] for k in _ACCELERATOR_RESOURCE_KEYS if k in capacity}
+        out.append({
+            "name": item.get("metadata", {}).get("name", ""),
+            "capacity": _slot(capacity),
+            "allocatable": _slot(allocatable),
+            "accelerators": accelerators,
+            "accelerated": bool(accelerators),
+            "cpu_only": not accelerators,
+        })
+    return out
 
 
 def _pod_summaries(text: str) -> list[dict[str, Any]]:
