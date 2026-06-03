@@ -146,8 +146,10 @@
   populated `results.observability` through `summarize_report`/`analyze_results` and assert the
   metrics surface; assert the opt-out path is selected from a probed no-CRD environment.
 
-## Phase 28 — First-class model override (-m/--models) — TODO
+## Phase 28 — First-class model override (-m/--models) — DONE
 *Catalog ref: Area A — "Model list selection (-m/--models)" (🟡).*
+
+**RESULT (2026-06-03):** Shipped. A top-level `models` field on `ExecuteInput` threads through `execute_llmdbenchmark` into `build_argv` (`app/tools/execute.py`), emitting `-m <id>` only when present — `-m` is the one short form valid across standup/plan/run/experiment (upstream uses `--models` on standup/plan/experiment, `--model` on run). `security/allowlist.yaml` (DATA) gains a value-pinned, metachar-screened `model_id` constraint plus the `-m`/`--models`/`--model` flagspecs under those four subcommands. Model lockstep with the capacity pre-flight (pass the SAME id to `check_capacity` so it sizes + gated-checks the identical model) is knowledge, not Python: new `knowledge/model_override.md` + `knowledge/capacity.md` cross-link; no on-disk model catalog and no value `if/elif`. Hermetic `tests/test_model_override.py` asserts `-m` is emitted per subcommand, the allowlist permits + value-pins it and refuses injection, and the standup id + `check_capacity` override resolve to the IDENTICAL plan_config path. Also de-flaked a pre-existing full-suite-only race in `tests/test_concurrency.py` (target the teardown gate by `tool_call_id` instead of an arbitrary first pending key) — no assertion weakened. Suite after merge into `feature/roadmap-v4`: **776 passed / 20 skipped / 0 failed** (5 consecutive clean full runs); ruff + mypy clean.
 
 - **GOAL:** let the agent select a model per standup rather than only via the chosen spec.
 - **BUILD:** add a `models` field to `ExecuteInput` → emit `-m/--models` in `build_argv`

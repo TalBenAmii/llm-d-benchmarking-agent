@@ -13,6 +13,19 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 28 (ROADMAP_V4): First-class model override (`-m/--models`). A top-level `models` field on
+  `ExecuteInput` threads through `execute_llmdbenchmark` into `build_argv` (`app/tools/execute.py`), emitting `-m <id>`
+  only when present — `-m` is the one short form valid across standup/plan/run/experiment (upstream uses `--models` on
+  standup/plan/experiment, `--model` on run). `security/allowlist.yaml` (DATA) gains a value-pinned, metachar-screened
+  `model_id` constraint plus the `-m`/`--models`/`--model` flagspecs under those four subcommands. Model lockstep with
+  the capacity pre-flight (pass the SAME id to `check_capacity` so it sizes + gated-checks the identical model) is
+  knowledge, not Python: new `knowledge/model_override.md` + a `knowledge/capacity.md` cross-link; no on-disk model
+  catalog and no value `if/elif`. Hermetic `tests/test_model_override.py` asserts `-m` is emitted per subcommand, the
+  allowlist permits + value-pins it and refuses injection, and the standup id + the `check_capacity` override resolve to
+  the IDENTICAL `plan_config` path. Also de-flaked a pre-existing full-suite-only race in `tests/test_concurrency.py`
+  (target the teardown gate by `tool_call_id` instead of an arbitrary first pending key) — no assertion weakened. Branch
+  `feature/roadmap-v4-p28-model-override` → `feature/roadmap-v4`. Suite **776 passed / 20 skipped / 0 failed** (5
+  consecutive clean full runs); ruff + mypy clean. — done
 - 2026-06-03 — Phase 62 (ROADMAP_V4): Gated-model access pre-flight before standup. The already-allowlisted read-only
   capacity bridge `scripts/capacity_check.py` (driven by `app/capacity/planner.py`) now also calls the benchmark repo's
   OWN `llmdbenchmark.utilities.huggingface.check_model_access` / `GatedStatus` (never reimplemented) and returns a
