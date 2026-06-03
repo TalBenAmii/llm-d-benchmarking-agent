@@ -205,7 +205,7 @@ skipped / 0 failed**; ruff + mypy clean.
 - **HERMETIC-TEST:** the secret-provision command is approval-gated + allowlisted; scrub test
   asserts the token never appears in events.
 
-## Phase 31 — First-class step selection / re-run (-s/--step) — TODO
+## Phase 31 — First-class step selection / re-run (-s/--step) — DONE
 *Catalog ref: Area A — "Standup/run step list and re-run individual steps (-s/--step)" (🟡, currently only via extra passthrough).*
 
 - **GOAL:** promote step selection from the raw `extra` passthrough to a modeled, advisory flag.
@@ -214,6 +214,13 @@ skipped / 0 failed**; ruff + mypy clean.
   to `knowledge/` so the agent can re-run a single failed step.
 - **ACCEPTANCE:** the agent can re-run a step range as a modeled flag (not via `extra`).
 - **HERMETIC-TEST:** `build_argv` emits `-s` with a range; allowlist permits it.
+- **RESULT (DONE):** shipped a modeled `flags["step"]` (step-list grammar `N / N-M / comma`)
+  emitting `-s <spec>` in `build_argv` for standup/smoketest/run/teardown; value-pinned by a new
+  `step_list` allowlist regex (`^[0-9]+([,-][0-9]+)*$`) on all four subcommands; added
+  `knowledge/step_select.md` (per-phase step numbering + when to re-run). `-s` does NOT change a
+  command's mode, so re-running a mutating step stays approval-gated. Merged into feature/roadmap-v4
+  with the Phase 29 cluster-access flag-list union preserved; full suite **1031 passed / 20 skipped**
+  (+63 new tests), ruff + mypy clean.
 
 ## Phase 32 — Gateway class / provider selection (--gateway-class) — TODO
 *Catalog ref: Area A — "Gateway class / provider selection (istio/agentgateway/gke/epponly)" (⬜).*

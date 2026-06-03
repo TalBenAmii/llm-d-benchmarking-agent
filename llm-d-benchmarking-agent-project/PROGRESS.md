@@ -13,6 +13,15 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 31 (ROADMAP_V4): First-class step selection / re-run (`-s`/`--step`). Promoted step
+  selection from the raw `extra` passthrough to a modeled `flags["step"]` (step-list grammar `N / N-M / comma`,
+  e.g. `5`, `5-9`, `3-5,9`); `build_argv` (`app/tools/execute.py`, `schemas.py`) emits `-s <spec>` on
+  standup/smoketest/run/teardown so a single failed step (or range) can be re-run instead of redoing the whole
+  phase. Value-pinned by a new `step_list` allowlist regex (`^[0-9]+([,-][0-9]+)*$`) on all four subcommands
+  (`security/allowlist.yaml`, DATA-only); `-s` does NOT change a command's mode, so mutating re-runs stay
+  approval-gated. Added `knowledge/step_select.md` (per-phase step numbering + when to re-run). Merged into
+  feature/roadmap-v4 (schemas.py flag-list union kept the Phase 29 cluster_url/cluster_token entries); suite
+  **1031 passed / 20 skipped** (+63 new tests), ruff + mypy clean. Branch `feature/roadmap-v4-p31-step-select`. — done
 - 2026-06-04 — Phase 29 (ROADMAP_V4): Explicit cluster access (`-k`/`--kubeconfig` FILE + backend-only URL/token).
   A top-level `kubeconfig` field on `ExecuteInput` emits `-k <path>` after every subcommand via `build_argv`
   (`app/tools/execute.py`, `schemas.py`) to target a non-default kubeconfig FILE — a plain, allowlist-pinned,
