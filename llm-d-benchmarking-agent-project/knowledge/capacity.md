@@ -60,6 +60,51 @@ The sizing `info` lines (parameters, memory required, allocatable KV cache, **ma
 requests**) are useful even on the feasible path: surface "max concurrent requests" when the
 user cares about how many simultaneous users a config can serve.
 
+## Gated-model access pre-flight — "can your token even pull the weights?"
+
+`check_capacity` pairs the "will it fit?" sizing verdict with a **gated-model access**
+pre-flight, using the benchmark repo's OWN gating check (`check_model_access` /
+`GatedStatus`). The point: a gated model whose weights your HuggingFace token can't pull
+fails the standup minutes in, with an opaque image-pull / weights error. This surfaces the
+exact verdict **up front, at the plan gate, before any mutating step** — so a non-expert
+hears "your token can't pull this model, here's the fix" instead of watching a long deploy
+die. The result carries three facts (plus a per-model `gated_access.models` breakdown):
+
+- **`gated`** — `true` if any served model is gated, `false` if all are public, `null` if
+  the gating check couldn't run (offline / HF unreachable — see below).
+- **`authorized`** — for the gated case: `true` if your `HF_TOKEN` can pull **every** gated
+  model, `false` if it can't pull at least one, `null` if access couldn't be determined.
+  `null` for the public case (no token is needed). `gated_reason` is the upstream detail
+  text (it never contains the token).
+
+Read the three situations and say this (the **decision is here, not in Python**):
+
+- **PUBLIC** (`gated: false`) — *no token needed.* Say nothing about tokens; just proceed to
+  the capacity verdict. Don't ask the user for an HF token for a public model.
+- **GATED + AUTHORIZED** (`gated: true`, `authorized: true`) — *your token can pull it.*
+  Tell the user this model is gated but their configured HuggingFace token has access, so
+  the deploy can proceed. Continue to the "will it fit?" verdict.
+- **GATED + UNAUTHORIZED** (`gated: true`, `authorized: false`) — **do not stand up.**
+  Explain plainly: *"This model is gated and the HuggingFace token the backend has can't
+  pull it."* Quote `gated_reason` (it tells them whether **no token** is configured, or the
+  token simply **lacks access**). Then offer the fix:
+  - If **no token** is configured: they need to provide one. Offer to **provision the
+    `HF_TOKEN` secret (Phase 30 secret-provisioning)** so the backend has a token to use —
+    that is the next step to suggest, approval-gated like any secret write.
+  - If a token **lacks access**: the token is fine but this account isn't approved for the
+    model — point them to `https://huggingface.co/<model>` to request access, then retry the
+    pre-flight once granted. (Provisioning a *different* token with access is also valid.)
+  Either way, retry `check_capacity` after the fix to confirm `authorized: true` before
+  standing up.
+- **UNKNOWN** (`gated: null`) — the gating check couldn't run (HF unreachable / offline, or
+  the repo's gating util wasn't importable). `gated_reason` says "gated check unavailable".
+  Treat it like the `ran: false` capacity case: **not a green light** — tell the user the
+  gated verdict is unavailable and let them decide whether to proceed with caution.
+
+The **token stays backend-only**: it's read from the scrubbed child env, passed to the
+gating check, and never echoed into the result, the command events, or the logs. You will
+never see the token value — only these gated/authorized/`gated_reason` facts.
+
 ## `enforce`
 
 By default the planner tags shortfalls as advisory `WARNING` (matching the repo's

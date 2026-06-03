@@ -9,6 +9,7 @@ infeasible and what to change — lives in ``knowledge/capacity.md``, not here.
 from app.capacity.planner import (
     CapacityVerdict,
     classify_diagnostics,
+    merge_gated_access,
     plan_config_for_spec,
     resolve_scenario_file,
 )
@@ -16,6 +17,7 @@ from app.capacity.planner import (
 __all__ = [
     "CapacityVerdict",
     "classify_diagnostics",
+    "merge_gated_access",
     "plan_config_for_spec",
     "resolve_scenario_file",
 ]
