@@ -144,13 +144,23 @@ class WriteConfigInput(BaseModel):
                     "kustomize.monitoring, kustomize.overlayPath, kustomize.extraHelmValues, "
                     "kustomize.extraHelmSets, kustomize.guideVariableOverrides, and "
                     "kustomize.patches (a LIST of {patch: <inline YAML>} strategic-merge patches "
-                    "against the guide's modelserver base). The knobs are SHAPE-validated against "
-                    "the repo's own scenario examples (read live). WHICH knobs to set is JUDGMENT "
-                    "— call read_knowledge('vllm_overrides') for vLLM tuning, or "
-                    "read_knowledge('deploy_path_playbook') for WHICH guide/overlay/patches/repo "
-                    "the kustomize block should carry; the repos stay read-only (authored into "
-                    "the session workspace). Preview the authored file via "
-                    "execute_llmdbenchmark(subcommand='plan'/'run', flags={'dry_run': True}).",
+                    "against the guide's modelserver base). To CONFIGURE OpenTelemetry "
+                    "distributed tracing on the deployed modelservice pods (Phase 54), set the "
+                    "tracing.* family: tracing.enabled (true ⇒ turn it on), tracing.otlpEndpoint "
+                    "(the OTLP gRPC endpoint of the USER'S OTel collector, e.g. "
+                    "http://otel-collector:4317), tracing.sampling.sampler (e.g. "
+                    "parentbased_traceidratio) + tracing.sampling.samplerArg ('1.0'=100%, "
+                    "'0.1'=10%), tracing.serviceNames.{vllmDecode,vllmPrefill,routingProxy}, and "
+                    "tracing.vllm.collectDetailedTraces. NOTE: the benchmark only CONFIGURES "
+                    "tracing — it never deploys a collector/Jaeger and never collects/shows "
+                    "traces in the report (the user views them in their own backend). The knobs "
+                    "are SHAPE-validated against the repo's own scenario examples (read live). "
+                    "WHICH knobs to set is JUDGMENT — call read_knowledge('vllm_overrides') for "
+                    "vLLM tuning, read_knowledge('observability') for the tracing.* block + its "
+                    "config-only limitation, or read_knowledge('deploy_path_playbook') for WHICH "
+                    "guide/overlay/patches/repo the kustomize block should carry; the repos stay "
+                    "read-only (authored into the session workspace). Preview the authored file "
+                    "via execute_llmdbenchmark(subcommand='plan'/'run', flags={'dry_run': True}).",
     )
 
 
