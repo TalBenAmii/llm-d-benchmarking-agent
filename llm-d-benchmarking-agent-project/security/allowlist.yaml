@@ -120,6 +120,13 @@ value_constraints:
   namespaces:      { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(,[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$" }  # one or two (deploy,bench)
   overrides:       { regex: "^[A-Za-z0-9_.,=:/+-]+$" }   # param=value,param=value
   positive_int:    { regex: "^[0-9]+$" }
+  # ---- step selection / re-run (Phase 31): -s/--step value ----
+  # An upstream step-list spec: a single step number, a comma-separated list, and/or N-M
+  # ranges — e.g. 5, 5-9, 3,7, 3-5,9. Charset-pinned to digits, commas and hyphens with NO
+  # spaces (so the metacharacter screen stays clean); parsed by the CLI's StepExecutor
+  # (`^(\d+)-(\d+)$` per comma-part). WHICH step to re-run is the agent's judgment
+  # (knowledge/step_select.md), not an enumerable on-disk table.
+  step_list:       { regex: "^[0-9]+([,-][0-9]+)*$" }
   kubectl_resource:
     enum: [ns, namespace, namespaces, po, pod, pods, svc, service, services,
            deploy, deployment, deployments, ep, endpoints, events, nodes, node,
@@ -562,6 +569,9 @@ executables:
           # and --no-monitoring (clean opt-out for CRD-less clusters) are real here.
           "--monitoring": {}
           "--no-monitoring": {}
+          # Phase 31: step selection / re-run a single failed step (or range) of the phase.
+          "-s": { takes_value: true, value: { ref: step_list } }
+          "--step": { takes_value: true, value: { ref: step_list } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       smoketest:
@@ -575,6 +585,9 @@ executables:
           "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "-t": { takes_value: true, value: { ref: methods } }
           "--methods": { takes_value: true, value: { ref: methods } }
+          # Phase 31: step selection / re-run a single failed step (or range) of the phase.
+          "-s": { takes_value: true, value: { ref: step_list } }
+          "--step": { takes_value: true, value: { ref: step_list } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       run:
@@ -610,6 +623,9 @@ executables:
           # Phase 27: activate results.observability (vLLM /metrics scraping + pod log capture).
           # run uses store_true upstream, so only --monitoring is real here (no --no-monitoring).
           "--monitoring": {}
+          # Phase 31: step selection / re-run a single failed step (or range) of the phase.
+          "-s": { takes_value: true, value: { ref: step_list } }
+          "--step": { takes_value: true, value: { ref: step_list } }
           "--list-endpoints": { read_only_trigger: true }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
@@ -624,6 +640,9 @@ executables:
           "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "-t": { takes_value: true, value: { ref: methods } }
           "--methods": { takes_value: true, value: { ref: methods } }
+          # Phase 31: step selection / re-run a single failed step (or range) of the phase.
+          "-s": { takes_value: true, value: { ref: step_list } }
+          "--step": { takes_value: true, value: { ref: step_list } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       results:
