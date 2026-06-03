@@ -13,6 +13,23 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 40 (ROADMAP_V4): Trigger the CLI's local `--analyze` plot families. Added a
+  `flags.analyze` key — `build_argv` (`app/tools/execute.py`) emits a bare `--analyze` on `run` ALONE
+  (upstream defines it on the `run` subparser only), so the CLI ALSO runs its optional workstation
+  matplotlib analysis, writing three EXTRA plot families under `analysis/{distributions,session,graphs}`
+  (per-request distributions / session-lifecycle / Prometheus time-series) BESIDE the harness PNGs.
+  `_discover_charts` (`app/tools/probe.py`) now carries the `analysis/` family subdir into each chart's
+  title + an explicit `family` field so the three families don't collide on bare filenames and the UI can
+  group them; they surface via the existing artifact route. `security/allowlist.yaml` permits `--analyze`
+  as a plain non-read-only flag (a real `run` stays mutating/approval-gated); `schemas.py` + `registry.py`
+  document the opt-in and point at `knowledge/analysis.md` for WHEN. The agent's own SLO/goodput/Pareto
+  math is UNCHANGED — these are supplementary visualizations. `tests/test_analyze_plots.py` adds hermetic
+  coverage. Merged into `feature/roadmap-v4` (no-ff); three additive conflicts (execute.py docstring,
+  registry.py + schemas.py descriptions) resolved by keeping BOTH the Phase 33/38/39
+  (`--stack`/`--parallel`/`--*-timeout`/cloud-sink) blocks AND the analyze block; allowlist.yaml
+  auto-merged. Branch `feature/roadmap-v4-p40-analyze-plots`. Suite **1254 passed / 20 skipped / 0
+  failed**; ruff + mypy clean. — done
+
 - 2026-06-04 — Phase 39 (ROADMAP_V4): Cloud results sink for the run flag (`-r gs://`, `s3://`).
   Promoted `run`'s `-r/--output` from local-only to an OPT-IN cloud destination keyword. Added a
   DEDICATED `results_sink` value constraint to `security/allowlist.yaml` (DATA) —

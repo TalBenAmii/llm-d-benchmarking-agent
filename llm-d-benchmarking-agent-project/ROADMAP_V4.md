@@ -349,7 +349,7 @@ document the opt-in. Upload internals stay the DEFERRED Phase 47. Merged into `f
 one additive registry.py conflict resolved by keeping both the Phase 33/38 and the cloud-sink description
 blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 
-## Phase 40 — Trigger the CLI's local --analyze plot families — TODO
+## Phase 40 — Trigger the CLI's local --analyze plot families — DONE
 *Catalog ref: Area A/C/E — "Local analysis after collection (--analyze)" (🟡).*
 
 - **GOAL:** generate the CLI's optional workstation matplotlib plot families (per-request
@@ -361,6 +361,13 @@ blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
   agent's own SLO/goodput/Pareto math is unchanged.
 - **HERMETIC-TEST:** `build_argv` emits `--analyze`; allowlist permits it; the artifact lister
   surfaces the new PNG families from a fixture results dir.
+- **RESULT:** Shipped a `flags.analyze` flag emitting a bare `--analyze` on `run` ONLY (upstream
+  defines it on the `run` subparser alone); `_discover_charts` now carries the `analysis/`
+  family subdir (`distributions`/`session`/`graphs`) into each chart's title + a `family` field
+  so the three `--analyze` plot families don't collide and the UI can group them. Registry/schema
+  descriptions, `security/allowlist.yaml` (`--analyze` as a plain non-read-only flag, run stays
+  approval-gated), and `knowledge/analysis.md` updated. Added `tests/test_analyze_plots.py`.
+  Full suite after merge into feature/roadmap-v4: 1254 passed, 20 skipped, 0 failed; ruff + mypy clean.
 
 ## Phase 41 — Dataset replay URL (-x/--dataset) — DONE
 *Catalog ref: Area A — "Dataset replay URL (-x/--dataset)" (⬜).*
