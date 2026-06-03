@@ -411,8 +411,16 @@ skipped / 0 failed**; ruff + mypy clean.
 - **HERMETIC-TEST:** authored config sets the knobs + passes structural validation against the
   repo's example shape; no write into the read-only repo.
 
-## Phase 46 — Kustomize deploy config block (kustomize.*) — TODO
+## Phase 46 — Kustomize deploy config block (kustomize.*) — DONE
 *Catalog ref: Area H — "Kustomize deploy method config block (-t kustomize)" (🟡; only the bare method is allowlisted).*
+
+> **Result (2026-06-04):** `write_and_validate_config(artifact_type='scenario')` now authors the
+> full `kustomize.*` block (enabled/guideName/repoPath/repoRef/acceleratorBackend/monitoring/
+> overlayPath/extraHelmValues/extraHelmSets/guideVariableOverrides + a list of strategic-merge
+> `patches`), shape-validated against the repo's scenario examples; `build_argv` threads the
+> `--llmd-repo-path` standup flag (allowlisted, path-constrained, no `..`) as the CLI fallback for
+> `kustomize.repoPath`. Guidance in `knowledge/deploy_path_playbook.md`. New hermetic suite
+> `tests/test_kustomize_block.py`. Suite: 1077 passed, 20 skipped, 0 failed; ruff + mypy clean.
 
 - **GOAL:** author the kustomize config block (guideName/repoPath/repoRef/patches/overlays/
   extraHelmValues/guideVariableOverrides), not just select `-t kustomize`.

@@ -24,6 +24,19 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
   Merged into `feature/roadmap-v4` (no-ff); resolved additive/structural conflicts vs Phases 29/31/36 by
   composing the union (kept every existing flag + the new `dataset` one). Full suite **1063 passed / 20 skipped
   / 0 failed**; ruff + mypy clean. Branch `feature/roadmap-v4-p41-dataset-replay`. — done
+- 2026-06-04 — Phase 46 (ROADMAP_V4): Kustomize deploy config block (`kustomize.*`). Promoted the kustomize
+  deploy method from "only `-t kustomize` is allowlisted" to first-class config authoring:
+  `write_and_validate_config(artifact_type='scenario')` now authors the full `kustomize.*` block
+  (enabled/guideName/repoPath/repoRef/acceleratorBackend/monitoring/overlayPath/extraHelmValues/extraHelmSets/
+  guideVariableOverrides + a list of strategic-merge `patches`), deep-merged onto a minimal `scenario:` skeleton
+  and shape-validated against the repo's own scenario examples. `build_argv` (`app/tools/execute.py`,
+  `schemas.py`) threads `flags["repo_path"]` as the real standup `--llmd-repo-path` flag (the CLI fallback for
+  `kustomize.repoPath`), allowlisted + path-constrained (no `..`; `security/allowlist.yaml`, DATA-only).
+  `knowledge/deploy_path_playbook.md` carries the WHICH-guide/overlay/patches judgment; new hermetic suite
+  `tests/test_kustomize_block.py` (+14 tests). Merged into `feature/roadmap-v4` (no-ff); resolved additive
+  conflicts in `schemas.py`/`execute.py` by composing the union (kept every prior flag — skip/step/dataset/
+  cluster_url/cluster_token — plus the new `methods`/`repo_path`). Full suite **1077 passed / 20 skipped /
+  0 failed**; ruff + mypy clean. Branch `feature/roadmap-v4-p46-kustomize-block`. — done
 
 - 2026-06-04 — Phase 36 (ROADMAP_V4): First-class skip / collect-only mode (`-z`/`--skip`). Promoted
   collect/analyze-only from the raw `extra` passthrough to a modeled `flags["skip"]`; `build_argv`
