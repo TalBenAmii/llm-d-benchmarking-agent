@@ -126,6 +126,16 @@ value_constraints:
   label_selector:  { regex: "^[A-Za-z0-9._/=,-]+$" }                   # e.g. run-id=abc,function=load_generator
   # ---- capacity pre-flight (Phase 6): a workspace-confined JSON request file ----
   json_path:       { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.json$" }  # a .json file; no '..' traversal
+  # ---- model-load readiness probe (Phase 59): a TIGHTLY-CONSTRAINED model-server URL ----
+  # GET-only serving-readiness probe URL. Pins host to an in-namespace `*.svc` (cluster DNS),
+  # the port to the model-server serving ports (8000 prefill / 8200 decode) ONLY, and the path
+  # to the readiness/liveness ENUM {/v1/models, /health} ONLY. No other host/port/path is
+  # expressible — and the metacharacter screen already rejects shell-dangerous tokens. This is
+  # how the Phase 59 gate distinguishes "still loading weights" (/health 200, /v1/models 503)
+  # from "wedged/broken". See knowledge/readiness_probes.md for the loading-vs-broken judgment.
+  modelserver_probe_url:
+    regex: "^http://[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?\\.svc(\\.cluster\\.local)?:(8000|8200)(/v1/models|/health)$"
+  http_get_verb:   { enum: [GET] }
 
 executables:
 
@@ -191,6 +201,9 @@ executables:
           "--containers": {}
       get:
         mode: read_only
+        # `pods -o json` (already in the kubectl_resource enum) now ALSO feeds the Phase 59
+        # serving-readiness classifier (pod phase / Ready conditions / restartCount / age /
+        # role-by-port), alongside the Phase 24 endpoint check. No schema change here.
         positionals: [ { value: { ref: kubectl_resource } } ]
         flags:
           "-n": { takes_value: true, value: { ref: namespace } }
@@ -315,6 +328,43 @@ executables:
       python_via: "repo:llm-d-benchmark/.venv"
     positionals:
       - { value: { ref: json_path } }
+
+  # ---- model-load serving-readiness probe (Phase 59) --------------------
+  # A READ-ONLY, GET-only HTTP probe used by the endpoint-readiness gate to tell WHY a Running
+  # model-server pod is still NotReady: GET /v1/models is model-serving-ready (startup/readiness
+  # probe) while GET /health is only process-alive (liveness probe). It is DATA-only and
+  # TIGHTLY constrained — the verb is pinned to GET, and the single URL positional is pinned by
+  # `modelserver_probe_url` to an in-namespace `*.svc` host on port 8000/8200 at the path enum
+  # {/v1/models, /health}. No POST/PUT/etc., no other port/path/host is expressible. The probe
+  # runs `-s -S` (quiet, but still surface errors) `-i` (dump headers so the HTTP status line is
+  # readable) `-m <secs>` (a bounded deadline); we read only the HTTP status / a connection-refused
+  # outcome, never the body. `-o /dev/null` is additionally PERMITTED (constrained to /dev/null)
+  # for callers that prefer to discard the body, but is not required. The bare `curl` binary
+  # resolves via PATH (like docker/kubectl).
+  # The loading-vs-broken JUDGMENT lives in knowledge/readiness_probes.md — never in Python.
+  # We read the HTTP status from the response STATUS LINE (`-i` dumps headers: `HTTP/1.1 200 OK`
+  # / `HTTP/1.1 503 ...`) — `curl -w '%{http_code}'` is deliberately NOT used because the
+  # `{`/`}` it needs are rejected by the metacharacter screen (defense in depth). `-i` is
+  # brace-free and the status line is trivially parsed; a connection-refused outcome is a
+  # non-zero curl exit with no status line.
+  curl:
+    flat: true
+    mode: read_only
+    timeout_s: 10
+    flags:
+      "-X": { takes_value: true, value: { ref: http_get_verb } }
+      "--request": { takes_value: true, value: { ref: http_get_verb } }
+      "-s": {}
+      "--silent": {}
+      "-S": {}
+      "--show-error": {}
+      "-i": {}
+      "--include": {}
+      "-o": { takes_value: true, value: { regex: "^/dev/null$" } }
+      "-m": { takes_value: true, value: { ref: positive_int } }
+      "--max-time": { takes_value: true, value: { ref: positive_int } }
+    positionals:
+      - { value: { ref: modelserver_probe_url } }
 
   # ---- the benchmark CLI (the primary target) ---------------------------
   llmdbenchmark:
