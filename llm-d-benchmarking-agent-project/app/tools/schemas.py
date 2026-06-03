@@ -95,6 +95,19 @@ class ExecuteInput(BaseModel):
     namespace: str | None = None
     harness: str | None = Field(default=None, description="run/experiment only")
     workload: str | None = Field(default=None, description="run/experiment only")
+    models: str | None = Field(
+        default=None,
+        description="Phase 28 — a single model id (a HuggingFace id or short name, e.g. "
+                    "'facebook/opt-125m', 'meta-llama/Llama-3.1-8B') to deploy/serve for THIS "
+                    "standup (also valid on plan/run/experiment), OVERRIDING the spec's "
+                    "scenario-default model. Emitted as `-m <id>` (upstream spells it --models on "
+                    "standup/plan/experiment, --model on run; -m works on all). WHICH model is "
+                    "YOUR judgment, grounded in knowledge/model_override.md — there is no enumerable "
+                    "models catalog. CRITICAL: pass the SAME id to check_capacity(overrides="
+                    "{'model': <id>}) FIRST so the pre-flight validates the IDENTICAL model "
+                    "(HF config lookup, sizing, gated-access) you are about to deploy. Omit it to "
+                    "keep the spec's default model.",
+    )
     flags: dict[str, Any] | None = Field(
         default=None,
         description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "

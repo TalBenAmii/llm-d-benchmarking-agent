@@ -29,7 +29,11 @@ The spec carries defaults (e.g. `cicd/kind` is `facebook/opt-125m`, CPU-sim, no 
 `overrides` so the pre-flight checks what they actually asked for — not the stock spec:
 
 - `model` / `huggingface_id` — a different served model (this is what makes the check
-  meaningful: a 70B model on one 24 GB GPU will not fit).
+  meaningful: a 70B model on one 24 GB GPU will not fit). When the standup itself will carry
+  an explicit model override (`ExecuteInput.models`, emitted as `-m`, see
+  `knowledge/model_override.md`), you MUST pass that SAME id here as
+  `overrides={'model': '<id>'}` so the pre-flight sizes and gated-access-checks the IDENTICAL
+  model you are about to deploy — not the spec's stock default. The two must always match.
 - `max_model_len` — longer context costs KV-cache memory *per request*; this is the most
   common reason a model "loads but can't serve a single request".
 - `gpu_memory_gb` — per-GPU memory (e.g. 24, 40, 80). Without it, GPU-memory checks are
