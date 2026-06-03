@@ -20,7 +20,14 @@ _TOOLCHAIN = ["docker", "podman", "kubectl", "kind", "helm", "helmfile", "jq", "
 _ALL_CHECKS = [
     "container_runtime", "repos", "tools", "venv",
     "kind_clusters", "kube_context", "cluster_info", "namespaces", "stack",
+    "prometheus_crds",
 ]
+
+# The Prometheus-operator CRDs the benchmark's --monitoring path needs (PodMonitor +
+# ServiceMonitor). Both must exist for monitoring resources to apply cleanly; a Kind / vanilla
+# cluster without the operator lacks them. Pure DATA used by the read-only probe below — the
+# --monitoring vs --no-monitoring DECISION is the agent's (knowledge/observability.md).
+_PROMETHEUS_CRDS = ("podmonitors.monitoring.coreos.com", "servicemonitors.monitoring.coreos.com")
 
 
 async def probe_environment(
@@ -51,6 +58,8 @@ async def probe_environment(
         out["namespaces"] = await _probe_namespaces(ctx)
     if "stack" in wanted:
         out["stack"] = await _probe_stack(ctx, namespace)
+    if "prometheus_crds" in wanted:
+        out["prometheus_crds"] = await _probe_prometheus_crds(ctx)
     return out
 
 
@@ -140,6 +149,34 @@ async def _probe_stack(ctx: ToolContext, namespace: str | None) -> dict[str, Any
         "ready_count": len(running),
         "detected": len(running) > 0,
         "pods": pods[:25],
+    }
+
+
+async def _probe_prometheus_crds(ctx: ToolContext) -> dict[str, Any]:
+    """Detect whether the Prometheus-operator CRDs (PodMonitor + ServiceMonitor) exist.
+
+    Read-only: lists the cluster's CRDs (``kubectl get crd -o name``) and reports which of the
+    two monitoring CRDs are present. This is PURE MECHANISM — it reports facts only. WHETHER to
+    pass ``--monitoring`` (default) or ``--no-monitoring`` / ``monitoring.installPrometheusCrds``
+    on a cluster missing them is the agent's judgment, grounded in knowledge/observability.md.
+    NB: the bundled ``cicd/kind`` scenario already sets ``monitoring.installPrometheusCrds: true``
+    (the CRDs get installed during standup), so absence here is not by itself a reason to opt out
+    of monitoring on the quickstart path — only on truly CRD-less clusters that won't install them.
+    """
+    if not shutil.which("kubectl"):
+        return {"available": False, "present": False}
+    res = await ctx.run_readonly(["kubectl", "get", "crd", "-o", "name"], timeout=12.0)
+    if res.exit_code != 0:
+        return {"available": False, "present": False, "timed_out": res.timed_out}
+    # `-o name` prints one CRD per line as ``customresourcedefinition.apiextensions.k8s.io/<name>``;
+    # match on the trailing CRD name so the apiVersion prefix doesn't matter.
+    have = {line.split("/", 1)[-1].strip() for line in res.output.splitlines() if line.strip()}
+    per_crd = {name: (name in have) for name in _PROMETHEUS_CRDS}
+    return {
+        "available": True,
+        "podmonitors_crd": per_crd["podmonitors.monitoring.coreos.com"],
+        "servicemonitors_crd": per_crd["servicemonitors.monitoring.coreos.com"],
+        "present": all(per_crd.values()),
     }
 
 

@@ -36,7 +36,14 @@ def build_argv(
     extra: list[str] | None = None,
 ) -> list[str]:
     """Assemble the logical argv. Global flags (``--spec``, ``--workspace``) precede the
-    subcommand; everything else follows it."""
+    subcommand; everything else follows it.
+
+    ``flags["monitoring"]`` is SUBCOMMAND-AWARE (Phase 27): ``True`` emits ``--monitoring`` for
+    standup/run/experiment/plan; ``False`` emits ``--no-monitoring`` only for ``standup`` (the
+    sole subcommand whose upstream argparse — BooleanOptionalAction — accepts it; run/experiment/
+    plan are store_true, so an opt-out there just omits the flag); ``None``/absent emits nothing
+    (scenario defaults). Whether to set it is the agent's judgment (knowledge/observability.md),
+    not Python's."""
     flags = flags or {}
     argv: list[str] = ["llmdbenchmark"]
     if spec:
@@ -69,6 +76,19 @@ def build_argv(
         argv.append("--skip-teardown")
     if flags.get("skip_smoketest"):
         argv.append("--skip-smoketest")
+    # Monitoring (Phase 27): activate the metrics PRODUCER so results.observability gets
+    # populated (KV-cache hit rate / queue depth / GPU util / EPP-log snapshots). This is pure
+    # MECHANISM — the on/off + CRD opt-out JUDGMENT is the agent's, set into flags["monitoring"]
+    # from knowledge/observability.md (default ON; opt out on CRD-less clusters). It is also
+    # SUBCOMMAND-AWARE, mirroring the upstream argparse: standup uses BooleanOptionalAction so it
+    # accepts BOTH --monitoring and --no-monitoring; run/experiment/plan use store_true, so only
+    # --monitoring exists there — an explicit opt-out simply omits the flag (no scraping). We only
+    # ever emit a flag the agent explicitly set; an unset (None) monitoring touches nothing.
+    monitoring = flags.get("monitoring")
+    if monitoring is True:
+        argv.append("--monitoring")
+    elif monitoring is False and subcommand == "standup":
+        argv.append("--no-monitoring")
     if flags.get("list_endpoints"):
         argv.append("--list-endpoints")
     if flags.get("dry_run"):

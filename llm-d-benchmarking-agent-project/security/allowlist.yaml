@@ -111,7 +111,11 @@ value_constraints:
            job, jobs,                # job/jobs: the orchestrator submits benchmark runs as K8s Jobs.
                         # ep/endpoints: the Phase 24 endpoint-readiness gate reads a Service's
                         # ready backing endpoints (read-only) before submitting a benchmark.
-           cm, configmap, configmaps]  # cm/configmaps: a DOE sweep's checkpoint (Phase 22 source of truth)
+           cm, configmap, configmaps,  # cm/configmaps: a DOE sweep's checkpoint (Phase 22 source of truth)
+           crd, crds, customresourcedefinition, customresourcedefinitions]
+                        # crd: the Phase 27 prometheus_crds probe lists CRDs (read-only) to detect
+                        # whether the Prometheus-operator PodMonitor/ServiceMonitor CRDs are present,
+                        # so the agent can decide --monitoring vs --no-monitoring per knowledge/.
   git_ref:         { regex: "^[A-Za-z0-9._/-]+$" }
   cluster_name:    { regex: "^[a-z0-9]([-a-z0-9]{0,40}[a-z0-9])?$" }   # kind cluster name
   duration:        { regex: "^[0-9]+(s|m|h)?$" }                       # e.g. 120s, 5m
@@ -331,6 +335,9 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 27: preview the monitoring-enabled rendering (PodMonitor + EPP verbosity).
+          # plan uses store_true upstream, so only --monitoring exists here (no --no-monitoring).
+          "--monitoring": {}
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       standup:
@@ -342,6 +349,11 @@ executables:
           "--skip-smoketest": {}
           "-t": { takes_value: true, value: { ref: methods } }
           "--methods": { takes_value: true, value: { ref: methods } }
+          # Phase 27: activate results.observability. standup uses BooleanOptionalAction
+          # upstream, so BOTH --monitoring (create PodMonitor/ServiceMonitor + EPP verbosity)
+          # and --no-monitoring (clean opt-out for CRD-less clusters) are real here.
+          "--monitoring": {}
+          "--no-monitoring": {}
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       smoketest:
@@ -377,6 +389,9 @@ executables:
           # Sweep workload params (e.g. max-concurrency) across N runs against ONE standup.
           "-e": { takes_value: true, value: { ref: output_dir } }
           "--experiments": { takes_value: true, value: { ref: output_dir } }
+          # Phase 27: activate results.observability (vLLM /metrics scraping + pod log capture).
+          # run uses store_true upstream, so only --monitoring is real here (no --no-monitoring).
+          "--monitoring": {}
           "--list-endpoints": { read_only_trigger: true }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
@@ -424,5 +439,8 @@ executables:
           "--data-access-timeout": { takes_value: true, value: { ref: positive_int } }
           "--stop-on-error": {}
           "--skip-teardown": {}
+          # Phase 27: activate results.observability (PodMonitor + vLLM /metrics scraping per
+          # treatment). experiment uses store_true upstream, so only --monitoring is real here.
+          "--monitoring": {}
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }

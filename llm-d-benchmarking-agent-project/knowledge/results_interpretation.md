@@ -60,6 +60,18 @@ Report's standard ResourceMetrics; `native` = a harness-native metric like vLLM'
 On the CPU-sim quickstart these are usually absent or meaningless (no real GPU); only lean
 on them on a real GPU stack.
 
+**Why they're sometimes absent — and how to make them appear.** `standard_metrics` is `null`
+whenever the metrics PRODUCER didn't run. The producer is the benchmark's monitoring path,
+activated with `flags.monitoring: true` (emits `--monitoring`) on standup/run/experiment — that
+creates the PodMonitor/ServiceMonitor and scrapes vLLM `/metrics`, which is what fills
+`results.observability`. So if a user wants KV-cache / GPU / queue-depth numbers and they're
+coming back empty, the fix is almost always **re-run with monitoring on** (and on a CRD-less
+cluster, ensure the Prometheus-operator CRDs are installed or use the opt-out). The full decision
+procedure — default ON, the `prometheus_crds` probe, and the `--no-monitoring` /
+`monitoring.installPrometheusCrds` knobs — lives in `knowledge/observability.md` (§3). Never
+fabricate these numbers when the block is empty; instead explain that monitoring needs to be
+enabled.
+
 ## How to talk about it
 - Lead with the answer to the user's question (e.g. "for a chat UX, first-token latency
   averaged X and the slowest 1% were Y").

@@ -124,8 +124,9 @@ async def test_no_emit_wired_is_safe(tmp_path):
 
 async def test_probe_environment_emits_command_per_probe(tmp_path):
     """The headline Phase-1 behavior: read-only probes are now visible. With all tools
-    present and a namespace, probe_environment runs exactly 6 read-only commands and each
-    is announced (auto_run) — proving probe-emit/exec parity."""
+    present and a namespace, probe_environment runs exactly 7 read-only commands and each
+    is announced (auto_run) — proving probe-emit/exec parity. (The 7th is the Phase-27
+    prometheus_crds probe: a read-only `kubectl get crd`.)"""
     from unittest.mock import patch
 
     from app.tools.probe import probe_environment
@@ -137,11 +138,13 @@ async def test_probe_environment_emits_command_per_probe(tmp_path):
         await probe_environment(ctx, namespace="llmd-quickstart")
 
     cmds = _commands(events)
-    assert len(cmds) == 6, [c["text"] for c in cmds]
+    assert len(cmds) == 7, [c["text"] for c in cmds]
     assert all(c["mode"] == "read_only" and c["auto_run"] is True for c in cmds)
-    assert len(runner.calls) == 6  # one announcement per real execution
+    assert len(runner.calls) == 7  # one announcement per real execution
     exes = {c["argv"][0] for c in cmds}
     assert exes == {"docker", "kind", "kubectl"}
+    # the Phase-27 CRD probe is among them (read-only `kubectl get crd`).
+    assert any(c["argv"][:3] == ["kubectl", "get", "crd"] for c in cmds)
 
 
 async def test_deploy_flow_surfaces_every_command(tmp_path):
