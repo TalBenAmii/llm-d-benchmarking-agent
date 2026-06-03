@@ -720,6 +720,16 @@ executables:
           # like --list-endpoints / --dry-run. Upstream defines -z/--skip on `run` ALONE.
           "-z": { read_only_trigger: true }
           "--skip": { read_only_trigger: true }
+          # Phase 37: harness DEBUG mode. -d/--debug starts the harness pods with `sleep infinity`
+          # instead of running the load (upstream LLMDBENCH_DEBUG) — for exec-ing into a stuck
+          # harness pod to debug it. Plain boolean flag (NO read_only_trigger): a debug launch
+          # still creates a REAL pod, so it STAYS mutating/approval-gated. run/experiment ONLY
+          # upstream; deliberately NOT added under teardown (there -d means --deep, a DESTRUCTIVE
+          # full-namespace wipe). The interactive in-pod exec is a MANUAL user step the agent never
+          # drives — there is NO kubectl/oc `exec` subcommand in this allowlist, so that boundary is
+          # structurally enforced; WHEN-to-debug judgment lives in knowledge/harness_debug.md.
+          "-d": {}
+          "--debug": {}
           # Phase 40: activate the CLI's local matplotlib analysis (extra plot families written
           # under analysis/{distributions,session,graphs}: per-request distributions,
           # session-lifecycle, Prometheus time-series) IN ADDITION to the harness PNGs. A plain
@@ -838,5 +848,13 @@ executables:
           # instead of the synthetic workload profile. Value constrained to dataset_url.
           "-x": { takes_value: true, value: { ref: dataset_url } }
           "--dataset": { takes_value: true, value: { ref: dataset_url } }
+          # Phase 37: harness DEBUG mode (run/experiment ONLY upstream). -d/--debug starts the
+          # harness pods with `sleep infinity` instead of running the load. Plain boolean flag (NO
+          # read_only_trigger): a debug launch still creates a REAL pod, so it STAYS mutating/
+          # approval-gated. Deliberately NOT under teardown (there -d means --deep, destructive).
+          # The interactive in-pod exec is a MANUAL user step (no kubectl/oc `exec` is allowlisted);
+          # WHEN-to-debug judgment lives in knowledge/harness_debug.md.
+          "-d": {}
+          "--debug": {}
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }

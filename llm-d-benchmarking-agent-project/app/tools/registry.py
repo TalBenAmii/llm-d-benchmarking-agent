@@ -300,7 +300,14 @@ _DESCRIPTIONS = {
         "the session workspace and exit (emits --generate-config; read-only/auto-runs), then later "
         "set flags={'run_config': '<path>'} to REPLAY it (emits -c; still approval-gated). WHEN to "
         "generate vs reuse vs author in-workspace is your judgment, see "
-        "knowledge/runconfig_roundtrip.md."
+        "knowledge/runconfig_roundtrip.md. "
+        "To launch a DEBUG harness pod that sleeps (`sleep infinity`) INSTEAD of running the "
+        "benchmark — so you (or the user) can exec into a misbehaving harness pod — set "
+        "flags={'debug': True} on a run/experiment (emits -d; still approval-gated, it launches a "
+        "real pod). NOT on teardown (there -d means --deep, a destructive wipe). After it is up, "
+        "EXPLAIN how to exec into it (kubectl/oc exec -it <ns> <harness-pod> -- bash) but do NOT "
+        "drive the interactive shell yourself — that stays a manual user step. WHEN to use it is "
+        "your judgment, see knowledge/harness_debug.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "
