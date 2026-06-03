@@ -13,6 +13,17 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 54 (ROADMAP_V4): Distributed tracing config (OpenTelemetry `tracing:` block).
+  Advanced users can now author a scenario `tracing.*` block (otlpEndpoint, sampling.sampler/samplerArg,
+  serviceNames.{vllmDecode,vllmPrefill,routingProxy}, vllm.collectDetailedTraces) via
+  `write_and_validate_config(artifact_type='scenario')`, gated through plan/--dry-run. `config_artifact.py`
+  adds `_SOFT_OPTIONAL_KNOBS={'tracing'}` unioned into the live scenario knob_keys so the dotted family
+  shape-validates WITHOUT weakening the typo-screen (rendered by the upstream jinja + deep-merged onto
+  defaults.yaml); `schemas.py` documents the family + points to `read_knowledge('observability')`;
+  `knowledge/observability.md` §4 documents the config-only limitation (the benchmark configures OTel on the
+  modelservice pods but never deploys a collector/Jaeger nor collects/shows traces — collection is the user's
+  external backend). 13 hermetic tests (`tests/test_tracing_config.py`); no cluster/GPU/network. Merged into
+  `feature/roadmap-v4`. Suite **1287 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
 - 2026-06-04 — Phase 42 (ROADMAP_V4): Round-trip the CLI's run-config (`--generate-config` / `-c`).
   Added two `run`-ONLY flag keys (upstream defines both on the `run` subparser alone): `flags.generate_config`
   → `build_argv` (`app/tools/execute.py`) emits a bare `--generate-config` (the CLI writes a reusable run-config

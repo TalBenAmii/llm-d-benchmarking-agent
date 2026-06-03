@@ -596,7 +596,7 @@ blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 - **HERMETIC-TEST:** generated scenario validates against the example shape; asserts no write
   outside the workspace.
 
-## Phase 54 — Distributed tracing config (OpenTelemetry tracing: block) — TODO
+## Phase 54 — Distributed tracing config (OpenTelemetry tracing: block) — DONE
 *Catalog ref: Area F — "Distributed tracing config" (⬜).*
 
 - **GOAL:** let advanced users configure a scenario `tracing:` block (endpoint, sampling rate,
@@ -607,6 +607,15 @@ blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 - **ACCEPTANCE:** the agent can author a validated `tracing:` block; the limitation (config only)
   is explained.
 - **HERMETIC-TEST:** authored tracing block validates against the example shape.
+
+> **RESULT (2026-06-04):** Shipped. `config_artifact.py` adds `_SOFT_OPTIONAL_KNOBS={'tracing'}`
+> unioned into the live scenario knob_keys so the dotted `tracing.*` family (otlpEndpoint, sampling,
+> serviceNames, vllm.collectDetailedTraces) shape-validates without weakening the typo-screen; rendered
+> by the upstream jinja + deep-merged onto defaults.yaml. `schemas.py` documents the family + points to
+> `read_knowledge('observability')`; `knowledge/observability.md` §4 documents the config-only limitation
+> (benchmark configures OTel on the modelservice pods but never deploys a collector/Jaeger nor collects
+> traces). 13 hermetic tests (`tests/test_tracing_config.py`), no cluster/GPU/network.
+> Full suite **1287 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 
 ## Phase 55 — Real-time metric streaming / custom Prometheus queries — TODO
 *Catalog ref: Area F — "Real-time metric streaming / custom Prometheus queries" (⬜; explicitly unimplemented upstream).*

@@ -25,7 +25,7 @@
 
 ## Coverage summary
 
-67 documented features audited: **35 ✅ / 16 🟡 / 16 ⬜**.
+67 documented features audited: **38 ✅ / 14 🟡 / 15 ⬜**.
 
 | Area | Description | ✅ | 🟡 | ⬜ |
 |---|---|---:|---:|---:|
@@ -34,10 +34,10 @@
 | C | Workloads, harnesses & the run/harness contract | 2 | 0 | 2 |
 | D | Design of Experiments (factors/levels/treatments lifecycle) | 1 | 0 | 0 |
 | E | Results parsing, analysis, comparison & history | 3 | 2 | 2 |
-| F | Observability (metrics collection, tracing, dashboards, logging) | 3 | 0 | 2 |
+| F | Observability (metrics collection, tracing, dashboards, logging) | 4 | 0 | 1 |
 | H | Utilities & CLI internals (capacity, cluster, pod lifecycle, workspace) | 4 | 1 | 1 |
 | I | Project meta (governance, discovery tool, placeholder docs) | 1 | 0 | 3 |
-| **Total** | | **37** | **14** | **16** |
+| **Total** | | **38** | **14** | **15** |
 
 > **Headline gap — CLOSED (Phase 27, 2026-06-03).** Area F's *Benchmark metrics collection
 > (`--monitoring`)* is now **✅**: the *consumer* shipped in Phase 25 (parses `results.observability`
@@ -133,7 +133,7 @@
 | Feature | Source doc | Options / knobs | Optional? | Default | Coverage | Evidence / notes |
 |---|---|---|---|---|---|---|
 | **Benchmark metrics collection (--monitoring)** — vLLM/EPP Prometheus + DCGM GPU + cAdvisor + replica/startup/EPP-log snapshots, processed under `results.observability` | docs/metrics_collection.md#configuration; docs/observability.md#benchmark-built-in-metrics; #cli-monitoring-flags; docs/metrics_collection.md#report-integration | `--monitoring`, `--no-monitoring`, `scenario.metricsScrapeEnabled=true`, `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED`, `vllm:*` cache/queue/memory/nixl, `DCGM_FI_*`, `container_*` (cAdvisor), `inference_pool_*`/`inference_extension_*` (EPP), `replica_status.json`, `pod_startup_times.json`, `metrics_summary.json`, `results.observability`, PodMonitor/ServiceMonitor | Y | on | ✅ | **DONE (Phase 27) — headline gap closed.** The **consumer** already shipped (Phase 25): `app/validation/report.py:_extract_standard_metric` parses `results.observability`; `knowledge/standard_metrics.yaml` maps KV-cache/schedule-delay/GPU-util; `analyze.py` treats them as informational Pareto objectives. The **activation now ships**: `build_argv` (`app/tools/execute.py`) emits `--monitoring`/`--no-monitoring` subcommand-aware; `ExecuteInput.flags["monitoring"]` is the agent-set key; `security/allowlist.yaml` permits it under standup/run/experiment/plan; `_probe_prometheus_crds` (`app/tools/probe.py`) surfaces CRD presence so the opt-out judgment lives in `knowledge/observability.md`. Remaining slice (3 standard trend metrics into `history.py`) tracked as Phase 49. |
-| Distributed tracing config (OpenTelemetry `tracing:` block) | docs/observability.md#distributed-tracing | scenario YAML `tracing:` block (endpoint, sampling rate, service names) | Y | off | ⬜ | docs/observability.md#distributed-tracing: the agent neither configures a `tracing:` block nor collects traces (the benchmark itself only configures, never collects). Fix → ROADMAP_V4 Phase 54. |
+| Distributed tracing config (OpenTelemetry `tracing:` block) | docs/observability.md#distributed-tracing | scenario YAML `tracing:` block (endpoint, sampling rate, service names) | Y | off | ✅ | docs/observability.md#distributed-tracing: the agent authors a validated scenario `tracing.*` block (otlpEndpoint, sampling, serviceNames) via `write_and_validate_config`, gated through plan/--dry-run; the config-only limitation (the benchmark configures OTel but never deploys a collector nor collects traces — that is the user's external backend) is documented in `knowledge/observability.md` §4. Shipped → ROADMAP_V4 Phase 54 (DONE). |
 | Cluster Prometheus/Grafana dashboards (external monitoring stack) | docs/observability.md#prometheus-grafana-dashboards | upstream llm-d/docs/monitoring, PromQL queries, Grafana dashboards | Y | n/a | ✅ | The agent ships its own: `app/observability/metrics.py` (GET /metrics) + `deploy/observability/{grafana-dashboard.json,prometheus-scrape.yaml,alerts.rules.yaml}`; `observe_run_metrics` reads `kubectl top`; `knowledge/observability.md`. |
 | Structured logging (core lifecycle logger) | llmdbenchmark/logging/README.md | get_logger, per-instance stdout/stderr files, verbose DEBUG, EmojiFormatter | N | on | ✅ | The CLI's logger runs in-subprocess (streamed to the UI); the agent layers structured JSON logging + correlation IDs (`app/observability/logging.py`, `logctx.py`; `knowledge/logging.md`); LLMDBENCH_LOG_LEVEL=DEBUG reachable via env. |
 | Real-time metric streaming / custom Prometheus queries | docs/metrics_collection.md#not-yet-implemented | (explicitly unimplemented upstream) | Y | off | ⬜ | docs/metrics_collection.md#not-yet-implemented: unimplemented in the benchmark itself; the agent's live coverage is `kubectl top` (`observe_run_metrics`) + real-time pod log streaming. Fix → ROADMAP_V4 Phase 55. |
