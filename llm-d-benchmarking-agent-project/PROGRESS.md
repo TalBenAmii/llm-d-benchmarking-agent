@@ -13,6 +13,16 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 62 (ROADMAP_V4): Gated-model access pre-flight before standup. The already-allowlisted read-only
+  capacity bridge `scripts/capacity_check.py` (driven by `app/capacity/planner.py`) now also calls the benchmark repo's
+  OWN `llmdbenchmark.utilities.huggingface.check_model_access` / `GatedStatus` (never reimplemented) and returns a
+  token-free `{gated, authorized, reason}` block alongside the sizing verdict. `CapacityVerdict` gained
+  `gated`/`authorized`/`gated_reason` fields (defaulted → non-gated/legacy paths unchanged), wired via a pure-field-copy
+  `merge_gated_access` (no `if/elif`). Per-status judgment (PUBLIC/authorized → proceed; gated+unauthorized → provision
+  the secret via Phase 30) lives in `knowledge/capacity.md`, not Python. `HF_TOKEN` is read from the scrubbed child env
+  only and never echoed into the result, events, or logs. No allowlist change. Hermetic tests
+  (`tests/test_capacity_gated.py`) drive a fixture `ModelAccessResult` per `GatedStatus` and assert the verdict + token
+  non-leak. Merged into `feature/roadmap-v4`; suite **756 passed / 20 skipped**; ruff + mypy clean.
 - 2026-06-03 — Phase 61 (ROADMAP_V4): Right-size the harness launcher CPU for small/Kind clusters. Added a read-only
   `node_capacity` probe (per-node allocatable/capacity CPU + min-allocatable across nodes via `kubectl get nodes -o
   json`) to `probe_environment` (`app/tools/probe.py`), and a backend-only `harness_cpu_nr` flag plumbed as the
