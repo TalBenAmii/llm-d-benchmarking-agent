@@ -13,6 +13,15 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 48 (ROADMAP_V4): Parse + surface `results.session_performance` (multi-turn). `app/validation/report.py`
+  gained `extract_session_performance`, which mechanically pulls the `results.session_performance.sessions` stats block
+  (session_rate/duration, events/tokens per session) with field-name discovery as DATA in `knowledge/standard_metrics.yaml`
+  (thin code / thick agent) — surfaced on the report summary and per-run in `analyze_results` (`app/tools/analyze.py`).
+  Single-turn reports yield `None` with no fabrication; the committed BR v0.2 schema lags, so a multi-turn report surfaces
+  session_performance as a non-fatal additionalProperties deviation (validate_report untouched). `knowledge/results_interpretation.md`
+  documents the multi-turn section. New hermetic suite `tests/test_session_performance.py` (multi-turn surfacing, single-turn
+  None, catalog-driven discovery, validation deviation, analyze end-to-end). Merged into `feature/roadmap-v4`. Suite
+  **879 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
 - 2026-06-03 — Phase 30 (ROADMAP_V4): HuggingFace gated-model secret provisioning. New approval-gated mutating tool
   `provision_hf_secret` (`app/tools/hf_secret.py`, registered in `app/tools/registry.py`, `ProvisionHfSecretInput` in
   `app/tools/schemas.py`) materializes the cluster HF-token Secret (`llm-d-hf-token`) a gated-model standup needs — the

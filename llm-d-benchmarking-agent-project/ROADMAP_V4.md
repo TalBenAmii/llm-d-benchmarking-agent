@@ -407,8 +407,17 @@ skipped / 0 failed**; ruff + mypy clean.
   (approval-gated); local stays default and is a no-op.
 - **HERMETIC-TEST:** upload command is approval-gated + allowlisted; local path is a no-op.
 
-## Phase 48 — Parse session_performance metrics (multi-turn) — TODO
+## Phase 48 — Parse session_performance metrics (multi-turn) — DONE
 *Catalog ref: Area E — "session_performance metrics (multi-turn sessions)" (⬜).*
+
+> **Result (2026-06-03):** `app/validation/report.py` now mechanically extracts
+> `results.session_performance.sessions` via a catalog-driven `extract_session_performance`
+> (field discovery as DATA in `knowledge/standard_metrics.yaml`), surfaces it on the report
+> summary and per-run in `analyze_results` (`app/tools/analyze.py`); single-turn reports yield
+> `None` with no fabrication. `knowledge/results_interpretation.md` gained a multi-turn section.
+> New hermetic suite `tests/test_session_performance.py` (multi-turn surfacing, single-turn None,
+> catalog discovery, non-fatal validation deviation, analyze end-to-end). Suite: 879 passed,
+> 20 skipped, 0 failed; ruff + mypy clean.
 
 - **GOAL:** parse and surface the `results.session_performance` stats block for multi-turn
   inference-perf workloads (session_rate, session_duration, events/tokens per session).
