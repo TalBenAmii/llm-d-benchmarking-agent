@@ -17,9 +17,19 @@ class ProbeEnvironmentInput(BaseModel):
                     "prometheus_crds (are the Prometheus-operator PodMonitor/ServiceMonitor CRDs "
                     "installed? read it before deciding --monitoring vs --no-monitoring), "
                     "node_capacity (per-node allocatable/capacity CPU + the min allocatable across "
-                    "nodes — read it to right-size LLMDBENCH_HARNESS_CPU_NR for a small/Kind node)",
+                    "nodes — read it to right-size LLMDBENCH_HARNESS_CPU_NR for a small/Kind node), "
+                    "cluster_preconditions (the K8s server major.minor from `kubectl version` + the "
+                    "`spec`'s pinned vLLM/NIXL/UCX/NVSHMEM image tags — read it BEFORE a long "
+                    "real-cluster standup for an honest go/no-go: the go/no-go thresholds and "
+                    "verdict wording live in knowledge/infrastructure_preconditions.yaml, not here)",
     )
     namespace: str | None = Field(default=None, description="Namespace to check for an existing stack")
+    spec: str | None = Field(
+        default=None,
+        description="Spec whose scenario image tags to parse for the cluster_preconditions check, "
+                    "e.g. 'cicd/kind' (resolves to config/scenarios/<spec>.yaml). Omit it for the "
+                    "other checks.",
+    )
 
 
 class ListCatalogInput(BaseModel):
