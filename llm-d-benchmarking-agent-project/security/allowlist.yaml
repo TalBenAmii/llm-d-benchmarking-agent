@@ -118,10 +118,18 @@ value_constraints:
                         # ep/endpoints: the Phase 24 endpoint-readiness gate reads a Service's
                         # ready backing endpoints (read-only) before submitting a benchmark.
            cm, configmap, configmaps,  # cm/configmaps: a DOE sweep's checkpoint (Phase 22 source of truth)
-           crd, crds, customresourcedefinition, customresourcedefinitions]
+           crd, crds, customresourcedefinition, customresourcedefinitions,
                         # crd: the Phase 27 prometheus_crds probe lists CRDs (read-only) to detect
                         # whether the Prometheus-operator PodMonitor/ServiceMonitor CRDs are present,
                         # so the agent can decide --monitoring vs --no-monitoring per knowledge/.
+           gateway, gatewayclass, inferencepool, httproute]
+                        # Phase 65 (gateway-readiness): read-only `get -o json` DATA feeding the
+                        # Gateway-mode readiness gate. In gateway-mode deploys the agent reads these
+                        # Gateway-API status conditions — Gateway PROGRAMMED, InferencePool
+                        # Accepted/ResolvedRefs, HTTPRoute Accepted/Reconciled, GatewayClass
+                        # existence — to tell "the model pods are Ready" from "traffic can actually
+                        # reach them". The existing kubectl `get` flagspec already permits `-n`/`-o
+                        # json`; gatewayclass is cluster-scoped (queried without -n). Read-only only.
   git_ref:         { regex: "^[A-Za-z0-9._/-]+$" }
   cluster_name:    { regex: "^[a-z0-9]([-a-z0-9]{0,40}[a-z0-9])?$" }   # kind cluster name
   duration:        { regex: "^[0-9]+(s|m|h)?$" }                       # e.g. 120s, 5m
