@@ -410,8 +410,15 @@
 - **HERMETIC-TEST:** fixture multi-turn BR v0.2 surfaces session_performance; a single-turn
   report yields `None` without error.
 
-## Phase 49 — Surface results.observability serving metrics end-to-end — TODO
+## Phase 49 — Surface results.observability serving metrics end-to-end — DONE
 *Catalog ref: Area E/F — "Standard resource/serving metrics from results.observability" (🟡). Consumer ships; depends on Phase 27 producer activation.*
+
+> **Result (2026-06-03):** Added the 3 §3.4 standard serving metrics — KV-cache hit rate,
+> GPU utilization, and schedule-delay (queue-depth proxy) — to the trend store
+> (`app/storage/history.py` `_TREND_METRICS`) at their nested `standard_metrics.<key>.value`
+> stat path, labelled informationally (never affect Pareto dominance) and absent on non-monitoring
+> runs. New tests in `tests/test_history.py`; knowledge docs updated. Suite: 806 passed, 20 skipped,
+> 0 failed; ruff + mypy clean.
 
 > **Revision note (2026-06-03):** **narrowed** — surfacing is largely done; the only remaining slice
 > is adding the 3 standard `results.observability` metrics to the trend store (`app/storage/history.py`

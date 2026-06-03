@@ -13,6 +13,16 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 49 (ROADMAP_V4): Surface results.observability serving metrics in the trend store. Added the 3
+  §3.4 standard/serving metrics — KV-cache hit rate, GPU utilization, and schedule-delay (queue-depth proxy) — to
+  `app/storage/history.py` `_TREND_METRICS` at their nested `standard_metrics.<key>.value` stat path. They are present
+  only when the run used monitoring (Phase 27 / `flags.monitoring`) so `results.observability` was populated; `trend()`
+  simply skips records lacking the metric on non-monitoring runs. Labelled informationally (same as the analyzer's
+  Pareto objectives) — they NEVER affect dominance/pass-fail. New hermetic tests in `tests/test_history.py`;
+  `knowledge/history.md` + `knowledge/results_interpretation.md` updated. Riding on the Phase 27 producer, this closes
+  the last slice of the standard-serving-metrics catalog row (🟡 → ✅). Merged into `feature/roadmap-v4` (no-ff).
+  Full suite **806 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+
 - 2026-06-03 — Phase 45 (ROADMAP_V4): Author per-knob vLLM scenario overrides. Extended in-workspace config
   authoring (`app/tools/config_artifact.py`) so the agent can set finer vLLM/scheduling/storage knobs by DOTTED upstream
   field path — `vllmCommon.flags.*`, `vllmCommon.kvTransfer.*`, `vllmCommon.kvEvents.*`, `vllmCommon.priorityClassName`,
