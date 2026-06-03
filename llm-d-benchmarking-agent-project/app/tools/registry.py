@@ -131,9 +131,15 @@ _DESCRIPTIONS = {
         "own read-only `run --list-endpoints`. Returns a structured `ready` verdict with the "
         "per-service ready/not-ready endpoint counts; when NOT ready it includes a "
         "`standup_suggestion` you can OFFER the user (standing up is mutating and needs "
-        "approval — never do it unprompted). Call this BEFORE running a benchmark against an "
-        "existing stack; orchestrate_benchmark_run also gates on it automatically. This is the "
-        "mechanism; WHEN to stand up is your judgment — read_knowledge('orchestrator')."
+        "approval — never do it unprompted). When a Service exists but is Running-but-NotReady, "
+        "it ALSO classifies WHY via `serving_readiness`: it folds the pod readiness conditions / "
+        "restartCount / age with two constrained GET probes — `/v1/models` (model-serving-ready) "
+        "vs `/health` (process-alive) — so you can tell 'still loading model weights (legitimate "
+        "— keep waiting)' from 'wedged/broken (stop)' BEFORE submitting a benchmark; "
+        "read_knowledge('readiness_probes') for that judgment. Call this BEFORE running a "
+        "benchmark against an existing stack; orchestrate_benchmark_run also gates on it "
+        "automatically. This is the mechanism; WHEN to stand up is your judgment — "
+        "read_knowledge('orchestrator')."
     ),
     "ensure_repos": (
         "Clone the llm-d-benchmark and/or llm-d repos if missing (mutating; needs approval). "
