@@ -160,8 +160,18 @@
 - **HERMETIC-TEST:** `build_argv` emits `-m`; allowlist permits it; capacity input mirrors the
   override.
 
-## Phase 29 — Explicit cluster access (-k/--kubeconfig, URL, token) — TODO
+## Phase 29 — Explicit cluster access (-k/--kubeconfig, URL, token) — DONE
 *Catalog ref: Area A — "Cluster access / authentication" (🟡).*
+
+**RESULT (2026-06-04):** Shipped. A top-level `kubeconfig` field on `ExecuteInput` (`app/tools/schemas.py`)
+emits `-k <path>` after every subcommand via `build_argv` (`app/tools/execute.py`) to target a NON-DEFAULT
+kubeconfig FILE — a plain, non-secret, allowlist-pinned path (no `..` traversal; `security/allowlist.yaml`
+widened DATA-only). The remote-by-URL+TOKEN route stays BACKEND-ONLY: `flags.cluster_url`/`flags.cluster_token`
+ride the same scrubbed `child_env` overlay as `LLMDBENCH_HARNESS_CPU_NR` (forwarded as
+`LLMDBENCH_CLUSTER_URL`/`LLMDBENCH_CLUSTER_TOKEN`), so the SECRET token never crosses argv/allowlist, a `command`
+event, or a log (mirrors the HF_TOKEN non-leak). Judgment (WHEN/WHICH cluster) lives in
+`knowledge/preconditions.md`. 30 new hermetic tests (`tests/test_cluster_access.py`), no live cluster/network.
+Suite after merge into `feature/roadmap-v4`: **968 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 
 - **GOAL:** target a remote cluster instead of relying only on the ambient kube context.
 - **BUILD:** model `kubeconfig` / `cluster.url` / `cluster.token` on `ExecuteInput`; emit

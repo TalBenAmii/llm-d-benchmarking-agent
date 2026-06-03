@@ -13,6 +13,15 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 29 (ROADMAP_V4): Explicit cluster access (`-k`/`--kubeconfig` FILE + backend-only URL/token).
+  A top-level `kubeconfig` field on `ExecuteInput` emits `-k <path>` after every subcommand via `build_argv`
+  (`app/tools/execute.py`, `schemas.py`) to target a non-default kubeconfig FILE — a plain, allowlist-pinned,
+  non-secret path (no `..`; `security/allowlist.yaml` widened DATA-only). The remote-by-URL+TOKEN route stays
+  BACKEND-ONLY: `flags.cluster_url`/`flags.cluster_token` ride the same scrubbed `child_env` overlay as
+  `LLMDBENCH_HARNESS_CPU_NR` (forwarded as `LLMDBENCH_CLUSTER_URL`/`LLMDBENCH_CLUSTER_TOKEN`), so the SECRET token
+  never crosses argv/allowlist, a `command` event, or a log (mirrors the HF_TOKEN non-leak). Judgment (WHEN/WHICH
+  cluster) in `knowledge/preconditions.md`. 30 hermetic tests (`tests/test_cluster_access.py`); no live cluster.
+  Merged into `feature/roadmap-v4`. Suite **968 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
 - 2026-06-03 — Phase 66 (ROADMAP_V4): EPP HTTP-header decoder (interpret 429s + `x-llm-d-request-dropped-reason`).
   DATA-only. New `knowledge/epp_headers.yaml` catalogues every EPP request/response header — the SLO set-headers
   `x-llm-d-slo-ttft-ms`/`x-llm-d-slo-tpot-ms` + `x-llm-d-inference-objective`/`x-llm-d-inference-fairness-id` — and the
