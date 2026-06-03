@@ -13,7 +13,9 @@ class ProbeEnvironmentInput(BaseModel):
     checks: list[str] | Literal["all"] = Field(
         default="all",
         description="Which checks to run, or 'all'. Options: container_runtime, repos, "
-                    "tools, venv, kind_clusters, kube_context, cluster_info, namespaces, stack",
+                    "tools, venv, kind_clusters, kube_context, cluster_info, namespaces, stack, "
+                    "node_capacity (per-node allocatable/capacity CPU + the min allocatable across "
+                    "nodes — read it to right-size LLMDBENCH_HARNESS_CPU_NR for a small/Kind node)",
     )
     namespace: str | None = Field(default=None, description="Namespace to check for an existing stack")
 
@@ -94,12 +96,19 @@ class ExecuteInput(BaseModel):
     flags: dict[str, Any] | None = Field(
         default=None,
         description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "
-                    "endpoint_url}. `output` is a DESTINATION KEYWORD — 'local' (default), "
-                    "'gs://bucket/...', or 's3://bucket/...' — NOT a filesystem path; a `run` "
-                    "defaults to local output anchored under the session workspace. For "
-                    "subcommand='experiment' (a DoE sweep over a treatments "
-                    "file): {experiments (path to the experiment YAML), workspace (dir for "
-                    "outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, skip_teardown}.",
+                    "endpoint_url, harness_cpu_nr}. `output` is a DESTINATION KEYWORD — 'local' "
+                    "(default), 'gs://bucket/...', or 's3://bucket/...' — NOT a filesystem path; a "
+                    "`run` defaults to local output anchored under the session workspace. "
+                    "`harness_cpu_nr` is a backend-only INT that sets the LLMDBENCH_HARNESS_CPU_NR "
+                    "ENV VAR (NOT a CLI flag) on the launcher subprocess — the harness default is "
+                    "16; lower it to what a small/single-node cluster (e.g. Kind) can actually "
+                    "schedule so the launcher pod doesn't sit in FailedScheduling/Pending. WHEN and "
+                    "to WHAT (given probe_environment's node_capacity and the harness) is judgment "
+                    "in knowledge/harness_sizing.md; omit it to keep the default 16. It never "
+                    "reaches the browser. For subcommand='experiment' (a DoE sweep over a "
+                    "treatments file): {experiments (path to the experiment YAML), workspace (dir "
+                    "for outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, "
+                    "skip_teardown}.",
     )
     extra: list[str] | None = None
 

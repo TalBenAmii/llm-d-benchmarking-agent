@@ -20,6 +20,7 @@ _TOOLCHAIN = ["docker", "podman", "kubectl", "kind", "helm", "helmfile", "jq", "
 _ALL_CHECKS = [
     "container_runtime", "repos", "tools", "venv",
     "kind_clusters", "kube_context", "cluster_info", "namespaces", "stack",
+    "node_capacity",
 ]
 
 
@@ -51,6 +52,8 @@ async def probe_environment(
         out["namespaces"] = await _probe_namespaces(ctx)
     if "stack" in wanted:
         out["stack"] = await _probe_stack(ctx, namespace)
+    if "node_capacity" in wanted:
+        out["node_capacity"] = await _probe_node_capacity(ctx)
     return out
 
 
@@ -140,6 +143,29 @@ async def _probe_stack(ctx: ToolContext, namespace: str | None) -> dict[str, Any
         "ready_count": len(running),
         "detected": len(running) > 0,
         "pods": pods[:25],
+    }
+
+
+async def _probe_node_capacity(ctx: ToolContext) -> dict[str, Any]:
+    """Report each node's allocatable/capacity CPU so the agent can right-size the harness
+    launcher's CPU request for a small/single-node cluster (e.g. Kind). MECHANISM ONLY: it
+    reports the numbers; WHETHER to lower LLMDBENCH_HARNESS_CPU_NR and to WHAT value is the
+    agent's judgment, grounded in knowledge/harness_sizing.md — never a Python branch here.
+
+    Uses the already-allowlisted read-only ``kubectl get nodes -o json``. Returns a structured,
+    never-raising result; ``min_allocatable_cpu`` (the binding constraint for scheduling) is the
+    minimum allocatable CPU across nodes, or None when it can't be determined."""
+    if not shutil.which("kubectl"):
+        return {"available": False, "nodes": [], "min_allocatable_cpu": None}
+    res = await ctx.run_readonly(["kubectl", "get", "nodes", "-o", "json"], timeout=12.0)
+    if res.exit_code != 0:
+        return {"available": False, "nodes": [], "min_allocatable_cpu": None}
+    nodes = _node_cpu_summaries(res.output)
+    allocs = [n["allocatable_cpu"] for n in nodes if n["allocatable_cpu"] is not None]
+    return {
+        "available": True,
+        "nodes": nodes,
+        "min_allocatable_cpu": min(allocs) if allocs else None,
     }
 
 
@@ -380,6 +406,42 @@ def _names_from_json(text: str) -> list[str]:
     except json.JSONDecodeError:
         return []
     return [item.get("metadata", {}).get("name", "") for item in data.get("items", [])]
+
+
+def _parse_cpu_quantity(value: Any) -> float | None:
+    """Parse a Kubernetes CPU quantity into whole cores. K8s expresses CPU either as a bare
+    number ("4", "0.5") or in millicores ("250m" == 0.25 cores). Returns None for anything
+    unparseable (defensive — the agent treats absent CPU as 'unknown', never as zero)."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        if text.endswith("m"):
+            return float(text[:-1]) / 1000.0
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _node_cpu_summaries(text: str) -> list[dict[str, Any]]:
+    """Per-node {name, allocatable_cpu, capacity_cpu} from `kubectl get nodes -o json`.
+    Allocatable is what the scheduler can actually place against (capacity minus reserved);
+    it is the figure that decides whether the launcher pod's CPU request fits."""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    out: list[dict[str, Any]] = []
+    for item in data.get("items", []):
+        status = item.get("status", {})
+        out.append({
+            "name": item.get("metadata", {}).get("name", ""),
+            "allocatable_cpu": _parse_cpu_quantity(status.get("allocatable", {}).get("cpu")),
+            "capacity_cpu": _parse_cpu_quantity(status.get("capacity", {}).get("cpu")),
+        })
+    return out
 
 
 def _pod_summaries(text: str) -> list[dict[str, Any]]:

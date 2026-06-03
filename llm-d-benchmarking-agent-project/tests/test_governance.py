@@ -205,7 +205,7 @@ class _CountingRunner(CommandRunner):
         super().__init__({})
         self.runs = 0
 
-    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None):
+    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
         self.runs += 1
         from app.security.runner import RunResult
         return RunResult(exit_code=0, duration_s=0.0, real_argv=list(logical_argv), cwd=None)
