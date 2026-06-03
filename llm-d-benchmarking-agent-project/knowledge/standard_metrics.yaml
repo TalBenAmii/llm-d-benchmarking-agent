@@ -65,3 +65,75 @@ metrics:
     unit_hint: percent
     standardized: [gpu_utilization]
     native: [vllm_gpu_utilization, dcgm_gpu_utilization]
+
+
+# ---- session-level metrics (multi-turn workloads) ------------------------ DATA, not code.
+#
+# Multi-turn inference-perf workloads (where one "session" = a sequence of related
+# requests/turns, e.g. a chat conversation) emit a SECOND results block alongside the
+# per-request request_performance: results.session_performance.sessions. It is populated
+# only for multi-turn runs (from the harness's *_session_lifecycle_metrics.json files);
+# single-turn / non-session runs OMIT the block entirely. app/validation/report.py reads
+# THIS catalog at runtime and mechanically pulls each named field that is present — it
+# embeds no session-metric knowledge of its own. A field absent from the report stays out
+# of the summary; NEVER fabricate one.
+#
+# IMPORTANT — the committed br_v0_2_json_schema.json LAGS the pydantic models and does NOT
+# yet declare session_performance (Results has additionalProperties:false), so a multi-turn
+# report surfaces it as a NON-FATAL additionalProperties DEVIATION under validate_report
+# (the report is newer than the pinned schema). Validation still passes; the numbers are
+# real. Teaching the extractor a renamed/new session field is a one-line edit here — no
+# code change.
+#
+# Two field families (the field names are the EXACT keys under sessions.*):
+#   * scalars      — plain integer counts, copied straight through.
+#   * distributions— Statistics objects ({units, mean, percentiles}); each carries an
+#     informational `label`/`unit_hint`/`direction` (better = higher/lower/none) used only
+#     for narration, never for any pass/fail or dominance decision.
+
+session_performance:
+  scalars:
+    - total                       # total sessions
+    - succeeded                   # sessions that completed successfully
+    - failed                      # sessions that failed
+    - total_events                # total events (requests/turns) across all sessions
+    - total_events_completed      # events that completed successfully
+    - total_events_cancelled      # events that were cancelled
+
+  distributions:
+    # session throughput — how many sessions completed per second. Higher = more
+    # conversational capacity. Units per the BR v0.2 SessionRequests model: queries/s.
+    session_rate:
+      label: session rate
+      unit_hint: queries/s
+      direction: higher
+    # wall-clock duration of a whole session (all its turns). Lower = snappier
+    # multi-turn experience; watch the tail (p90/p99) for slow conversations.
+    session_duration:
+      label: session duration
+      unit_hint: s
+      direction: lower
+    # how many events (turns/requests) each session contained — workload shape, not
+    # a quality signal; direction is none (neither higher nor lower is "better").
+    events_per_session:
+      label: events per session
+      unit_hint: count
+      direction: none
+    # how many events per session were cancelled — lower is better (fewer dropped
+    # turns means a healthier multi-turn run).
+    events_cancelled_per_session:
+      label: events cancelled per session
+      unit_hint: count
+      direction: lower
+    # total input (prompt) tokens consumed per session — cost/context-size shape;
+    # direction none (it reflects the workload, not run quality).
+    input_tokens_per_session:
+      label: input tokens per session
+      unit_hint: count
+      direction: none
+    # total output (generated) tokens produced per session — workload shape;
+    # direction none.
+    output_tokens_per_session:
+      label: output tokens per session
+      unit_hint: count
+      direction: none

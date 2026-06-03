@@ -72,6 +72,48 @@ procedure — default ON, the `prometheus_crds` probe, and the `--no-monitoring`
 fabricate these numbers when the block is empty; instead explain that monitoring needs to be
 enabled.
 
+## Session-level metrics (multi-turn workloads)
+
+The summary may also carry `session_performance` — a SECOND results block that exists ONLY
+for **multi-turn** inference-perf workloads, where one *session* is a sequence of related
+turns/requests (e.g. a whole chat conversation). It is **separate from** the per-request
+latency/throughput numbers above: those describe individual requests; this describes whole
+conversations. For a **single-turn** run (one request per "session", or no session concept)
+the block is **absent and `session_performance` is `null`** — say nothing about sessions
+rather than inventing them. Never fabricate session numbers; only quote what's in the block.
+
+When present, `session_performance` has two parts:
+
+- **`scalars`** — integer counts for the whole run: `total` sessions, `succeeded`,
+  `failed`, `total_events` (all turns/requests across all sessions), `total_events_completed`,
+  `total_events_cancelled`. Lead with the session success story: e.g. "110 of 112 chat
+  sessions completed; 2 failed", and pair `total_events_cancelled` with `failed` — a run can
+  succeed at the session level while dropping individual turns.
+- **`distributions`** — per-session Statistics objects (each with a `value` stat = `units` +
+  `mean`/percentiles, plus an informational `label`/`unit_hint`/`direction`). Read the
+  `units` off `value` and trust it; the `direction` is for narration only, never a pass/fail:
+  - **`session_rate`** (`queries/s`, higher better) — how many sessions completed per second;
+    the multi-turn analogue of request throughput, i.e. conversational capacity.
+  - **`session_duration`** (`s`, lower better) — wall-clock length of a whole session across
+    all its turns. Convert to a human scale and **watch the tail** (`p90`/`p99`): a long-tailed
+    session duration means some conversations dragged. This is the metric users *feel* in a
+    multi-turn chat, distinct from per-turn TTFT.
+  - **`events_per_session`** (`count`, direction none) — turns per conversation; workload
+    SHAPE, not quality. Use it to characterise the run ("~12 turns per chat"), not to judge it.
+  - **`events_cancelled_per_session`** (`count`, lower better) — dropped turns per session; a
+    rising value signals the stack shedding turns under multi-turn load.
+  - **`input_tokens_per_session`** / **`output_tokens_per_session`** (`count`, direction none)
+    — prompt/generated tokens accumulated over a whole session (context grows across turns);
+    cost/context-size shape, not a quality signal.
+
+Caveats: `session_performance` is emitted by **multi-turn inference-perf only** — a guidellm
+or single-turn inference-perf report won't have it, and its absence is normal, not a failure.
+The committed BR v0.2 JSON Schema lags the live models and doesn't yet declare this block, so a
+multi-turn report lists it under `schema_deviations` (a non-fatal "report newer than schema"
+note) — validation still passes and the numbers are real; mention the deviation only if asked.
+The field catalogue lives in `knowledge/standard_metrics.yaml` (`session_performance`); the
+parsing is pure mechanism in `app/validation/report.py` (`extract_session_performance`).
+
 ### Trending these over time
 
 These three standard/serving metrics also flow into the cross-session trend store, so
