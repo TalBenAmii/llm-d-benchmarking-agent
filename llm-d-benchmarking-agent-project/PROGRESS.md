@@ -13,6 +13,23 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 65 (ROADMAP_V4): Gateway-mode readiness gate (Gateway PROGRAMMED + InferencePool
+  Accepted/ResolvedRefs). Extended `check_endpoint_readiness` to the Gateway-API control plane via a new `check_gateway`
+  flag (on by default; `app/tools/schemas.py`, registered in `app/tools/registry.py`). In gateway-mode deploys
+  `app/orchestrator/readiness.py` now reads `kubectl get gateway,gatewayclass,inferencepool,httproute -o json` and folds
+  the status conditions into FACTS on the `EndpointReadiness` verdict — Gateway `PROGRAMMED`, InferencePool
+  `Accepted`/`ResolvedRefs`, HTTPRoute `Accepted`/`Reconciled`, and the GatewayClass-exists fact — never branching on
+  them (the parser extracts conditions; the agent interprets), threaded through the tool layer in `app/tools/readiness.py`.
+  This tells "the model pods are Ready" apart from "traffic can actually reach them" (pods can be Ready while the Gateway
+  is still `PROGRAMMED:False`). `security/allowlist.yaml` (DATA only) widens the read-only `kubectl_resource` enum with
+  `gateway`/`gatewayclass`/`inferencepool`/`httproute` (read-only `get -o json` only; gatewayclass cluster-scoped). The
+  wait-vs-stand-up-vs-config-error judgment — incl. the GKE fault-filter-abort symptom and expected timings — is pure
+  JUDGMENT in new `knowledge/gateway_readiness.md` (no `if/elif` in Python). New hermetic suite
+  `tests/test_gateway_readiness.py` feeds canned Gateway/InferencePool/HTTPRoute JSON permutations (PROGRAMMED True/False,
+  ResolvedRefs True/False, GatewayClass present/absent) and asserts the verdict + condition tokens, plus an allowlist
+  assert that exactly the four new read-only `kubectl_resource` values are permitted under `get` — no GPU, no live
+  cluster, no real benchmark run. Merged into `feature/roadmap-v4`. Suite **923 passed / 20 skipped / 0 failed**; ruff +
+  mypy clean. — done
 - 2026-06-03 — Phase 64 (ROADMAP_V4): Provider-aware precondition pack (oc-vs-kubectl, GPU taints/tolerations,
   GMP/known-issues). Added a read-only `provider_detection` capability to the `probe_environment` tool
   (`app/tools/probe.py`, registered in `app/tools/registry.py`, enum widened in `app/tools/schemas.py`) that reuses the
