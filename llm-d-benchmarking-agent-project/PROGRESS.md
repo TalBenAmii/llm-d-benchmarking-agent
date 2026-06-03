@@ -13,6 +13,17 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 45 (ROADMAP_V4): Author per-knob vLLM scenario overrides. Extended in-workspace config
+  authoring (`app/tools/config_artifact.py`) so the agent can set finer vLLM/scheduling/storage knobs by DOTTED upstream
+  field path — `vllmCommon.flags.*`, `vllmCommon.kvTransfer.*`, `vllmCommon.kvEvents.*`, `vllmCommon.priorityClassName`,
+  `vllmCommon.ephemeralStorage`, `vllmCommon.networkResource`, `affinity.*`, `schedulerName` — writing into the session
+  workspace (the sibling repos stay read-only) and validating via the CLI plan/`--dry-run` determinism gate. WHICH knobs
+  to set is JUDGMENT, not Python: new `knowledge/vllm_overrides.md` (no enumerable knob catalog, no value `if/elif`).
+  `security/allowlist.yaml` gains a value-pinned `model_id` + workspace-confined `--spec` file rule; `app/security/
+  allowlist.py`, `registry.py`, and `schemas.py` wired additively (Phase 28 model-override entries preserved alongside).
+  Hermetic `tests/test_scenario_overrides.py` (26 tests) covers each knob path, structural validation against the repo
+  example shape, and the no-write-into-read-only-repo guarantee. Branch `feature/roadmap-v4-p45-vllm-overrides` →
+  `feature/roadmap-v4` (merge `a56eee7`). Suite **802 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
 - 2026-06-03 — Phase 28 (ROADMAP_V4): First-class model override (`-m/--models`). A top-level `models` field on
   `ExecuteInput` threads through `execute_llmdbenchmark` into `build_argv` (`app/tools/execute.py`), emitting `-m <id>`
   only when present — `-m` is the one short form valid across standup/plan/run/experiment (upstream uses `--models` on

@@ -347,8 +347,17 @@
 - **ACCEPTANCE:** telemetry is OFF by default; a user can opt in; endpoints stay backend-only.
 - **HERMETIC-TEST:** default emits no telemetry flag; opt-in emits it; scrub test on the endpoint.
 
-## Phase 45 — Author per-knob vLLM scenario overrides — TODO
+## Phase 45 — Author per-knob vLLM scenario overrides — DONE
 *Catalog ref: Area B — "vLLM tuning knobs (command gen, flags, ports, KV-transfer, accelerator, affinity, storage, scheduling)" (🟡; today only via DoE sweeps / capacity knobs).*
+
+> **RESULT (Phase 45):** Extended `app/tools/config_artifact.py` to author per-knob vLLM
+> scenario overrides via DOTTED upstream field paths (`vllmCommon.flags.*`, `vllmCommon.kvTransfer.*`,
+> `vllmCommon.kvEvents.*`, `vllmCommon.priorityClassName/ephemeralStorage/networkResource`,
+> `affinity.*`, `schedulerName`) into the session workspace (repos stay read-only), validated via
+> the CLI plan/`--dry-run` determinism gate. Added `knowledge/vllm_overrides.md`, allowlist
+> `model_id`/spec-file rules, and registry/schema wiring. New hermetic suite
+> `tests/test_scenario_overrides.py` (26 tests). Suite: 802 passed, 20 skipped, 0 failed
+> (ruff + mypy clean).
 
 - **GOAL:** let the agent author finer vLLM/scheduling/storage scenario edits beyond the
   parallelism/memory knobs already in capacity + DoE.
