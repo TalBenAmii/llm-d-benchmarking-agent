@@ -172,8 +172,19 @@
 - **HERMETIC-TEST:** `build_argv` emits `-k`/URL; secret-scrub test asserts the token is absent
   from emitted env + command events.
 
-## Phase 30 — HuggingFace gated-model secret provisioning — TODO
+## Phase 30 — HuggingFace gated-model secret provisioning — DONE
 *Catalog ref: Area A — "HuggingFace token / gated-model auth" (🟡).*
+
+**RESULT (2026-06-03):** Shipped. New approval-gated mutating tool `provision_hf_secret` (`app/tools/hf_secret.py`,
+registered in `app/tools/registry.py`, `ProvisionHfSecretInput` in `app/tools/schemas.py`) materializes the cluster
+HF-token Secret (`llm-d-hf-token`) a gated-model standup needs — the follow-on to the Phase 62 gated-access pre-flight.
+The token stays BACKEND-ONLY: a vetted `scripts/provision_hf_secret.py` (allowlisted `project-script`, committed 0755)
+reads `HF_TOKEN` from the already-scrubbed child env and runs the upstream `kubectl create secret … --dry-run=client -o
+yaml | kubectl apply -f -` shape over its OWN `shell=False` subprocess, so the token never crosses the allowlist/argv
+or reaches a command event/log (a raw `kubectl create secret` is deliberately NOT allowlisted). Judgment (not-for-public
+/ lacks-access-needs-request) lives in `knowledge/capacity.md`. 22 hermetic tests (`tests/test_hf_secret.py`), incl. two
+real-runner-exec tests; no live cluster/network/GPU. Suite after merge into `feature/roadmap-v4`: **857 passed / 20
+skipped / 0 failed**; ruff + mypy clean.
 
 - **GOAL:** make gated-model standups work, not just the capacity lookup.
 - **BUILD:** surface `huggingface.enabled` + provision the cluster HF secret as an
