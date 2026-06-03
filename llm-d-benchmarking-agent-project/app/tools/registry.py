@@ -113,15 +113,19 @@ _DESCRIPTIONS = {
         "profile so the plan follows the recommended path."
     ),
     "check_capacity": (
-        "Capacity PRE-FLIGHT: will this deployment fit? Runs the benchmark repo's OWN "
-        "capacity planner over the spec's rendered config (model weights + activation + KV "
-        "cache vs GPU memory, valid tensor-parallelism, max-context limits) and returns a "
-        "feasible/infeasible verdict with the planner's diagnostics. Read-only; auto-runs. "
-        "Pass `overrides` to reflect what the user actually asked for (a bigger model, "
-        "longer context, a real GPU). Call this right after propose_session_plan and BEFORE "
-        "standing anything up — it catches OOM / won't-load / can't-serve cases before a "
-        "long standup fails opaquely. Call read_knowledge('capacity') to interpret the "
-        "verdict. (Needs the benchmark venv: run_setup installs it.)"
+        "Capacity PRE-FLIGHT: will this deployment fit AND can your token pull the weights? "
+        "Runs the benchmark repo's OWN capacity planner over the spec's rendered config "
+        "(model weights + activation + KV cache vs GPU memory, valid tensor-parallelism, "
+        "max-context limits) for a feasible/infeasible verdict, AND the repo's OWN gated-"
+        "model access check — returning `gated`/`authorized`/`gated_reason`: PUBLIC (no "
+        "token needed), GATED+AUTHORIZED (your token can pull it, proceed), or "
+        "GATED+UNAUTHORIZED (your token can't — knowledge says how to fix it / provision the "
+        "secret). Read-only; auto-runs; the HF token never appears in the result. Pass "
+        "`overrides` to reflect what the user actually asked for (a bigger model, longer "
+        "context, a real GPU). Call this right after propose_session_plan and BEFORE "
+        "standing anything up — it catches OOM / won't-load / can't-serve AND can't-pull-"
+        "weights cases before a long standup fails opaquely. Call read_knowledge('capacity') "
+        "to interpret BOTH verdicts. (Needs the benchmark venv: run_setup installs it.)"
     ),
     "check_endpoint_readiness": (
         "Endpoint READINESS gate: is the inference endpoint in a namespace actually SERVING — "
