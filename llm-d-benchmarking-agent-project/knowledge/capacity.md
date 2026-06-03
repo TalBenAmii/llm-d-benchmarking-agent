@@ -122,3 +122,10 @@ about to commit real GPU time and wants the same gate a production standup would
   pre-flight there mainly confirms the model config is reachable and flags nothing fatal.
 - This validates *capacity*, not cluster *availability* — whether a node actually has that
   GPU or that much memory free is a separate `probe_environment` / scheduling concern.
+  `advise_accelerators` + `read_knowledge('accelerators')` closes exactly that gap: it detects
+  whether a node ADVERTISES an accelerator extended resource (`nvidia.com/gpu` or the
+  amd/gaudi/tpu/xpu siblings) vs CPU-only, and carries the real (non-sim) CPU-only 64c/64GB-per-
+  replica floor (Kind/CPU-sim exempt) plus the CUDA/driver minimums and the Device-Plugin-vs-DRA
+  choice. Pair the two: `check_capacity` answers "will the model FIT in the accelerator's
+  memory?", `advise_accelerators` answers "does a node even ADVERTISE that accelerator / meet the
+  CPU floor?".

@@ -56,3 +56,26 @@ ready it includes a `standup_suggestion`.
   stand up is yours and the user's; the readiness check is only the mechanism.
 `orchestrate_benchmark_run` applies this same gate automatically before submitting a Job
 (see knowledge/orchestrator.md).
+
+## Accelerator / CPU-inferencing preconditions ("can my hardware run this?")
+Before a standup, decide whether the cluster's hardware can actually serve the model. Call
+`advise_accelerators` — a read-only tool that reads each node's ADVERTISED resources
+(`kubectl get nodes -o json`) and tells you which extended-resource key a node advertises
+(`nvidia.com/gpu`, or the `amd.com/gpu` / `habana.ai/gaudi` / `google.com/tpu` / Intel XPU
+`gpu.intel.com/{i915,xe}` siblings) **vs CPU-only**, plus each node's allocatable/capacity
+cpu + memory. It returns facts only (`any_accelerator`, `cpu_only`, `advertised_resources`,
+per-node `accelerators`/`cpu`/`memory`) — then call `read_knowledge('accelerators')` to turn
+them into a verdict:
+- **GPU-advertised** → name the vendor/resource; for NVIDIA, the node driver must satisfy the
+  CUDA 12.9.1 minimum (`>= 525.60.13`, `< 580`; `575.x` recommended) for today's images
+  (CUDA 13.0.2 will require `580.65.06`); exposure is via a Device Plugin **or** a DRA driver.
+- **CPU-only for a REAL deployment** → a real (non-sim) replica needs **64 cores + 64GB RAM
+  each**; check the node's allocatable cpu/memory against that floor and pair the warning with
+  `check_capacity`'s GPU-memory sizing.
+- **Kind / CPU-sim (`cicd/kind`)** → supported and **exempt** from the 64c/64GB floor (it runs
+  llm-d-inference-sim, not a real CPU engine); a small Kind node is fine.
+
+This **complements** `check_capacity` (which sizes weights + KV cache against GPU memory): one
+asks "does a node ADVERTISE the accelerator / meet the CPU floor?", the other "will the model
+FIT in that accelerator's memory?". The feasibility judgment lives in
+knowledge/accelerators.yaml — never in Python.

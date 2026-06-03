@@ -22,6 +22,22 @@ class ProbeEnvironmentInput(BaseModel):
     namespace: str | None = Field(default=None, description="Namespace to check for an existing stack")
 
 
+class AdviseAcceleratorsInput(BaseModel):
+    namespace: str | None = Field(
+        default=None,
+        description="Optional namespace (unused by the node-level extraction; reserved for "
+                    "future per-namespace scoping). Node-advertised accelerator facts are "
+                    "cluster-wide.",
+    )
+    # This tool reads each node's ADVERTISED accelerator/CPU/memory facts via the read-only
+    # `kubectl get nodes -o json` (which extended-resource key — nvidia.com/gpu or the
+    # amd/gaudi/tpu/xpu siblings — a node advertises, vs CPU-only, plus per-node cpu/memory).
+    # It returns FACTS ONLY — no can-it-run verdict. To turn the facts into a
+    # "can my hardware actually run this?" answer, the agent must call
+    # read_knowledge('accelerators') for the CUDA/driver minimums, the Device-Plugin vs DRA
+    # choice, and the real (non-sim) CPU-only 64c/64GB-per-replica floor (Kind/CPU-sim exempt).
+
+
 class ListCatalogInput(BaseModel):
     kinds: list[str] | None = Field(
         default=None,

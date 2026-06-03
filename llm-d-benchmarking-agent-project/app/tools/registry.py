@@ -33,6 +33,7 @@ from app.tools import (
 )
 from app.tools.context import ToolContext
 from app.tools.schemas import (
+    AdviseAcceleratorsInput,
     AnalyzeResultsInput,
     CancelRunInput,
     CheckCapacityInput,
@@ -77,6 +78,23 @@ _DESCRIPTIONS = {
         "Enumerate the valid specs, harnesses, workload profiles, and scenarios that "
         "actually exist in the llm-d-benchmark repo on disk. Use this to ground every "
         "choice — never invent a spec/harness/workload name."
+    ),
+    "advise_accelerators": (
+        "Accelerator / CPU-inferencing PRE-FLIGHT: \"can my hardware actually run this?\" "
+        "Read-only; auto-runs. Reads each node's ADVERTISED resources via the already-"
+        "allowlisted `kubectl get nodes -o json` and reports which extended-resource key a node "
+        "advertises — `nvidia.com/gpu` or the amd.com/gpu / habana.ai/gaudi / google.com/tpu / "
+        "Intel XPU (gpu.intel.com/i915|xe) siblings — vs CPU-only, plus each node's "
+        "capacity/allocatable cpu + memory. It returns FACTS ONLY (any_accelerator, cpu_only, "
+        "advertised_resources, per-node accelerators/cpu/memory) — no verdict. It COMPLEMENTS "
+        "check_capacity, which sizes model weights + KV cache against GPU MEMORY: this answers "
+        "whether a node even ADVERTISES the accelerator (or, if CPU-only, meets the floor). Call "
+        "read_knowledge('accelerators') to turn the facts into a verdict: the CUDA 12.9.1 / "
+        "driver minimums (>= 525.60.13, < 580; 575.x rec.) and the planned CUDA 13.0.2 / 580.65.06 "
+        "minimum, the Device-Plugin vs DRA choice, and the real (NON-sim) CPU-only "
+        "64-core/64GB-per-replica floor — with the Kind/CPU-sim path (cicd/kind) supported and "
+        "EXEMPT from that floor. Use this at the plan gate alongside check_capacity, BEFORE a "
+        "standup. The judgment is in knowledge/accelerators.yaml; this tool is only the mechanism."
     ),
     "read_knowledge": (
         "Load the FULL text of ONE of the agent's on-demand knowledge guides by topic name "
@@ -276,6 +294,7 @@ def build_registry() -> dict[str, ToolSpec]:
     specs = [
         ToolSpec("probe_environment", _DESCRIPTIONS["probe_environment"], ProbeEnvironmentInput, probe.probe_environment),
         ToolSpec("list_catalog", _DESCRIPTIONS["list_catalog"], ListCatalogInput, probe.list_catalog),
+        ToolSpec("advise_accelerators", _DESCRIPTIONS["advise_accelerators"], AdviseAcceleratorsInput, probe.advise_accelerators),
         ToolSpec("read_knowledge", _DESCRIPTIONS["read_knowledge"], ReadKnowledgeInput, probe.read_knowledge),
         ToolSpec("read_repo_doc", _DESCRIPTIONS["read_repo_doc"], ReadRepoDocInput, probe.read_repo_doc),
         ToolSpec("fetch_key_docs", _DESCRIPTIONS["fetch_key_docs"], FetchKeyDocsInput, probe.fetch_key_docs),

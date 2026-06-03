@@ -11,7 +11,8 @@ def test_tool_definitions_complete():
     defs = tool_definitions()
     names = {d["name"] for d in defs}
     expected = {
-        "probe_environment", "list_catalog", "read_knowledge", "read_repo_doc", "fetch_key_docs",
+        "probe_environment", "list_catalog", "advise_accelerators",
+        "read_knowledge", "read_repo_doc", "fetch_key_docs",
         "propose_session_plan", "check_capacity", "check_endpoint_readiness",
         "ensure_repos", "run_setup",
         "write_and_validate_config", "generate_doe_experiment", "execute_llmdbenchmark",
