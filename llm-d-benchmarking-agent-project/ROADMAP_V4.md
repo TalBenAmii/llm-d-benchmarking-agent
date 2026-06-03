@@ -104,8 +104,17 @@
 
 ---
 
-## Phase 27 — Default-enable benchmark `--monitoring` + surface `results.observability` — TODO
+## Phase 27 — Default-enable benchmark `--monitoring` + surface `results.observability` — DONE
 *Catalog ref: Area F — "Benchmark metrics collection (--monitoring)" (🟡, the headline gap). The activation half of the Phase 25 consumer.*
+
+> **Result (2026-06-03):** Shipped. Added a subcommand-aware `monitoring` flag to `ExecuteInput.flags`
+> + `build_argv` (`--monitoring` for standup/run/experiment/plan; `--no-monitoring` only for standup,
+> matching upstream argparse), allowlisted those flags per subcommand (DATA-only), and added a read-only
+> `prometheus_crds` probe (`_probe_prometheus_crds` detecting PodMonitor/ServiceMonitor CRDs) so the
+> on/off + CRD opt-out judgment lives in `knowledge/observability.md` + `knowledge/results_interpretation.md`,
+> not Python. Phase 35 (standup PodMonitor/ServiceMonitor + EPP verbosity) folded in as a sub-deliverable.
+> Suite **692 passed / 20 skipped** (+26 from the 666 baseline; new `tests/test_monitoring_activate.py`).
+> ruff + mypy clean. Unblocks Phase 49 (the `results.observability` trend-metrics consumer).
 
 > **Revision note (2026-06-03):** now also carries the standup-side monitoring wiring — **Phase 35
 > (PodMonitor/ServiceMonitor + EPP verbosity) is merged in here** as a sub-deliverable. Ranked **#1

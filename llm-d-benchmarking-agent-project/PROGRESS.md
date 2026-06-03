@@ -13,6 +13,16 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 27 (ROADMAP_V4): Default-enable benchmark `--monitoring` + surface `results.observability`
+  (THE headline observability gap — closed). Added a subcommand-aware `monitoring` flag to `ExecuteInput.flags` +
+  `build_argv`: `--monitoring` for standup/run/experiment/plan, `--no-monitoring` only for standup (matching upstream
+  argparse store_true vs both-flags); allowlisted those flags per subcommand (DATA-only `security/allowlist.yaml`);
+  added a read-only `_probe_prometheus_crds` probe (`app/tools/probe.py`, key `prometheus_crds`) that reports
+  PodMonitor/ServiceMonitor CRD presence so the on/off + CRD opt-out JUDGMENT lives in `knowledge/observability.md`
+  + `knowledge/results_interpretation.md`, not Python. Phase 35 (standup PodMonitor/ServiceMonitor + EPP verbosity)
+  folded in as a sub-deliverable. Unblocks Phase 49 (trend-store consumer). Merged into `feature/roadmap-v4`
+  (`feature/roadmap-v4-p27-monitoring-activate`). Suite **692 passed / 20 skipped** (+26 from the 666 baseline;
+  new `tests/test_monitoring_activate.py`); ruff + mypy clean. — done
 - 2026-06-02 — Phase 26: llm-d-inference-sim integration tests (opt-in). Proposal §5.3/§7 integration
   layer (`tests/integration/`) drives a sim-shaped BR v0.2 fixture through real `analyze_results`/
   `compare_reports`; a live sim test is opt-in (`LLMD_SIM_INTEGRATION=1`) and skips cleanly otherwise;

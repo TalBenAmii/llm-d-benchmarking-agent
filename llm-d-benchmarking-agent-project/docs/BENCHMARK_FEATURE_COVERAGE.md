@@ -29,22 +29,24 @@
 
 | Area | Description | ✅ | 🟡 | ⬜ |
 |---|---|---:|---:|---:|
-| A | Lifecycle subcommands, CLI flags & deploy options | 17 | 11 | 6 |
+| A | Lifecycle subcommands, CLI flags & deploy options | 18 | 10 | 6 |
 | B | Configuration system (override chain, schema, vLLM knobs) | 5 | 1 | 0 |
 | C | Workloads, harnesses & the run/harness contract | 2 | 0 | 2 |
 | D | Design of Experiments (factors/levels/treatments lifecycle) | 1 | 0 | 0 |
 | E | Results parsing, analysis, comparison & history | 3 | 2 | 2 |
-| F | Observability (metrics collection, tracing, dashboards, logging) | 2 | 1 | 2 |
+| F | Observability (metrics collection, tracing, dashboards, logging) | 3 | 0 | 2 |
 | H | Utilities & CLI internals (capacity, cluster, pod lifecycle, workspace) | 4 | 1 | 1 |
 | I | Project meta (governance, discovery tool, placeholder docs) | 1 | 0 | 3 |
-| **Total** | | **35** | **16** | **16** |
+| **Total** | | **37** | **14** | **16** |
 
-> **Headline gap (priority).** Area F's *Benchmark metrics collection (`--monitoring`)* is
-> **🟡 partial**, not covered: the *consumer* ships (Phase 25 parses `results.observability`
-> via `knowledge/standard_metrics.yaml` + `app/validation/report.py`) but the *producer*
-> (`--monitoring` / `metricsScrapeEnabled`) is never activated, so the observability metrics
-> are perpetually empty in practice. Closing it is **ROADMAP_V4 Phase 27** and the first
-> entry under *Recommended default-on features* below.
+> **Headline gap — CLOSED (Phase 27, 2026-06-03).** Area F's *Benchmark metrics collection
+> (`--monitoring`)* is now **✅**: the *consumer* shipped in Phase 25 (parses `results.observability`
+> via `knowledge/standard_metrics.yaml` + `app/validation/report.py`) and the *producer* is now
+> activated — `build_argv` emits `--monitoring`/`--no-monitoring` subcommand-aware via the agent-set
+> `ExecuteInput.flags["monitoring"]`, allowlisted under standup/run/experiment/plan, with a read-only
+> `_probe_prometheus_crds` CRD check feeding the knowledge-driven opt-out. The only remaining slice is
+> wiring the 3 standard `results.observability` metrics into the trend store (`history.py`) — tracked
+> as **Phase 49**.
 
 ---
 
@@ -65,7 +67,7 @@
 | Gateway class / provider (istio/agentgateway/gke/epponly) | docs/standup.md#gateway-provider | gateway.className, --gateway-class | Y | on | ⬜ | docs/standup.md#gateway-provider: no `--gateway-class` flag; provider rides entirely on the chosen scenario; no knowledge guidance to choose one. Fix → ROADMAP_V4 Phase 32. |
 | Multi-stack scenarios + --stack subset + --parallel | docs/standup.md#multi-stack-scenarios; docs/run.md#targeting-a-single-pool-stack | scenario:, shared:, httpRoute.mode: shared, --stack, --parallel | Y | off | ⬜ | docs/standup.md#multi-stack-scenarios: a multi-stack spec would run, but `build_argv` emits no `--stack`/`--parallel`; no per-pool guidance. Fix → ROADMAP_V4 Phase 33. |
 | Workload Variant Autoscaler (WVA) (-u/--wva, wva.* knobs) | docs/workload-variant-autoscaler.md; llmdbenchmark/interface/README.md | -u/--wva, LLMDBENCH_WVA, wva.controller/variantAutoscaling/hpa.*, WVA guides | Y | off | 🟡 | `knowledge/welllit_path_advisor.yaml` references WVA guides as advisory; a WVA spec would render its `wva:` block. No `-u/--wva` flag, not allowlisted; HPA/VA knobs + 8 smoketests + OpenShift gate unsurfaced. Gap: docs/workload-variant-autoscaler.md. Fix → ROADMAP_V4 Phase 34. |
-| Standup monitoring flag (PodMonitor/ServiceMonitor + EPP verbosity) | llmdbenchmark/standup/README.md#--monitoring-flag; docs/observability.md#cli-monitoring-flags | --monitoring, --no-monitoring, monitoring.podmonitor.enabled, monitoring.installPrometheusCrds | Y | on | 🟡 | Consumer ships (`app/validation/report.py` + `knowledge/standard_metrics.yaml`), but `build_argv` emits no `--monitoring`; `ExecuteInput.flags` has no key; not allowlisted under standup. Part of the headline gap. Fix → ROADMAP_V4 Phase 35 (activation rides on Phase 27). |
+| Standup monitoring flag (PodMonitor/ServiceMonitor + EPP verbosity) | llmdbenchmark/standup/README.md#--monitoring-flag; docs/observability.md#cli-monitoring-flags | --monitoring, --no-monitoring, monitoring.podmonitor.enabled, monitoring.installPrometheusCrds | Y | on | ✅ | **DONE (Phase 27).** `build_argv` now emits `--monitoring`/`--no-monitoring` per subcommand (both for standup); `ExecuteInput.flags["monitoring"]` is the agent-set key; allowlisted under standup/run/experiment/plan; `_probe_prometheus_crds` detects PodMonitor/ServiceMonitor CRDs so the opt-out judgment lives in `knowledge/observability.md`. |
 | Skip auto post-standup smoketests (--skip-smoketest) + smoketest steps | llmdbenchmark/standup/README.md#post-standup-smoketests; llmdbenchmark/smoketests/README.md#steps | --skip-smoketest, smoketest (subcommand), health_check, inference_test | Y | on | ✅ | `build_argv` emits `--skip-smoketest`; smoketest is a gated first-class subcommand; the MVP runs smoketest between standup and run. |
 | Run harness selection (-l/--harness) | docs/run.md#harnesses; workload/README.md#available-harnesses | -l/--harness: inference-perf, guidellm, vllm-benchmark, inferencemax, nop | Y | on | ✅ | `build_argv` emits `-l`; `list_catalog` discovers harnesses from the repo (no hardcoded whitelist); `knowledge/usecase_to_profile.yaml`, `knowledge/multi_harness.md`. |
 | Run workload profile (-w/--workload) + .yaml.in profile system | docs/run.md#profiles; workload/README.md#what-is-a-profile | -w/--workload, profiles/{harness}/*.yaml.in, REPLACE_ENV_* substitution | Y | on | ✅ | `build_argv` emits `-w`; `list_catalog` returns `workloads_by_harness`; `knowledge/usecase_to_profile.yaml`. Profile rendering is the CLI's job (read at runtime). |
@@ -129,7 +131,7 @@
 
 | Feature | Source doc | Options / knobs | Optional? | Default | Coverage | Evidence / notes |
 |---|---|---|---|---|---|---|
-| **Benchmark metrics collection (--monitoring)** — vLLM/EPP Prometheus + DCGM GPU + cAdvisor + replica/startup/EPP-log snapshots, processed under `results.observability` | docs/metrics_collection.md#configuration; docs/observability.md#benchmark-built-in-metrics; #cli-monitoring-flags; docs/metrics_collection.md#report-integration | `--monitoring`, `--no-monitoring`, `scenario.metricsScrapeEnabled=true`, `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED`, `vllm:*` cache/queue/memory/nixl, `DCGM_FI_*`, `container_*` (cAdvisor), `inference_pool_*`/`inference_extension_*` (EPP), `replica_status.json`, `pod_startup_times.json`, `metrics_summary.json`, `results.observability`, PodMonitor/ServiceMonitor | Y | off | 🟡 | **HEADLINE GAP.** The **consumer** ships: `app/validation/report.py:_extract_standard_metric` (lines ~171-243) parses `results.observability`; `knowledge/standard_metrics.yaml` maps KV-cache/schedule-delay/GPU-util to standardized+native field names; `analyze.py` treats them as informational Pareto objectives (Phase 25). The **activation is missing**: `build_argv` (`app/tools/execute.py`) emits no `--monitoring`/`--no-monitoring`; `ExecuteInput.flags` (`app/tools/schemas.py`) has no monitoring key; `security/allowlist.yaml` does not permit it under standup/run/experiment — so `results.observability` is perpetually **empty in practice**. **Fix → ROADMAP_V4 Phase 27.** |
+| **Benchmark metrics collection (--monitoring)** — vLLM/EPP Prometheus + DCGM GPU + cAdvisor + replica/startup/EPP-log snapshots, processed under `results.observability` | docs/metrics_collection.md#configuration; docs/observability.md#benchmark-built-in-metrics; #cli-monitoring-flags; docs/metrics_collection.md#report-integration | `--monitoring`, `--no-monitoring`, `scenario.metricsScrapeEnabled=true`, `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED`, `vllm:*` cache/queue/memory/nixl, `DCGM_FI_*`, `container_*` (cAdvisor), `inference_pool_*`/`inference_extension_*` (EPP), `replica_status.json`, `pod_startup_times.json`, `metrics_summary.json`, `results.observability`, PodMonitor/ServiceMonitor | Y | on | ✅ | **DONE (Phase 27) — headline gap closed.** The **consumer** already shipped (Phase 25): `app/validation/report.py:_extract_standard_metric` parses `results.observability`; `knowledge/standard_metrics.yaml` maps KV-cache/schedule-delay/GPU-util; `analyze.py` treats them as informational Pareto objectives. The **activation now ships**: `build_argv` (`app/tools/execute.py`) emits `--monitoring`/`--no-monitoring` subcommand-aware; `ExecuteInput.flags["monitoring"]` is the agent-set key; `security/allowlist.yaml` permits it under standup/run/experiment/plan; `_probe_prometheus_crds` (`app/tools/probe.py`) surfaces CRD presence so the opt-out judgment lives in `knowledge/observability.md`. Remaining slice (3 standard trend metrics into `history.py`) tracked as Phase 49. |
 | Distributed tracing config (OpenTelemetry `tracing:` block) | docs/observability.md#distributed-tracing | scenario YAML `tracing:` block (endpoint, sampling rate, service names) | Y | off | ⬜ | docs/observability.md#distributed-tracing: the agent neither configures a `tracing:` block nor collects traces (the benchmark itself only configures, never collects). Fix → ROADMAP_V4 Phase 54. |
 | Cluster Prometheus/Grafana dashboards (external monitoring stack) | docs/observability.md#prometheus-grafana-dashboards | upstream llm-d/docs/monitoring, PromQL queries, Grafana dashboards | Y | n/a | ✅ | The agent ships its own: `app/observability/metrics.py` (GET /metrics) + `deploy/observability/{grafana-dashboard.json,prometheus-scrape.yaml,alerts.rules.yaml}`; `observe_run_metrics` reads `kubectl top`; `knowledge/observability.md`. |
 | Structured logging (core lifecycle logger) | llmdbenchmark/logging/README.md | get_logger, per-instance stdout/stderr files, verbose DEBUG, EmojiFormatter | N | on | ✅ | The CLI's logger runs in-subprocess (streamed to the UI); the agent layers structured JSON logging + correlation IDs (`app/observability/logging.py`, `logctx.py`; `knowledge/logging.md`); LLMDBENCH_LOG_LEVEL=DEBUG reachable via env. |
