@@ -43,6 +43,18 @@ Available metrics: `ttft`, `tpot`, `itl`, `request_latency` (latency, lower is b
 `output_token_rate`, `total_token_rate`, `request_rate` (throughput, higher is better);
 `success_rate_pct` (higher is better).
 
+Standard/serving-metric trends (§3.4): `kv_cache_hit_rate` (higher is better),
+`gpu_utilization` (informational — `better: higher` means *more utilized*, not strictly
+"better"; read it next to throughput), and `schedule_delay` (lower is better — a
+**queue-depth proxy**, i.e. requests waiting to be scheduled, NOT a millisecond delay).
+These three are populated **only when the run was done with monitoring on**
+(Phase 27 / `flags.monitoring` → `--monitoring`, which fills `results.observability`); runs
+without monitoring carry no point for them and are simply skipped from the series (so a
+sparse series usually means "monitoring wasn't on for every run", not a regression). They
+are surfaced for *context* only and never enter goodput/SLO/Pareto dominance. For the full
+interpretation see `knowledge/results_interpretation.md` (§ "Standard resource/serving
+metrics" and its "Trending these over time" note) and `knowledge/observability.md`.
+
 ## Turning a trend into a verdict (your job, not the tool's)
 - Use `better` to read the sign of `first_to_last.delta_pct`: a latency metric going **up**
   or a throughput metric going **down** is *worse*; the reverse is *better*.

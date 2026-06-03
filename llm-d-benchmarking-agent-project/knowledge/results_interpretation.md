@@ -72,6 +72,28 @@ procedure — default ON, the `prometheus_crds` probe, and the `--no-monitoring`
 fabricate these numbers when the block is empty; instead explain that monitoring needs to be
 enabled.
 
+### Trending these over time
+
+These three standard/serving metrics also flow into the cross-session trend store, so
+`result_history` can chart them like any latency/throughput metric: `action="trend"` with
+`metric` one of `kv_cache_hit_rate`, `gpu_utilization`, or `schedule_delay`. A few caveats
+that are *your* judgment, not the tool's:
+
+- The trend's `better` label is **informational only** (it never decides pass/fail). For
+  `gpu_utilization`, `better: higher` just means "more utilized" — a rising GPU-util trend is
+  not automatically good; read it alongside the throughput trend (more util + more throughput =
+  healthier capacity use; more util + flat throughput = wasted work or contention).
+- Only trend **comparable** runs: the same model/stack and harness, with **monitoring on for
+  every point**. A run without monitoring contributes no point (the series skips it), so a
+  short or gappy series usually means monitoring wasn't on for some runs — not a regression.
+  Filter with `filter_tag` / `filter_model` to keep the series apples-to-apples.
+- A **rising `schedule_delay`** (the queue-depth proxy, requests waiting) across stored runs
+  signals **growing saturation** — the stack is increasingly queue-bound and latency tails will
+  follow. Pair it with the latency trends; a climbing queue-depth that tracks climbing TTFT is
+  a capacity story, not noise.
+- A **falling `kv_cache_hit_rate`** across runs often *explains* a TTFT/throughput regression
+  (less prefix reuse ⇒ more prefill work); use it as the "why", not as a separate SLO.
+
 ## How to talk about it
 - Lead with the answer to the user's question (e.g. "for a chat UX, first-token latency
   averaged X and the slowest 1% were Y").

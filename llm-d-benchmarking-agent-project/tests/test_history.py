@@ -190,6 +190,113 @@ def test_available_metrics_covers_latency_and_throughput():
     assert {"ttft", "tpot", "request_latency", "output_token_rate", "success_rate_pct"} <= set(m)
 
 
+# ---- Phase 49: §3.4 standard/serving metrics in the trend store -------------
+#
+# The 3 standard metrics (KV-cache hit rate, GPU utilization, schedule-delay queue-depth
+# proxy) are already surfaced into the summary / analysis / report card; the only remaining
+# slice is trending them. These tests assert the metric REGISTRATION (mechanism) and that a
+# summary built by the real summarizer (with monitoring-produced results.observability)
+# trends end-to-end through the store. Hermetic: pure report fixtures, temp dirs, no cluster.
+
+from app.storage.history import _TREND_METRICS  # noqa: E402
+from app.validation.report import summarize_report  # noqa: E402
+
+# The three new keys and their authoritative direction labels (mirror standard_metrics.yaml).
+_STANDARD_TREND_DIRECTIONS = {
+    "kv_cache_hit_rate": "higher",
+    "gpu_utilization": "higher",
+    "schedule_delay": "lower",
+}
+
+
+def _obs_report(*, uid, kv, gpu, qdepth):
+    """A BR-shaped report whose results.observability carries the 3 §3.4 metrics in the
+    standardized ResourceMetrics shape (what `--monitoring` / Phase 27 produces)."""
+    def _pct(mean):
+        return {"units": "percent", "mean": mean, "p50": mean, "p99": mean}
+    return {
+        "version": "0.2",
+        "run": {"uid": uid},
+        "results": {
+            "observability": {
+                "components": [
+                    {
+                        "component_label": "vllm-svc-0",
+                        "aggregate": {
+                            "cache_hit_rate": _pct(kv),
+                            "gpu_utilization": _pct(gpu),
+                            "waiting_requests": {"units": "count", "mean": qdepth, "p99": qdepth},
+                        },
+                    }
+                ]
+            }
+        },
+    }
+
+
+def test_trend_metrics_include_three_standard_serving_metrics():
+    keys = set(available_metrics())
+    assert {"kv_cache_hit_rate", "gpu_utilization", "schedule_delay"} <= keys
+    for metric, direction in _STANDARD_TREND_DIRECTIONS.items():
+        dotted, registered_dir = _TREND_METRICS[metric]
+        # Direction matches the §3.4 catalog (kv/gpu higher, schedule_delay lower).
+        assert registered_dir == direction
+        # Each is keyed to the nested standard-metrics stat path the summarizer fills.
+        assert dotted.startswith("standard_metrics.") and dotted.endswith(".value")
+    # The hard latency/throughput objectives are untouched (no accidental clobber).
+    assert _TREND_METRICS["ttft"] == ("latency.ttft", "lower")
+    assert _TREND_METRICS["output_token_rate"] == ("throughput.output_token_rate", "higher")
+
+
+def test_trend_over_standard_metric_flows_through_summarizer(tmp_path):
+    # Build real summaries from observability-bearing reports and store them out of order;
+    # the trend must reorder oldest->newest, read the standard-metric stat, and label the
+    # direction factually — proving the registered path resolves end-to-end.
+    store = HistoryStore(tmp_path)
+    for uid, kv, sa in (("late", 80.0, 300.0), ("early", 40.0, 100.0), ("mid", 60.0, 200.0)):
+        summary = summarize_report(_obs_report(uid=uid, kv=kv, gpu=70.0, qdepth=5.0))
+        assert summary["standard_metrics"] is not None  # monitoring produced it
+        rec, _ = store.add(summary, label=uid, report_path=f"/runs/{uid}")
+        rec.stored_at = sa
+        (store.dir / f"{rec.id}.json").write_text(json.dumps(rec.to_json(), indent=2))
+
+    t = trend(store.list(), "kv_cache_hit_rate")
+    assert t["better"] == "higher" and t["units"] == "percent" and t["n"] == 3
+    assert [p["label"] for p in t["points"]] == ["early", "mid", "late"]
+    assert [p["value"] for p in t["points"]] == [40.0, 60.0, 80.0]
+    # first(40) -> last(80) = +40, +100%
+    assert t["first_to_last"]["delta_abs"] == 40.0
+    assert t["first_to_last"]["delta_pct"] == 100.0
+
+
+def test_trend_schedule_delay_is_lower_better_queue_depth_proxy(tmp_path):
+    store = HistoryStore(tmp_path)
+    # schedule_delay maps to the waiting_requests queue-depth proxy (count units, lower better).
+    for uid, qd, sa in (("a", 3.0, 1.0), ("b", 9.0, 2.0)):
+        summary = summarize_report(_obs_report(uid=uid, kv=50.0, gpu=70.0, qdepth=qd))
+        rec, _ = store.add(summary, label=uid, report_path=f"/runs/{uid}")
+        rec.stored_at = sa
+        (store.dir / f"{rec.id}.json").write_text(json.dumps(rec.to_json(), indent=2))
+    t = trend(store.list(), "schedule_delay")
+    assert t["better"] == "lower" and t["units"] == "count"
+    assert [p["value"] for p in t["points"]] == [3.0, 9.0]  # queue depth grew (saturating)
+    assert t["first_to_last"]["delta_abs"] == 6.0
+
+
+def test_trend_standard_metric_skips_runs_without_monitoring(tmp_path):
+    # A run done WITHOUT monitoring carries no standard_metrics -> it contributes no point
+    # (the series skips it), never fabricating a value.
+    store = HistoryStore(tmp_path)
+    with_mon = summarize_report(_obs_report(uid="mon", kv=55.0, gpu=70.0, qdepth=4.0))
+    store.add(with_mon, label="monitored", report_path="/runs/mon")
+    # _summary() (no observability) yields standard_metrics == None.
+    plain = _summary(model="m", run_uid="plain", ttft_ms=120)
+    assert "standard_metrics" not in plain or plain.get("standard_metrics") is None
+    store.add(plain, label="unmonitored", report_path="/runs/plain")
+    t = trend(store.list(), "gpu_utilization")
+    assert t["n"] == 1 and [p["label"] for p in t["points"]] == ["monitored"]
+
+
 # ---- ToolContext.history_store rooting -------------------------------------
 
 def test_context_history_store_rooted_outside_session_dir():
