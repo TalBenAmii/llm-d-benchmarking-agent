@@ -126,6 +126,14 @@ value_constraints:
   label_selector:  { regex: "^[A-Za-z0-9._/=,-]+$" }                   # e.g. run-id=abc,function=load_generator
   # ---- capacity pre-flight (Phase 6): a workspace-confined JSON request file ----
   json_path:       { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.json$" }  # a .json file; no '..' traversal
+  # ---- per-knob scenario overrides (Phase 45): a workspace-authored --spec file ----
+  # write_and_validate_config(artifact_type="scenario", …) authors a companion specification
+  # file (``<name>.spec.yaml``) into the SESSION WORKSPACE pointing scenario_file.path at the
+  # authored scenario. This lets the agent feed that file to ``--spec`` so plan/--dry-run can
+  # GATE the authored knobs. Constrained to a ``*.spec.yaml`` path with NO ``..`` traversal —
+  # so only the tool's own workspace artifact is expressible, never an arbitrary file write
+  # target. Used as an ALTERNATIVE to a live-catalog spec name (see the --spec flagspec).
+  spec_workspace_path: { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.spec\\.yaml$" }
   # ---- model-load readiness probe (Phase 59): a TIGHTLY-CONSTRAINED model-server URL ----
   # GET-only serving-readiness probe URL. Pins host to an in-namespace `*.svc` (cluster DNS),
   # the port to the model-server serving ports (8000 prefill / 8200 decode) ONLY, and the path
@@ -371,8 +379,11 @@ executables:
     cwd_must_be: "repo:llm-d-benchmark"
     runner: { invoke: "venv-bin", venv: "repo:llm-d-benchmark/.venv", bin: "llmdbenchmark" }
     global_flags:
-      "--spec": { takes_value: true, value: { ref_catalog: specs } }
-      "--specification_file": { takes_value: true, value: { ref_catalog: specs } }
+      # --spec is EITHER a live-catalog name (e.g. cicd/kind) OR a workspace-authored
+      # *.spec.yaml (Phase 45) — the companion spec write_and_validate_config emits so an
+      # authored per-knob scenario can be GATEd through plan/--dry-run.
+      "--spec": { takes_value: true, value: { any_of: [ { ref_catalog: specs }, { ref: spec_workspace_path } ] } }
+      "--specification_file": { takes_value: true, value: { any_of: [ { ref_catalog: specs }, { ref: spec_workspace_path } ] } }
       "-v": {}
       "--verbose": {}
       "--version": { read_only_trigger: true }

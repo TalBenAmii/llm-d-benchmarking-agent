@@ -154,8 +154,20 @@ _DESCRIPTIONS = {
         "(mutating; needs approval). Required before any llmdbenchmark command."
     ),
     "write_and_validate_config": (
-        "Write a generated workload/run config into the session workspace and validate it. "
-        "MVP uses stock profiles, so you rarely need this."
+        "Write/validate a generated config artifact in the session workspace (never the "
+        "read-only repos). artifact_type='workload'/'run_config' write a stock-shaped YAML "
+        "as-is (MVP, rarely needed). artifact_type='scenario' AUTHORS finer per-knob vLLM/"
+        "scheduling/storage scenario edits beyond the parallelism/memory knobs check_capacity "
+        "+ generate_doe_experiment already cover: pass `content` as the per-knob OVERRIDES — a "
+        "REQUIRED 'name' plus >=1 DOTTED upstream field path (vllmCommon.flags.*, "
+        "vllmCommon.kvTransfer.*, vllmCommon.kvEvents.*, vllmCommon.priorityClassName, "
+        "vllmCommon.ephemeralStorage, vllmCommon.networkResource, affinity.*, schedulerName, "
+        "routing.servicePort, decode.*/prefill.* schedulerName/priorityClassName). The tool "
+        "deep-merges them onto a minimal `scenario: [ {name, ...} ]` skeleton and SHAPE-"
+        "validates the knobs against the repo's own scenario examples (read live). Read-only "
+        "(only writes the workspace), auto-runs. WHICH knobs to set is YOUR judgment — call "
+        "read_knowledge('vllm_overrides') first. Then preview the returned `path` via the "
+        "determinism gate: execute_llmdbenchmark(subcommand='plan'/'run', flags.dry_run=True)."
     ),
     "generate_doe_experiment": (
         "AUTHOR a Design-of-Experiments (DoE) experiment YAML: you supply the FACTORS to "

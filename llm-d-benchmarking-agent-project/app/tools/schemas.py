@@ -84,9 +84,33 @@ class RunSetupInput(BaseModel):
 
 
 class WriteConfigInput(BaseModel):
-    artifact_type: Literal["workload", "run_config"]
+    artifact_type: Literal["workload", "run_config", "scenario"] = Field(
+        ...,
+        description="What kind of config artifact to author. 'workload'/'run_config' write a "
+                    "stock-shaped YAML as-is (MVP, rarely needed). 'scenario' AUTHORS finer "
+                    "per-knob vLLM/scheduling/storage edits beyond the parallelism/memory knobs "
+                    "that check_capacity + generate_doe_experiment already cover — see `content`.",
+    )
     target_filename: str = Field(..., description="Bare *.yaml filename (no path separators)")
-    content: dict[str, Any]
+    content: dict[str, Any] = Field(
+        ...,
+        description="The config body. For 'workload'/'run_config' it is written verbatim. "
+                    "For 'scenario' it is the set of per-knob OVERRIDES merged onto a minimal "
+                    "`scenario: [ {name, ...} ]` skeleton: a REQUIRED 'name' (the scenario item "
+                    "name) plus >=1 override keyed by the DOTTED upstream scenario field path. "
+                    "Supported knob paths include vllmCommon.flags.* (e.g. enforceEager, "
+                    "noPrefixCaching), vllmCommon.kvTransfer.* (enabled/connector/role), "
+                    "vllmCommon.kvEvents.* (enabled/publisher/port/topicPrefix), "
+                    "vllmCommon.priorityClassName, vllmCommon.ephemeralStorage, "
+                    "vllmCommon.networkResource, affinity.* (enabled/nodeSelector/podAffinity/"
+                    "podAntiAffinity), schedulerName, routing.servicePort, and per-section "
+                    "decode.*/prefill.* (schedulerName, priorityClassName, ...). The knobs are "
+                    "SHAPE-validated against the repo's own scenario examples (read live). WHICH "
+                    "knobs to set is JUDGMENT — call read_knowledge('vllm_overrides') first; the "
+                    "repos stay read-only (authored into the session workspace). Preview the "
+                    "authored file via execute_llmdbenchmark(subcommand='plan'/'run', "
+                    "flags={'dry_run': True}).",
+    )
 
 
 class ExecuteInput(BaseModel):
