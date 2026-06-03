@@ -300,7 +300,14 @@ _DESCRIPTIONS = {
         "the session workspace and exit (emits --generate-config; read-only/auto-runs), then later "
         "set flags={'run_config': '<path>'} to REPLAY it (emits -c; still approval-gated). WHEN to "
         "generate vs reuse vs author in-workspace is your judgment, see "
-        "knowledge/runconfig_roundtrip.md."
+        "knowledge/runconfig_roundtrip.md. "
+        "For the OPTIONAL git-like Results Store (a TEAM-SHARED store that publishes/pulls runs "
+        "via GCS remotes), use subcommand='results' with the top-level `store` field "
+        "({command: init/remote/status/add/rm/ls/push/pull, ...}): init/status/ls/remote-ls are "
+        "read-only/auto-run; add/rm/push/pull/remote-add/remote-rm are mutating/approval-gated. "
+        "This is SEPARATE from your OWN local history (the result_history tool) — that local "
+        "store is unchanged; reach for the CLI store ONLY for team GCS sharing. WHICH store and "
+        "WHEN is your judgment, see knowledge/history.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "

@@ -73,3 +73,51 @@ metrics" and its "Trending these over time" note) and `knowledge/observability.m
 The same store backs the read-only `GET /api/history` (results browser) and
 `GET /api/history/trend?metric=...` (trend chart) endpoints, so anything you store is what
 the user sees in the Results panel. The UI shows facts; you provide the narrative.
+
+## CLI Results Store (optional, for team sharing) — a DIFFERENT store
+
+There are **two independent result stores**, and you should not confuse them:
+
+1. **The agent's local history store** (everything above — the `result_history` tool, backed
+   by `app/storage/history.py`). It persists *your* validated report summaries on this host,
+   powers the Results panel + trend chart, and is the **default** for "remember this run",
+   "track regressions", "trend TTFT over time". It needs no remotes, no credentials, no
+   network. **For the local need, this is all you reach for.**
+
+2. **The CLI's git-like Results Store** (`llmdbenchmark results …`, modeled by
+   `execute_llmdbenchmark(subcommand="results", store={...})`). This is an **optional,
+   team-shared** store: it `init`s a local `.result_store/`, configures **GCS remotes**, and
+   **pushes/pulls** whole run workspaces so a *team* can publish and exchange results through a
+   shared bucket (taxonomy `scenario/model/hardware/run-uid`). It is upstream's tool, not ours.
+
+**These two stores are completely separate.** Using the CLI store **does not** change, mirror,
+or replace the local history store — they don't sync. Storing a run with `result_history` does
+*not* publish it to a remote, and pulling a run from a remote does *not* add it to the local
+history/trends (parse + `result_history store` it yourself afterwards if you want it tracked).
+
+### WHEN to reach for the CLI Results Store (not the default)
+Use it **only** when the user explicitly wants to **share results with a team** via the CLI's
+shared bucket, e.g. "publish this to our results bucket", "pull the prod run `c6bc210e`",
+"what runs has the team pushed to staging?". For anything local — tracking, trending,
+baselines, the Results panel — **stay with `result_history`**. If the user has no team bucket /
+GCS remote, the CLI store has nothing to offer over the local one; don't suggest it.
+
+### How to drive it (mechanism is in the tool; these are the moves)
+Call `execute_llmdbenchmark(subcommand="results", store={...})`. The `command` selects the op:
+- `init` — create the local `.result_store/` (read-only, auto-runs).
+- `remote` + `remote_action`: `add` (name + `gs://bucket/prefix` `uri`), `rm` (name), or `ls`
+  (list remotes, read-only). Adding/removing a remote is mutating (a local config change).
+- `status` — list locally staged/untracked runs (read-only).
+- `add` / `rm` — stage/unstage runs by `paths` (local dirs or run-uids). **Mutating.**
+- `ls` — list a remote's runs: `remote` (alias) + optional `model`/`hardware` filters
+  (read-only). **Wildcards are NOT supported here** (the `*` in upstream's `llama-*` examples is
+  rejected as a shell metacharacter); pass an exact value.
+- `push` — publish to a remote: optional `remote` (default `staging`) + optional `path` +
+  optional `group`. **Mutating, approval-gated** (it uploads to GCS).
+- `pull` — download a run: optional `remote` (default `prod`) + **required** `run_uid` (an exact
+  uid, no wildcards). **Mutating, approval-gated** (it writes a workspace dir).
+
+The publish/pull steps go through the same approval gate as a real standup/run — never
+auto-run; tell the user what bucket/remote they're about to push to or pull from. Remote URIs
+are **GCS-only** (`gs://…`), matching upstream's prod/staging defaults. The actual GCS transfer
+runs inside the CLI subprocess with the user's own cloud credentials.

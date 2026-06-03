@@ -113,6 +113,25 @@ value_constraints:
   # Phase 47, NOT built/allowlisted here. WHETHER the user has a bucket (and WHICH) is the agent's
   # judgment in knowledge/cloud_results_sink.md, not data here.
   results_sink:    { regex: "^(gs|s3)://[A-Za-z0-9._/-]+$|^[A-Za-z0-9._/-]+$" }
+  # ---- results store (Phase 50): the git-like CLI Results Store positionals ----
+  # `llmdbenchmark results <store-command>` is a SEPARATE, OPTIONAL git-like store for sharing
+  # benchmark runs across a team via GCS remotes (init/remote/status/add/rm/ls/push/pull). It is
+  # DISTINCT from the agent's own local history store (the result_history tool / app/storage/
+  # history.py) — see knowledge/history.md for WHICH one to reach for. These constraints pin the
+  # nested store-command positionals (the validator now recurses one level for a subcommand that
+  # declares its own `subcommands:`); each remains metachar-screened as defense-in-depth.
+  #   * remote_name — a remote alias (e.g. prod, staging, private): a safe DNS-ish label.
+  #   * remote_uri  — a remote bucket URI. GCS-ONLY (`gs://…`), matching the upstream prod/staging
+  #     defaults (result_store/client/gcs.py); s3:// is deliberately NOT accepted here.
+  #   * run_uid     — a run UUID/short uid to pull (hex/uuid charset). NOTE wildcards (`c6bc*`)
+  #     are NOT expressible: `*` is a blocked shell metacharacter, so only an EXACT run-uid works.
+  #   * store_paths — a local workspace dir path or run-uid to stage/push (reuses output_dir's
+  #     safe-charset path; no `..` is NOT enforced here because a staged path is a local dir the
+  #     user already produced, but the metachar screen still rejects shell-dangerous tokens).
+  remote_name:     { regex: "^[A-Za-z0-9._-]+$" }
+  remote_uri:      { regex: "^gs://[A-Za-z0-9._/-]+$" }
+  run_uid:         { regex: "^[A-Za-z0-9-]+$" }
+  store_paths:     { regex: "^[A-Za-z0-9._/-]+$" }
   endpoint_url:    { regex: "^https?://[A-Za-z0-9._:/-]+$" }
   # ---- model override (Phase 28): -m/--models/--model value ----
   # A HuggingFace model id or short name (org/name), e.g. facebook/opt-125m,
@@ -785,12 +804,68 @@ executables:
           "--fma-teardown-timeout": { takes_value: true, value: { ref: positive_int } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
+      # ---- Results Store (Phase 50): the OPTIONAL git-like, team-shared result store ----
+      # `llmdbenchmark results <store-command>` is a SEPARATE store from the agent's own local
+      # history (result_history / app/storage/history.py). It lets teams publish + pull runs via
+      # GCS remotes. The validator now recurses for a subcommand that declares its own
+      # `subcommands:` (PURE MECHANISM, additive), so each store-command is modeled here with its
+      # OWN mode + positionals — exactly mirroring the upstream argparse sub-subparsers
+      # (interface/results.py). init/status/ls/remote-ls are READ-ONLY (auto-run); add/rm/push/
+      # pull/remote-add/remote-rm are MUTATING (approval-gated) — that satisfies the spec's
+      # "push/pull are approval-gated" requirement. `--spec` is still emitted globally before
+      # `results` (cli.py errors without it even for the store), but no namespace/harness/model is
+      # accepted here. WHEN to reach for this store vs the local one is judgment in
+      # knowledge/history.md, not data here.
       results:
-        mode: read_only
-        timeout_s: 300
-        flags:
-          "-r": { takes_value: true, value: { ref: output_dir } }
-          "--output": { takes_value: true, value: { ref: output_dir } }
+        mode: read_only          # conservative top-level mode; the leaf store-command's mode wins
+        timeout_s: 600           # GCS push/pull a run's artifacts — may be slower than a local op
+        subcommands:
+          init:
+            mode: read_only       # creates a local .result_store/ dir only — no remote mutation
+          status:
+            mode: read_only       # lists local staged/untracked runs — read-only
+          ls:                     # `results ls <remote> [-m model] [-w hardware]` — list a remote
+            mode: read_only
+            positionals: [ { value: { ref: remote_name } } ]   # remote alias (prod/staging/…)
+            flags:
+              "-m": { takes_value: true, value: { ref: model_id } }
+              "--model": { takes_value: true, value: { ref: model_id } }
+              "-w": { takes_value: true, value: { ref: resource_name } }
+              "--hardware": { takes_value: true, value: { ref: resource_name } }
+          remote:                 # `results remote {add NAME URI | rm NAME | ls}`
+            mode: read_only
+            subcommands:
+              add:                # add a remote: a MUTATING config change to the local store
+                mode: mutating
+                positionals:
+                  - { value: { ref: remote_name } }   # alias, e.g. prod
+                  - { value: { ref: remote_uri } }    # gs://bucket/prefix (GCS-only)
+              rm:                 # remove a remote — mutating config change
+                mode: mutating
+                positionals: [ { value: { ref: remote_name } } ]
+              ls:                 # list remotes — read-only
+                mode: read_only
+          add:                    # `results add <paths...>` — STAGE runs (mutating local state)
+            mode: mutating
+            # 1+ local dir paths / run-uids (argparse nargs='+'): one required, the rest variadic.
+            positionals: [ { value: { ref: store_paths }, repeated: true } ]
+          rm:                     # `results rm <paths...>` — UNSTAGE runs (mutating local state)
+            mode: mutating
+            positionals: [ { value: { ref: store_paths }, repeated: true } ]
+          push:                   # `results push [remote] [path] [-g group]` — UPLOAD to a remote
+            mode: mutating        # publishes to GCS — APPROVAL-GATED (spec requirement)
+            positionals:
+              - { value: { ref: remote_name }, optional: true }   # remote (default staging)
+              - { value: { ref: store_paths }, optional: true }   # optional ad-hoc local dir
+            flags:
+              "-g": { takes_value: true, value: { ref: remote_name } }
+              "--group": { takes_value: true, value: { ref: remote_name } }
+          pull:                   # `results pull <remote...> --run-uid <uid>` — DOWNLOAD a run
+            mode: mutating        # writes a workspace dir from GCS — APPROVAL-GATED (spec)
+            # remote(s): argparse nargs='*' (default prod) → zero-or-more.
+            positionals: [ { value: { ref: remote_name }, repeated: true, optional: true } ]
+            flags:
+              "--run-uid": { takes_value: true, value: { ref: run_uid } }
       # DoE sweep: standup+run+teardown for each treatment in the experiments YAML.
       # Mutating (it deploys); --dry-run/-n previews it. Cloud output stores (gs://, s3://)
       # are deliberately NOT permitted here — results go to a local dir for the MVP.
