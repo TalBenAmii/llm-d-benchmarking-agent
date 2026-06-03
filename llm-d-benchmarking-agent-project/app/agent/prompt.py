@@ -105,6 +105,7 @@ CORE_KNOWLEDGE = (
     "usecase_to_profile.yaml",
     "quickstart_playbook.md",
     "key_docs.yaml",
+    "epp_headers.yaml",
     "conversation_style.md",
 )
 

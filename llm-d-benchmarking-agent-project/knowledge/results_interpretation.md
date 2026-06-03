@@ -14,6 +14,19 @@ always tied to the user's stated goal. Never quote numbers that aren't in the su
 - **throughput.request_rate** — requests/sec completed.
 - **success_rate_pct** — fraction of requests that succeeded; flag anything below ~100%.
 
+## When requests fail: 429s and EPP drop reasons
+A non-100% `success_rate` is NOT automatically "the system was broken." If the run (or a
+harness/report) surfaces 429s or an `x-llm-d-request-dropped-reason` header, those are the
+llm-d router (EPP) **deliberately** shedding or preempting load at capacity. Before calling
+anything "failed", load `read_knowledge("epp_headers")` and decode the drop reason there:
+`rejected-saturated` = at admission capacity, shed before serving (remedy: lower concurrency
+or scale out); `evicted-priority` = preempted mid-flight by higher-priority work (remedy:
+raise this request's inference-objective priority, or add capacity). Reframe the failure
+fraction as an **admission/eviction** signal (capacity, not breakage); also decode the SLO
+set-headers (`x-llm-d-slo-ttft-ms`/`x-llm-d-slo-tpot-ms`, `x-llm-d-inference-objective`,
+`x-llm-d-inference-fairness-id`) when present. The full enum→cause→remedy table lives in
+`epp_headers.yaml` — this section only routes you there.
+
 ## Units — read them off the report, never guess
 
 Every latency/throughput entry in the summary carries an explicit `units` field. **Read it and
