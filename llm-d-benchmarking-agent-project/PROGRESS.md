@@ -13,6 +13,20 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 63 (ROADMAP_V4): Accelerator + CPU-inferencing precondition advisor ("can my hardware run
+  this?"). Added a read-only `advise_accelerators` probe (`app/tools/probe.py`, registered in `app/tools/registry.py`
+  with `AdviseAcceleratorsInput` in `app/tools/schemas.py`) that runs the already-allowlisted `kubectl get nodes -o
+  json` and mechanically extracts per-node `capacity`/`allocatable` cpu + memory (raw K8s quantity, never lossily
+  converted) and the advertised accelerator extended-resource keys (`nvidia.com/gpu` + amd/gaudi/tpu/Intel-XPU
+  siblings) — FACTS only (`any_accelerator`, `cpu_only`, `advertised_resources`, per-node `accelerators`); no allowlist
+  change. All feasibility judgment — CUDA/driver minimums, Device-Plugin vs DRA, the real-CPU 64c/64GB-per-replica
+  floor, and the Kind/CPU-sim exemption — lives as DATA in new `knowledge/accelerators.yaml` (pointers from
+  `knowledge/preconditions.md` + `knowledge/capacity.md`); no `if/elif` feasibility branch in Python. Complements
+  `check_capacity`'s GPU-memory sizing. Hermetic `tests/test_accel_advisor.py` feeds canned GPU-advertised + CPU-only
+  `kubectl get nodes` fixtures through a fake runner and asserts the extracted facts and knowledge floors; no GPU, no
+  live cluster. Merge into `feature/roadmap-v4` reconciled the new probe + helpers additively against Phase 60's
+  `cluster_preconditions` probe (both probes and both helper sets preserved). Suite **835 passed / 20 skipped / 0
+  failed**; ruff + mypy clean. — done
 - 2026-06-03 — Phase 60 (ROADMAP_V4): Infra precondition gate before a long real-cluster standup. Added a
   `cluster_preconditions` read-only probe to `probe_environment` (`app/tools/probe.py`): a read-only
   `kubectl version --output json` (already allowlisted) parsed into `cluster_info.server_version` `{major, minor}`,
