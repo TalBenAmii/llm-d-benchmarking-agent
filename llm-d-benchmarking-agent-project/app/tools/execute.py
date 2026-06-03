@@ -75,7 +75,20 @@ def build_argv(
     those two ONLY; omitted/None emits nothing (the synthetic profile still drives the load). This
     is pure MECHANISM — WHETHER to replay a dataset, and WHICH one, is the agent's judgment in
     knowledge/dataset_replay.md, never an if/elif on the value here. We set NO env var: the CLI
-    itself derives LLMDBENCH_RUN_DATASET_DIR/_FILE from the URL during profile rendering."""
+    itself derives LLMDBENCH_RUN_DATASET_DIR/_FILE from the URL during profile rendering.
+
+    ``flags["repo_path"]`` (Phase 46) emits ``--llmd-repo-path <path>`` — a real ``standup``
+    argparse flag — pointing the KUSTOMIZE deploy method (``-t kustomize``) at a LOCAL llm-d
+    clone instead of letting upstream clone ``https://github.com/llm-d/llm-d.git`` into
+    ``workspace/llm-d``. It is the CLI fallback for the scenario block's ``kustomize.repoPath``
+    (see llm-d-benchmark/docs/kustomize.md). Pure MECHANISM — we emit whatever path the agent
+    supplied; WHICH guide/overlay/patches/repo to deploy is the agent's judgment in
+    knowledge/deploy_path_playbook.md, never an if/elif on the value here. The kustomize.* config
+    BLOCK itself (guideName/repoPath/repoRef/patches/overlayPath/extraHelmValues/
+    guideVariableOverrides) is NOT built here — it is AUTHORED as a scenario via
+    write_and_validate_config(artifact_type='scenario') using DOTTED ``kustomize.*`` keys, then
+    GATED through plan/--dry-run. Omitted ⇒ nothing emitted (the block's repoPath / the default
+    upstream clone stands)."""
     flags = flags or {}
     argv: list[str] = ["llmdbenchmark"]
     if spec:
@@ -107,6 +120,13 @@ def build_argv(
         argv += ["-k", str(kubeconfig)]
     if flags.get("methods"):
         argv += ["-t", str(flags["methods"])]
+    # Kustomize local-clone path (Phase 46): point the `-t kustomize` deploy method at a LOCAL
+    # llm-d clone via the real standup `--llmd-repo-path` flag (the CLI fallback for the
+    # scenario block's kustomize.repoPath). PURE MECHANISM — WHICH repo/guide/overlay is the
+    # agent's judgment (knowledge/deploy_path_playbook.md), never an if/elif on the value.
+    # Omitted ⇒ nothing emitted (upstream clones llm-d into workspace/ unless repoPath is set).
+    if flags.get("repo_path"):
+        argv += ["--llmd-repo-path", str(flags["repo_path"])]
     if flags.get("output"):
         argv += ["-r", str(flags["output"])]
     if flags.get("endpoint_url"):
