@@ -343,6 +343,38 @@ executables:
     positionals:
       - { value: { ref: json_path } }
 
+  # Gated-model HF secret provisioner (Phase 30): a vetted project script that creates/
+  # updates the cluster's HuggingFace token Secret a GATED-model standup needs, exactly as
+  # llm-d/helpers/hf-token.md does (`kubectl create secret generic <name> --from-literal=
+  # HF_TOKEN=$HF_TOKEN --namespace <ns> --dry-run=client -o yaml | kubectl apply -f -`). It
+  # is MUTATING — it writes a Secret to the cluster — so it is approval-gated like any other
+  # cluster mutation; the agent proposes it and the user must Approve.
+  #
+  # TOKEN-NON-LEAK RATIONALE (mirrors the capacity_check.py block above): there is NO token
+  # flag here, and the kubectl `create secret` subcommand is deliberately NOT added to the
+  # `kubectl` entry. ToolContext._emit_command emits the FULL argv of every executed command
+  # into a `command` event (browser + log + persisted trail), so a `--from-literal=
+  # HF_TOKEN=<token>` argument would leak the secret. Instead the script reads HF_TOKEN from
+  # the (already-scrubbed) child env — the runner injects settings.extra_subprocess_env →
+  # HF_TOKEN — and runs kubectl over its OWN subprocess. The agent's allowlisted argv only
+  # ever carries `--namespace`/`--name`, never the token.
+  #
+  # WHEN to provision (only on a Phase 62 GATED+UNAUTHORIZED-with-no-token capacity verdict;
+  # never for a public model) is JUDGMENT and lives in knowledge/capacity.md — not here.
+  provision_hf_secret.py:
+    flat: true
+    mode: mutating
+    timeout_s: 120
+    runner:
+      invoke: "project-script"
+      script: "scripts/provision_hf_secret.py"
+    flags:
+      "--namespace": { takes_value: true, value: { ref: namespace } }
+      "-p":          { takes_value: true, value: { ref: namespace } }
+      "--name":      { takes_value: true, value: { ref: resource_name } }
+      "-h": {}
+      "--help": {}
+
   # ---- model-load serving-readiness probe (Phase 59) --------------------
   # A READ-ONLY, GET-only HTTP probe used by the endpoint-readiness gate to tell WHY a Running
   # model-server pod is still NotReady: GET /v1/models is model-serving-ready (startup/readiness

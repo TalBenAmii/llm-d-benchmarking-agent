@@ -312,6 +312,28 @@ class CheckCapacityInput(BaseModel):
     )
 
 
+class ProvisionHfSecretInput(BaseModel):
+    namespace: str = Field(
+        ...,
+        description="The target Kubernetes namespace (an RFC1123 label, e.g. the plan's "
+                    "namespace) to create/update the HuggingFace token Secret in. This is the "
+                    "APPROVAL-GATED MUTATING step that materializes the cluster HF Secret a "
+                    "GATED-model standup needs (so a `standup` doesn't fail minutes in with an "
+                    "opaque image-pull/weights error). The token itself is BACKEND-ONLY (read "
+                    "from the backend HF_TOKEN env, never shown, never an input here). WHEN to "
+                    "call this is knowledge/capacity.md, NOT your guess: ONLY after a "
+                    "check_capacity GATED+UNAUTHORIZED verdict whose reason says NO token is "
+                    "configured cluster-side — never for a public model, and never when a token "
+                    "merely LACKS access (that needs a HuggingFace access request, not a secret).",
+    )
+    name: str | None = Field(
+        default=None,
+        description="The Secret name (an RFC1123 object name). Omit to use the upstream "
+                    "default 'llm-d-hf-token' (HF_TOKEN_NAME) that the llm-d standup expects; "
+                    "only override it if the deployment was configured with a different name.",
+    )
+
+
 class ObserveRunMetricsInput(BaseModel):
     namespace: str = Field(..., description="Kubernetes namespace to read pod usage from "
                                             "(ignored for scope='nodes').")
