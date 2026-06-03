@@ -13,6 +13,22 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 42 (ROADMAP_V4): Round-trip the CLI's run-config (`--generate-config` / `-c`).
+  Added two `run`-ONLY flag keys (upstream defines both on the `run` subparser alone): `flags.generate_config`
+  → `build_argv` (`app/tools/execute.py`) emits a bare `--generate-config` (the CLI writes a reusable run-config
+  YAML from the current settings under `--workspace` and EXITS — deploys nothing), and `flags.run_config`
+  → emits `-c <path>` to REPLAY a previously generated config (run-only mode). `security/allowlist.yaml` marks
+  `--generate-config` a `read_only_trigger` (auto-runs like `--dry-run`/`--list-endpoints`) while `-c/--config`
+  stays mutating/approval-gated, value-pinned to a `*.ya?ml` path (`run_config_path`, no `..`). This complements
+  the agent's in-workspace `write_and_validate_config`; `schemas.py` + `registry.py` document the round-trip and
+  point at `knowledge/runconfig_roundtrip.md` for WHEN to generate vs reuse vs author in-workspace.
+  `tests/test_runconfig_roundtrip.py` adds hermetic coverage. Merged into `feature/roadmap-v4` (no-ff); four
+  conflicts resolved — three additive (registry.py + schemas.py descriptions, allowlist.yaml run-flags block:
+  KEEP BOTH the Phase 33/38/40 `--stack`/`--parallel`/`--*-timeout`/`--analyze` entries AND the new
+  `--generate-config`/`-c` entries) and one structural (execute.py `build_argv`: the phase-timeout loop and the
+  run-config block are independent emissions, composed as a union). Branch `feature/roadmap-v4-p42-runconfig-roundtrip`.
+  Suite **1276 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+
 - 2026-06-04 — Phase 40 (ROADMAP_V4): Trigger the CLI's local `--analyze` plot families. Added a
   `flags.analyze` key — `build_argv` (`app/tools/execute.py`) emits a bare `--analyze` on `run` ALONE
   (upstream defines it on the `run` subparser only), so the CLI ALSO runs its optional workstation

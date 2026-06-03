@@ -386,7 +386,7 @@ blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
   New hermetic suite `tests/test_dataset_replay.py` (+21 tests). Full suite **1063 passed / 20
   skipped / 0 failed**; ruff + mypy clean.
 
-## Phase 42 — Round-trip the CLI's run-config (--generate-config / -c) — TODO
+## Phase 42 — Round-trip the CLI's run-config (--generate-config / -c) — DONE
 *Catalog ref: Area A — "Generate / reuse a run config YAML (--generate-config / -c)" (🟡).*
 
 - **GOAL:** use the CLI's own `--generate-config` / `-c` reuse mechanism (in addition to the
@@ -396,6 +396,14 @@ blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
   guidance in `knowledge/`.
 - **ACCEPTANCE:** the agent can generate a run-config with the CLI and replay it via `-c`.
 - **HERMETIC-TEST:** `build_argv` emits `--generate-config` then `-c`; allowlist permits both.
+- **RESULT:** Shipped `flags.generate_config` (emits a bare `--generate-config`) and
+  `flags.run_config` (emits `-c <path>`), both `run`-ONLY (upstream defines them on the `run`
+  subparser alone). `--generate-config` is a read-only trigger in `security/allowlist.yaml` (it
+  writes a reusable run-config under `--workspace` and exits, deploying nothing → auto-runs like
+  `--dry-run`); `-c/--config` REPLAYS a prior config and stays mutating/approval-gated, value-
+  pinned to a `*.ya?ml` path (`run_config_path`, no `..`). Registry/schema descriptions and
+  `knowledge/runconfig_roundtrip.md` added. Added `tests/test_runconfig_roundtrip.py`.
+  Full suite after merge into feature/roadmap-v4: 1276 passed, 20 skipped, 0 failed; ruff + mypy clean.
 
 ## Phase 43 — Administrative privilege / --non-admin skip — DEFERRED
 *Catalog ref: Area A/I — "Administrative privilege requirement / --non-admin skip" (⬜).*
