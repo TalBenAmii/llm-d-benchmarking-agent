@@ -29,9 +29,10 @@ Rule of thumb: **the moment the API binds to anything other than localhost, turn
   browser and is never logged. Generate a long random value (e.g. `openssl rand -hex 32`).
 - Enabling auth with an **empty token is a misconfiguration**: the server refuses to start
   (fail loud) rather than silently 401-ing every request.
-- `/healthz` and `/metrics` are guarded too when auth is on. If your liveness probe / Prometheus
-  scrape can't send a token, run them on a separate unauthenticated sidecar or disable auth for
-  that path at the ingress — do **not** weaken the app to special-case them.
+- The liveness/readiness probes (`/healthz`, `/readyz`) stay **unauthenticated even when auth is
+  on** — a K8s kubelet can't carry a Bearer token, and they expose only up/ready facts (no session
+  data, no secrets). `/metrics` is **not** exempted: with auth on, your Prometheus scrape must send
+  the token (or scrape at the ingress) — do **not** weaken the app to special-case it.
 
 ## Rate limit (`RATE_LIMIT_ENABLED`, `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST`)
 - A **token bucket** on the `/api/*` message-intake surface: `RPS` is the steady refill rate

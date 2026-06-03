@@ -79,5 +79,5 @@ Until it's set, the agent correctly falls back to the local CLI path (`execute_l
   pre-existing one you point at via `secret.existingSecret`), surfaced as env to the backend
   only. They are never baked into the image (`.dockerignore` excludes `.env`) and never reach
   the browser.
-- **Health & metrics:** liveness/readiness probe `/healthz`; Prometheus scrapes `/metrics`
-  (pods are annotated `prometheus.io/scrape`). Both match `app/main.py`.
+- **Health & metrics:** liveness probe `/healthz`, readiness probe `/readyz`; Prometheus
+  scrapes `/metrics` (pods are annotated `prometheus.io/scrape`). All three match `app/main.py`.

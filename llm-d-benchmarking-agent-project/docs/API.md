@@ -20,6 +20,8 @@ the LLM as JSON Schema); the registry + descriptions live in
 | `GET` | `/metrics` | Prometheus text exposition of the agent + orchestrator metrics (content-type `text/plain; version=0.0.4`). Scrape target. |
 | `GET` | `/api/sessions` | Recent chats for the sidebar (summaries, newest first). |
 | `DELETE` | `/api/sessions/{id}` | Delete a saved chat; `404` if unknown. |
+| `DELETE` | `/api/namespaces/{namespace}` | Delete a whole sidebar folder — every chat in one namespace at once (the `no_namespace` sentinel removes chats with no namespace). Returns `{deleted, count}`; `404` if the folder is empty. |
+| `GET` | `/api/sessions/{id}/artifact?path=` | Serve one image artifact (e.g. a run's latency/throughput PNG) from a session's gitignored workspace dir. Read-only, image suffixes only, path hardened against `..` traversal. |
 | `GET` | `/api/history?tag=&model=` | Stored historical results (summaries, newest first) + the list of trendable metrics. |
 | `GET` | `/api/history/trend?metric=&tag=&model=` | Time-series of one metric across stored results (values + the metric's better-direction; no verdict). |
 
@@ -53,6 +55,9 @@ order — and then continues live, rather than waiting blind for only the final 
 | `session_plan` | `{plan}` | A proposed plan (also an approval request). |
 | `error` | `{message[, kind]}` | A recoverable error. `kind: "protocol_error"` marks a rejected malformed inbound frame. |
 | `cancelled` | `{message}` | The in-flight run/turn was cancelled (Phase 16); its concurrency slot is freed and its subprocess reaped. Followed by `done`. |
+| `usage` | `{turn:{input,output,cache_read,cache_write,calls,total}, session:{input,output,cache_read,total}}` | **Real** provider token usage. A per-turn event emitted on every LLM call (the live UI counter ticks up): `turn.*` are running totals for the in-progress turn, `session.*` the running session totals. |
+| `suggestions` | `{chips:[{label,prompt}]}` | Start-of-chat suggestion chips, emitted **once** on a brand-new connection (never on resume), right after `ready`. A connection-lifecycle frame, not a turn event. |
+| `resource_stats` | `{available, namespace?, rows?, note?}` | Live cluster CPU/memory for the running benchmark's pods, streamed by the backend resource poller at a fixed interval during a run. Zero LLM cost (never enters the message stream). |
 | `done` | `{}` | The agent finished this turn. |
 | `pong` | `{}` | Reply to a `ping`. |
 
