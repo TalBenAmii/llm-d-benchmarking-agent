@@ -13,6 +13,19 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 38 (ROADMAP_V4): Model the CLI's per-phase timeouts (`--*-timeout`).
+  Threaded the llmdbenchmark CLI's OWN per-phase timeout flags as pure mechanism + DATA (judgment in
+  `knowledge/phase_timeouts.md`): `build_argv` (`app/tools/execute.py`) iterates a static
+  `_PHASE_TIMEOUT_FLAGS` table to emit `--standalone/gateway/modelservice/kustomize-deploy-timeout` +
+  `--pvc-bind-timeout` on standup, `--wait-timeout`/`--data-access-timeout` on run+experiment, and
+  `--fma-teardown-timeout` on teardown — each gated on the upstream-accepting subcommand(s), no
+  if/elif on the value. The CLI bound is a DEEPER in-process timeout that stays BELOW the runner's
+  per-command `timeout_s` ceiling so the two layers don't fight (the host deadline still bounds the
+  whole process). `ExecuteInput.flags` (`schemas.py`) + the CLI tool description (`registry.py`)
+  document the eight keys; `security/allowlist.yaml` pins each to `positive_int`. Merge into
+  `feature/roadmap-v4` resolved three additive conflicts against Phase 33 (`--stack`/`--parallel`) by
+  keeping BOTH sides. Branch `feature/roadmap-v4-p38-phase-timeouts`. Suite **1214 passed / 20
+  skipped / 0 failed**; ruff + mypy clean. — done
 - 2026-06-04 — Phase 33 (ROADMAP_V4): Multi-stack scenarios + `--stack` subset + `--parallel` cap.
   Modeled two previously-unmodeled multi-stack flags as pure mechanism + DATA (judgment in `knowledge/`):
   `build_argv` (`app/tools/execute.py`) now emits subcommand-aware `--stack <names>` on standup/smoketest/

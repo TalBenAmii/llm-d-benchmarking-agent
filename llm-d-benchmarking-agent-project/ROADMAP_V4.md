@@ -305,8 +305,19 @@ skipped / 0 failed**; ruff + mypy clean.
   exec into it, without driving the interactive shell itself.
 - **HERMETIC-TEST:** `build_argv` emits `-d`; the debug launch is approval-gated + allowlisted.
 
-## Phase 38 — Model the CLI's per-phase timeouts (--wait/--*-timeout) — TODO
+## Phase 38 — Model the CLI's per-phase timeouts (--wait/--*-timeout) — DONE
 *Catalog ref: Area A — "Harness wait / data-access / deploy timeouts" (🟡; today governed only at the runner/orchestrator layer).*
+
+> **RESULT (2026-06-04):** Shipped. `build_argv` (`app/tools/execute.py`) now emits the CLI's OWN
+> per-phase timeout flags as pure mechanism off a static `_PHASE_TIMEOUT_FLAGS` table —
+> `--standalone/gateway/modelservice/kustomize-deploy-timeout` + `--pvc-bind-timeout` on standup,
+> `--wait-timeout`/`--data-access-timeout` on run+experiment, `--fma-teardown-timeout` on teardown
+> — each gated on the upstream-accepting subcommand(s). `ExecuteInput.flags` (schemas) + the
+> `run_benchmark_cli` description (registry) document the eight keys; `security/allowlist.yaml` pins
+> each to `positive_int`. The CLI bound is a DEEPER in-process timeout that stays below the runner's
+> per-command `timeout_s` ceiling so the two layers don't fight; WHEN/WHAT to set lives in
+> `knowledge/phase_timeouts.md`. Merged into `feature/roadmap-v4`; full suite **1214 passed / 20
+> skipped / 0 failed**, ruff + mypy clean.
 
 - **GOAL:** thread the CLI's own per-phase timeout flags instead of relying solely on the
   runner/orchestrator deadlines.
