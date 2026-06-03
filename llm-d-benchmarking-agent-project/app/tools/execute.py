@@ -88,7 +88,28 @@ def build_argv(
     guideVariableOverrides) is NOT built here — it is AUTHORED as a scenario via
     write_and_validate_config(artifact_type='scenario') using DOTTED ``kustomize.*`` keys, then
     GATED through plan/--dry-run. Omitted ⇒ nothing emitted (the block's repoPath / the default
-    upstream clone stands)."""
+    upstream clone stands).
+
+    ``flags["stack"]`` (Phase 33) emits ``--stack <names>`` to restrict a MULTI-STACK scenario
+    (N model pools behind one gateway, e.g. ``guides/multi-model-wva`` whose stacks are
+    ``qwen3-06b``/``llama-31-8b``) to a SUBSET — a single stack name, or a comma-separated list
+    (``NAME[,NAME...]``). It is SUBCOMMAND-AWARE: upstream ``--stack`` exists ONLY on
+    standup/smoketest/run/teardown (plan/experiment reject it), so we emit it for those four
+    ONLY; omitted/None emits nothing (every stack of the scenario is operated on). Pure
+    MECHANISM — WHICH stack(s) to target is the agent's judgment in knowledge/multi_stack.md,
+    never an if/elif on the value here.
+
+    ``flags["parallel"]`` (Phase 33) emits ``--parallel <int>`` to CAP how many stacks are
+    deployed/smoketested in parallel (the upstream per-pool max-parallel-stacks knob, an int
+    defaulting to 4). It is SUBCOMMAND-AWARE: upstream ``--parallel`` exists ONLY on
+    standup/smoketest/experiment (run uses the SEPARATE ``--parallelism``/``-j`` harness-pod
+    count, teardown/plan have neither), so we emit it for those three ONLY; ``None``/absent emits
+    nothing (the default 4 stands). We guard with ``is not None`` (like the existing
+    ``parallelism``→``-j`` line) so an explicit ``0`` is honored. This is DISTINCT from
+    ``flags["parallelism"]``→``-j`` above (number of parallel harness PODS, not stacks) — do NOT
+    conflate them. Pure MECHANISM — HOW MANY stacks to deploy at once (i.e. whether to cap below
+    4 on a small/Kind node) is the agent's judgment in knowledge/multi_stack.md, never an
+    if/elif on the value here."""
     flags = flags or {}
     argv: list[str] = ["llmdbenchmark"]
     if spec:
@@ -138,6 +159,24 @@ def build_argv(
         argv += ["-o", str(flags["overrides"])]
     if flags.get("parallelism") is not None:
         argv += ["-j", str(flags["parallelism"])]
+    # Multi-stack SUBSET (Phase 33): emit --stack <names> to restrict a multi-stack scenario
+    # (N model pools behind one gateway, e.g. guides/multi-model-wva) to one stack or a
+    # comma-separated subset. SUBCOMMAND-AWARE: upstream --stack is accepted ONLY on
+    # standup/smoketest/run/teardown (plan/experiment reject it), so we guard on the subcommand;
+    # an absent/None stack emits nothing (every stack is operated on). PURE MECHANISM — WHICH
+    # stack(s) to target is the agent's judgment (knowledge/multi_stack.md), never an if/elif on
+    # the value.
+    if flags.get("stack") and subcommand in ("standup", "smoketest", "run", "teardown"):
+        argv += ["--stack", str(flags["stack"])]
+    # Per-pool parallelism CAP (Phase 33): emit --parallel <int> to cap how many stacks deploy/
+    # smoketest in parallel (upstream default 4). SUBCOMMAND-AWARE: upstream --parallel is on
+    # standup/smoketest/experiment ONLY (run uses the SEPARATE --parallelism/-j harness-pod count;
+    # teardown/plan have neither), so we guard on the subcommand. `is not None` (mirroring the
+    # parallelism guard above) honors an explicit 0; absent/None emits nothing (default 4 stands).
+    # PURE MECHANISM — HOW MANY stacks at once is the agent's judgment (knowledge/multi_stack.md),
+    # never an if/elif on the value. DISTINCT from flags["parallelism"]->-j (parallel harness PODS).
+    if flags.get("parallel") is not None and subcommand in ("standup", "smoketest", "experiment"):
+        argv += ["--parallel", str(flags["parallel"])]
     if flags.get("stop_on_error"):
         argv.append("--stop-on-error")
     if flags.get("skip_teardown"):
