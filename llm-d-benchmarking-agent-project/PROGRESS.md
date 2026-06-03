@@ -13,6 +13,20 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-03 — Phase 60 (ROADMAP_V4): Infra precondition gate before a long real-cluster standup. Added a
+  `cluster_preconditions` read-only probe to `probe_environment` (`app/tools/probe.py`): a read-only
+  `kubectl version --output json` (already allowlisted) parsed into `cluster_info.server_version` `{major, minor}`,
+  plus the spec's pinned vLLM/NIXL/UCX/NVSHMEM `{repository, tag}` image tags parsed off the rendered scenario YAML.
+  The probe reports FACTS only — no version-comparison `if/elif` in Python. The thresholds (K8s ≥1.29, 1.33+ for
+  sidecars, the ≤1.28 Init:0/1 stall gotcha, vLLM 0.10.0+ / NIXL 0.5.0+ / UCX 0.19.0+ / NVSHMEM 3.3.9+) and verdict
+  bands live as DATA in new `knowledge/infrastructure_preconditions.yaml` (+ prose in `knowledge/preconditions.md`);
+  the LLM reasons over the table to issue the go/no-go. The `schemas.py` probe field was extended additively — the
+  Phase 28 model-override and Phase 45 vLLM-knob entries on the diverged base are both preserved. Hermetic
+  `tests/test_infra_preconditions.py` (10 tests, + command-event coverage) feeds canned 1.27/1.29/1.33 `kubectl version`
+  output and image tags through a fake runner and asserts the extracted facts and the knowledge thresholds; no live
+  cluster, no GPU, no real benchmark run. Branch `feature/roadmap-v4-p60-infra-precond` → `feature/roadmap-v4` (no-ff).
+  Full suite **818 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+
 - 2026-06-03 — Phase 49 (ROADMAP_V4): Surface results.observability serving metrics in the trend store. Added the 3
   §3.4 standard/serving metrics — KV-cache hit rate, GPU utilization, and schedule-delay (queue-depth proxy) — to
   `app/storage/history.py` `_TREND_METRICS` at their nested `standard_metrics.<key>.value` stat path. They are present
