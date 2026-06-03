@@ -21,7 +21,12 @@ class ProbeEnvironmentInput(BaseModel):
                     "cluster_preconditions (the K8s server major.minor from `kubectl version` + the "
                     "`spec`'s pinned vLLM/NIXL/UCX/NVSHMEM image tags — read it BEFORE a long "
                     "real-cluster standup for an honest go/no-go: the go/no-go thresholds and "
-                    "verdict wording live in knowledge/infrastructure_preconditions.yaml, not here)",
+                    "verdict wording live in knowledge/infrastructure_preconditions.yaml, not here), "
+                    "provider_detection (detect the cloud provider — openshift/gke/doks/aks vs kind — "
+                    "from node labels + surface each node's GPU taints; read it to adapt commands "
+                    "and unstick Pending/PROGRAMMED=False failures: the which-CLI (oc vs kubectl) / "
+                    "which-toleration / which-known-issue (GMP / 'Undetected platform' / NVSHMEM) "
+                    "judgment lives in knowledge/infra_providers.yaml, not here)",
     )
     namespace: str | None = Field(default=None, description="Namespace to check for an existing stack")
     spec: str | None = Field(

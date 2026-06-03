@@ -276,6 +276,74 @@ executables:
           "--ignore-not-found": {}
           "--wait": {}
 
+  # ---- OpenShift CLI: the kubectl-equivalent (Phase 64) -----------------
+  # `oc` is OpenShift's drop-in for `kubectl`. On a detected OpenShift cluster the agent prefers
+  # `oc` for the SAME read-only probes/diagnostics it runs with kubectl. This entry is a
+  # READ-ONLY mirror of kubectl's read-only subcommands, referencing the SAME shared value
+  # constraints (kubectl_resource / output_format / namespace / label_selector) — so it is
+  # DATA-EQUIVALENT, with NO Python oc-vs-kubectl branching anywhere. The mutating kubectl
+  # surfaces (apply/delete) are DELIBERATELY NOT mirrored here: `oc` stays strictly read-only in
+  # this phase. Any provider-specific mutation (e.g. an `oc patch` toleration) is authored into
+  # the session workspace and applied via the existing approval-gated mutating path — the
+  # per-provider playbook (which CLI / which toleration / which known issue) lives in
+  # knowledge/infra_providers.yaml, never in Python.
+  oc:
+    subcommands:
+      config:
+        mode: read_only
+        positionals: [ { value: { enum: [current-context, view, get-contexts] } } ]
+        flags:
+          "-o": { takes_value: true, value: { ref: output_format } }
+          "--minify": {}
+      cluster-info: { mode: read_only }
+      version: { mode: read_only, flags: { "--output": { takes_value: true, value: { ref: output_format } }, "--client": {} } }
+      top:
+        mode: read_only
+        positionals: [ { value: { enum: [pod, pods, node, nodes] } } ]
+        flags:
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-A": {}
+          "--all-namespaces": {}
+          "-l": { takes_value: true, value: { ref: label_selector } }
+          "--selector": { takes_value: true, value: { ref: label_selector } }
+          "--no-headers": {}
+          "--sort-by": { takes_value: true, value: { enum: [cpu, memory] } }
+          "--containers": {}
+      get:
+        mode: read_only
+        positionals: [ { value: { ref: kubectl_resource } } ]
+        flags:
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-A": {}
+          "--all-namespaces": {}
+          "-o": { takes_value: true, value: { ref: output_format } }
+          "-l": { takes_value: true }
+          "--selector": { takes_value: true }
+          "--field-selector": { takes_value: true }
+          "--no-headers": {}
+          "-w": {}
+          "--watch": {}
+      logs:
+        mode: read_only
+        positionals: [ ]   # by label selector, not a positional pod name
+        flags:
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-l": { takes_value: true, value: { ref: label_selector } }
+          "--selector": { takes_value: true, value: { ref: label_selector } }
+          "-f": {}
+          "--follow": {}
+          "-p": {}
+          "--previous": {}
+          "-c": { takes_value: true, value: { ref: resource_name } }
+          "--container": { takes_value: true, value: { ref: resource_name } }
+          "--tail": { takes_value: true, value: { ref: positive_int } }
+          "--since": { takes_value: true, value: { ref: duration } }
+          "--timestamps": {}
+          "--all-containers": {}
+
   git:
     subcommands:
       clone:

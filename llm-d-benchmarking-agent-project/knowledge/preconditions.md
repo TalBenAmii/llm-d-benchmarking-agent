@@ -107,3 +107,35 @@ This **complements** `check_capacity` (which sizes weights + KV cache against GP
 asks "does a node ADVERTISE the accelerator / meet the CPU floor?", the other "will the model
 FIT in that accelerator's memory?". The feasibility judgment lives in
 knowledge/accelerators.yaml — never in Python.
+
+## Provider-aware precondition pack (oc-vs-kubectl, GPU taints, known issues)
+On a real cluster the agent must adapt to the **cloud provider** so its commands work and it can
+unstick the common `Pending` / `PROGRAMMED=False` failures. Run `probe_environment` with
+`checks=["provider_detection"]` to get the FACTS:
+- `provider_detection.provider` — the detected provider (`openshift` / `gke` / `doks` / `aks` /
+  `minikube` vs `kind`), inferred from node **labels** (e.g. `cloud.google.com/*` → gke,
+  `doks.digitalocean.com/*` → doks, `node.openshift.io/*` → openshift). `kind` when no node
+  carries a cloud-provider label (the local quickstart).
+- `provider_detection.providers_seen` — every provider hint seen across nodes (mixed/migrating).
+- `provider_detection.gpu_taints` — per-node `{node, key, value, effect}` for each taint whose
+  key names a GPU; **these are what leave model-server pods `Pending`** until you author a
+  matching toleration.
+
+The probe makes **no decision** — that judgment lives in
+`read_knowledge("infra_providers")`. Load it and reason over its tables:
+- **OpenShift** → prefer **`oc`** (not `kubectl`) for read-only diagnostics (the `oc` allowlist
+  entry mirrors kubectl's read-only subcommands); BEFORE standup confirm **no ServiceMesh(OSSM)/
+  Istio** install conflicts with the gateway; if a `gpu_taint` leaves pods `Pending`, author the
+  matching `nvidia.com/gpu` toleration (Equal+value when the taint is value-bearing — e.g.
+  `NVIDIA-L40S-PRIVATE` — else Exists).
+- **DOKS / GKE / AKS** → keep `kubectl`; if a `gpu_taint` leaves pods `Pending`, author the
+  `nvidia.com/gpu` Exists toleration; surface the provider's known issues — **GKE**: Google
+  Managed Prometheus (GMP) is the metrics path, the **"Undetected platform"** vLLM 0.10.0 fix,
+  and the **NVSHMEM** DeepEP caveats; **DOKS**: LoadBalancer-`<pending>`; **AKS**: NRI
+  locked-memory + `nvidia-peermem`.
+
+Any toleration/patch is **advice the user approves** — author it **into the session workspace**
+(prefer the Phase 45 scenario-override path so it is validated via plan/`--dry-run`) and apply it
+only as an **approval-gated mutating step**; the sibling repos stay read-only. Every which-CLI /
+which-toleration / which-known-issue decision is sourced from knowledge/infra_providers.yaml,
+**never** a Python `if/elif`.

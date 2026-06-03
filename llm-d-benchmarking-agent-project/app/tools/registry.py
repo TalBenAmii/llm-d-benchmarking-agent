@@ -72,7 +72,9 @@ _DESCRIPTIONS = {
         "Sense the local environment in one structured snapshot: container runtime, "
         "repos present, toolchain, venv, kind clusters, kube context/cluster reachability, "
         "namespaces, and whether a stack is already running in a namespace. Read-only; "
-        "ALWAYS run this first before proposing or doing anything."
+        "ALWAYS run this first before proposing or doing anything. Add checks=['provider_detection'] "
+        "to detect the cloud provider (openshift/gke/doks/aks vs kind) from node labels + surface "
+        "GPU taints, then read_knowledge('infra_providers') to pick the right CLI/toleration/fix."
     ),
     "list_catalog": (
         "Enumerate the valid specs, harnesses, workload profiles, and scenarios that "

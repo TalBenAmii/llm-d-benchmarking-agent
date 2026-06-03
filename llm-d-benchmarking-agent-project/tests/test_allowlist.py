@@ -69,6 +69,68 @@ def test_readonly_probes_allowed(allowlist):
     assert d.allowed and d.mode == READ_ONLY
 
 
+# ---- Phase 64: `oc` is the kubectl-equivalent read-only mirror ------------
+# oc must accept EXACTLY the same read-only subcommands as kubectl (same value constraints),
+# and DENY the mutating/unknown subcommands kubectl gates behind approval. The per-provider
+# playbook (which CLI/toleration/known-issue) is knowledge, not Python — the allowlist just
+# proves oc and kubectl share the read-only surface.
+
+# The read-only commands both CLIs must accept identically (argv after the executable).
+_OC_KUBECTL_READONLY_CASES = [
+    ["config", "current-context"],
+    ["config", "view", "--minify", "-o", "json"],
+    ["config", "get-contexts"],
+    ["cluster-info"],
+    ["version", "--output", "json"],
+    ["version", "--client"],
+    ["get", "pods", "-n", "llmd-quickstart", "-o", "json"],
+    ["get", "nodes", "-o", "json"],
+    ["get", "events", "-A"],
+    ["get", "pods", "-l", "app=vllm", "--field-selector", "status.phase=Pending"],
+    ["top", "pods", "-n", "llmd-quickstart"],
+    ["top", "nodes", "--sort-by", "cpu"],
+    ["logs", "-n", "llmd-quickstart", "-l", "function=load_generator", "--tail", "100"],
+]
+
+
+def test_oc_mirrors_kubectl_readonly_surface(allowlist):
+    """Every read-only kubectl command is accepted under `oc` with the SAME read-only mode."""
+    for tail in _OC_KUBECTL_READONLY_CASES:
+        oc = allowlist.validate(["oc", *tail])
+        kc = allowlist.validate(["kubectl", *tail])
+        assert kc.allowed and kc.mode == READ_ONLY, f"kubectl {tail} should be read-only"
+        assert oc.allowed and oc.mode == READ_ONLY, f"oc {tail} should be read-only like kubectl"
+        assert not oc.requires_approval, f"oc {tail} must auto-run (read-only)"
+
+
+def test_oc_value_constraints_match_kubectl(allowlist):
+    """oc enforces the SAME shared value constraints as kubectl (it references the same refs)."""
+    # Bad namespace (uppercase violates the RFC1123 label) is rejected on BOTH.
+    assert not allowlist.validate(["oc", "get", "pods", "-n", "BadNS", "-o", "json"]).allowed
+    assert not allowlist.validate(["kubectl", "get", "pods", "-n", "BadNS", "-o", "json"]).allowed
+    # An off-enum resource is rejected on BOTH (kubectl_resource enum is shared).
+    assert not allowlist.validate(["oc", "get", "secrets", "-o", "json"]).allowed
+    assert not allowlist.validate(["kubectl", "get", "secrets", "-o", "json"]).allowed
+    # A bad output format is rejected on BOTH (output_format enum is shared).
+    assert not allowlist.validate(["oc", "get", "pods", "-o", "evil"]).allowed
+
+
+def test_oc_denies_mutating_and_unknown_subcommands(allowlist):
+    """oc is a strictly READ-ONLY mirror — kubectl's mutating subcommands are NOT mirrored,
+    and unknown subcommands are denied (no apply/patch/delete surface added in this phase)."""
+    # apply/delete ARE allowlisted under kubectl (mutating) but DELIBERATELY absent on oc.
+    assert allowlist.validate(["kubectl", "apply", "-f", "job.yaml"]).allowed
+    assert not allowlist.validate(["oc", "apply", "-f", "job.yaml"]).allowed
+    assert not allowlist.validate(["oc", "delete", "job", "myjob"]).allowed
+    # patch is allowlisted on NEITHER (provider toleration patches go via the workspace path).
+    assert not allowlist.validate(["oc", "patch", "deployment", "x", "-p", "{}"]).allowed
+    assert not allowlist.validate(["kubectl", "patch", "deployment", "x", "-p", "{}"]).allowed
+    # An entirely unknown oc subcommand is denied.
+    assert not allowlist.validate(["oc", "login", "https://api.cluster:6443"]).allowed
+    # Shell metacharacters are screened on oc too.
+    assert not allowlist.validate(["oc", "get", "pods", "-n", "ns; rm -rf /"]).allowed
+
+
 def test_git_clone_llmd_allowed(allowlist):
     d = allowlist.validate(["git", "clone", "https://github.com/llm-d/llm-d-benchmark"])
     assert d.allowed and d.mode == MUTATING
