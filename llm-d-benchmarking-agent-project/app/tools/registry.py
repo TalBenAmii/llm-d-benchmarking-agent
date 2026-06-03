@@ -273,7 +273,13 @@ _DESCRIPTIONS = {
         "— see knowledge/collect_only.md for WHEN. "
         "To REPLAY a real dataset instead of a synthetic workload profile (run/experiment only), "
         "set flags.dataset to its URL/path — it emits `-x`; WHEN to replay vs stay synthetic is "
-        "your judgment, see knowledge/dataset_replay.md."
+        "your judgment, see knowledge/dataset_replay.md. "
+        "To round-trip a reusable run-config via the CLI's OWN mechanism (run only): set "
+        "flags={'generate_config': True} to GENERATE a run-config YAML from current settings under "
+        "the session workspace and exit (emits --generate-config; read-only/auto-runs), then later "
+        "set flags={'run_config': '<path>'} to REPLAY it (emits -c; still approval-gated). WHEN to "
+        "generate vs reuse vs author in-workspace is your judgment, see "
+        "knowledge/runconfig_roundtrip.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "
