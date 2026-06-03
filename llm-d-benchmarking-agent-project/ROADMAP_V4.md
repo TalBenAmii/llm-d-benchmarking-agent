@@ -330,7 +330,7 @@ skipped / 0 failed**; ruff + mypy clean.
 - **HERMETIC-TEST:** `build_argv` emits the timeout flags; allowlist permits them; runner
   deadline still applies.
 
-## Phase 39 — Cloud results sink for the run flag (-r gs://, s3://) — TODO
+## Phase 39 — Cloud results sink for the run flag (-r gs://, s3://) — DONE
 *Catalog ref: Area A/C — "Run results destination / cloud upload (-r/--output)" (🟡; gs/s3 deliberately not allowlisted).*
 
 - **GOAL:** let users with a bucket send run results to GCS/S3 instead of local-only.
@@ -340,6 +340,14 @@ skipped / 0 failed**; ruff + mypy clean.
 - **ACCEPTANCE:** a user can opt into a `gs://`/`s3://` results sink; the default stays local.
 - **HERMETIC-TEST:** `build_argv` emits `-r gs://...`; allowlist permits the cloud scheme only
   when opted in; local stays the default.
+
+**RESULT (2026-06-04):** Shipped a DEDICATED `results_sink` value constraint (`^(gs|s3)://...$|^path$`)
+pointed ONLY at `run`'s `-r/--output` — opt-in `gs://`/`s3://` bucket URIs OR the `local` default;
+left `--workspace/--ws/-e/--experiments` on the genuine-path `output_dir` (no cloud scheme widening).
+The "do you have a bucket?" judgment lives in `knowledge/cloud_results_sink.md`; `schemas.py`/`registry.py`
+document the opt-in. Upload internals stay the DEFERRED Phase 47. Merged into `feature/roadmap-v4` (no-ff;
+one additive registry.py conflict resolved by keeping both the Phase 33/38 and the cloud-sink description
+blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 
 ## Phase 40 — Trigger the CLI's local --analyze plot families — TODO
 *Catalog ref: Area A/C/E — "Local analysis after collection (--analyze)" (🟡).*

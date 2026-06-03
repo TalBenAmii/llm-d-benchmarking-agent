@@ -13,6 +13,21 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 39 (ROADMAP_V4): Cloud results sink for the run flag (`-r gs://`, `s3://`).
+  Promoted `run`'s `-r/--output` from local-only to an OPT-IN cloud destination keyword. Added a
+  DEDICATED `results_sink` value constraint to `security/allowlist.yaml` (DATA) —
+  `^(gs|s3)://[A-Za-z0-9._/-]+$|^[A-Za-z0-9._/-]+$` — pointed ONLY at `run`'s `-r`/`--output`, so the
+  agent may emit a `gs://bucket/...`/`s3://bucket/...` URI when the user explicitly has a bucket, or
+  the `local` default otherwise. Deliberately NOT a widening of `output_dir`: `--workspace/--ws/-e/
+  --experiments` stay on `output_dir` (genuine filesystem paths, no cloud scheme), and the blanket
+  metacharacter screen still rejects shell-dangerous tokens. `schemas.py` + `registry.py` document the
+  opt-in and point at `knowledge/cloud_results_sink.md` for the "do you have a bucket?" judgment; the
+  actual upload (gcloud/aws helpers) stays the DEFERRED Phase 47. `tests/test_cloud_results_sink.py`
+  adds hermetic coverage (emission, allowlist accepts gs/s3 + local, rejects injection, default-local,
+  schema, knowledge discoverability). Merged into `feature/roadmap-v4` (no-ff); one additive registry.py
+  conflict resolved by keeping BOTH the Phase 33/38 (`--stack`/`--parallel`/`--*-timeout`) and the
+  cloud-sink description blocks. Branch `feature/roadmap-v4-p39-cloud-sink`. Suite **1239 passed / 20
+  skipped / 0 failed**; ruff + mypy clean. — done
 - 2026-06-04 — Phase 38 (ROADMAP_V4): Model the CLI's per-phase timeouts (`--*-timeout`).
   Threaded the llmdbenchmark CLI's OWN per-phase timeout flags as pure mechanism + DATA (judgment in
   `knowledge/phase_timeouts.md`): `build_argv` (`app/tools/execute.py`) iterates a static
