@@ -125,6 +125,18 @@ def build_argv(
     agent's judgment (knowledge/analysis.md), never an if/elif on the value. Omitted/None/False
     emits nothing.
 
+    ``flags["generate_config"]`` / ``flags["run_config"]`` (Phase 42) drive the CLI's OWN
+    run-config round-trip, in addition to the agent's in-workspace write_and_validate_config.
+    Both are upstream ``run``-ONLY, so we emit them only for ``subcommand == "run"``:
+    ``generate_config`` => ``--generate-config`` (GENERATE a reusable run-config YAML from the
+    current settings under ``--workspace`` — anchored to ctx.workspace by execute_llmdbenchmark —
+    and EXIT; it deploys nothing, so the allowlist auto-runs it like ``--dry-run``);
+    ``run_config`` => ``-c <path>`` (REPLAY a previously generated run-config — run-only mode —
+    where ``<path>`` is the workspace-relative file ``--generate-config`` wrote). PURE MECHANISM:
+    WHEN to generate vs reuse vs author in-workspace is judgment in
+    knowledge/runconfig_roundtrip.md, never an if/elif on the value. No env var is set (the CLI
+    consumes ``--generate-config``/``run_config`` directly). Omitted ⇒ nothing emitted.
+
     ``flags["repo_path"]`` (Phase 46) emits ``--llmd-repo-path <path>`` — a real ``standup``
     argparse flag — pointing the KUSTOMIZE deploy method (``-t kustomize``) at a LOCAL llm-d
     clone instead of letting upstream clone ``https://github.com/llm-d/llm-d.git`` into
@@ -279,6 +291,25 @@ def build_argv(
         value = flags.get(key)
         if value is not None and subcommand in accepts:
             argv += [cli_flag, str(value)]
+    # Run-config round-trip (Phase 42): use the CLI's OWN --generate-config / -c reuse
+    # mechanism. Both are upstream `run`-ONLY (interface/run.py: --generate-config is store_true,
+    # "Generate a run config YAML from current settings and exit"; -c/--config dest=run_config,
+    # "Path to run config YAML file (enables run-only mode)"), so we guard on subcommand == "run".
+    #   * flags["generate_config"] => append --generate-config: the CLI writes a reusable run-config
+    #     YAML from the current settings UNDER --workspace (which execute_llmdbenchmark anchors to
+    #     ctx.workspace for a non-preview run) and EXITS — it deploys nothing, so the allowlist
+    #     marks it a read_only_trigger and it auto-runs (like --list-endpoints/--dry-run).
+    #   * flags["run_config"] => append -c <path>: REPLAY a previously generated run-config
+    #     (run-only mode). The path is the file --generate-config emitted under the session
+    #     workspace, so a generated config lands under and replays from the same session dir.
+    # This is pure MECHANISM. WHEN to generate vs reuse via -c vs author in-workspace with
+    # write_and_validate_config is the agent's judgment in knowledge/runconfig_roundtrip.md, never
+    # an if/elif on the value. We emit the short -c so its value can be a workspace-relative path,
+    # and set NO env var (the CLI consumes --generate-config/run_config directly).
+    if flags.get("generate_config") and subcommand == "run":
+        argv.append("--generate-config")
+    if flags.get("run_config") and subcommand == "run":
+        argv += ["-c", str(flags["run_config"])]
     if flags.get("list_endpoints"):
         argv.append("--list-endpoints")
     # Collect-only / skip-execution mode (Phase 36): emit ``-z`` to SKIP the harness/load
@@ -330,6 +361,10 @@ async def execute_llmdbenchmark(
     # its --workspace to the session dir: the CLI then writes the report UNDER this session
     # (locate_and_parse_report searches the workspace recursively) and it persists with the
     # session. Mirrors the experiment anchoring below.
+    # This anchoring also covers the Phase-42 round-trip: a `run --generate-config` and a
+    # `run -c <path>` replay both fall through here (neither sets list_endpoints/dry_run), so the
+    # generated run-config is WRITTEN under the session --workspace and a later -c REPLAYS a
+    # workspace-relative config from the same session dir.
     if subcommand == "run" and not flags.get("list_endpoints") and not flags.get("dry_run"):
         flags.setdefault("output", "local")
         flags.setdefault("workspace", str(ctx.workspace))

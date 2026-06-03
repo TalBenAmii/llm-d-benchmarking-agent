@@ -215,6 +215,17 @@ value_constraints:
   # dataset-vs-synthetic) is the agent's judgment in knowledge/dataset_replay.md, not data here.
   dataset_url:
     regex: "^(https?|hf|gs|s3)://[A-Za-z0-9._:/@~-]+$|^[A-Za-z0-9._/~-]+$"
+  # ---- run-config round-trip (Phase 42): -c/--config value ----
+  # The path to a run-config YAML that `run -c <path>` REPLAYS (upstream argparse dest
+  # `run_config`, "Path to run config YAML file (enables run-only mode)"). It is the file
+  # PREVIOUSLY emitted by `run --generate-config`, which writes it UNDER the session
+  # --workspace; so this is a plain, workspace-relative *.yaml/*.yml path. Pinned with NO `..`
+  # traversal (mirrors json_path/manifest_path/spec_workspace_path) so only a normal config
+  # file is expressible, never a directory-climbing escape; the blanket metacharacter screen in
+  # app/security/allowlist.py rejects shell-dangerous tokens as defense-in-depth. WHEN to
+  # generate-vs-replay-vs-author-in-workspace is the agent's judgment in
+  # knowledge/runconfig_roundtrip.md, not data here.
+  run_config_path: { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.ya?ml$" }
 
 executables:
 
@@ -732,6 +743,17 @@ executables:
           # timeout layers do not fight. WHEN/WHAT judgment in knowledge/phase_timeouts.md.
           "--wait-timeout": { takes_value: true, value: { ref: positive_int } }
           "--data-access-timeout": { takes_value: true, value: { ref: positive_int } }
+          # Phase 42: run-config round-trip — both flags are upstream `run`-ONLY.
+          # --generate-config GENERATES a reusable run-config YAML from the current settings and
+          # EXITS (deploys nothing); it auto-runs like --list-endpoints/--dry-run, so it is a
+          # read_only_trigger. The generated config lands under the session --workspace.
+          "--generate-config": { read_only_trigger: true }
+          # -c/--config REPLAYS a previously generated run-config (run-only mode). A replay still
+          # executes the benchmark load against an existing stack, so it STAYS mutating (NOT a
+          # read_only_trigger) — approval-gated like a normal run. Value-pinned to a *.yaml/*.yml
+          # config path (no `..`). Round-trip: `run … --generate-config` then `run -c <path>`.
+          "-c": { takes_value: true, value: { ref: run_config_path } }
+          "--config": { takes_value: true, value: { ref: run_config_path } }
           "--list-endpoints": { read_only_trigger: true }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }

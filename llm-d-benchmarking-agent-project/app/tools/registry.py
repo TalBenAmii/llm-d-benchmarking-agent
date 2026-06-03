@@ -294,7 +294,13 @@ _DESCRIPTIONS = {
         "session-lifecycle, Prometheus time-series) beside the harness PNGs, set flags={'analyze': "
         "True} on a `run` — it emits `--analyze`; the plots are surfaced via the artifact route and "
         "are SUPPLEMENTARY (your SLO/goodput/Pareto math is unchanged). WHEN to ask for them is "
-        "your judgment, see knowledge/analysis.md."
+        "your judgment, see knowledge/analysis.md. "
+        "To round-trip a reusable run-config via the CLI's OWN mechanism (run only): set "
+        "flags={'generate_config': True} to GENERATE a run-config YAML from current settings under "
+        "the session workspace and exit (emits --generate-config; read-only/auto-runs), then later "
+        "set flags={'run_config': '<path>'} to REPLAY it (emits -c; still approval-gated). WHEN to "
+        "generate vs reuse vs author in-workspace is your judgment, see "
+        "knowledge/runconfig_roundtrip.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "
