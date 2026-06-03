@@ -16,7 +16,9 @@ Two artifact modes:
   skeleton, validates the knob SHAPE against the repo's own scenario examples (read LIVE so
   it can't drift), and writes into ``ctx.workspace`` only — never the read-only spec.
   WHICH knobs to set is JUDGMENT and lives in ``knowledge/vllm_overrides.md`` — there is no
-  knob-selection logic in this Python.
+  knob-selection logic in this Python. The ``tracing.*`` family (OpenTelemetry tracing config;
+  Phase 54) is also a supported dotted override — the benchmark CONFIGURES tracing on the
+  modelservice pods, it never COLLECTS traces; see ``knowledge/observability.md``.
 
   Alongside the scenario, it ALSO authors a companion ``--spec`` SPECIFICATION file into the
   same workspace (``<name>.spec.yaml``) whose ``scenario_file.path`` points at the authored
@@ -59,6 +61,19 @@ _TEMPLATE_DIR_SUBPATH = ("config", "templates", "jinja")
 # route the authored scenario takes into the CLI's determinism gate.
 _SPEC_SUFFIX = ".spec.yaml"
 
+# Top-level scenario-item keys the upstream modelservice jinja renders behind a
+# ``{% if <key> is defined %}`` guard but the repo's scenario EXAMPLE files NEVER set, so
+# ``_scenario_reference`` cannot discover them from the examples. They are nonetheless VALID
+# scenario knobs: ``config/templates/jinja/13_ms-values.yaml.j2`` renders ``tracing`` (under
+# ``{% if tracing is defined and tracing.enabled is defined %}``), and
+# ``render_plans.py`` deep_merge(defaults, scenario_item)s a scenario item onto
+# ``defaults.yaml``, so a top-level ``tracing`` key on a scenario item merges through even
+# though no example/default sets it. We union these into the reference's ``knob_keys`` so the
+# validator ACCEPTS them — without weakening the typo-screen for every other key. These are
+# soft-optional because the examples omit them; do NOT special-case any value here (the
+# generic dotted deep-merge in ``_build_scenario_document`` already authors ``tracing.*``).
+_SOFT_OPTIONAL_KNOBS = {"tracing"}
+
 # Intrinsic shape contract used when the repo / its scenario examples are absent (so the
 # tool degrades gracefully to the format invariant rather than failing). A scenario item is
 # a mapping carrying a non-empty string ``name`` plus >=1 override knob.
@@ -94,7 +109,9 @@ def _scenario_reference(bench_repo: Path) -> dict[str, Any]:
             examples.append(str(path.relative_to(scen_dir)).removesuffix(".yaml"))
     if not examples:
         return {}
-    return {"examples": sorted(examples), "knob_keys": sorted(knob_keys)}
+    # Union in the soft-optional knobs (e.g. ``tracing``) the jinja renders but the examples
+    # omit, so the validator accepts an authored tracing block even though no example yields it.
+    return {"examples": sorted(examples), "knob_keys": sorted(knob_keys | _SOFT_OPTIONAL_KNOBS)}
 
 
 def validate_scenario_structure(document: dict[str, Any], reference: dict[str, Any]) -> list[str]:
