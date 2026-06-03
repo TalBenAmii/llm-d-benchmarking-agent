@@ -55,9 +55,15 @@ def test_discover_charts_finds_images_relative_to_session(tmp_path):
         "tal-run-1/analysis/infperf_1/latency_vs_qps.png",
         "tal-run-1/analysis/infperf_1/throughput_vs_latency.png",
     ]
-    # Each chart carries its session id + a human title; the .txt is excluded.
+    # Each chart carries its session id + a human title; the .txt is excluded. The title is
+    # prefixed with the family subdir under analysis/ (here "infperf_1") so nested families don't
+    # collide on bare filenames (Phase 40), and `family` records that subdir explicitly.
     assert all(c["session_id"] == "sess123" for c in charts)
-    assert {c["title"] for c in charts} == {"Latency vs qps", "Throughput vs latency"}
+    assert {c["title"] for c in charts} == {
+        "Infperf 1: Latency vs qps",
+        "Infperf 1: Throughput vs latency",
+    }
+    assert all(c["family"] == "infperf_1" for c in charts)
 
 
 def test_discover_charts_empty_when_no_analysis_dir(tmp_path):

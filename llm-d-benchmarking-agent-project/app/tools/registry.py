@@ -289,7 +289,12 @@ _DESCRIPTIONS = {
         "knowledge/phase_timeouts.md. "
         "To send a `run`'s results to a CLOUD bucket instead of local-only, set flags.output to a "
         "`gs://bucket/...` or `s3://bucket/...` URI (default is `local`); this is OPT-IN — WHETHER "
-        "the user has a bucket and WHICH one is their choice, see knowledge/cloud_results_sink.md."
+        "the user has a bucket and WHICH one is their choice, see knowledge/cloud_results_sink.md. "
+        "To ALSO generate the CLI's local matplotlib plot families (per-request distributions, "
+        "session-lifecycle, Prometheus time-series) beside the harness PNGs, set flags={'analyze': "
+        "True} on a `run` — it emits `--analyze`; the plots are surfaced via the artifact route and "
+        "are SUPPLEMENTARY (your SLO/goodput/Pareto math is unchanged). WHEN to ask for them is "
+        "your judgment, see knowledge/analysis.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "

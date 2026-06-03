@@ -95,6 +95,44 @@ When the reports carry them, `pareto.informational_objectives` surfaces the §3.
 `leader` names the run that leads each informational metric. A metric absent from every run
 is simply omitted — say nothing about it. On the CPU-sim quickstart these are usually absent.
 
+## Optional `--analyze` plot families: supplementary pictures, not new math
+
+A `run` can be told to ALSO render the CLI's own workstation matplotlib **plot families** by
+setting `flags={'analyze': True}` on `execute_llmdbenchmark(subcommand='run', ...)` — it emits a
+bare `--analyze`. This is **run-only** (upstream defines `--analyze` on the `run` subcommand
+alone; never pass it on standup/plan/experiment) and it does **not** change the run's mutating
+mode (a real run still loads the cluster and stays approval-gated). It is pure *mechanism*; the
+judgment below is yours.
+
+It writes **three extra families**, all under the run's `analysis/` dir, **in addition** to the
+harness's own latency/throughput PNGs:
+
+- **`analysis/distributions/`** — *per-request distributions* (histograms/CDFs of TTFT, ITL,
+  end-to-end latency, token counts). Reach for this when the user asks about the **shape of the
+  tail** ("are a few requests dragging the p99?") rather than a single percentile.
+- **`analysis/session/`** — *session-lifecycle* bar charts (session rate, session duration
+  mean/p99, events & output-tokens per session, failed/cancelled sessions). Useful for
+  **multi-turn / agentic** workloads where per-session behavior matters; on single-turn runs the
+  harness writes no session-lifecycle files, so this family is simply empty (never fabricated).
+- **`analysis/graphs/`** — *Prometheus time-series* line graphs over the captured
+  `metrics/raw/*.log`. These need the **monitoring producer** to have run, so set
+  `flags['monitoring']=True` (Phase 27) on the standup/run too — otherwise there's nothing to
+  plot. Use them to **explain WHY** the frontier looks the way it does (KV-cache hit rate /
+  queue depth / GPU util over the run), corroborating the §3.4 informational metrics above.
+
+Each requires **matplotlib** on the workstation; if it's absent the CLI skips that family without
+failing the run. The generated PNGs are surfaced **alongside** the harness charts through the
+same artifact route (`locate_and_parse_report` lists them in `charts`, each titled with its
+family subdir — `Distributions: …`, `Session: …`, `Graphs: …` — so the families don't collide).
+
+**These plots are SUPPLEMENTARY visualizations — they do NOT change any number.** Your SLO
+verdicts, goodput estimate, and Pareto/`slo_frontier` analysis come from `analyze_results` over
+the **validated Benchmark Report**, exactly as above, whether or not `--analyze` ran. Use the
+plots to *illustrate* a finding to the user ("here's the TTFT distribution behind that p99"),
+never to derive the recommendation. WHEN to ask for them: the user wants to *see* the data
+(tail shape, per-session breakdown, time-series), or you're explaining a non-obvious frontier.
+Skip them for a quick pass/fail check, or when the user just wants the headline goodput number.
+
 ## Caveat that still applies on the kind/CPU-sim quickstart
 
 The simulated CPU engine's absolute numbers are **not** representative of GPU serving, and

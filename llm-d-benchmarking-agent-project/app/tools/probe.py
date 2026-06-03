@@ -579,7 +579,14 @@ def _discover_charts(report_path: Path, sessions_root: Path) -> list[dict[str, s
     ``analysis/`` tree beside the report. We locate the run's session dir (the path component
     directly under ``<workspace>/sessions``) so each chart can be expressed as a session-relative
     path the ``/api/sessions/<sid>/artifact`` route serves. Returns ``[]`` when the report isn't
-    under the per-session workspace, or when the run produced no charts (CPU-sim / guidellm)."""
+    under the per-session workspace, or when the run produced no charts (CPU-sim / guidellm).
+
+    The CLI's optional ``--analyze`` (Phase 40) writes three EXTRA plot families into nested
+    subdirs of ``analysis/`` — ``distributions/`` (per-request), ``session/`` (session-lifecycle),
+    and ``graphs/`` (Prometheus time-series). ``rglob`` already finds them; we carry the family
+    subdir (the path component(s) between ``analysis/`` and the file) into each chart's ``title``
+    and an explicit ``family`` field so the UI can GROUP them and the three families don't collide
+    on bare filenames. Pure mechanism — no judgment, no per-family branching."""
     try:
         rel_to_sessions = report_path.resolve().relative_to(sessions_root.resolve())
     except ValueError:
@@ -605,11 +612,27 @@ def _discover_charts(report_path: Path, sessions_root: Path) -> list[dict[str, s
     for img in sorted(analysis.rglob("*")):
         if img.suffix.lower() not in _CHART_SUFFIXES or not img.is_file():
             continue
-        charts.append({
-            "title": img.stem.replace("_", " ").strip().capitalize(),
+        # The family is the subdir(s) of analysis/ holding this image (e.g. "distributions",
+        # "session", "graphs" from --analyze; "" for charts written directly into analysis/).
+        # Carrying it into the title keeps the three --analyze families from colliding on bare
+        # filenames and lets the UI group them; pure mechanism, no per-family branching.
+        family = str(img.resolve().parent.relative_to(analysis.resolve()))
+        if family == ".":
+            family = ""
+        name = img.stem.replace("_", " ").strip().capitalize()
+        if family:
+            family_label = family.replace("_", " ").replace("/", " / ").title()
+            title = f"{family_label}: {name}"
+        else:
+            title = name
+        chart: dict[str, str] = {
+            "title": title,
             "session_id": sid,
             "path": str(img.resolve().relative_to(session_dir)),
-        })
+        }
+        if family:
+            chart["family"] = family
+        charts.append(chart)
     return charts
 
 def _names_from_json(text: str) -> list[str]:
