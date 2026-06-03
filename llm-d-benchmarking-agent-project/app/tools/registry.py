@@ -239,7 +239,10 @@ _DESCRIPTIONS = {
         "`models` field (a HF id/short name) — it emits `-m`; FIRST run "
         "check_capacity(overrides={'model': <same id>}) so the pre-flight validates that EXACT "
         "model (sizing + gated access). WHICH model is your judgment — see "
-        "knowledge/model_override.md."
+        "knowledge/model_override.md. "
+        "To RE-COLLECT/RE-ANALYZE the results of a prior `run` WITHOUT re-running the benchmark "
+        "load, set flags={'skip': True} on a `run` (emits -z; collect-only, read-only/auto-runs) "
+        "— see knowledge/collect_only.md for WHEN."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "

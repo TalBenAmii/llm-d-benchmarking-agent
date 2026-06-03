@@ -626,6 +626,13 @@ executables:
           # Phase 31: step selection / re-run a single failed step (or range) of the phase.
           "-s": { takes_value: true, value: { ref: step_list } }
           "--step": { takes_value: true, value: { ref: step_list } }
+          # Phase 36: collect/analyze-only mode. -z/--skip SKIPS the load execution and only
+          # collects + analyzes data from the EXISTING results of a prior run in the workspace
+          # (upstream help: "Skip execution and only collect data from existing results"). It
+          # mutates nothing on the cluster, so it is a read-only trigger (auto-runs), exactly
+          # like --list-endpoints / --dry-run. Upstream defines -z/--skip on `run` ALONE.
+          "-z": { read_only_trigger: true }
+          "--skip": { read_only_trigger: true }
           "--list-endpoints": { read_only_trigger: true }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
