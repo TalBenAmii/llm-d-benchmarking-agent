@@ -56,3 +56,31 @@ ready it includes a `standup_suggestion`.
   stand up is yours and the user's; the readiness check is only the mechanism.
 `orchestrate_benchmark_run` applies this same gate automatically before submitting a Job
 (see knowledge/orchestrator.md).
+
+## Infra precondition gate (before a real-cluster standup)
+Before committing to a **long real-cluster standup** — especially a sidecar-based prefill/decode
+(P/D) guide — run `probe_environment` with `checks=["cluster_preconditions"]` and the planned
+`spec` (e.g. `spec="cicd/kind"`). This is a read-only go/no-go you give the user UP FRONT,
+instead of letting them watch an opaque `Init:0/1` stall eat minutes into the standup before it
+fails.
+
+The check returns FACTS only:
+- `cluster_preconditions.server_version` — the cluster's **Kubernetes server** `major.minor`
+  (from `kubectl version --output json`; a trailing `+` like GKE's `"29+"` is stripped). `null`
+  when there's no reachable cluster yet or kubectl returned client-only output.
+- `cluster_preconditions.image_tags` — the spec's pinned image tags parsed from its scenario
+  YAML (`{name, repository, tag, path}` for each, e.g. `images.vllm` → `v0.8.2`).
+
+The check makes **no verdict** — that judgment lives in
+`read_knowledge("infrastructure_preconditions")`. Load it and reason over its thresholds:
+- **K8s 1.27 (≤ 1.28):** the sidecar P/D guide won't init (stuck in `Init:0/1`) — tell the user
+  to **upgrade to 1.33+** or **pick a non-sidecar path** (e.g. `cicd/kind` / optimized-baseline).
+- **K8s 1.29 (1.29–1.32):** runs (clears the 1.29 minimum), but **1.33+ is recommended** for
+  full sidecar init-container support — green for non-sidecar paths, "should work, recommend
+  1.33+" for sidecar P/D.
+- **K8s 1.33+:** green.
+- Flag any **below-minimum** image tags (vLLM 0.10.0 / NIXL 0.5.0 / UCX 0.19.0 / NVSHMEM 3.3.9).
+
+This gate is **advisory for the Kind / CPU-sim MVP** — a freshly created Kind cluster runs a
+modern Kubernetes, and the quickstart path uses the inference-**sim** image (not real vLLM), so
+the vLLM/NIXL minimums don't apply to it. It **matters on a real cluster** the user points us at.

@@ -22,6 +22,7 @@ _ALL_CHECKS = [
     "kind_clusters", "kube_context", "cluster_info", "namespaces", "stack",
     "prometheus_crds",
     "node_capacity",
+    "cluster_preconditions",
 ]
 
 # The Prometheus-operator CRDs the benchmark's --monitoring path needs (PodMonitor +
@@ -36,6 +37,7 @@ async def probe_environment(
     *,
     checks: list[str] | str = "all",
     namespace: str | None = None,
+    spec: str | None = None,
 ) -> dict[str, Any]:
     """Gather precondition signals in one structured snapshot."""
     wanted = _ALL_CHECKS if (checks == "all" or not checks) else [c for c in checks if c in _ALL_CHECKS]
@@ -63,6 +65,8 @@ async def probe_environment(
         out["prometheus_crds"] = await _probe_prometheus_crds(ctx)
     if "node_capacity" in wanted:
         out["node_capacity"] = await _probe_node_capacity(ctx)
+    if "cluster_preconditions" in wanted:
+        out["cluster_preconditions"] = await _probe_cluster_preconditions(ctx, spec)
     return out
 
 
@@ -203,6 +207,36 @@ async def _probe_node_capacity(ctx: ToolContext) -> dict[str, Any]:
         "available": True,
         "nodes": nodes,
         "min_allocatable_cpu": min(allocs) if allocs else None,
+    }
+
+
+async def _probe_cluster_preconditions(ctx: ToolContext, spec: str | None) -> dict[str, Any]:
+    """Report the FACTS an infra precondition gate needs BEFORE a long real-cluster standup:
+    the probed Kubernetes **server** major.minor (from the already-allowlisted read-only
+    ``kubectl version --output json``) and the chosen spec's pinned **image tags** (vLLM / NIXL /
+    UCX / NVSHMEM and any other ``{repository, tag}`` in the scenario YAML on disk).
+
+    MECHANISM ONLY — it reports numbers, never a verdict. WHETHER the probed K8s version can run
+    the sidecar-based P/D guide (>=1.29 runs, 1.33+ for full sidecar support, <=1.28 stalls in
+    Init:0/1), and whether the image tags clear the tested minimums (vLLM 0.10.0+ / NIXL 0.5.0+ /
+    UCX 0.19.0+ / NVSHMEM 3.3.9+), is the agent's judgment, grounded in
+    knowledge/infrastructure_preconditions.yaml (+ prose in knowledge/preconditions.md) — there
+    is no version-comparison ``if/elif`` here. Never raises; repos stay read-only.
+
+    Sourced from docs/infrastructure.md: on K8s 1.27 the sidecar guide gets stuck in Init:0/1, so
+    reporting the server version up front turns that opaque post-standup stall into an honest
+    go/no-go."""
+    server_version: dict[str, Any] | None = None
+    if shutil.which("kubectl"):
+        res = await ctx.run_readonly(["kubectl", "version", "--output", "json"], timeout=12.0)
+        if res.exit_code == 0:
+            server_version = _server_version(res.output)
+    image_tags = _parse_image_tags(ctx, spec)
+    return {
+        "available": server_version is not None,
+        "spec": spec,
+        "server_version": server_version,
+        "image_tags": image_tags,
     }
 
 
@@ -479,6 +513,90 @@ def _node_cpu_summaries(text: str) -> list[dict[str, Any]]:
             "capacity_cpu": _parse_cpu_quantity(status.get("capacity", {}).get("cpu")),
         })
     return out
+
+
+def _server_version(text: str) -> dict[str, Any] | None:
+    """Parse ``kubectl version --output json`` into the cluster's server major.minor.
+
+    ``serverVersion.minor`` is often suffixed with a ``+`` on managed clusters (e.g. GKE
+    reports ``"29+"``); we strip it to the bare number so the agent can compare it against the
+    thresholds in knowledge/. Returns ``{major, minor, git_version, raw}`` or ``None`` when the
+    server version is absent/unparseable (e.g. ``--client``-only output, or no reachable
+    cluster) — this is a fact extractor, never a verdict, and it never raises."""
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    sv = data.get("serverVersion") if isinstance(data, dict) else None
+    if not isinstance(sv, dict):
+        return None
+    major = str(sv.get("major", "")).strip()
+    minor = str(sv.get("minor", "")).strip().rstrip("+")
+    if not major and not minor:
+        return None
+    return {
+        "major": major or None,
+        "minor": minor or None,
+        "git_version": sv.get("gitVersion"),
+        "raw": {"major": sv.get("major"), "minor": sv.get("minor")},
+    }
+
+
+def _parse_image_tags(ctx: ToolContext, spec: str | None) -> list[dict[str, Any]]:
+    """Read the chosen spec's on-disk scenario YAML and extract every pinned image tag.
+
+    A spec name like ``cicd/kind`` resolves to ``config/scenarios/cicd/kind.yaml`` under the
+    (read-only) benchmark repo. The scenarios pin images as nested ``{repository, tag}`` blocks
+    (``scenario[].images.vllm``, ``standalone.image``, …); we walk the parsed YAML and collect
+    EVERY mapping carrying both keys, recording the parent key name (``vllm``/``image``/…) and a
+    dotted path so the agent can match the vLLM/NIXL/UCX/NVSHMEM tags against the tested minimums
+    in knowledge/. PURE MECHANISM — it parses tags, never judges them. Returns ``[]`` when no spec
+    is given, the file is missing, or it doesn't parse (the agent treats absent tags as
+    'unknown', never as a pass)."""
+    if not spec:
+        return []
+    rel = spec if spec.endswith((".yaml", ".yml")) else f"{spec}.yaml"
+    candidates = [
+        ctx.settings.bench_repo / "config" / "scenarios" / rel,
+        ctx.settings.bench_repo / "config" / "scenarios" / f"{spec}.yml",
+    ]
+    path = next((c for c in candidates if c.is_file()), None)
+    if path is None:
+        return []
+    try:
+        data = yaml.safe_load(path.read_text())
+    except (OSError, yaml.YAMLError):
+        return []
+    tags: list[dict[str, Any]] = []
+    _collect_image_tags(data, parent="", dotted="", out=tags)
+    return tags
+
+
+def _collect_image_tags(node: Any, *, parent: str, dotted: str, out: list[dict[str, Any]]) -> None:
+    """Recursively collect every ``{repository, tag}`` mapping from a parsed scenario tree.
+    Each hit records the image's parent key (``name``), its ``repository``/``tag``, and the
+    dotted ``path`` where it was found. De-dups exact repeats so list items don't double-count."""
+    if isinstance(node, dict):
+        if "repository" in node and "tag" in node:
+            entry = {
+                "name": parent,
+                "repository": _as_str(node.get("repository")),
+                "tag": _as_str(node.get("tag")),
+                "path": dotted or parent,
+            }
+            if entry not in out:
+                out.append(entry)
+        for key, value in node.items():
+            child_dotted = f"{dotted}.{key}" if dotted else str(key)
+            _collect_image_tags(value, parent=str(key), dotted=child_dotted, out=out)
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            child_dotted = f"{dotted}[{i}]" if dotted else f"[{i}]"
+            _collect_image_tags(value, parent=parent, dotted=child_dotted, out=out)
+
+
+def _as_str(value: Any) -> str | None:
+    return None if value is None else str(value)
 
 
 def _pod_summaries(text: str) -> list[dict[str, Any]]:
