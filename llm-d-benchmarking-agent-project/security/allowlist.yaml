@@ -131,6 +131,15 @@ value_constraints:
   kubeconfig_path: { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+$" }
   output_format:   { enum: [json, yaml, wide, name] }
   methods:         { enum: [standalone, modelservice, kustomize, fma] }
+  # ---- gateway provider selection (Phase 32): --gateway-class value ----
+  # The gateway PROVIDER, OVERRIDING the scenario's gateway.className. The enum is the closed set
+  # of providers the CLI's `--gateway-class` help advertises on every subcommand (verified in
+  # llm-d-benchmark/llmdbenchmark/interface/{plan,standup,smoketest,run,teardown,experiment}.py):
+  # epponly / istio / agentgateway / gke / data-science-gateway-class. Upstream applies it ONLY on
+  # the modelservice deploy path (it is ignored by kustomize/standalone/fma). WHICH provider to
+  # pick is the agent's judgment (knowledge/gateway_class.md), not data here — this constraint only
+  # bounds the value to the legitimate provider set so an out-of-enum value is refused.
+  gateway_class:   { enum: [epponly, istio, agentgateway, gke, data-science-gateway-class] }
   # ---- kustomize deploy method (Phase 46): --llmd-repo-path value ----
   # A LOCAL filesystem path to an llm-d clone, threaded as `--llmd-repo-path` for the kustomize
   # deploy method (`-t kustomize`). It is the CLI fallback for the scenario block's
@@ -597,6 +606,11 @@ executables:
           # Phase 27: preview the monitoring-enabled rendering (PodMonitor + EPP verbosity).
           # plan uses store_true upstream, so only --monitoring exists here (no --no-monitoring).
           "--monitoring": {}
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className.
+          # Upstream registers --gateway-class on ALL SIX subcommands; value-pinned to the
+          # gateway_class enum. It does NOT change the mode (plan stays read_only). WHICH provider
+          # is the agent's judgment (knowledge/gateway_class.md).
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       standup:
@@ -650,6 +664,11 @@ executables:
           "--modelservice-deploy-timeout": { takes_value: true, value: { ref: positive_int } }
           "--kustomize-deploy-timeout": { takes_value: true, value: { ref: positive_int } }
           "--pvc-bind-timeout": { takes_value: true, value: { ref: positive_int } }
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className.
+          # Value-pinned to the gateway_class enum. It does NOT change the mode (standup stays
+          # mutating/approval-gated). Effective only on the modelservice deploy path upstream
+          # (ignored by kustomize/standalone/fma). Judgment: knowledge/gateway_class.md.
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       smoketest:
@@ -670,6 +689,10 @@ executables:
           # smoketest accepts both upstream. Value-pinned DATA; judgment in knowledge/multi_stack.md.
           "--stack": { takes_value: true, value: { ref: stack_list } }
           "--parallel": { takes_value: true, value: { ref: positive_int } }
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className.
+          # Value-pinned to the gateway_class enum. Mode unchanged (smoketest stays mutating).
+          # Judgment: knowledge/gateway_class.md.
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       run:
@@ -754,6 +777,10 @@ executables:
           # config path (no `..`). Round-trip: `run … --generate-config` then `run -c <path>`.
           "-c": { takes_value: true, value: { ref: run_config_path } }
           "--config": { takes_value: true, value: { ref: run_config_path } }
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className when
+          # the run phase re-renders templates. Value-pinned to the gateway_class enum. Mode
+          # unchanged (a real run stays mutating/approval-gated). Judgment: knowledge/gateway_class.md.
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "--list-endpoints": { read_only_trigger: true }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
@@ -783,6 +810,10 @@ executables:
           # `timeout_s` ceiling (900 above) so the two timeout layers do not fight. WHEN/WHAT
           # judgment in knowledge/phase_timeouts.md.
           "--fma-teardown-timeout": { takes_value: true, value: { ref: positive_int } }
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className
+          # (only meaningful if teardown re-renders templates). Value-pinned to the gateway_class
+          # enum. Mode unchanged (teardown stays mutating). Judgment: knowledge/gateway_class.md.
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       results:
@@ -838,5 +869,9 @@ executables:
           # instead of the synthetic workload profile. Value constrained to dataset_url.
           "-x": { takes_value: true, value: { ref: dataset_url } }
           "--dataset": { takes_value: true, value: { ref: dataset_url } }
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className
+          # across the sweep's per-treatment standups. Value-pinned to the gateway_class enum.
+          # Mode unchanged (experiment stays mutating). Judgment: knowledge/gateway_class.md.
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }

@@ -169,7 +169,19 @@ def build_argv(
     ``flags["parallelism"]``→``-j`` above (number of parallel harness PODS, not stacks) — do NOT
     conflate them. Pure MECHANISM — HOW MANY stacks to deploy at once (i.e. whether to cap below
     4 on a small/Kind node) is the agent's judgment in knowledge/multi_stack.md, never an
-    if/elif on the value here."""
+    if/elif on the value here.
+
+    ``flags["gateway_class"]`` (Phase 32) emits ``--gateway-class <provider>`` to choose the
+    gateway PROVIDER, OVERRIDING the scenario's ``gateway.className`` for this command. It is
+    emitted UNCONDITIONALLY across subcommands — upstream registers ``--gateway-class`` on ALL
+    SIX (plan/standup/smoketest/run/teardown/experiment, verified in
+    llmdbenchmark/interface/*.py), each defaulting to ``LLMDBENCH_GATEWAY_CLASS`` — so there is
+    no subcommand guard and, deliberately, no judgment branch here. This is PURE MECHANISM: we
+    emit whatever provider the agent chose; WHICH provider (one of istio / agentgateway / gke /
+    epponly / data-science-gateway-class) lives entirely in knowledge/gateway_class.md, never an
+    if/elif on the value. Upstream applies it ONLY on the modelservice deploy path (it is ignored
+    by kustomize/standalone/fma per the standup help). Omitted/None ⇒ nothing emitted and the
+    spec's scenario ``gateway.className`` stands."""
     flags = flags or {}
     argv: list[str] = ["llmdbenchmark"]
     if spec:
@@ -237,6 +249,16 @@ def build_argv(
     # never an if/elif on the value. DISTINCT from flags["parallelism"]->-j (parallel harness PODS).
     if flags.get("parallel") is not None and subcommand in ("standup", "smoketest", "experiment"):
         argv += ["--parallel", str(flags["parallel"])]
+    # Gateway PROVIDER selection (Phase 32): emit --gateway-class <provider> to OVERRIDE the
+    # scenario's gateway.className. Emitted UNCONDITIONALLY across subcommands — upstream
+    # registers --gateway-class on ALL SIX (plan/standup/smoketest/run/teardown/experiment), so
+    # there is no subcommand guard and no judgment branch in Python. PURE MECHANISM — WHICH
+    # provider (istio/agentgateway/gke/epponly/data-science-gateway-class) is the agent's judgment
+    # in knowledge/gateway_class.md, never an if/elif on the value. Upstream applies it only on
+    # the modelservice deploy path (ignored by kustomize/standalone/fma). Omitted ⇒ the spec's
+    # gateway.className stands. The provider value is allowlist-pinned to the gateway_class enum.
+    if flags.get("gateway_class"):
+        argv += ["--gateway-class", str(flags["gateway_class"])]
     if flags.get("stop_on_error"):
         argv.append("--stop-on-error")
     if flags.get("skip_teardown"):
