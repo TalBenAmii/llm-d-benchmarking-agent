@@ -311,7 +311,14 @@ _DESCRIPTIONS = {
         "real pod). NOT on teardown (there -d means --deep, a destructive wipe). After it is up, "
         "EXPLAIN how to exec into it (kubectl/oc exec -it <ns> <harness-pod> -- bash) but do NOT "
         "drive the interactive shell yourself — that stays a manual user step. WHEN to use it is "
-        "your judgment, see knowledge/harness_debug.md."
+        "your judgment, see knowledge/harness_debug.md. "
+        "For the OPTIONAL git-like Results Store (a TEAM-SHARED store that publishes/pulls runs "
+        "via GCS remotes), use subcommand='results' with the top-level `store` field "
+        "({command: init/remote/status/add/rm/ls/push/pull, ...}): init/status/ls/remote-ls are "
+        "read-only/auto-run; add/rm/push/pull/remote-add/remote-rm are mutating/approval-gated. "
+        "This is SEPARATE from your OWN local history (the result_history tool) — that local "
+        "store is unchanged; reach for the CLI store ONLY for team GCS sharing. WHICH store and "
+        "WHEN is your judgment, see knowledge/history.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "

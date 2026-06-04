@@ -32,6 +32,66 @@ _POLLED_SUBCOMMANDS = {"run", "experiment", "smoketest"}
 # do not fight, live in knowledge/phase_timeouts.md. Flag spellings + type=int + accepting
 # subcommands are verified against llm-d-benchmark/llmdbenchmark/interface/{standup,run,
 # experiment,teardown}.py and are value-pinned (positive_int) in security/allowlist.yaml.
+# The git-like CLI Results Store (Phase 50). `llmdbenchmark results <store-command>` is an
+# OPTIONAL, team-shared store (GCS remotes + push/pull) that is SEPARATE from the agent's own
+# local history store (the result_history tool / app/storage/history.py). build_argv emits the
+# upstream-EXACT nested-positional shape off the static `store` dict below — PURE MECHANISM, no
+# if/elif on a VALUE: the only branch is on the discrete `command` enum token (mirroring the
+# _PHASE_TIMEOUT_FLAGS table style). WHEN/WHETHER to use this store vs the local one is judgment
+# in knowledge/history.md, never encoded here. The store-commands' shapes are verified against
+# llm-d-benchmark/llmdbenchmark/interface/results.py and value-pinned in security/allowlist.yaml
+# (init/status/ls/remote-ls read-only; add/rm/push/pull/remote-add/remote-rm mutating).
+_RESULTS_STORE_COMMANDS = frozenset(
+    {"init", "remote", "status", "add", "rm", "ls", "push", "pull"}
+)
+
+
+def _build_results_store_argv(store: dict[str, Any]) -> list[str]:
+    """Translate a structured ``store`` request into the upstream-exact ``results``
+    sub-positionals. PURE MECHANISM — the single branch is on the discrete ``command`` enum
+    token (a fixed set), never on a value. Unknown/missing fields simply emit nothing for the
+    optional slots; the allowlist + the CLI's own argparse reject a malformed shape."""
+    command = str(store.get("command", ""))
+    if command not in _RESULTS_STORE_COMMANDS:
+        raise ToolError(
+            f"unsupported results-store command {command!r}; "
+            f"allowed: {sorted(_RESULTS_STORE_COMMANDS)}"
+        )
+    out: list[str] = [command]
+    if command in ("add", "rm"):
+        # `results add|rm <paths...>` — one or more local dir paths / run-uids to (un)stage.
+        out += [str(p) for p in (store.get("paths") or [])]
+    elif command == "remote":
+        # `results remote {add NAME URI | rm NAME | ls}`.
+        action = str(store.get("remote_action", ""))
+        out.append(action)
+        if action == "add":
+            out += [str(store["name"]), str(store["uri"])]
+        elif action == "rm":
+            out.append(str(store["name"]))
+    elif command == "ls":
+        # `results ls <remote> [-m model] [-w hardware]` — list a remote, optional filters.
+        out.append(str(store["remote"]))
+        if store.get("model"):
+            out += ["-m", str(store["model"])]
+        if store.get("hardware"):
+            out += ["-w", str(store["hardware"])]
+    elif command == "push":
+        # `results push [remote] [path] [-g group]` — publish staged (or an ad-hoc dir) to GCS.
+        if store.get("remote"):
+            out.append(str(store["remote"]))
+        if store.get("path"):
+            out.append(str(store["path"]))
+        if store.get("group"):
+            out += ["-g", str(store["group"])]
+    elif command == "pull":
+        # `results pull [remote...] --run-uid <uid>` — download a run from a remote.
+        if store.get("remote"):
+            out.append(str(store["remote"]))
+        out += ["--run-uid", str(store["run_uid"])]
+    return out
+
+
 _PHASE_TIMEOUT_FLAGS: dict[str, tuple[str, tuple[str, ...]]] = {
     # standup phases (modelservice / standalone / kustomize deploy + PVC bind)
     "standalone_deploy_timeout": ("--standalone-deploy-timeout", ("standup",)),
@@ -56,11 +116,24 @@ def build_argv(
     workload: str | None = None,
     models: str | None = None,
     kubeconfig: str | None = None,
+    store: dict[str, Any] | None = None,
     flags: dict[str, Any] | None = None,
     extra: list[str] | None = None,
 ) -> list[str]:
     """Assemble the logical argv. Global flags (``--spec``, ``--workspace``) precede the
     subcommand; everything else follows it.
+
+    ``store`` (Phase 50) drives the OPTIONAL git-like CLI Results Store: when
+    ``subcommand == "results"`` and ``store`` is set, we emit the upstream-exact nested
+    store-command shape (``results init`` / ``results remote add <name> <uri>`` /
+    ``results status`` / ``results add <paths...>`` / ``results ls <remote>`` /
+    ``results push [remote] [path] [-g group]`` / ``results pull [remote] --run-uid <uid>``)
+    and NOTHING else — ``results`` accepts no namespace/harness/model/run-flags. This store is
+    SEPARATE from the agent's own local history store (the result_history tool); WHEN to reach
+    for it (team GCS sharing) is judgment in knowledge/history.md, never an if/elif on a value
+    here. ``--spec`` is still emitted globally before ``results`` because the upstream CLI errors
+    without it even for the store. init/status/ls/remote-ls auto-run (read-only); add/rm/push/
+    pull/remote-add/remote-rm are approval-gated (mutating) per security/allowlist.yaml.
 
     ``models`` (Phase 28) emits ``-m <id>`` after the subcommand to OVERRIDE the spec's
     scenario-default model for THIS standup (or plan/run/experiment). Upstream spells this
@@ -202,6 +275,13 @@ def build_argv(
     if flags.get("workspace"):
         argv += ["--workspace", str(flags["workspace"])]
     argv.append(subcommand)
+    # Results Store (Phase 50): the `results` subcommand takes its OWN nested store-command and
+    # NONE of the namespace/harness/model/run-flag emission below — emit it and return early so
+    # those never leak onto a store invocation. PURE MECHANISM (see _build_results_store_argv).
+    if subcommand == "results" and store:
+        argv += _build_results_store_argv(store)
+        argv += list(extra or [])
+        return argv
     if namespace:
         argv += ["-p", namespace]
     if harness:
@@ -395,6 +475,7 @@ async def execute_llmdbenchmark(
     workload: str | None = None,
     models: str | None = None,
     kubeconfig: str | None = None,
+    store: dict[str, Any] | None = None,
     flags: dict[str, Any] | None = None,
     extra: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -422,7 +503,8 @@ async def execute_llmdbenchmark(
 
     argv = build_argv(
         subcommand, spec=spec, namespace=namespace, harness=harness,
-        workload=workload, models=models, kubeconfig=kubeconfig, flags=flags, extra=extra,
+        workload=workload, models=models, kubeconfig=kubeconfig, store=store,
+        flags=flags, extra=extra,
     )
 
     # Right-size the harness launcher's CPU request for small/Kind nodes. This is an ENV VAR

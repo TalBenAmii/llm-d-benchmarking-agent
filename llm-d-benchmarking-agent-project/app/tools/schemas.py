@@ -253,6 +253,29 @@ class ExecuteInput(BaseModel):
                     "kubeconfig file, see flags.cluster_url / flags.cluster_token below — the "
                     "TOKEN is a SECRET and travels backend-only (never argv, never shown).",
     )
+    store: dict[str, Any] | None = Field(
+        default=None,
+        description="Phase 50 — ONLY for subcommand='results': drives the CLI's OPTIONAL git-like "
+                    "Results Store (a TEAM-SHARED store that publishes/pulls benchmark runs via "
+                    "GCS remotes). This is DISTINCT from the agent's OWN local history store (the "
+                    "result_history tool) — for tracking/trending YOUR runs locally use "
+                    "result_history; reach for THIS store only when a team SHARES results via the "
+                    "CLI store. read_knowledge('history') for WHICH one and WHEN. Shape: "
+                    "{command, ...}. `command` is one of init/remote/status/add/rm/ls/push/pull. "
+                    "init => `results init` (create a local .result_store/; read-only, auto-runs). "
+                    "status => `results status` (list local staged/untracked runs; read-only). "
+                    "remote => manage remotes; set remote_action to 'add' (with name + uri, where "
+                    "uri is a gs://bucket/prefix GCS URI), 'rm' (with name), or 'ls' (list — "
+                    "read-only). add/rm => stage/unstage runs: set paths to a list of local dir "
+                    "paths or run-uids (mutating). ls => `results ls <remote>` list a remote: set "
+                    "remote (alias like prod/staging) + optional model/hardware filters (read-only; "
+                    "NOTE wildcards are NOT supported — `*` is rejected, use an exact value). push "
+                    "=> publish staged runs (or an ad-hoc dir) to a remote: optional remote "
+                    "(default staging) + optional path + optional group; MUTATING (uploads to GCS, "
+                    "approval-gated). pull => download a run: optional remote (default prod) + "
+                    "REQUIRED run_uid; MUTATING (writes a workspace dir, approval-gated). The local "
+                    "history store is UNCHANGED by anything here.",
+    )
     flags: dict[str, Any] | None = Field(
         default=None,
         description="Optional: {skip, skip_smoketest, dry_run, list_endpoints, methods, repo_path, "
