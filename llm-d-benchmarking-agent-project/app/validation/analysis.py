@@ -485,3 +485,95 @@ def _frontier_labels(points: list[dict[str, float]], dirs: dict[str, str], label
         if not dominated:
             frontier.append(labels[i])
     return frontier
+
+
+# ---- post-run next-step recommendations ------------------------------------
+#
+# After an analysis, the agent should offer the *useful* next move, not just
+# "teardown or run again". This is the MECHANISM: a deterministic ranking over the
+# already-validated analyzer facts + a few read-only history facts. It DELIBERATELY
+# leans toward SAVING to the trend store and COMPARING to a baseline (the proposal's
+# historical-storage/trend-visualization value), because those are what turn a one-off
+# number into a tracked result. It carries NO narrative judgment — the agent phrases the
+# offer and decides whether to act, grounded in knowledge/conversation_style.md +
+# knowledge/history.md (thin code, thick agent; ONE offer at a time per the offer cadence).
+
+
+@dataclass
+class HistoryContext:
+    """The read-only history facts the recommender needs, gathered by the tool from the
+    cross-session :class:`~app.storage.history.HistoryStore`. Pure facts, no judgment:
+    is THIS run already saved, and how much comparable history already exists."""
+
+    already_stored: bool = False          # this run's report is already in the trend store
+    comparable_prior: int = 0             # stored runs of the SAME model NOT counting this run
+    total_stored: int = 0                 # stored runs in total (any model)
+
+
+# Each next-step the recommender can emit: a stable action id, the tool that performs it,
+# and a one-line why. Order in the emitted list IS the priority (save/compare first).
+def recommend_next_steps(
+    *,
+    n_runs: int,
+    has_slo: bool,
+    any_slo_met: bool | None,
+    on_sweep: bool,
+    history: HistoryContext | None = None,
+) -> list[dict[str, Any]]:
+    """Rank the recommended post-run next steps over the validated analyzer facts.
+
+    Inputs are FACTS already derived from schema-validated reports (how many runs were
+    analyzed, whether SLO targets were supplied and met, whether this was a sweep) plus
+    the read-only :class:`HistoryContext`. Returns an ordered list of
+    ``{action, tool, priority, reason}`` dicts — highest-value first, with save-to-trend
+    and compare-to-baseline prioritized. No side effects, no narrative; the agent turns
+    the top item into a single concrete offer."""
+    hist = history or HistoryContext()
+    steps: list[dict[str, Any]] = []
+
+    def add(action: str, tool: str, reason: str) -> None:
+        steps.append({"action": action, "tool": tool,
+                      "priority": len(steps) + 1, "reason": reason})
+
+    single = n_runs == 1
+
+    # 1) SAVE to the trend store first — unless this exact run is already saved. Storing the
+    #    first real result is what makes the Results panel/trend chart appear at all, so a
+    #    not-yet-saved run leads. A saved run skips straight to comparing/trending.
+    if not hist.already_stored:
+        if hist.total_stored == 0:
+            reason = ("save this run as your baseline so future runs can be trended against it "
+                      "(nothing is tracked yet)")
+        else:
+            reason = "save this run to your result history so it joins the trend"
+        add("save_baseline", "result_history", reason)
+
+    # 2) COMPARE / TREND against prior comparable runs when there's history to compare to.
+    if single:
+        if hist.comparable_prior >= 1:
+            add("compare_to_baseline", "compare_reports",
+                "compare this run against a prior comparable run to spot a regression or win")
+        # Comparable saved runs once THIS run is in the store: the priors plus this run
+        # itself (counted whether it's already stored or about to be). >=2 -> trend reads.
+        if hist.comparable_prior + 1 >= 2:
+            add("trend_metric", "result_history",
+                "trend a metric (e.g. ttft / output_token_rate) across your saved runs over time")
+    else:
+        # A sweep/A-B already compared configs in THIS call; nudge toward saving them so the
+        # sweep can be revisited and trended across days, not toward re-comparing now.
+        add("trend_metric", "result_history",
+            "save each treatment so you can trend this sweep across runs/days")
+
+    # 3) Only after save/compare: the operational steps. Run-again is most useful when an
+    #    SLO was set and missed (try a different config); a sweep suggests narrowing.
+    if single and has_slo and any_slo_met is False:
+        add("run_again", "propose_session_plan",
+            "this run missed the SLO — try a different config or load and re-run")
+    elif single:
+        add("run_sweep", "generate_doe_experiment",
+            "sweep concurrency/config to find the best operating point for this model")
+
+    # 4) Teardown is always available but lowest priority (don't lead with it).
+    add("teardown", "run_command", "tear down the stack when you're done to free resources")
+
+    return steps

@@ -404,6 +404,10 @@ _DESCRIPTIONS = {
         "also returns the Pareto-optimal configs and the SLO-feasible frontier (best trade-off "
         "subject to the constraints). Use after a run or sweep when the user has QoS targets or "
         "wants the best config. compare_reports gives raw deltas; this adds SLO/goodput/Pareto. "
+        "Also returns `next_steps`: a RANKED list of recommended follow-ups over the validated "
+        "facts + your saved history, prioritizing save-to-trend / compare-to-baseline over "
+        "teardown/run-again — turn the TOP item into a single concise offer (don't recite the "
+        "list; see read_knowledge('conversation_style') for the one-offer cadence). "
         "Call read_knowledge('analysis') to interpret it (and read_knowledge('sweep_playbook') "
         "when designing or reading a sweep/A-B)."
     ),
