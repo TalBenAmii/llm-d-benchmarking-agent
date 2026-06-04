@@ -5,7 +5,7 @@ phase milestone. See [`ROADMAP.md`](ROADMAP.md) for the plan and phase status.
 
 Branch: `feature/roadmap` (integration; never merged to `main` during this effort).
 Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 skipped**.
-Latest completed phase: **Phase 55 (ROADMAP_V4)** (suite **1452 passed / 20 skipped**). Each completed phase below
+Latest completed phase: **Phase 56 (ROADMAP_V4)** (suite **1469 passed / 20 skipped**). Each completed phase below
 is collapsed to a one-liner (date · phase · what shipped · branch · final suite count); see git
 history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the forward-looking plan.
 
@@ -13,6 +13,17 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 56 (ROADMAP_V4): Stack discovery tool (llm-d-discover) for richer environment
+  capture. Shipped the `discover_stack` tool (`app/tools/discover.py` + `DiscoverStackInput`) — a thin
+  async handler over `ctx.run_command` (mirrors `readiness.py`/`capacity.py`) that runs the allowlisted,
+  READ-ONLY `llm-d-discover <url> -f benchmark-report` (its own read-only RBAC + env-var redaction
+  upstream → auto-runs), writes the raw discovery JSON + the wrapped BR-v0.2 scenario capture
+  `{"scenario": {"stack": [...]}}` into the session workspace (read-only repos never written), and returns
+  structured stack FACTS (component count, models, roles, parallelism). Endpoint/readiness probing stays
+  the UNCONDITIONAL default; all WHEN-to-run JUDGMENT lives in `knowledge/stack_discovery.md`, never a
+  Python branch. Allowlisted DATA as read-only; only a non-secret kubeconfig FILE path is expressible
+  (the secret URL+TOKEN route stays backend-only). Branch `feature/roadmap-v4-p56-stack-discover`. Suite
+  **1469 passed / 20 skipped** (+18 via `tests/test_stack_discovery.py`); ruff + mypy clean. — done
 - 2026-06-04 — Phase 55 (ROADMAP_V4): Real-time metric streaming / custom Prometheus queries —
   THIN-CODE (knowledge-only; no app behavior change). Appended `knowledge/observability.md` §5
   documenting that the benchmark's own live metric STREAMING and user-defined custom Prometheus

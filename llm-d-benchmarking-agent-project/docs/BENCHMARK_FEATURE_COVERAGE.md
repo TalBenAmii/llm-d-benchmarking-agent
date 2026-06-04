@@ -25,7 +25,7 @@
 
 ## Coverage summary
 
-67 documented features audited: **38 ✅ / 14 🟡 / 15 ⬜**.
+67 documented features audited: **39 ✅ / 14 🟡 / 14 ⬜**.
 
 | Area | Description | ✅ | 🟡 | ⬜ |
 |---|---|---:|---:|---:|
@@ -36,8 +36,8 @@
 | E | Results parsing, analysis, comparison & history | 3 | 2 | 2 |
 | F | Observability (metrics collection, tracing, dashboards, logging) | 4 | 0 | 1 |
 | H | Utilities & CLI internals (capacity, cluster, pod lifecycle, workspace) | 4 | 1 | 1 |
-| I | Project meta (governance, discovery tool, placeholder docs) | 1 | 0 | 3 |
-| **Total** | | **39** | **14** | **14** |
+| I | Project meta (governance, discovery tool, placeholder docs) | 2 | 0 | 2 |
+| **Total** | | **40** | **14** | **13** |
 
 > **Headline gap — CLOSED (Phase 27, 2026-06-03).** Area F's *Benchmark metrics collection
 > (`--monitoring`)* is now **✅**: the *consumer* shipped in Phase 25 (parses `results.observability`
@@ -154,7 +154,7 @@
 | Feature | Source doc | Options / knobs | Optional? | Default | Coverage | Evidence / notes |
 |---|---|---|---|---|---|---|
 | Contribution / governance / quality (DCO, pre-commit, tests, CoC, security policy) | CONTRIBUTING.md; PR_SIGNOFF.md; tests/README.md; docs/developer-guide.md | git commit -s (DCO), pre-commit (pytest/ruff/detect-secrets), pytest tests/, OWNERS | N | n/a | ✅ | The agent has its own governance/quality stack: `knowledge/governance.md`; pytest suite; ruff+mypy+coverage gates (`pyproject.toml`, `Makefile`); flow-validation harness; root CI. Repos read-only, so it does not contribute upstream. |
-| Stack discovery tool (llm-d-discover: URL → live stack config, BR-v0.2 output) | llm_d_stack_discovery/README.md; ARCHITECTURE.md | llm-d-discover <url>, --output-format benchmark-report, collectors (vLLM/GAIE/Gateway), env-var redaction + read-only RBAC | Y | off | ⬜ | llm_d_stack_discovery/README.md: a standalone non-lifecycle tool; the agent's endpoint/readiness probing covers the practical need without the BFS stack-graph walk + metadata backfill. Fix → ROADMAP_V4 Phase 56. |
+| Stack discovery tool (llm-d-discover: URL → live stack config, BR-v0.2 output) | llm_d_stack_discovery/README.md; ARCHITECTURE.md | llm-d-discover <url>, --output-format benchmark-report, collectors (vLLM/GAIE/Gateway), env-var redaction + read-only RBAC | Y | off | ✅ | **DONE (Phase 56).** `discover_stack` (`app/tools/discover.py` + `DiscoverStackInput`) runs the allowlisted READ-ONLY `llm-d-discover <url> -f benchmark-report`, writes raw JSON + the wrapped BR-v0.2 `{"scenario": {"stack": [...]}}` capture into the session workspace, and returns structured stack facts (component count, models, roles, parallelism). Endpoint/readiness probing stays the unconditional default; WHEN-to-use judgment lives in `knowledge/stack_discovery.md` (`tests/test_stack_discovery.py`). |
 | flexibility.md (placeholder doc) | docs/flexibility.md | (none) | N | n/a | ⬜ | docs/flexibility.md: an unpopulated stub ("To be populated."); zero substantive features; recorded only for doc-completeness. Fix → ROADMAP_V4 Phase 57. |
 | FAQ / RBAC-audit placeholder docs | docs/faq.md; util/rbac_audit_report.md | (none) | N | n/a | ⬜ | docs/faq.md, util/rbac_audit_report.md: empty/placeholder docs with no documented features; recorded for doc-completeness. Fix → ROADMAP_V4 Phase 58. |
 

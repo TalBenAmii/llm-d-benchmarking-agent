@@ -676,8 +676,16 @@ blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 - **HERMETIC-TEST:** a knowledge assertion that the feature is upstream-unimplemented + the
   substitute is named.
 
-## Phase 56 — Stack discovery tool (llm-d-discover) — TODO
-*Catalog ref: Area I — "Stack discovery tool (llm-d-discover)" (⬜).*
+## Phase 56 — Stack discovery tool (llm-d-discover) — DONE
+*Catalog ref: Area I — "Stack discovery tool (llm-d-discover)" (✅).*
+
+> **RESULT (2026-06-04):** Shipped the `discover_stack` tool (`app/tools/discover.py` +
+> `DiscoverStackInput`) — a thin async handler over `ctx.run_command` that runs the allowlisted,
+> READ-ONLY `llm-d-discover <url> -f benchmark-report`, writes raw JSON + the wrapped BR-v0.2
+> `{"scenario": {"stack": [...]}}` capture into the session workspace, and returns structured
+> stack facts. Endpoint probing stays the unconditional default; all WHEN-to-use judgment lives in
+> `knowledge/stack_discovery.md`. Branch `feature/roadmap-v4-p56-stack-discover`. Suite
+> **1469 passed / 20 skipped** (+18 via `tests/test_stack_discovery.py`); ruff + mypy clean.
 
 - **GOAL:** optionally invoke the standalone stack-discovery tool (URL → live stack config,
   BR-v0.2 output) for richer environment capture than the agent's endpoint probing.
