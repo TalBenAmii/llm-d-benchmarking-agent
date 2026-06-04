@@ -2182,6 +2182,8 @@ if (window.__LLMD_PREVIEW__) {
     handle, bootChat, startWorking,
     renderResultsCard, renderParetoCard, renderComparisonCard, renderHarnessCompareCard,
     renderResourceStats,
+    renderEnvStatus, renderCapacityCard, renderReadinessCard,
+    renderAcceleratorCard, renderDoeCard, renderOrchestrateCard,
   };
 } else {
   loadSessions();
