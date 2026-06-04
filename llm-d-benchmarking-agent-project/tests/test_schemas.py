@@ -12,7 +12,7 @@ def test_tool_definitions_complete():
     names = {d["name"] for d in defs}
     expected = {
         "probe_environment", "list_catalog", "advise_accelerators",
-        "read_knowledge", "read_repo_doc", "fetch_key_docs",
+        "read_knowledge", "search_knowledge", "read_repo_doc", "fetch_key_docs",
         "propose_session_plan", "check_capacity", "aggregate_runs", "provision_hf_secret",
         "check_endpoint_readiness", "discover_stack",
         "ensure_repos", "run_setup",

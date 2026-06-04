@@ -5,6 +5,7 @@ runs them automatically (no approval).
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -529,6 +530,192 @@ def read_knowledge(ctx: ToolContext, *, name: str) -> dict[str, Any]:
         return {"error": f"unknown knowledge topic {name!r}", "valid_topics": valid}
 
     return {"name": match.name, "topic": match.stem, "content": match.read_text()}
+
+
+# --- search_knowledge: lexical search over knowledge/ + the curated repo-doc index ---------
+# DETERMINISTIC mechanism only: tokenize the query and the corpus, score by weighted term
+# overlap (filename/heading hits weigh more than body hits), rank, and return the best
+# snippets/pointers. No embeddings, no model call, no per-topic special-casing — WHEN to reach
+# for this (the troubleshooting/problem moments) is JUDGMENT in knowledge/conversation_style.md
+# + the tool description, NOT a branch here.
+
+# Drop the highest-frequency English/markdown filler so it never dominates the overlap score.
+# Pure mechanism — a stop list is not domain judgment.
+_SEARCH_STOPWORDS = frozenset({
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "is", "are", "be", "with",
+    "how", "do", "i", "my", "it", "this", "that", "when", "what", "why", "can", "you", "your",
+    "if", "at", "as", "by", "from", "not", "but", "so", "we", "me", "no", "yes", "use", "using",
+})
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def _search_tokens(text: str) -> list[str]:
+    """Lowercase alnum tokens with the filler words dropped (short tokens kept only if numeric
+    or >=2 chars). Pure mechanism shared by the query and the corpus so scoring is symmetric."""
+    return [
+        t for t in _WORD_RE.findall(text.lower())
+        if t not in _SEARCH_STOPWORDS and (len(t) >= 2 or t.isdigit())
+    ]
+
+
+def _knowledge_headings(text: str) -> str:
+    """Concatenated markdown/yaml-comment headings of a knowledge doc — the high-signal field
+    a query term should weigh more in than the prose body."""
+    out: list[str] = []
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("#"):
+            out.append(s.lstrip("#").strip())
+    return "\n".join(out)
+
+
+def _best_snippet(text: str, query_tokens: set[str], *, width: int = 280) -> str:
+    """The most query-dense ~`width`-char window of the doc (a line-anchored excerpt), or the
+    leading text when nothing matches. Deterministic: ties resolve to the earliest line."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return ""
+    best_i, best_hits = 0, -1
+    for i, ln in enumerate(lines):
+        hits = sum(1 for t in _search_tokens(ln) if t in query_tokens)
+        if hits > best_hits:
+            best_i, best_hits = i, hits
+    snippet = lines[best_i]
+    j = best_i + 1
+    while j < len(lines) and len(snippet) + 1 + len(lines[j]) <= width:
+        snippet += " " + lines[j]
+        j += 1
+    return snippet[:width]
+
+
+def _repo_doc_pointers(ctx: ToolContext) -> list[tuple[str, str]]:
+    """(repo-relative-path, line) pairs parsed from the curated knowledge/useful_repo_docs.md
+    index. Each bulleted/numbered line that names a `repo/...` doc becomes a searchable pointer
+    so a problem-driven query can surface the right UPSTREAM doc by topic, not exact basename."""
+    idx = ctx.settings.knowledge_dir / "useful_repo_docs.md"
+    if not idx.is_file():
+        return []
+    pointers: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    # A doc reference looks like `repo/path/to/doc.md` inside a backtick-quoted span.
+    ref_re = re.compile(r"`((?:llm-d|llm-d-benchmark)/[^`]+?\.(?:md|yaml|yml|json))`")
+    for line in idx.read_text().splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        for m in ref_re.finditer(s):
+            path = m.group(1)
+            if path in seen:
+                continue
+            seen.add(path)
+            pointers.append((path, s.lstrip("#*-0123456789. ").strip()))
+    return pointers
+
+
+def search_knowledge(
+    ctx: ToolContext, *, query: str, limit: int = 5, include_repo_docs: bool = True,
+) -> dict[str, Any]:
+    """Lexically SEARCH every knowledge guide (and, optionally, the curated upstream repo-doc
+    index) by keyword/topic and return the most relevant guides + a snippet from each, so the
+    agent finds the right help WITHOUT knowing the exact basename. Read-only, auto-runs,
+    deterministic (weighted keyword overlap; no model call). Use it at a TROUBLESHOOTING /
+    'I don't know which doc' moment; once you know the topic, load the full guide with
+    read_knowledge('<topic>') or the upstream doc with read_repo_doc('<path>')."""
+    q = (query or "").strip()
+    if not q:
+        return {"error": "missing 'query'", "query": query}
+    query_tokens = _search_tokens(q)
+    if not query_tokens:
+        return {"error": "query has no searchable terms", "query": query}
+    qset = set(query_tokens)
+    limit = max(1, min(int(limit), 20))
+
+    knowledge_hits: list[dict[str, Any]] = []
+    for f in _knowledge_files(ctx):
+        try:
+            text = f.read_text()
+        except OSError:
+            continue
+        headings = _knowledge_headings(text)
+        # Score by DISTINCT-term COVERAGE per field, not raw prose frequency: a query term that
+        # appears in the filename (x12) or a heading (x5) signals the doc is ABOUT that topic and
+        # must outrank one that merely mentions the word many times in passing (body coverage x2
+        # per distinct term + a small, capped frequency tie-breaker). This keeps a focused guide
+        # above a long doc that happens to repeat a common word. Deterministic — pure counting.
+        name_blob = f.stem.replace("_", " ").replace("-", " ").lower()
+        body_lower = text.lower()
+        heading_lower = headings.lower()
+        score = 0
+        matched: list[str] = []
+        for t in qset:
+            in_name = t in name_blob
+            in_head = t in heading_lower
+            body_hits = body_lower.count(t)
+            if in_name or in_head or body_hits:
+                matched.append(t)
+            score += (12 if in_name else 0) + (5 if in_head else 0)
+            score += (2 if body_hits else 0) + min(body_hits, 4)
+        if score <= 0:
+            continue
+        knowledge_hits.append({
+            "kind": "knowledge",
+            "topic": f.stem,
+            "name": f.name,
+            "score": score,
+            "matched_terms": sorted(matched),
+            "snippet": _best_snippet(text, qset),
+            "load_with": f"read_knowledge('{f.stem}')",
+        })
+
+    repo_hits: list[dict[str, Any]] = []
+    if include_repo_docs:
+        for path, line in _repo_doc_pointers(ctx):
+            path_tokens = set(_search_tokens(path))
+            line_lower = line.lower()
+            matched = [t for t in qset if t in path_tokens or t in line_lower]
+            if not matched:
+                continue
+            # Curated pointers are terse one-liners, so a query term that appears in the doc PATH
+            # itself (e.g. 'quickstart' in docs/quickstart.md) is the strongest signal — weight it
+            # filename-tier (x12). A term only in the one-line blurb is heading-tier (x4).
+            score = sum(12 if t in path_tokens else 4 for t in matched)
+            repo_hits.append({
+                "kind": "repo_doc",
+                "path": path,
+                "score": score,
+                "matched_terms": sorted(matched),
+                "snippet": line[:280],
+                "load_with": f"read_repo_doc('{path}')",
+            })
+
+    # Stable, deterministic per-kind ranking (score desc, then name/path).
+    knowledge_hits.sort(key=lambda r: (-r["score"], r["name"]))
+    repo_hits.sort(key=lambda r: (-r["score"], r["path"]))
+
+    # The agent's OWN guides are the primary help, so they lead; but curated upstream pointers
+    # would otherwise be crowded out by the guides' longer prose, so RESERVE a slice of the page
+    # for them (up to a third, >=1 when any matched) so a problem-driven query still surfaces the
+    # right upstream doc. Mechanism only — the split is a fixed budget, not a per-topic decision.
+    repo_quota = min(len(repo_hits), max(1, limit // 3)) if repo_hits else 0
+    k_take = min(len(knowledge_hits), limit - repo_quota)
+    chosen = knowledge_hits[:k_take] + repo_hits[:repo_quota]
+    # Backfill any unused slots from whichever kind still has matches (deterministic order).
+    if len(chosen) < limit:
+        rest = knowledge_hits[k_take:] + repo_hits[repo_quota:]
+        rest.sort(key=lambda r: (-r["score"], r.get("name") or r.get("path") or ""))
+        chosen += rest[: limit - len(chosen)]
+    # Present the page in a single score-ranked order (ties: knowledge before repo_doc, then name).
+    chosen.sort(key=lambda r: (-r["score"], r["kind"], r.get("name") or r.get("path") or ""))
+
+    results = chosen
+    valid_topics = [f.stem for f in _knowledge_files(ctx)]
+    return {
+        "query": q,
+        "terms": query_tokens,
+        "match_count": len(knowledge_hits) + len(repo_hits),
+        "results": results[:limit],
+        "valid_topics": valid_topics,
+    }
 
 
 def locate_and_parse_report(
