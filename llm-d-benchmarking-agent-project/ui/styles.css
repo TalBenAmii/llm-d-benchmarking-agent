@@ -611,6 +611,18 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 .diag-list.diag-warn li { color: color-mix(in srgb, var(--amber) 50%, var(--text)); }
 .diag-list.diag-info li { color: var(--muted); }
 
+/* Actionable "next steps" chips under an analysis (clickable; sends the step as a message). */
+.next-steps {
+  max-width: 900px; width: 100%; margin: 0 auto 16px;
+}
+.next-steps-label {
+  font: 600 11px/1.4 var(--mono); color: var(--muted); text-transform: uppercase;
+  letter-spacing: .05em; margin-bottom: 7px;
+}
+.next-steps-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.next-step-chip { font-size: 12.5px; padding: 6px 12px; }
+.next-step-chip::before { content: "→ "; color: var(--accent); }
+
 /* ── Buttons ──────────────────────────────────────────────────────────── */
 button {
   font: 600 14px/1 var(--serif); cursor: pointer; border-radius: 9px;

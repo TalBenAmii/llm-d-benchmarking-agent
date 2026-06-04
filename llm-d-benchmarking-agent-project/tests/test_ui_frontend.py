@@ -102,6 +102,17 @@ def test_live_resource_trend_sparklines():
     assert ".res-spark-line" in css
 
 
+def test_analyzer_next_steps_chips():
+    """The analyzer's ranked next_steps render as clickable chips that send the step as a message."""
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    assert "function renderNextSteps" in js
+    assert "next_steps" in js
+    assert "renderNextSteps(r)" in js                 # dispatched alongside the sweep scatter
+    assert "sendUserMessage(prompt)" in js            # a click acts on the suggestion
+    assert ".next-step-chip" in css
+
+
 def test_preflight_status_cards():
     """The read-only diagnostic tools render friendly status cards (not just raw JSON)."""
     js = _ui("app.js")

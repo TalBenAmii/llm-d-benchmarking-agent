@@ -1347,6 +1347,37 @@ function renderHarnessCompareCard(result) {
   scroll();
 }
 
+// ---- actionable "next steps" chips (from analyze_results) ----------------
+// The analyzer ranks concrete post-run next steps ({action, tool, reason}). Surface them as
+// clickable chips (like the welcome chips): clicking sends the step's reason as a message so the
+// agent carries it out — turning the analyzer's advice into one-tap actions for a non-expert.
+const NEXT_STEP_LABELS = {
+  save_baseline: "Save as baseline",
+  compare_to_baseline: "Compare to baseline",
+  trend_metric: "Trend a metric",
+  run_again: "Try a different config",
+  run_sweep: "Run a sweep",
+};
+function renderNextSteps(r) {
+  if (!r || !Array.isArray(r.next_steps) || !r.next_steps.length) return;
+  const row = el("div", "next-steps");
+  row.appendChild(el("div", "next-steps-label", "Suggested next steps"));
+  const chips = el("div", "next-steps-chips");
+  for (const s of r.next_steps) {
+    if (!s || !s.action) continue;
+    const btn = el("button", "chip next-step-chip", NEXT_STEP_LABELS[s.action] || humanizeTool(s.action));
+    btn.type = "button";
+    if (s.reason) btn.title = s.reason;
+    const prompt = s.reason || String(s.action).replace(/_/g, " ");
+    btn.onclick = () => sendUserMessage(prompt);
+    chips.appendChild(btn);
+  }
+  if (!chips.childNodes.length) return;
+  row.appendChild(chips);
+  activePane.appendChild(row);
+  scroll();
+}
+
 // ---- pre-flight / status cards (from read-only diagnostic tool_results) ---
 // The data-rich read-only tools (probe / capacity / readiness / accelerators / DoE / orchestrate)
 // emit no results_card event, so their output was only ever raw JSON in the collapsed tool panel.
@@ -1671,7 +1702,7 @@ function finishTool(data) {
   if (data.name === "locate_and_parse_report" && r && r.summary) {
     renderReportSummary(r);                 // (no JSON dump — the summary IS the friendly view)
   } else {
-    if (data.name === "analyze_results") renderParetoCard(r);            // sweeps only
+    if (data.name === "analyze_results") { renderParetoCard(r); renderNextSteps(r); }  // sweep scatter + actionable chips
     else if (data.name === "compare_reports") renderComparisonCard(r);   // A/B delta bars
     else if (data.name === "compare_harness_runs") renderHarnessCompareCard(r);
     else if (data.name === "probe_environment") renderEnvStatus(r);      // host/cluster status
@@ -2181,7 +2212,7 @@ if (window.__LLMD_PREVIEW__) {
   window.__llmd = {
     handle, bootChat, startWorking,
     renderResultsCard, renderParetoCard, renderComparisonCard, renderHarnessCompareCard,
-    renderResourceStats,
+    renderResourceStats, renderNextSteps,
     renderEnvStatus, renderCapacityCard, renderReadinessCard,
     renderAcceleratorCard, renderDoeCard, renderOrchestrateCard,
   };
