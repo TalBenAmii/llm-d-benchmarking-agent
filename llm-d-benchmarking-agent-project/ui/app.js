@@ -24,6 +24,9 @@ const workingEl = document.getElementById("working");
 const workWordEl = workingEl.querySelector(".working-word");
 const workStatsEl = workingEl.querySelector(".working-stats");
 const tokenChip = document.getElementById("token-total");
+const resourceSide = document.getElementById("resource-side");
+const resourceSideBody = document.getElementById("resource-side-body");
+const resourceSideClose = document.getElementById("resource-side-close");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -70,7 +73,11 @@ let currentSession = null;    // id of the chat we're attached to (null until "r
 let switching = false;        // true while intentionally closing to switch chats
 let welcomeCard = null;       // the start-of-chat suggestion-chips card, removed once a turn starts
 let readyNoteTimer = null;    // defers the plain "Session ready" note so chips can supersede it
-let resourcePanel = null;     // single live resource-stats panel, updated in place during a run
+// Split view: the live resource view renders into a single shared right-hand panel (#resource-side),
+// NOT inline in the transcript. We hold the ACTIVE chat's latest snapshot here so chat switches can
+// re-render the shared panel for whatever chat is now in front (see makeRecord/activate).
+let resourceData = null;      // last `resource_stats` payload for the active chat (null = none yet)
+let resourceActive = false;   // whether the split view should be open for the active chat
 
 let toolEls = {}; // id -> details element (swapped per chat; the ACTIVE chat's map)
 
@@ -94,7 +101,7 @@ function makeRecord(sid) {
     id: sid || null,
     pane: el("div", "chat-pane"),
     toolEls: {}, activeConsole: null,
-    welcomeCard: null, resourcePanel: null,
+    welcomeCard: null, resourceData: null, resourceActive: false,
     workStart: 0, workActivity: null, workWordFixed: false, workWord: "Working", workingHidden: true,
     turnUsage: null, sessionTokens: 0,
     cmdlogHTML: "", lastSeq: 0, running: false, scrollTop: 0,
@@ -112,7 +119,8 @@ function snapshotActive() {
   cur.toolEls = toolEls;
   cur.activeConsole = activeConsole;
   cur.welcomeCard = welcomeCard;
-  cur.resourcePanel = resourcePanel;
+  cur.resourceData = resourceData;
+  cur.resourceActive = resourceActive;
   cur.workStart = workStart; cur.workActivity = workActivity; cur.workWordFixed = workWordFixed;
   cur.workWord = workWordEl.textContent; cur.workingHidden = workingEl.hidden;
   cur.turnUsage = turnUsage; cur.sessionTokens = sessionTokens;
@@ -129,7 +137,9 @@ function activate(rec) {
   toolEls = rec.toolEls;
   activeConsole = rec.activeConsole;
   welcomeCard = rec.welcomeCard;
-  resourcePanel = rec.resourcePanel;
+  resourceData = rec.resourceData;
+  resourceActive = rec.resourceActive;
+  renderResourceSide();                 // reflect THIS chat's run in the shared right-hand panel
   readyNoteTimer = null;
   workStart = rec.workStart; workActivity = rec.workActivity; workWordFixed = rec.workWordFixed;
   turnUsage = rec.turnUsage;
@@ -155,7 +165,9 @@ function clearActivePane() {
   toolEls = cur ? (cur.toolEls = {}) : {};
   activeConsole = null; if (cur) cur.activeConsole = null;
   welcomeCard = null; if (cur) cur.welcomeCard = null;
-  resourcePanel = null; if (cur) cur.resourcePanel = null;
+  resourceData = null; resourceActive = false;
+  if (cur) { cur.resourceData = null; cur.resourceActive = false; }
+  renderResourceSide();
   turnUsage = null; if (cur) cur.turnUsage = null;
   if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }
   if (cur) { cur.pendingApprovals = {}; cur.lastSeq = 0; }
@@ -703,30 +715,64 @@ function removeWelcomeCard() {
   if (welcomeCard) { welcomeCard.remove(); welcomeCard = null; }
 }
 
-// ---- live resource-stats panel (backend-streamed during a run) -----------
-// One panel, updated in place from each `resource_stats` event (NOT appended per event), and
-// cleared on `done`. Zero agent/LLM cost — purely a backend-pushed view.
-function ensureResourcePanel() {
-  if (resourcePanel && resourcePanel.isConnected) return resourcePanel;
-  resourcePanel = el("div", "resource-panel");
-  activePane.appendChild(resourcePanel);
-  return resourcePanel;
+// ---- split view: live resource side panel (backend-streamed during a run) -
+// The live resource view is chat-ADJACENT, not inline: each `resource_stats` event opens a
+// right-hand panel (the chat column narrows alongside it) and updates it in place; `done` collapses
+// it back to full width. One shared panel reflects the ACTIVE chat's run; the per-chat snapshot
+// (resourceData/resourceActive) is re-rendered on switch so the front chat's run is always shown.
+// Zero agent/LLM cost — purely a backend-pushed view.
+
+// A `resource_stats` event for the active chat: stash it and (re)open the split view.
+function renderResourceStats(data) {
+  resourceData = data;
+  resourceActive = true;
+  if (cur) { cur.resourceData = data; cur.resourceActive = true; }
+  renderResourceSide();
 }
 
-function renderResourceStats(data) {
-  const panel = ensureResourcePanel();
-  panel.innerHTML = "";
+// Render the shared #resource-side panel from the active chat's snapshot and toggle the split layout.
+// No snapshot (or not active) → collapse the split and hide the panel; degrades gracefully.
+function renderResourceSide() {
+  if (!resourceSide) return;
+  if (!resourceActive || !resourceData) {
+    document.body.classList.remove("split");
+    resourceSide.hidden = true;
+    if (resourceSideBody) resourceSideBody.innerHTML = "";
+    return;
+  }
+  resourceSide.hidden = false;
+  document.body.classList.add("split");
+  const body = resourceSideBody;
+  body.innerHTML = "";
+  const data = resourceData;
+
+  // Dashboard slot (Grafana/Prometheus): surface it when the backend supplies a URL, otherwise the
+  // live table below stands in. Built to host a richer embed later without touching the layout.
+  if (data.dashboard_url && /^https?:\/\//i.test(data.dashboard_url)) {
+    const dash = el("div", "resource-dash");
+    const frame = el("iframe", "resource-dash-frame");
+    frame.src = data.dashboard_url;
+    frame.title = "Live metrics dashboard";
+    frame.setAttribute("loading", "lazy");
+    frame.setAttribute("referrerpolicy", "no-referrer");
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+    dash.appendChild(frame);
+    const link = el("a", "resource-dash-link", "Open dashboard ↗");
+    link.href = data.dashboard_url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    dash.appendChild(link);
+    body.appendChild(dash);
+  }
+
   if (data.available === false) {
-    panel.appendChild(el("div", "resource-note", data.note || "live resource stats unavailable"));
-    scroll();
+    body.appendChild(el("div", "resource-note", data.note || "live resource stats unavailable"));
     return;
   }
   const rows = data.rows || [];
-  const head = el("div", "resource-head", `live resource usage${data.namespace ? " · " + data.namespace : ""}`);
-  panel.appendChild(head);
+  body.appendChild(el("div", "resource-head", `live resource usage${data.namespace ? " · " + data.namespace : ""}`));
   if (!rows.length) {
-    panel.appendChild(el("div", "resource-note", "no pods reporting yet"));
-    scroll();
+    body.appendChild(el("div", "resource-note", "no pods reporting yet"));
     return;
   }
   const table = el("table", "resource-table");
@@ -740,12 +786,14 @@ function renderResourceStats(data) {
     tr.appendChild(el("td", null, r["memory(bytes)"] || ""));
     table.appendChild(tr);
   }
-  panel.appendChild(table);
-  scroll();
+  body.appendChild(table);
 }
 
+// On `done` (run finished): collapse the split view back to full width for the active chat.
 function clearResourceStats() {
-  if (resourcePanel) { resourcePanel.remove(); resourcePanel = null; }
+  resourceActive = false;
+  if (cur) cur.resourceActive = false;
+  renderResourceSide();
 }
 
 function renderHistory(items, commands) {
@@ -1248,6 +1296,9 @@ input.addEventListener("keydown", (e) => {
 input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; });
 
 newChatBtn.addEventListener("click", newChat);
+
+// Manual collapse of the split view; the next `resource_stats` tick of a still-running run reopens it.
+if (resourceSideClose) resourceSideClose.addEventListener("click", clearResourceStats);
 
 // ---- boot ---------------------------------------------------------------
 loadSessions();

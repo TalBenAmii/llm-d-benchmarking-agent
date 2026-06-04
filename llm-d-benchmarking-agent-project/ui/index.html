@@ -111,6 +111,18 @@
   </footer>
   </div>
 
+  <!-- Split view: the live resource view slides in on the right while a run is active (chat-adjacent,
+       not inline in the transcript). Hosts the live kubectl-top table today; structured to host a
+       Grafana/Prometheus dashboard pane (iframe/link) later when a dashboard URL is available. Hidden
+       (display:none) until body.split is set; chat column narrows alongside it. -->
+  <aside id="resource-side" class="resource-side" aria-label="Live resource usage" aria-live="polite" hidden>
+    <div class="resource-side-head">
+      <span class="resource-side-title">Live resources</span>
+      <button id="resource-side-close" class="icon-btn icon-btn-sm" type="button" title="Hide the live resource view" aria-label="Hide the live resource view">×</button>
+    </div>
+    <div id="resource-side-body" class="resource-side-body"></div>
+  </aside>
+
   <script src="/static/app.js"></script>
 </body>
 </html>
