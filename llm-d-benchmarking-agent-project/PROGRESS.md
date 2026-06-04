@@ -5,7 +5,7 @@ phase milestone. See [`ROADMAP.md`](ROADMAP.md) for the plan and phase status.
 
 Branch: `feature/roadmap` (integration; never merged to `main` during this effort).
 Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 skipped**.
-Latest completed phase: **Phase 26** (suite **591 passed / 9 skipped**). Each completed phase below
+Latest completed phase: **Phase 55 (ROADMAP_V4)** (suite **1452 passed / 20 skipped**). Each completed phase below
 is collapsed to a one-liner (date · phase · what shipped · branch · final suite count); see git
 history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the forward-looking plan.
 
@@ -13,6 +13,17 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 55 (ROADMAP_V4): Real-time metric streaming / custom Prometheus queries —
+  THIN-CODE (knowledge-only; no app behavior change). Appended `knowledge/observability.md` §5
+  documenting that the benchmark's own live metric STREAMING and user-defined custom Prometheus
+  QUERIES are UPSTREAM-UNIMPLEMENTED (grounded in `llm-d-benchmark/docs/metrics_collection.md`
+  "Not Yet Implemented") and scripting the HONEST answer to "can you stream live benchmark metrics?":
+  the agent states the gap plainly (static PNGs + `results.observability` only AFTER the run), then
+  offers the real substitutes — `observe_run_metrics` (`kubectl top` live CPU/mem) + Phase-21 live
+  pod-log streaming via `orchestrate_benchmark_run`; custom PromQL is the user's own
+  Prometheus/Grafana (§3). Added a hermetic knowledge-assertion test (mirrors the tracing-config
+  pattern). Branch `feature/roadmap-v4-p55-metric-streaming`. Suite **1452 passed / 20 skipped**
+  (+1 via `tests/test_observability.py`); ruff + mypy clean. — done
 - 2026-06-04 — Phase 51 (ROADMAP_V4): Jupyter / standalone plotting scripts surfacing. Shipped the
   `aggregate_runs` tool (`app/tools/aggregate_runs.py` + `scripts/aggregate_runs.py` wrapper +
   `AggregateRunsInput`) — the ONE parameterizable analysis script: it imports the benchmark repo's own

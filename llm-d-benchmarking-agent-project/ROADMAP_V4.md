@@ -655,8 +655,16 @@ blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 > traces). 13 hermetic tests (`tests/test_tracing_config.py`), no cluster/GPU/network.
 > Full suite **1287 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 
-## Phase 55 — Real-time metric streaming / custom Prometheus queries — TODO
+## Phase 55 — Real-time metric streaming / custom Prometheus queries — DONE
 *Catalog ref: Area F — "Real-time metric streaming / custom Prometheus queries" (⬜; explicitly unimplemented upstream).*
+
+> **RESULT (Phase 55, THIN-CODE / knowledge-only):** appended `knowledge/observability.md` §5
+> stating the benchmark's own live metric STREAMING and user-defined custom Prometheus QUERIES are
+> UPSTREAM-UNIMPLEMENTED (grounded in `llm-d-benchmark/docs/metrics_collection.md` "Not Yet
+> Implemented"), and naming the agent's substitutes: `observe_run_metrics` (kubectl top live
+> CPU/mem) + Phase-21 live pod-log streaming via `orchestrate_benchmark_run`; custom PromQL is the
+> user's own Prometheus/Grafana. No app behavior changed. Added a hermetic knowledge-assertion test.
+> Full suite green on feature/roadmap-v4: **1452 passed, 20 skipped, 0 failed** (ruff + mypy clean).
 
 - **GOAL:** track the upstream feature and provide the agent's best-available equivalent.
 - **BUILD:** document in `knowledge/observability.md` that benchmark metric streaming is
