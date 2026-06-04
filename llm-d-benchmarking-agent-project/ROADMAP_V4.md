@@ -222,8 +222,8 @@ skipped / 0 failed**; ruff + mypy clean.
   with the Phase 29 cluster-access flag-list union preserved; full suite **1031 passed / 20 skipped**
   (+63 new tests), ruff + mypy clean.
 
-## Phase 32 — Gateway class / provider selection (--gateway-class) — TODO
-*Catalog ref: Area A — "Gateway class / provider selection (istio/agentgateway/gke/epponly)" (⬜).*
+## Phase 32 — Gateway class / provider selection (--gateway-class) — DONE
+*Catalog ref: Area A — "Gateway class / provider selection (istio/agentgateway/gke/epponly)" (✅).*
 
 - **GOAL:** let the agent choose the gateway provider instead of inheriting it from the spec.
 - **BUILD:** model `gateway.className` → emit `--gateway-class` in `build_argv`; widen
@@ -232,6 +232,15 @@ skipped / 0 failed**; ruff + mypy clean.
 - **ACCEPTANCE:** a standup can override the gateway provider; the choice is grounded in
   knowledge, not Python branches.
 - **HERMETIC-TEST:** `build_argv` emits `--gateway-class` from the enum; allowlist validates it.
+
+- **RESULT (done):** `build_argv` (`app/tools/execute.py`) now emits `flags["gateway_class"]` →
+  `--gateway-class <provider>` unconditionally across all six subcommands (pure mechanism, no
+  if/elif on value). `security/allowlist.yaml` (DATA) adds a value-pinned enum
+  (epp-only/istio/agentgateway/gke/data-science-gateway-class — the full upstream set) attached to
+  each subcommand without changing any command's mode. Which-provider JUDGMENT lives in
+  `knowledge/gateway_class.md` (per-provider what-it-deploys + when-to-pick table); schemas.py +
+  registry.py document the flag. 77 hermetic tests (`tests/test_gateway_class.py`). Full suite
+  **1364 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 
 ## Phase 33 — Multi-stack scenarios + --stack subset + --parallel — DONE
 *Catalog ref: Area A — "Multi-stack scenarios (N models behind one gateway)" (⬜→✅).*

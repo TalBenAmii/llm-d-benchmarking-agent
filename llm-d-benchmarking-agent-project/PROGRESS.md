@@ -13,6 +13,16 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 32 (ROADMAP_V4): Gateway class / provider selection (`--gateway-class`). The
+  agent can now choose the gateway PROVIDER instead of inheriting it from the scenario: `build_argv`
+  (`app/tools/execute.py`) emits `flags["gateway_class"]` → `--gateway-class <provider>`
+  unconditionally across all six subcommands (pure mechanism — no subcommand guard, no if/elif on
+  value); `security/allowlist.yaml` (DATA) value-pins the full upstream enum (epp-only / istio /
+  agentgateway / gke / data-science-gateway-class) on each subcommand without changing any command's
+  mode (plan stays read_only, mutating ones stay approval-gated). Which-provider JUDGMENT lives in
+  `knowledge/gateway_class.md` (per-provider what-it-deploys + when-to-pick), with schemas.py +
+  registry.py documenting the flag. 77 hermetic tests (`tests/test_gateway_class.py`). Merged into
+  `feature/roadmap-v4`. Suite **1364 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
 - 2026-06-04 — Phase 54 (ROADMAP_V4): Distributed tracing config (OpenTelemetry `tracing:` block).
   Advanced users can now author a scenario `tracing.*` block (otlpEndpoint, sampling.sampler/samplerArg,
   serviceNames.{vllmDecode,vllmPrefill,routingProxy}, vllm.collectDetailedTraces) via
