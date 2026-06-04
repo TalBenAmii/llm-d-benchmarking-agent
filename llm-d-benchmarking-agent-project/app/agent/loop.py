@@ -9,7 +9,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.agent import events
-from app.agent.prompt import build_system_prompt
+from app.agent.context_mgmt import compact_messages
+from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.session import Session
 from app.llm.provider import LLMProvider, Usage
 from app.observability.logctx import bind as log_bind
@@ -54,7 +55,21 @@ class AgentLoop:
                             + json.dumps(session.env_snapshot)[:4000]),
             })
             session.prewarmed = True
+        # Inject the LIVE catalog ONCE per session as a synthetic conversation message instead of
+        # baking it into the (now byte-stable) cached system prefix — so the large prefix reliably
+        # cache-hits every turn. One-shot: flip catalog_injected so it is not re-injected (the
+        # agent re-enumerates on demand with list_catalog if it suspects it has gone stale).
+        if not session.catalog_injected:
+            session.messages.append({"role": "user", "content": catalog_brief_message(ctx)})
+            session.catalog_injected = True
         session.messages.append({"role": "user", "content": user_text})
+
+        # Context management: compact OLD, superseded tool-result blobs in place once the
+        # replayed transcript grows past the threshold (mechanism in app/agent/context_mgmt.py).
+        # Never breaks tool-call/result pairing and never touches the recent window.
+        reclaimed = compact_messages(session.messages)
+        if reclaimed:
+            log.info("turn.compacted", extra={"session_id": session.id, "chars_reclaimed": reclaimed})
 
         log.info("turn.start", extra={"session_id": session.id, "user_chars": len(user_text)})
 

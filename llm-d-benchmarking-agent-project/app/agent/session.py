@@ -40,11 +40,16 @@ def _is_valid_id(sid: str | None) -> TypeGuard[str]:
 
 
 def derive_title(messages: list[dict[str, Any]]) -> str:
-    """A short, human title from the first user message (Claude-web style)."""
+    """A short, human title from the first REAL user message (Claude-web style).
+
+    Synthetic, system-injected user messages — the environment pre-probe snapshot and the live
+    catalog snapshot, both bracket-tagged ("[environment pre-probe …]", "[live catalog …]") —
+    are skipped so the chat title comes from what the person actually typed, not the injected
+    context."""
     for m in messages:
         if isinstance(m, dict) and m.get("role") == "user":
             text = " ".join(str(m.get("content") or "").split())
-            if text:
+            if text and not text.startswith("["):
                 return text[:_TITLE_MAX] + ("…" if len(text) > _TITLE_MAX else "")
     return "New chat"
 
@@ -86,6 +91,12 @@ class Session:
     total_output_tokens: int = 0         # generated tokens
     total_cache_read_tokens: int = 0     # input served from cache
     total_cache_write_tokens: int = 0    # input written to cache (Anthropic only)
+    # One-shot flag: the live catalog snapshot has been injected as a synthetic conversation
+    # message (see app/agent/loop.py). PERSISTED — the injected message itself lives in
+    # ``messages`` and is reloaded with the transcript, so a resumed chat must NOT inject a
+    # second copy. Defaults False so pre-feature state.json files (no catalog message yet) get
+    # one injected on their next turn.
+    catalog_injected: bool = False
     # RUNTIME-ONLY (deliberately NOT persisted): the read-only environment snapshot the /ws
     # handler pre-probes in the background on a brand-new session, and a one-shot flag the loop
     # flips once it has injected that snapshot as a synthetic turn message. Both are scoped to
@@ -132,6 +143,7 @@ class Session:
                         "total_output_tokens": self.total_output_tokens,
                         "total_cache_read_tokens": self.total_cache_read_tokens,
                         "total_cache_write_tokens": self.total_cache_write_tokens,
+                        "catalog_injected": self.catalog_injected,
                     },
                     indent=2,
                 )
@@ -213,6 +225,9 @@ class SessionManager:
             total_output_tokens=data.get("total_output_tokens", 0),
             total_cache_read_tokens=data.get("total_cache_read_tokens", 0),
             total_cache_write_tokens=data.get("total_cache_write_tokens", 0),
+            # Default False: a pre-feature snapshot has no catalog message, so let the next turn
+            # inject one. (Once injected + persisted, a reloaded chat sees True and skips it.)
+            catalog_injected=data.get("catalog_injected", False),
         )
         self._sessions[session.id] = session
         return session
