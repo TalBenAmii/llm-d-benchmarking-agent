@@ -22,9 +22,23 @@ Server -> client:
                                             event emitted on every LLM call (the live UI line
                                             ticks up): turn.* are the RUNNING totals for the
                                             in-progress turn, session.* the running session totals.
+  welcome          {heading, bullets:[str], nudge}
+                                           — DETERMINISTIC start-of-chat greeting, emitted by the
+                                            backend (NOT the LLM, no token cost) on a brand-new
+                                            connection ONLY (never on resume) right before
+                                            `suggestions`. Consistent every time; its judgment text
+                                            comes from knowledge/welcome.md. A connection-lifecycle
+                                            frame, not a turn event.
   suggestions      {chips:[{label,prompt}]}— start-of-chat suggestion chips, emitted ONCE on a
                                             brand-new connection (never on resume) right after
-                                            `ready`. A connection-lifecycle frame, not a turn event.
+                                            `welcome`. A connection-lifecycle frame, not a turn event.
+  results_card     {model, harness, ...}    — DETERMINISTIC structured results summary, emitted by
+                                            the backend right after a locate_and_parse_report /
+                                            analyze_results tool result that carried a validated
+                                            Benchmark Report v0.2 summary. Built from the validated
+                                            summary + analyzer verdicts (not free-form prose), so the
+                                            results card is identical every run. A turn event
+                                            (buffered + replayed like tool_call/tool_result).
   resource_stats   {available, namespace?, rows?, note?}
                                            — LIVE cluster CPU/memory for the running benchmark's
                                             pods, streamed by the backend resource poller during a
@@ -54,6 +68,8 @@ ERROR = "error"
 CANCELLED = "cancelled"
 USAGE = "usage"
 SUGGESTIONS = "suggestions"
+WELCOME = "welcome"
+RESULTS_CARD = "results_card"
 RESOURCE_STATS = "resource_stats"
 DONE = "done"
 
@@ -66,13 +82,16 @@ HISTORY = "history"
 PONG = "pong"
 
 # Event types that are NOT buffered into the per-turn live ring. Two kinds:
-#   * lifecycle frames (ready/history/pong/suggestions) — emitted by the /ws handler on
+#   * lifecycle frames (ready/history/pong/welcome/suggestions) — emitted by the /ws handler on
 #     (re)connect, not part of any turn's live stream; buffering them would replay a stale
 #     handshake on a second mid-turn reconnect;
 #   * resource_stats — the live resource poller streams these every few seconds during a run.
 #     They are frequent and disposable; buffering them would evict the REAL turn events (tool
 #     calls, command lines, assistant text) from the bounded ring, so a mid-turn reconnect would
 #     replay a wall of stat samples instead of the progress it actually missed.
+# results_card is DELIBERATELY NOT here: it is a TURN event (emitted during the turn, right after
+# the report/analysis tool result), so it must be buffered + seq-stamped + replayed like a
+# tool_call/tool_result so a mid-turn reconnect still catches it.
 # The buffer therefore holds only the in-flight TURN's meaningful events, exactly as replay_live
 # promises.
-NON_TURN_EVENTS = frozenset({READY, HISTORY, PONG, SUGGESTIONS, RESOURCE_STATS})
+NON_TURN_EVENTS = frozenset({READY, HISTORY, PONG, WELCOME, SUGGESTIONS, RESOURCE_STATS})

@@ -23,6 +23,7 @@ from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
 from app.agent.suggestions import load_suggestions
+from app.agent.welcome import build_welcome
 from app.agent.ws_schemas import (
     ApprovalIn,
     CancelIn,
@@ -493,10 +494,17 @@ async def ws(websocket: WebSocket) -> None:
     if resumed and not incremental:
         await channel.emit("history", {"items": _history_items(session), "commands": session.commands})
     elif not resumed:
-        # Brand-new chat: surface the start-of-chat suggestion chips (W1) right after `ready`, and
-        # kick off a NON-blocking read-only environment pre-probe (W2) so the first turn starts
-        # environment-aware without an extra LLM round-trip. Neither blocks input-enable: the
+        # Brand-new chat: emit the DETERMINISTIC welcome card (B2) FIRST — a code-built greeting
+        # that concisely offers the assistant's capabilities, consistent every time and with NO
+        # LLM turn spent (its judgment text lives in knowledge/welcome.md). NOT shown on resume
+        # (this branch is gated on `not resumed`, so a chat with history never re-greets). Then
+        # surface the start-of-chat suggestion chips (W1) right after `ready`/`welcome`, and kick
+        # off a NON-blocking read-only environment pre-probe (W2) so the first turn starts
+        # environment-aware without an extra LLM round-trip. None of these block input-enable: the
         # probe runs in the background and its snapshot is consumed on the first turn if ready.
+        welcome = build_welcome(session.ctx)
+        if welcome is not None:
+            await channel.emit(ws_events.WELCOME, welcome)
         chips = load_suggestions(get_settings())
         if chips:
             await channel.emit(ws_events.SUGGESTIONS, {"chips": chips})

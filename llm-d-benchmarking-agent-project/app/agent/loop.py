@@ -11,6 +11,7 @@ from typing import Any
 from app.agent import events
 from app.agent.context_mgmt import compact_messages
 from app.agent.prompt import build_system_prompt, catalog_brief_message
+from app.agent.results_card import build_results_card
 from app.agent.session import Session
 from app.llm.provider import LLMProvider, Usage
 from app.observability.logctx import bind as log_bind
@@ -156,6 +157,14 @@ class AgentLoop:
                         "ok": not (isinstance(result, dict) and ("error" in result or result.get("rejected"))),
                     })
                     await emit(events.TOOL_RESULT, {"id": tc.id, "name": tc.name, "result": result})
+                    # Deterministic structured results card (B2): right after a report/analysis
+                    # tool result that carried a VALIDATED Benchmark Report v0.2 summary, emit a
+                    # consistent card built from that validated summary + the analyzer's exact
+                    # SLO/Pareto verdicts (not free-form prose). Pure mechanism — build_results_card
+                    # returns None for anything not renderable, so non-report tools never emit one.
+                    card = build_results_card(tc.name, result)
+                    if card is not None:
+                        await emit(events.RESULTS_CARD, {"id": tc.id, "card": card})
                 tool_result_msgs.append({
                     "tool_call_id": tc.id,
                     "name": tc.name,

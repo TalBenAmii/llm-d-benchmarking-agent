@@ -161,9 +161,11 @@ def test_ws_malformed_frame_rejected_socket_survives():
         app.state.provider = FakeProvider([AssistantTurn(text="hi there", tool_calls=[])])
         with client.websocket_connect("/ws") as ws:
             assert ws.receive_json()["type"] == "ready"
-            # A brand-new connection now emits start-of-chat suggestion chips right after `ready`
-            # (W1) and may stream background pre-probe `command` events (W2). `_next_protocol`
-            # skips that benign noise so we assert the real protocol responses below.
+            # A brand-new connection now emits a DETERMINISTIC `welcome` card (B2) then the
+            # start-of-chat suggestion chips (W1) right after `ready`, and may stream background
+            # pre-probe `command` events (W2). `_next_protocol` skips that benign noise so we
+            # assert the real protocol responses below.
+            assert _next_protocol(ws)["type"] == "welcome"
             assert _next_protocol(ws)["type"] == "suggestions"
 
             # (1) unknown message type -> structured protocol error, socket alive.
@@ -441,11 +443,16 @@ def test_ws_new_connection_emits_suggestions_after_ready():
     with TestClient(app) as client:
         app.state.provider = FakeProvider([AssistantTurn(text="hi", tool_calls=[])])
 
-        # Brand-new chat: ready, then suggestions.
+        # Brand-new chat: ready, then the deterministic welcome card, then suggestions.
         with client.websocket_connect("/ws") as ws:
             ready = ws.receive_json()
             assert ready["type"] == "ready" and ready["data"]["resumed"] is False
             sid = ready["data"]["session_id"]
+            welcome = ws.receive_json()
+            assert welcome["type"] == "welcome"
+            wd = welcome["data"]
+            assert isinstance(wd.get("bullets"), list) and wd["bullets"]
+            assert wd.get("heading")
             sugg = ws.receive_json()
             assert sugg["type"] == "suggestions"
             chips = sugg["data"]["chips"]

@@ -359,6 +359,10 @@ pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wra
   background: var(--panel); padding: 16px 18px; box-shadow: var(--shadow);
 }
 .welcome-heading { font: 400 14px/1.5 var(--serif); color: var(--text); margin-bottom: 12px; }
+.welcome-intro { margin-bottom: 12px; }
+.welcome-caps { margin: 4px 0 10px; padding-left: 20px; }
+.welcome-caps li { font: 400 13px/1.6 var(--serif); color: var(--text); margin: 2px 0; }
+.welcome-nudge { font: 400 13px/1.5 var(--serif); color: var(--muted); margin-top: 6px; }
 .welcome-chips { display: flex; flex-wrap: wrap; gap: 9px; }
 .chip {
   font: 500 13px/1.2 var(--serif); padding: 8px 14px; border-radius: 999px;
@@ -379,6 +383,30 @@ pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wra
 .resource-table th { text-align: left; font-weight: 600; color: var(--muted); padding: 2px 10px 4px 0; }
 .resource-table td { padding: 2px 10px 2px 0; white-space: nowrap; }
 .resource-table .resource-name { color: var(--code-text); word-break: break-all; white-space: normal; }
+
+/* ── Deterministic structured results card (B2) ───────────────────────── */
+.results-card {
+  max-width: 900px; width: 100%; margin: 8px auto 16px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); padding: 14px 18px; box-shadow: var(--shadow);
+}
+.results-head { font: 600 14px/1.4 var(--serif); color: var(--text); margin-bottom: 8px; }
+.results-subhead { font: 600 12px/1.4 var(--serif); color: var(--text); margin: 14px 0 6px; }
+.results-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.results-tag {
+  font: 500 11px/1.4 var(--mono); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px;
+  background: var(--panel-2);
+}
+.results-table { width: 100%; border-collapse: collapse; font: 13px/1.5 var(--serif); color: var(--text); margin-bottom: 4px; }
+.results-table th { text-align: left; font: 600 11px/1.4 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 3px 12px 5px 0; border-bottom: 1px solid var(--border); }
+.results-table td { padding: 4px 12px 4px 0; white-space: nowrap; }
+.results-table .results-name { white-space: normal; }
+.results-table .results-stat { font: 11px/1.4 var(--mono); color: var(--muted); }
+.results-note { font: 400 12px/1.5 var(--serif); color: var(--muted); margin-top: 6px; }
+.slo-pass { color: color-mix(in srgb, var(--green) 55%, var(--text)); font-weight: 600; }
+.slo-fail { color: color-mix(in srgb, var(--red) 55%, var(--text)); font-weight: 600; }
+.slo-na { color: var(--muted); }
 
 /* ── Buttons ──────────────────────────────────────────────────────────── */
 button {
