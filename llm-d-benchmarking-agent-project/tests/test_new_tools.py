@@ -127,6 +127,90 @@ async def test_read_knowledge_in_tool_definitions_and_dispatch(tool_ctx):
     assert result["name"] == "history.md" and result["content"]
 
 
+# ---- search_knowledge (lexical search across knowledge/ + repo-doc index) ----
+
+def test_search_knowledge_ranks_relevant_guide_first(tool_ctx):
+    # A capacity/fit query should rank the capacity guide at the top via name + heading hits.
+    out = probe.search_knowledge(tool_ctx, query="will the model fit in gpu memory capacity")
+    assert out["match_count"] >= 1
+    top = out["results"][0]
+    assert top["kind"] == "knowledge"
+    assert top["topic"] == "capacity"
+    # Every result carries a ready-to-use load hint and a non-empty snippet.
+    assert top["load_with"] == "read_knowledge('capacity')"
+    assert top["snippet"]
+    assert top["matched_terms"]
+
+
+def test_search_knowledge_finds_doc_without_exact_basename(tool_ctx):
+    # The user describes a symptom in their own words (not a basename); the gateway readiness
+    # guide should still surface.
+    out = probe.search_knowledge(tool_ctx, query="gateway programmed false traffic cannot reach pods")
+    topics = [r["topic"] for r in out["results"] if r["kind"] == "knowledge"]
+    assert "gateway_readiness" in topics
+
+
+def test_search_knowledge_includes_repo_doc_pointers(tool_ctx):
+    out = probe.search_knowledge(tool_ctx, query="quickstart kind cpu only deploy")
+    repo_hits = [r for r in out["results"] if r["kind"] == "repo_doc"]
+    assert repo_hits, "expected at least one curated repo-doc pointer"
+    ptr = repo_hits[0]
+    assert ptr["path"].startswith(("llm-d/", "llm-d-benchmark/"))
+    assert ptr["load_with"] == f"read_repo_doc('{ptr['path']}')"
+
+
+def test_search_knowledge_can_exclude_repo_docs(tool_ctx):
+    out = probe.search_knowledge(
+        tool_ctx, query="quickstart kind cpu only deploy", include_repo_docs=False
+    )
+    assert all(r["kind"] == "knowledge" for r in out["results"])
+
+
+def test_search_knowledge_respects_limit_and_is_deterministic(tool_ctx):
+    out1 = probe.search_knowledge(tool_ctx, query="benchmark results report metrics", limit=3)
+    assert len(out1["results"]) <= 3
+    # Same query → byte-identical ranking (no model call, stable tie-break).
+    out2 = probe.search_knowledge(tool_ctx, query="benchmark results report metrics", limit=3)
+    assert out1["results"] == out2["results"]
+
+
+def test_search_knowledge_empty_and_stopword_only_query(tool_ctx):
+    assert "error" in probe.search_knowledge(tool_ctx, query="   ")
+    # A query of only filler words has no searchable terms.
+    assert "error" in probe.search_knowledge(tool_ctx, query="how do i the a an")
+
+
+def test_search_knowledge_no_match_returns_empty_results(tool_ctx):
+    out = probe.search_knowledge(tool_ctx, query="zzzznevernevermatchqqqq")
+    assert out["match_count"] == 0
+    assert out["results"] == []
+    # Still hands back the valid topic list so the model can fall back to browsing.
+    assert "capacity" in out["valid_topics"]
+
+
+async def test_search_knowledge_in_tool_definitions_and_dispatch(tool_ctx):
+    from app.tools.registry import tool_definitions
+
+    names = {d["name"] for d in tool_definitions()}
+    assert "search_knowledge" in names
+    result = await dispatch(tool_ctx, "search_knowledge", {"query": "lower harness cpu kind node"})
+    assert "results" in result and result["query"]
+    # harness_sizing.md should be among the hits for this troubleshooting phrasing.
+    topics = [r.get("topic") for r in result["results"]]
+    assert "harness_sizing" in topics
+
+
+async def test_search_knowledge_dispatch_requires_query(tool_ctx):
+    result = await dispatch(tool_ctx, "search_knowledge", {})
+    assert result.get("error") == "invalid arguments"
+
+
+def test_search_knowledge_when_to_use_is_in_knowledge(tool_ctx):
+    # Judgment (WHEN to reach for it) lives in knowledge/, not in Python branches.
+    style = (tool_ctx.settings.knowledge_dir / "conversation_style.md").read_text()
+    assert "search_knowledge" in style
+
+
 # ---- build_system_prompt: core inline + on-demand index ------------------
 
 def test_system_prompt_inlines_core_and_indexes_on_demand(tool_ctx):

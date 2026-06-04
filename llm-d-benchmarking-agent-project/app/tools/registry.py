@@ -64,6 +64,7 @@ from app.tools.schemas import (
     ResultHistoryInput,
     RunCommandInput,
     RunSetupInput,
+    SearchKnowledgeInput,
     WriteConfigInput,
 )
 from app.validation.session_plan import SessionPlan
@@ -114,6 +115,19 @@ _DESCRIPTIONS = {
         "lists the rest in a knowledge index with their topics; call this to pull in the "
         "relevant guide BEFORE interpreting that kind of result or making that decision. "
         "Read-only; auto-runs. On an unknown name it returns the valid topics."
+    ),
+    "search_knowledge": (
+        "SEARCH the agent's knowledge base (and the curated upstream repo-doc index) by "
+        "keyword/topic when you do NOT know the exact guide basename. Read-only; auto-runs; "
+        "deterministic (weighted lexical keyword overlap — NO model call). Returns the most "
+        "relevant guides + a snippet from each, each with a ready load_with hint "
+        "(read_knowledge('<topic>') or read_repo_doc('<path>')). Reach for this at a "
+        "TROUBLESHOOTING / problem moment — a user hits a failure, an unfamiliar error, or asks "
+        "'how do I…' and no specific tool already points you at the guide. It COMPLEMENTS "
+        "read_knowledge (load a guide you can name) and the system prompt's knowledge index "
+        "(the enumerated topic list): use search_knowledge to FIND the right doc, then "
+        "read_knowledge / read_repo_doc to load it in full. WHEN to use it is "
+        "knowledge/conversation_style.md."
     ),
     "read_repo_doc": (
         "Read a documentation or spec file from inside the (read-only) repos, e.g. the "
@@ -462,6 +476,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("list_catalog", _DESCRIPTIONS["list_catalog"], ListCatalogInput, probe.list_catalog),
         ToolSpec("advise_accelerators", _DESCRIPTIONS["advise_accelerators"], AdviseAcceleratorsInput, probe.advise_accelerators),
         ToolSpec("read_knowledge", _DESCRIPTIONS["read_knowledge"], ReadKnowledgeInput, probe.read_knowledge),
+        ToolSpec("search_knowledge", _DESCRIPTIONS["search_knowledge"], SearchKnowledgeInput, probe.search_knowledge),
         ToolSpec("read_repo_doc", _DESCRIPTIONS["read_repo_doc"], ReadRepoDocInput, probe.read_repo_doc),
         ToolSpec("fetch_key_docs", _DESCRIPTIONS["fetch_key_docs"], FetchKeyDocsInput, probe.fetch_key_docs),
         ToolSpec("propose_session_plan", _DESCRIPTIONS["propose_session_plan"], SessionPlan, plan.propose_session_plan),

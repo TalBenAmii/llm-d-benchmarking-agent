@@ -64,8 +64,9 @@ async def test_prewarm_snapshot_injected_before_user_text(tmp_path):
 
     await AgentLoop(provider).run_turn(session, "benchmark a tiny model", emit=emit, request_approval=approve)
 
-    # The synthetic pre-probe message was appended, carrying the snapshot, immediately BEFORE the
-    # real user text — and prewarmed flipped.
+    # The synthetic pre-probe message was appended, carrying the snapshot, BEFORE the real user
+    # text — and prewarmed flipped. (A one-shot live-catalog snapshot is injected between the
+    # pre-probe and the real user text; the real text still follows the pre-probe.)
     msgs = session.messages
     pre = _pre_probe_msgs(msgs)
     assert len(pre) == 1
@@ -75,7 +76,8 @@ async def test_prewarm_snapshot_injected_before_user_text(tmp_path):
     assert pre[0].get("synthetic") is True
     assert any(m.get("content") == pre[0]["content"] for m in provider.seen_messages[0])
     idx = msgs.index(pre[0])
-    assert msgs[idx + 1] == {"role": "user", "content": "benchmark a tiny model"}
+    real = {"role": "user", "content": "benchmark a tiny model"}
+    assert real in msgs[idx + 1:], "the real user text must follow the pre-probe snapshot"
     assert session.prewarmed is True
 
 
