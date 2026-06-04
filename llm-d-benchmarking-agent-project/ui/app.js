@@ -767,12 +767,89 @@ function removeWelcomeCard() {
 // (resourceData/resourceActive) is re-rendered on switch so the front chat's run is always shown.
 // Zero agent/LLM cost — purely a backend-pushed view.
 
-// A `resource_stats` event for the active chat: stash it and (re)open the split view.
+// A `resource_stats` event for the active chat: stash it, accumulate per-pod history (the raw
+// table only shows the latest tick — we keep a rolling series for the sparklines), reopen split.
 function renderResourceStats(data) {
   resourceData = data;
   resourceActive = true;
   if (cur) { cur.resourceData = data; cur.resourceActive = true; }
+  accumulateResourceHistory(data);
   renderResourceSide();
+}
+
+// kubectl-top values are unit-suffixed strings ("250m", "1"; "45Mi", "1Gi", or plain bytes).
+// Normalize to millicores / MiB so the sparklines plot on a stable scale. null on unparseable.
+function parseCpuMillicores(s) {
+  if (s == null) return null;
+  const m = String(s).trim().match(/^([\d.]+)\s*([a-z]*)$/i);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  if (!isFinite(v)) return null;
+  return m[2].toLowerCase() === "m" ? v : v * 1000;   // bare value = whole cores
+}
+function parseMemMiB(s) {
+  if (s == null) return null;
+  const m = String(s).trim().match(/^([\d.]+)\s*([kmgtp]i?)?b?$/i);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  if (!isFinite(v)) return null;
+  const scale = { "": 1 / (1024 * 1024), ki: 1 / 1024, mi: 1, gi: 1024, ti: 1024 * 1024,
+                  k: 1e3 / (1024 * 1024), m: 1e6 / (1024 * 1024), g: 1e9 / (1024 * 1024), t: 1e12 / (1024 * 1024) };
+  const u = (m[2] || "").toLowerCase();
+  return v * (scale[u] != null ? scale[u] : 1);
+}
+
+// Append the latest tick's per-pod CPU/mem to the active chat's rolling history (cap 60 samples).
+function accumulateResourceHistory(data) {
+  if (!cur || !data || data.available === false || !Array.isArray(data.rows)) return;
+  const hist = cur.resourceHistory || (cur.resourceHistory = {});
+  for (const row of data.rows) {
+    const name = row && row.name;
+    if (!name) continue;
+    const series = hist[name] || (hist[name] = []);
+    series.push({ cpu: parseCpuMillicores(row["cpu(cores)"]), mem: parseMemMiB(row["memory(bytes)"]) });
+    if (series.length > 60) series.shift();
+  }
+}
+
+// A tiny sparkline of one numeric key ("cpu"/"mem") of a pod's sample series.
+function resSpark(series, key) {
+  const W = 92, H = 22, pad = 2;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "res-spark", "aria-hidden": "true" });
+  const vals = series.map((s) => s[key]).filter((v) => typeof v === "number" && isFinite(v));
+  if (vals.length < 2) return svg;
+  const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1, n = vals.length;
+  const x = (i) => pad + (i * (W - 2 * pad)) / (n - 1);
+  const y = (v) => H - pad - ((v - min) / span) * (H - 2 * pad);
+  svg.appendChild(svgEl("polyline", {
+    points: vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" "), class: "res-spark-line" }));
+  return svg;
+}
+
+// Per-pod CPU + mem trend block under the live table (reads the active chat's accumulated history).
+function renderResourceTrends(body) {
+  const hist = cur && cur.resourceHistory;
+  if (!hist) return;
+  const pods = Object.keys(hist).filter((p) => (hist[p] || []).length >= 2);
+  if (!pods.length) return;
+  body.appendChild(el("div", "resource-head resource-trend-head", "trend (per pod)"));
+  for (const pod of pods) {
+    const series = hist[pod];
+    const row = el("div", "resource-trend-row");
+    row.appendChild(el("div", "resource-trend-name", pod));
+    const last = series[series.length - 1] || {};
+    const cpu = el("div", "resource-trend-metric");
+    cpu.appendChild(el("span", "resource-trend-lbl", "cpu"));
+    cpu.appendChild(resSpark(series, "cpu"));
+    cpu.appendChild(el("span", "resource-trend-cur", last.cpu != null ? `${fmtNum(last.cpu)}m` : "—"));
+    row.appendChild(cpu);
+    const mem = el("div", "resource-trend-metric");
+    mem.appendChild(el("span", "resource-trend-lbl", "mem"));
+    mem.appendChild(resSpark(series, "mem"));
+    mem.appendChild(el("span", "resource-trend-cur", last.mem != null ? `${fmtNum(last.mem)}Mi` : "—"));
+    row.appendChild(mem);
+    body.appendChild(row);
+  }
 }
 
 // Render the shared #resource-side panel from the active chat's snapshot and toggle the split layout.
@@ -832,6 +909,7 @@ function renderResourceSide() {
     table.appendChild(tr);
   }
   body.appendChild(table);
+  renderResourceTrends(body);
 }
 
 // On `done` (run finished): collapse the split view back to full width for the active chat.
