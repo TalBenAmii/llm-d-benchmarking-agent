@@ -157,6 +157,10 @@ that are *your* judgment, not the tool's:
   numbers are still usable — mention it only if relevant.
 - If `valid == false` or the report wasn't found, say so plainly and show the run's stderr
   tail; do NOT invent metrics.
+- Then offer the useful next step — lean toward **saving this as a baseline and trending /
+  comparing future runs**, not just teardown or run-again. `analyze_results` returns a ranked
+  `next_steps` list for this; make ONE concise offer from its top item (see
+  `knowledge/conversation_style.md` "After a benchmark" and `knowledge/history.md`).
 
 ## Honesty about scale
 The quickstart uses a **simulated** engine on CPU with one tiny replica. Numbers prove the

@@ -24,6 +24,9 @@ const workingEl = document.getElementById("working");
 const workWordEl = workingEl.querySelector(".working-word");
 const workStatsEl = workingEl.querySelector(".working-stats");
 const tokenChip = document.getElementById("token-total");
+const resourceSide = document.getElementById("resource-side");
+const resourceSideBody = document.getElementById("resource-side-body");
+const resourceSideClose = document.getElementById("resource-side-close");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -70,7 +73,11 @@ let currentSession = null;    // id of the chat we're attached to (null until "r
 let switching = false;        // true while intentionally closing to switch chats
 let welcomeCard = null;       // the start-of-chat suggestion-chips card, removed once a turn starts
 let readyNoteTimer = null;    // defers the plain "Session ready" note so chips can supersede it
-let resourcePanel = null;     // single live resource-stats panel, updated in place during a run
+// Split view: the live resource view renders into a single shared right-hand panel (#resource-side),
+// NOT inline in the transcript. We hold the ACTIVE chat's latest snapshot here so chat switches can
+// re-render the shared panel for whatever chat is now in front (see makeRecord/activate).
+let resourceData = null;      // last `resource_stats` payload for the active chat (null = none yet)
+let resourceActive = false;   // whether the split view should be open for the active chat
 
 let toolEls = {}; // id -> details element (swapped per chat; the ACTIVE chat's map)
 
@@ -94,7 +101,7 @@ function makeRecord(sid) {
     id: sid || null,
     pane: el("div", "chat-pane"),
     toolEls: {}, activeConsole: null,
-    welcomeCard: null, resourcePanel: null,
+    welcomeCard: null, resourceData: null, resourceActive: false,
     workStart: 0, workActivity: null, workWordFixed: false, workWord: "Working", workingHidden: true,
     turnUsage: null, sessionTokens: 0,
     cmdlogHTML: "", lastSeq: 0, running: false, scrollTop: 0,
@@ -112,7 +119,8 @@ function snapshotActive() {
   cur.toolEls = toolEls;
   cur.activeConsole = activeConsole;
   cur.welcomeCard = welcomeCard;
-  cur.resourcePanel = resourcePanel;
+  cur.resourceData = resourceData;
+  cur.resourceActive = resourceActive;
   cur.workStart = workStart; cur.workActivity = workActivity; cur.workWordFixed = workWordFixed;
   cur.workWord = workWordEl.textContent; cur.workingHidden = workingEl.hidden;
   cur.turnUsage = turnUsage; cur.sessionTokens = sessionTokens;
@@ -129,7 +137,9 @@ function activate(rec) {
   toolEls = rec.toolEls;
   activeConsole = rec.activeConsole;
   welcomeCard = rec.welcomeCard;
-  resourcePanel = rec.resourcePanel;
+  resourceData = rec.resourceData;
+  resourceActive = rec.resourceActive;
+  renderResourceSide();                 // reflect THIS chat's run in the shared right-hand panel
   readyNoteTimer = null;
   workStart = rec.workStart; workActivity = rec.workActivity; workWordFixed = rec.workWordFixed;
   turnUsage = rec.turnUsage;
@@ -155,7 +165,9 @@ function clearActivePane() {
   toolEls = cur ? (cur.toolEls = {}) : {};
   activeConsole = null; if (cur) cur.activeConsole = null;
   welcomeCard = null; if (cur) cur.welcomeCard = null;
-  resourcePanel = null; if (cur) cur.resourcePanel = null;
+  resourceData = null; resourceActive = false;
+  if (cur) { cur.resourceData = null; cur.resourceActive = false; }
+  renderResourceSide();
   turnUsage = null; if (cur) cur.turnUsage = null;
   if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }
   if (cur) { cur.pendingApprovals = {}; cur.lastSeq = 0; }
@@ -316,6 +328,7 @@ function handle(msg) {
       break;
     }
     case "history": renderHistory(data.items || [], data.commands || []); break;
+    case "welcome": renderWelcome(data); break;
     case "suggestions": renderSuggestions(data.chips || []); break;
     case "assistant_text":
       removeWelcomeCard();                          // the conversation has started — clear the chips
@@ -326,6 +339,7 @@ function handle(msg) {
     case "command": removeWelcomeCard(); onCommand(data); setWorkActivity(data.text || (data.argv || []).join(" ")); break;
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); resumeThinking(); break;
+    case "results_card": renderResultsCard(data.card); break;
     case "approval_request": addApprovalCard(data); if (cur) cur.running = false; stopWorking(); break;  // now waiting on the user, not the model
     case "error": addBubble("error", data.message); if (cur) cur.running = false; stopWorking(); break;
     case "usage": onUsage(data); break;
@@ -663,12 +677,14 @@ function addBubble(role, text) {
 function addNote(text) { addBubble("assistant", text); }
 
 // ---- start-of-chat welcome card + suggestion chips -----------------------
-// On a brand-new chat the server emits a `suggestions` event right after `ready`. We show a
-// welcome card with one chip per suggestion; clicking a chip sends its prompt. The plain
-// "Session ready…" note is only a fallback shown when no chips arrive (or they arrive late).
+// On a brand-new chat the server emits a DETERMINISTIC `welcome` event (heading + capability
+// bullets + nudge — built by the backend, NOT the LLM, so it's consistent every time and costs
+// no tokens) right after `ready`, then a `suggestions` event with the chips. Both render into ONE
+// welcome card; clicking a chip sends its prompt. The plain "Session ready…" note is only a
+// fallback shown when neither arrives (or they arrive late).
 
-// Defer the plain note briefly so a `suggestions` event (which follows `ready`) can supersede
-// it. If chips render first, removeWelcomeNoteFallback cancels this; otherwise the note shows.
+// Defer the plain note briefly so a `welcome`/`suggestions` event (which follows `ready`) can
+// supersede it. If a card renders first, the timer is cancelled; otherwise the note shows.
 function scheduleReadyNote() {
   if (readyNoteTimer) clearTimeout(readyNoteTimer);
   readyNoteTimer = setTimeout(() => {
@@ -677,13 +693,43 @@ function scheduleReadyNote() {
   }, 400);
 }
 
+// Get (or lazily create) the single start-of-chat welcome card. Lets the deterministic `welcome`
+// event and the `suggestions` event compose into ONE card regardless of arrival order.
+function ensureWelcomeCard() {
+  if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }  // a card wins over the note
+  if (!welcomeCard) {
+    welcomeCard = el("div", "welcome-card");
+    activePane.appendChild(welcomeCard);
+  }
+  return welcomeCard;
+}
+
+// Deterministic welcome (B2): render the backend's heading + capability bullets + nudge. Built by
+// code from knowledge/welcome.md, so the greeting is identical every fresh chat. Chips (if any)
+// are appended below it by renderSuggestions.
+function renderWelcome(data) {
+  if (!data || !Array.isArray(data.bullets) || !data.bullets.length) return;
+  const card = ensureWelcomeCard();
+  if (card.querySelector(".welcome-intro")) return;   // already rendered (idempotent)
+  const intro = el("div", "welcome-intro");
+  if (data.heading) intro.appendChild(el("div", "welcome-heading", data.heading));
+  const list = el("ul", "welcome-caps");
+  for (const b of data.bullets) { if (b) list.appendChild(el("li", null, String(b))); }
+  intro.appendChild(list);
+  if (data.nudge) intro.appendChild(el("div", "welcome-nudge", String(data.nudge)));
+  card.insertBefore(intro, card.firstChild);          // intro stays above the chips
+  scroll();
+}
+
 function renderSuggestions(chips) {
   if (!Array.isArray(chips) || !chips.length) return;
-  if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }  // chips win over the note
-  removeWelcomeCard();
-  const card = el("div", "welcome-card");
-  card.appendChild(el("div", "welcome-heading",
-    "Hi! I can help you run a benchmark — try one of these, or just describe your use case:"));
+  const card = ensureWelcomeCard();
+  if (card.querySelector(".welcome-chips")) return;   // chips already rendered (idempotent)
+  // A heading only when the deterministic welcome didn't already supply one (fallback path).
+  if (!card.querySelector(".welcome-heading")) {
+    card.appendChild(el("div", "welcome-heading",
+      "Hi! I can help you run a benchmark — try one of these, or just describe your use case:"));
+  }
   const wrap = el("div", "welcome-chips");
   for (const chip of chips) {
     if (!chip || !chip.label || !chip.prompt) continue;
@@ -693,8 +739,6 @@ function renderSuggestions(chips) {
     wrap.appendChild(btn);
   }
   card.appendChild(wrap);
-  activePane.appendChild(card);
-  welcomeCard = card;
   scroll();
 }
 
@@ -703,30 +747,64 @@ function removeWelcomeCard() {
   if (welcomeCard) { welcomeCard.remove(); welcomeCard = null; }
 }
 
-// ---- live resource-stats panel (backend-streamed during a run) -----------
-// One panel, updated in place from each `resource_stats` event (NOT appended per event), and
-// cleared on `done`. Zero agent/LLM cost — purely a backend-pushed view.
-function ensureResourcePanel() {
-  if (resourcePanel && resourcePanel.isConnected) return resourcePanel;
-  resourcePanel = el("div", "resource-panel");
-  activePane.appendChild(resourcePanel);
-  return resourcePanel;
+// ---- split view: live resource side panel (backend-streamed during a run) -
+// The live resource view is chat-ADJACENT, not inline: each `resource_stats` event opens a
+// right-hand panel (the chat column narrows alongside it) and updates it in place; `done` collapses
+// it back to full width. One shared panel reflects the ACTIVE chat's run; the per-chat snapshot
+// (resourceData/resourceActive) is re-rendered on switch so the front chat's run is always shown.
+// Zero agent/LLM cost — purely a backend-pushed view.
+
+// A `resource_stats` event for the active chat: stash it and (re)open the split view.
+function renderResourceStats(data) {
+  resourceData = data;
+  resourceActive = true;
+  if (cur) { cur.resourceData = data; cur.resourceActive = true; }
+  renderResourceSide();
 }
 
-function renderResourceStats(data) {
-  const panel = ensureResourcePanel();
-  panel.innerHTML = "";
+// Render the shared #resource-side panel from the active chat's snapshot and toggle the split layout.
+// No snapshot (or not active) → collapse the split and hide the panel; degrades gracefully.
+function renderResourceSide() {
+  if (!resourceSide) return;
+  if (!resourceActive || !resourceData) {
+    document.body.classList.remove("split");
+    resourceSide.hidden = true;
+    if (resourceSideBody) resourceSideBody.innerHTML = "";
+    return;
+  }
+  resourceSide.hidden = false;
+  document.body.classList.add("split");
+  const body = resourceSideBody;
+  body.innerHTML = "";
+  const data = resourceData;
+
+  // Dashboard slot (Grafana/Prometheus): surface it when the backend supplies a URL, otherwise the
+  // live table below stands in. Built to host a richer embed later without touching the layout.
+  if (data.dashboard_url && /^https?:\/\//i.test(data.dashboard_url)) {
+    const dash = el("div", "resource-dash");
+    const frame = el("iframe", "resource-dash-frame");
+    frame.src = data.dashboard_url;
+    frame.title = "Live metrics dashboard";
+    frame.setAttribute("loading", "lazy");
+    frame.setAttribute("referrerpolicy", "no-referrer");
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+    dash.appendChild(frame);
+    const link = el("a", "resource-dash-link", "Open dashboard ↗");
+    link.href = data.dashboard_url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    dash.appendChild(link);
+    body.appendChild(dash);
+  }
+
   if (data.available === false) {
-    panel.appendChild(el("div", "resource-note", data.note || "live resource stats unavailable"));
-    scroll();
+    body.appendChild(el("div", "resource-note", data.note || "live resource stats unavailable"));
     return;
   }
   const rows = data.rows || [];
-  const head = el("div", "resource-head", `live resource usage${data.namespace ? " · " + data.namespace : ""}`);
-  panel.appendChild(head);
+  body.appendChild(el("div", "resource-head", `live resource usage${data.namespace ? " · " + data.namespace : ""}`));
   if (!rows.length) {
-    panel.appendChild(el("div", "resource-note", "no pods reporting yet"));
-    scroll();
+    body.appendChild(el("div", "resource-note", "no pods reporting yet"));
     return;
   }
   const table = el("table", "resource-table");
@@ -740,12 +818,115 @@ function renderResourceStats(data) {
     tr.appendChild(el("td", null, r["memory(bytes)"] || ""));
     table.appendChild(tr);
   }
-  panel.appendChild(table);
-  scroll();
+  body.appendChild(table);
 }
 
+// On `done` (run finished): collapse the split view back to full width for the active chat.
 function clearResourceStats() {
-  if (resourcePanel) { resourcePanel.remove(); resourcePanel = null; }
+  resourceActive = false;
+  if (cur) cur.resourceActive = false;
+  renderResourceSide();
+}
+
+// ---- deterministic structured results card (B2) --------------------------
+// Emitted by the backend right after a report/analysis tool result, built from the VALIDATED
+// Benchmark Report v0.2 summary + the analyzer's exact SLO/Pareto verdicts (not LLM prose), so
+// the post-run summary looks the same every run. The agent's plain-language explanation still
+// rides alongside it as a normal assistant bubble.
+function fmtNum(v) {
+  if (typeof v !== "number") return String(v);
+  if (Number.isInteger(v)) return String(v);
+  return (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(2)).replace(/\.?0+$/, "");
+}
+
+function metaRow(card, parent) {
+  const meta = el("div", "results-meta");
+  const add = (label, val) => { if (val != null && val !== "") meta.appendChild(el("span", "results-tag", `${label}: ${val}`)); };
+  add("model", card.model);
+  add("harness", card.harness);
+  if (card.requests_total != null) add("requests", fmtNum(card.requests_total));
+  if (card.success_rate_pct != null) add("success", fmtNum(card.success_rate_pct) + "%");
+  if (card.duration != null) add("duration", card.duration);
+  if (card.simulated) add("note", "SIMULATED");
+  if (meta.childNodes.length) parent.appendChild(meta);
+}
+
+function renderResultsCard(card) {
+  if (!card || typeof card !== "object") return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  root.appendChild(el("div", "results-head", card.kind === "sweep" ? "Sweep results" : "Benchmark results"));
+  metaRow(card, root);
+
+  // Single-run metric table (from the validated report summary).
+  const metrics = Array.isArray(card.metrics) ? card.metrics : [];
+  if (metrics.length) {
+    const table = el("table", "results-table");
+    const head = el("tr");
+    for (const h of ["metric", "value", "stat"]) head.appendChild(el("th", null, h));
+    table.appendChild(head);
+    for (const m of metrics) {
+      const tr = el("tr");
+      tr.appendChild(el("td", "results-name", m.label || ""));
+      tr.appendChild(el("td", null, `${fmtNum(m.value)}${m.units ? " " + m.units : ""}`));
+      tr.appendChild(el("td", "results-stat", m.stat || ""));
+      tr.title = m.direction || "";
+      table.appendChild(tr);
+    }
+    root.appendChild(table);
+  }
+
+  // SLO verdicts (from analyze_results) — exact, deterministic pass/fail per metric.
+  const slo = card.slo;
+  if (slo && Array.isArray(slo.verdicts) && slo.verdicts.length) {
+    root.appendChild(el("div", "results-subhead",
+      "SLO check" + (slo.overall_met != null ? (slo.overall_met ? " — all targets met ✓" : " — not all targets met ✗") : "")));
+    const table = el("table", "results-table");
+    const head = el("tr");
+    for (const h of ["metric", "target", "observed", "verdict"]) head.appendChild(el("th", null, h));
+    table.appendChild(head);
+    for (const v of slo.verdicts) {
+      const tr = el("tr");
+      const u = v.units ? " " + v.units : "";
+      const dir = v.direction === "min" ? "≥ " : v.direction === "max" ? "≤ " : "";
+      tr.appendChild(el("td", "results-name", `${v.metric || ""}${v.statistic ? " (" + v.statistic + ")" : ""}`));
+      tr.appendChild(el("td", null, v.target != null ? dir + fmtNum(v.target) + u : "—"));
+      tr.appendChild(el("td", null, v.observed != null ? fmtNum(v.observed) + u : "—"));
+      tr.appendChild(el("td", v.met === true ? "slo-pass" : v.met === false ? "slo-fail" : "slo-na",
+        v.met === true ? "✓ met" : v.met === false ? "✗ missed" : "n/a"));
+      table.appendChild(tr);
+    }
+    root.appendChild(table);
+    if (slo.goodput && slo.goodput.estimate_pct != null) {
+      root.appendChild(el("div", "results-note",
+        `Estimated goodput: ~${fmtNum(slo.goodput.estimate_pct)}% (upper-bound estimate from reported percentiles).`));
+    }
+  }
+
+  // Sweep: per-run rows + the Pareto frontier (facts only — the agent picks the winner).
+  if (card.kind === "sweep" && Array.isArray(card.runs) && card.runs.length) {
+    const table = el("table", "results-table");
+    const head = el("tr");
+    for (const h of ["run", "model", "on frontier", "slo"]) head.appendChild(el("th", null, h));
+    table.appendChild(head);
+    const frontier = new Set(card.frontier || []);
+    for (const r of card.runs) {
+      const tr = el("tr");
+      tr.appendChild(el("td", "results-name", r.label || ""));
+      tr.appendChild(el("td", null, r.model || ""));
+      tr.appendChild(el("td", null, frontier.has(r.label) ? "★" : ""));
+      tr.appendChild(el("td", r.slo_met === true ? "slo-pass" : r.slo_met === false ? "slo-fail" : "slo-na",
+        r.slo_met === true ? "✓" : r.slo_met === false ? "✗" : ""));
+      table.appendChild(tr);
+    }
+    root.appendChild(table);
+    if (card.objectives && card.objectives.length) {
+      root.appendChild(el("div", "results-note", "Compared on: " + card.objectives.join(", ") + ". ★ = Pareto-optimal."));
+    }
+  }
+
+  activePane.appendChild(root);
+  scroll();
 }
 
 function renderHistory(items, commands) {
@@ -754,6 +935,11 @@ function renderHistory(items, commands) {
     else if (it.role === "assistant") addBubble("assistant", it.text);
     else if (it.role === "tool_call") addHistoryTool(it);
     else if (it.role === "approval_decision") addDecisionCard(it);
+    // A still-PENDING gate the turn is parked on (persisted in-flight): restore it as a LIVE,
+    // clickable card in its transcript position. Registering it in cur.pendingApprovals lets the
+    // server's subsequent reemit_pending be de-duped (addApprovalCard skips a known request_id),
+    // so it survives a chat switch / pane eviction without double-rendering.
+    else if (it.role === "approval_request") addApprovalCard(it);
   }
   if (commands && commands.length) {
     clearCmdlog();
@@ -1243,6 +1429,9 @@ input.addEventListener("keydown", (e) => {
 input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; });
 
 newChatBtn.addEventListener("click", newChat);
+
+// Manual collapse of the split view; the next `resource_stats` tick of a still-running run reopens it.
+if (resourceSideClose) resourceSideClose.addEventListener("click", clearResourceStats);
 
 // ---- boot ---------------------------------------------------------------
 loadSessions();

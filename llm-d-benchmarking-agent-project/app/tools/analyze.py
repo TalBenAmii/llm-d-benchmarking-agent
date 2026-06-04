@@ -16,13 +16,47 @@ from pathlib import Path
 from typing import Any
 
 from app.tools.context import ToolContext
-from app.validation.analysis import SLOTargets, evaluate_slo, pareto_analysis
+from app.validation.analysis import (
+    HistoryContext,
+    SLOTargets,
+    evaluate_slo,
+    pareto_analysis,
+    recommend_next_steps,
+)
 from app.validation.report import (
     find_reports,
     load_report,
     summarize_report,
     validate_report,
 )
+
+
+def _history_context(ctx: ToolContext, valid_entries: list[dict[str, Any]]) -> HistoryContext:
+    """Read-only facts the next-step recommender needs from the cross-session trend store.
+
+    For a SINGLE run we look up whether THIS run's report is already saved (by run_uid) and
+    how many *comparable* prior runs (same model) are already stored. For a sweep we only
+    report the totals (the per-treatment store status isn't the lead there). Best-effort:
+    any store error degrades to an empty context (the recommender still leans on save first)."""
+    try:
+        records = ctx.history_store().list()
+    except Exception:  # the store is best-effort; never break analysis on a read error
+        return HistoryContext()
+    if not valid_entries:
+        return HistoryContext(total_stored=len(records))
+    summaries = [e["summary"] for e in valid_entries]
+    run_uids = {s.get("run_uid") for s in summaries if s.get("run_uid")}
+    models = {s.get("model") for s in summaries if s.get("model")}
+    already = any(r.run_uid in run_uids for r in records) if run_uids else False
+    comparable_prior = sum(
+        1 for r in records
+        if r.model in models and r.run_uid not in run_uids
+    )
+    return HistoryContext(
+        already_stored=already,
+        comparable_prior=comparable_prior,
+        total_stored=len(records),
+    )
 
 
 def _resolve(
@@ -118,5 +152,22 @@ async def analyze_results(
     # Sweep/DoE analysis needs at least two comparable runs.
     if len(valid_entries) >= 2:
         out["pareto"] = pareto_analysis(valid_entries, slo=slo_targets)
+
+    # Structured post-run next steps over the validated facts: lean toward saving this
+    # result to the trend store and comparing it to a baseline (proposal historical-storage
+    # value), not just "teardown or run again". Mechanism only — the agent makes the offer
+    # (knowledge/conversation_style.md + knowledge/history.md). any_slo_met == True iff a
+    # run was checked against SLOs and at least one passed overall.
+    any_slo_met: bool | None = None
+    if slo_targets is not None:
+        verdicts = [r["slo"]["overall_met"] for r in runs if "slo" in r]
+        any_slo_met = any(verdicts) if verdicts else None
+    out["next_steps"] = recommend_next_steps(
+        n_runs=len(valid_entries),
+        has_slo=slo_targets is not None,
+        any_slo_met=any_slo_met,
+        on_sweep=len(valid_entries) >= 2,
+        history=_history_context(ctx, valid_entries),
+    )
 
     return out

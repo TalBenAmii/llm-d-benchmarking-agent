@@ -15,9 +15,11 @@ from app.tools import analyze
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import AnalyzeResultsInput
 from app.validation.analysis import (
+    HistoryContext,
     SLOTargets,
     evaluate_slo,
     pareto_analysis,
+    recommend_next_steps,
 )
 from app.validation.report import load_report
 from app.validation.session_plan import SessionPlan
@@ -383,3 +385,120 @@ def test_session_plan_slo_optional():
 def test_analyze_schema_accepts_slo_and_sources():
     m = AnalyzeResultsInput(slo={"ttft_ms": 200}, sources=["/a", "/b"], labels=["a", "b"])
     assert m.slo == {"ttft_ms": 200} and m.sources == ["/a", "/b"]
+
+
+# ---- post-run next-step recommendations (C3) -------------------------------
+#
+# Mechanism: a deterministic ranking over the validated analyzer facts + read-only history
+# facts, leaning toward save-to-trend / compare-to-baseline. Order in the list IS priority.
+
+def _actions(steps):
+    return [s["action"] for s in steps]
+
+
+def test_next_steps_single_run_nothing_saved_leads_with_save_baseline():
+    steps = recommend_next_steps(
+        n_runs=1, has_slo=False, any_slo_met=None, on_sweep=False,
+        history=HistoryContext(already_stored=False, comparable_prior=0, total_stored=0),
+    )
+    acts = _actions(steps)
+    # save-to-trend is the FIRST recommendation; teardown is never first.
+    assert acts[0] == "save_baseline"
+    assert "baseline" in steps[0]["reason"]
+    assert acts[-1] == "teardown"
+    # priorities are 1..n in order
+    assert [s["priority"] for s in steps] == list(range(1, len(steps) + 1))
+
+
+def test_next_steps_already_saved_skips_save_and_offers_compare():
+    # This exact run is already in the store and a comparable prior run exists -> the lead is
+    # to COMPARE, not to save again.
+    steps = recommend_next_steps(
+        n_runs=1, has_slo=False, any_slo_met=None, on_sweep=False,
+        history=HistoryContext(already_stored=True, comparable_prior=1, total_stored=2),
+    )
+    acts = _actions(steps)
+    assert "save_baseline" not in acts          # already saved -> don't re-offer save
+    assert acts[0] == "compare_to_baseline"
+    assert "trend_metric" in acts               # >=2 comparable saved runs -> trend offered
+
+
+def test_next_steps_no_comparable_prior_does_not_offer_compare():
+    # First-ever run: nothing comparable to compare against yet.
+    steps = recommend_next_steps(
+        n_runs=1, has_slo=False, any_slo_met=None, on_sweep=False,
+        history=HistoryContext(already_stored=False, comparable_prior=0, total_stored=0),
+    )
+    assert "compare_to_baseline" not in _actions(steps)
+
+
+def test_next_steps_missed_slo_invites_rerun_after_save_compare():
+    steps = recommend_next_steps(
+        n_runs=1, has_slo=True, any_slo_met=False, on_sweep=False,
+        history=HistoryContext(already_stored=False, comparable_prior=1, total_stored=1),
+    )
+    acts = _actions(steps)
+    assert "run_again" in acts
+    # save/compare still come BEFORE the operational run-again, which comes before teardown.
+    assert acts.index("save_baseline") < acts.index("run_again") < acts.index("teardown")
+
+
+def test_next_steps_single_met_slo_offers_sweep_not_rerun():
+    steps = recommend_next_steps(
+        n_runs=1, has_slo=True, any_slo_met=True, on_sweep=False,
+        history=HistoryContext(),
+    )
+    acts = _actions(steps)
+    assert "run_sweep" in acts and "run_again" not in acts
+
+
+def test_next_steps_sweep_nudges_save_each_treatment_not_recompare():
+    steps = recommend_next_steps(
+        n_runs=3, has_slo=False, any_slo_met=None, on_sweep=True,
+        history=HistoryContext(),
+    )
+    acts = _actions(steps)
+    # a sweep already compared configs in this call: lead with save, nudge to trend across
+    # runs/days, and never re-offer a single-run compare/run-again.
+    assert acts[0] == "save_baseline" and "trend_metric" in acts
+    assert "compare_to_baseline" not in acts and "run_again" not in acts
+
+
+# ---- next_steps surfaced through the analyze_results tool ------------------
+
+async def test_analyze_results_emits_next_steps_save_first(tool_ctx, br_example, tmp_path):
+    base = load_report(br_example)
+    run = tmp_path / "run"
+    _write_report(run, base, ttft_s=0.15, out_rate=400.0)
+    out = await analyze.analyze_results(tool_ctx, sources=[str(run)])
+    assert out["analyzed"] is True
+    steps = out["next_steps"]
+    assert steps and steps[0]["action"] == "save_baseline"   # nothing saved yet -> save leads
+    assert steps[0]["tool"] == "result_history"
+    assert steps[-1]["action"] == "teardown"                 # teardown never leads
+
+
+async def test_analyze_results_next_steps_reflect_saved_history(tool_ctx, br_example, tmp_path):
+    # Save this run to the cross-session store FIRST, then analyze it: the recommender should
+    # see it's already stored and stop leading with save-baseline.
+    from app.tools import history as history_tool
+    base = load_report(br_example)
+    run = tmp_path / "run"
+    _write_report(run, base, ttft_s=0.15, out_rate=400.0)
+    stored = await history_tool.result_history(tool_ctx, action="store", source=str(run))
+    assert stored["stored"] is True
+    out = await analyze.analyze_results(tool_ctx, sources=[str(run)])
+    assert "save_baseline" not in {s["action"] for s in out["next_steps"]}
+
+
+async def test_analyze_results_missed_slo_recommends_rerun(tool_ctx, br_example, tmp_path):
+    # An unreachably-tight SLO -> the run misses it -> next_steps includes a run-again offer.
+    base = load_report(br_example)
+    run = tmp_path / "run"
+    _write_report(run, base, ttft_s=2.0, out_rate=10.0)   # slow + low throughput
+    out = await analyze.analyze_results(
+        tool_ctx, slo={"ttft_ms": 1, "throughput_floor_tok_s": 9000}, sources=[str(run)]
+    )
+    assert out["analyzed"] is True
+    assert out["runs"][0]["slo"]["overall_met"] is False
+    assert "run_again" in {s["action"] for s in out["next_steps"]}

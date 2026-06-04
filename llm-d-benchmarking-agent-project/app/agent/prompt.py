@@ -110,17 +110,45 @@ CORE_KNOWLEDGE = (
 )
 
 
+# Pointer (BYTE-STABLE) that replaces the inlined live catalog in the cached system prefix.
+# The actual catalog snapshot is injected ONCE per turn as a synthetic user message (see
+# app/agent/loop.py + catalog_brief_message) so it never mutates the cached prefix and never
+# breaks the provider cache hit. The names are still authoritative via that message + the
+# list_catalog tool — this text only tells the model where to find them.
+CATALOG_POINTER = """\
+# Live catalog
+The authoritative list of valid specs, harnesses, workload profiles, and scenarios is
+provided to you as a "[live catalog snapshot …]" message at the start of the conversation
+(and you can re-enumerate it any time with the list_catalog tool). Only ever use names that
+appear there — never invent a spec/harness/workload name."""
+
+
 def build_system_prompt(ctx: ToolContext) -> str:
-    # INVARIANT: all DYNAMIC content (the live catalog brief + SIMULATE_NOTE) MUST stay
-    # STRICTLY LAST, so the large static prefix (role + rules + inlined knowledge + index)
-    # remains byte-stable and cacheable by every provider (Anthropic ephemeral breakpoints,
-    # OpenAI implicit prefix caching). Do not reorder.
+    # INVARIANT: this prompt is the BYTE-STABLE static prefix only (role + rules + inlined
+    # CORE knowledge + on-demand index + the catalog POINTER). It carries NO per-turn dynamic
+    # content, so the large prefix is reliably cache-hit by every provider (Anthropic ephemeral
+    # breakpoints, OpenAI implicit prefix caching) across every turn of a session. The LIVE
+    # catalog snapshot is injected as a synthetic conversation message instead (see
+    # catalog_brief_message + app/agent/loop.py) so it never invalidates this cached prefix.
+    # SIMULATE_NOTE is config-stable (constant for the whole process), so keeping it here does
+    # not perturb caching. Do not append per-turn dynamic text here.
     parts = [ROLE, HARD_RULES]
     parts.extend(_knowledge_sections(ctx))
-    parts.append("# Live catalog (authoritative — only use these names)\n" + _catalog_brief(ctx.catalog(refresh=True)))
+    parts.append(CATALOG_POINTER)
     if ctx.settings.simulate:
         parts.append(SIMULATE_NOTE)
     return "\n\n".join(parts)
+
+
+def catalog_brief_message(ctx: ToolContext) -> str:
+    """The LIVE catalog snapshot, rendered for injection as a synthetic conversation message
+    (NOT into the cached system prefix). Kept out of build_system_prompt so the system prefix
+    stays byte-stable and cache-hits every turn."""
+    return ("[live catalog snapshot — the authoritative names available in the on-disk "
+            "llm-d-benchmark repo; only use names that appear here, and call list_catalog to "
+            "re-enumerate if needed]\n"
+            "# Live catalog (authoritative — only use these names)\n"
+            + _catalog_brief(ctx.catalog(refresh=True)))
 
 
 def _knowledge_sections(ctx: ToolContext) -> list[str]:

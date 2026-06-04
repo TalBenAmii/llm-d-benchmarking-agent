@@ -23,6 +23,7 @@ from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
 from app.agent.suggestions import load_suggestions
+from app.agent.welcome import build_welcome
 from app.agent.ws_schemas import (
     ApprovalIn,
     CancelIn,
@@ -298,17 +299,35 @@ def _history_items(session) -> list[dict[str, Any]]:
     shape the live event stream produces so the client can reuse its renderers.
     Decided approval gates (kept off the LLM stream, in ``session.approvals``) are
     interleaved right after the tool call they belong to, so the resolved ✓/✗ cards
-    show up in their original place.
+    show up in their original place. Still-PENDING gates (``session.in_flight_approvals``
+    — the turn is parked on them) are interleaved the same way as live, clickable
+    ``approval_request`` cards, so an in-flight gate survives a chat switch / pane
+    eviction and is restored in its transcript position even on a full history rebuild
+    (the in-memory Channel's ``reemit_pending`` is then de-duped on the client by
+    request_id, so the card never double-renders).
     """
     approvals_by_tc: dict[str, list[dict[str, Any]]] = {}
     for a in getattr(session, "approvals", []) or []:
         approvals_by_tc.setdefault(a.get("tool_call_id"), []).append(a)
+    pending_by_tc: dict[str, list[dict[str, Any]]] = {}
+    for p in getattr(session, "in_flight_approvals", []) or []:
+        pending_by_tc.setdefault(p.get("tool_call_id"), []).append(p)
 
     items: list[dict[str, Any]] = []
     for m in session.messages:
         role = m.get("role")
         if role == "user":
-            items.append({"role": "user", "text": m.get("content") or ""})
+            # System-injected user messages are agent-only context the human never typed — skip
+            # them so they don't render as a user bubble on resume (mirrors derive_title()'s skip).
+            # Two complementary tags: the ``synthetic`` flag (environment pre-probe snapshot) and
+            # the bracket-tag convention ("[live catalog snapshot …]", "[environment pre-probe …]")
+            # used by the once-per-session catalog injection, which is not synthetic-flagged.
+            if m.get("synthetic"):
+                continue
+            content = m.get("content") or ""
+            if isinstance(content, str) and content.startswith("["):
+                continue
+            items.append({"role": "user", "text": content})
         elif role == "assistant":
             if m.get("content"):
                 items.append({"role": "assistant", "text": m["content"]})
@@ -317,6 +336,9 @@ def _history_items(session) -> list[dict[str, Any]]:
                 for a in approvals_by_tc.get(tc.get("id"), []):
                     items.append({"role": "approval_decision", "kind": a.get("kind"),
                                   "payload": a.get("payload"), "approved": a.get("approved")})
+                for p in pending_by_tc.get(tc.get("id"), []):
+                    items.append({"role": "approval_request", "request_id": p.get("request_id"),
+                                  "kind": p.get("kind"), "payload": p.get("payload")})
     return items
 
 
@@ -493,10 +515,17 @@ async def ws(websocket: WebSocket) -> None:
     if resumed and not incremental:
         await channel.emit("history", {"items": _history_items(session), "commands": session.commands})
     elif not resumed:
-        # Brand-new chat: surface the start-of-chat suggestion chips (W1) right after `ready`, and
-        # kick off a NON-blocking read-only environment pre-probe (W2) so the first turn starts
-        # environment-aware without an extra LLM round-trip. Neither blocks input-enable: the
+        # Brand-new chat: emit the DETERMINISTIC welcome card (B2) FIRST — a code-built greeting
+        # that concisely offers the assistant's capabilities, consistent every time and with NO
+        # LLM turn spent (its judgment text lives in knowledge/welcome.md). NOT shown on resume
+        # (this branch is gated on `not resumed`, so a chat with history never re-greets). Then
+        # surface the start-of-chat suggestion chips (W1) right after `ready`/`welcome`, and kick
+        # off a NON-blocking read-only environment pre-probe (W2) so the first turn starts
+        # environment-aware without an extra LLM round-trip. None of these block input-enable: the
         # probe runs in the background and its snapshot is consumed on the first turn if ready.
+        welcome = build_welcome(session.ctx)
+        if welcome is not None:
+            await channel.emit(ws_events.WELCOME, welcome)
         chips = load_suggestions(get_settings())
         if chips:
             await channel.emit(ws_events.SUGGESTIONS, {"chips": chips})

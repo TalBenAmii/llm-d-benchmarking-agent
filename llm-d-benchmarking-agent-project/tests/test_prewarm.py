@@ -64,15 +64,47 @@ async def test_prewarm_snapshot_injected_before_user_text(tmp_path):
 
     await AgentLoop(provider).run_turn(session, "benchmark a tiny model", emit=emit, request_approval=approve)
 
-    # The synthetic pre-probe message was appended, carrying the snapshot, immediately BEFORE the
-    # real user text — and prewarmed flipped.
+    # The synthetic pre-probe message was appended, carrying the snapshot, BEFORE the real user
+    # text — and prewarmed flipped. (A one-shot live-catalog snapshot is injected between the
+    # pre-probe and the real user text; the real text still follows the pre-probe.)
     msgs = session.messages
     pre = _pre_probe_msgs(msgs)
     assert len(pre) == 1
     assert "kubectl" in pre[0]["content"]
+    # It is tagged synthetic so the UI / title logic can skip it, but the provider still receives
+    # it as a real user-role context message (the FakeProvider saw it on the wire).
+    assert pre[0].get("synthetic") is True
+    assert any(m.get("content") == pre[0]["content"] for m in provider.seen_messages[0])
     idx = msgs.index(pre[0])
-    assert msgs[idx + 1] == {"role": "user", "content": "benchmark a tiny model"}
+    real = {"role": "user", "content": "benchmark a tiny model"}
+    assert real in msgs[idx + 1:], "the real user text must follow the pre-probe snapshot"
     assert session.prewarmed is True
+
+
+async def test_prewarm_snapshot_excluded_from_history_items(tmp_path):
+    # Regression (TODO #6 probe-leak): the synthetic pre-probe message must NOT be replayed as a
+    # user bubble when a resumed chat rebuilds its transcript (_history_items skips synthetic).
+    from app.main import _history_items
+
+    if not get_settings().bench_repo.is_dir():
+        pytest.skip("repo not present")
+    session = _session(tmp_path)
+    session.env_snapshot = {"tools": {"kubectl": True}}
+
+    provider = FakeProvider()
+
+    async def emit(t, p):
+        pass
+
+    async def approve(kind, payload):
+        return True
+
+    await AgentLoop(provider).run_turn(session, "benchmark a tiny model", emit=emit, request_approval=approve)
+
+    items = _history_items(session)
+    user_texts = [it["text"] for it in items if it["role"] == "user"]
+    assert "benchmark a tiny model" in user_texts
+    assert not any("environment pre-probe" in t for t in user_texts)
 
 
 async def test_prewarm_not_reinjected_on_second_turn(tmp_path):

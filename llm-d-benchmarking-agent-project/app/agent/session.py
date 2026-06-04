@@ -40,11 +40,19 @@ def _is_valid_id(sid: str | None) -> TypeGuard[str]:
 
 
 def derive_title(messages: list[dict[str, Any]]) -> str:
-    """A short, human title from the first user message (Claude-web style)."""
+    """A short, human title from the first REAL user message the human actually typed
+    (Claude-web style).
+
+    System-injected user messages are skipped two complementary ways so they never leak into the
+    chat title / sidebar folder: (1) messages tagged ``synthetic: True`` (the environment
+    pre-probe snapshot the agent loop injects as agent-only context); and (2) any message whose
+    text is bracket-tagged ("[environment pre-probe …]", "[live catalog …]"), which also covers
+    the live-catalog snapshot injected as a synthetic conversation message. The title therefore
+    comes from what the person typed, not the injected context."""
     for m in messages:
-        if isinstance(m, dict) and m.get("role") == "user":
+        if isinstance(m, dict) and m.get("role") == "user" and not m.get("synthetic"):
             text = " ".join(str(m.get("content") or "").split())
-            if text:
+            if text and not text.startswith("["):
                 return text[:_TITLE_MAX] + ("…" if len(text) > _TITLE_MAX else "")
     return "New chat"
 
@@ -73,6 +81,12 @@ class Session:
     # tool call they belong to. Not part of the LLM message stream — recorded so a resumed
     # chat can replay the approval cards + their ✓/✗ outcome in the transcript.
     approvals: list[dict[str, Any]] = field(default_factory=list)
+    # STILL-PENDING (undecided) approval gates the turn is currently parked on. The Channel
+    # records each one here (and removes it once decided/cancelled) and persists it, so an
+    # in-flight gate survives a chat switch / pane eviction / channel eviction and can be
+    # replayed in its transcript position on reconnect — not just while the in-memory Channel
+    # happens to be alive. Keyed to its tool call (like ``approvals``) for ordered replay.
+    in_flight_approvals: list[dict[str, Any]] = field(default_factory=list)
     title: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -86,6 +100,12 @@ class Session:
     total_output_tokens: int = 0         # generated tokens
     total_cache_read_tokens: int = 0     # input served from cache
     total_cache_write_tokens: int = 0    # input written to cache (Anthropic only)
+    # One-shot flag: the live catalog snapshot has been injected as a synthetic conversation
+    # message (see app/agent/loop.py). PERSISTED — the injected message itself lives in
+    # ``messages`` and is reloaded with the transcript, so a resumed chat must NOT inject a
+    # second copy. Defaults False so pre-feature state.json files (no catalog message yet) get
+    # one injected on their next turn.
+    catalog_injected: bool = False
     # RUNTIME-ONLY (deliberately NOT persisted): the read-only environment snapshot the /ws
     # handler pre-probes in the background on a brand-new session, and a one-shot flag the loop
     # flips once it has injected that snapshot as a synthetic turn message. Both are scoped to
@@ -109,6 +129,20 @@ class Session:
         if len(self.approvals) > _COMMANDS_MAX:
             del self.approvals[: len(self.approvals) - _COMMANDS_MAX]
 
+    def record_in_flight_approval(self, entry: dict[str, Any]) -> None:
+        """Track a still-undecided approval gate (by ``request_id``). Idempotent — a re-emit of
+        the same gate does not duplicate the entry."""
+        rid = entry.get("request_id")
+        if any(a.get("request_id") == rid for a in self.in_flight_approvals):
+            return
+        self.in_flight_approvals.append(entry)
+
+    def clear_in_flight_approval(self, request_id: str | None) -> None:
+        """Drop a pending gate once it is decided or cancelled. No-op if already absent."""
+        self.in_flight_approvals = [
+            a for a in self.in_flight_approvals if a.get("request_id") != request_id
+        ]
+
     def persist(self) -> None:
         """Best-effort transcript snapshot for resumability/debugging."""
         try:
@@ -128,10 +162,12 @@ class Session:
                         "namespace": self.namespace,
                         "commands": self.commands[-_COMMANDS_MAX:],
                         "approvals": self.approvals[-_COMMANDS_MAX:],
+                        "in_flight_approvals": self.in_flight_approvals,
                         "total_input_tokens": self.total_input_tokens,
                         "total_output_tokens": self.total_output_tokens,
                         "total_cache_read_tokens": self.total_cache_read_tokens,
                         "total_cache_write_tokens": self.total_cache_write_tokens,
+                        "catalog_injected": self.catalog_injected,
                     },
                     indent=2,
                 )
@@ -205,6 +241,7 @@ class SessionManager:
             namespace=data.get("namespace"),
             commands=data.get("commands", []),
             approvals=data.get("approvals", []),
+            in_flight_approvals=data.get("in_flight_approvals", []),
             title=data.get("title", ""),
             created_at=data.get("created_at") or time.time(),
             updated_at=data.get("updated_at") or time.time(),
@@ -213,6 +250,9 @@ class SessionManager:
             total_output_tokens=data.get("total_output_tokens", 0),
             total_cache_read_tokens=data.get("total_cache_read_tokens", 0),
             total_cache_write_tokens=data.get("total_cache_write_tokens", 0),
+            # Default False: a pre-feature snapshot has no catalog message, so let the next turn
+            # inject one. (Once injected + persisted, a reloaded chat sees True and skips it.)
+            catalog_injected=data.get("catalog_injected", False),
         )
         self._sessions[session.id] = session
         return session
