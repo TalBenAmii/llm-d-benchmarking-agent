@@ -287,3 +287,41 @@ async def test_observe_run_metrics_dispatches_as_a_tool(tmp_path):
     runner._canned = {"top pods": TOP_PODS}
     res = await dispatch(ctx, "observe_run_metrics", {"namespace": "bench", "scope": "pods"})
     assert res["available"] is True and res["row_count"] == 2
+
+
+# ---- Phase 55: live metric streaming / custom PromQL — upstream-unimplemented + substitute ----
+
+
+def test_observability_knowledge_documents_streaming_unimplemented_and_substitute():
+    """Phase 55 (THIN-CODE, knowledge-only): the agent must answer "can you stream live benchmark
+    metrics?" HONESTLY — that the benchmark's own real-time metric streaming AND custom Prometheus
+    queries are UPSTREAM-UNIMPLEMENTED — and offer the real substitutes (kubectl top via
+    observe_run_metrics + Phase-21 live pod-log streaming). That judgment lives in knowledge, not
+    Python, so assert the observability knowledge file states it (mirrors the tracing-config
+    config-only assertion). Read the file directly: no app behavior changed."""
+    from app.config import get_settings
+
+    md = (get_settings().knowledge_dir / "observability.md").read_text()
+    lower = md.lower()
+
+    # The upstream gap is stated as unimplemented (not the agent's fault to apologize for).
+    assert (
+        "unimplemented" in lower
+        or "not yet implemented" in lower
+        or "not implemented" in lower
+    )
+    # Both gap topics are named: (a) live metric STREAMING and (b) CUSTOM Prometheus QUERIES.
+    assert "stream" in lower  # live metric streaming / real-time visualization
+    assert "custom" in lower and ("prometheus" in lower or "query" in lower or "promql" in lower)
+
+    # The substitutes are named by EXACT tool, so the agent offers something real, not a promise.
+    assert "observe_run_metrics" in md  # kubectl top — live CPU/mem of the pods (§2)
+    assert "kubectl top" in lower
+    assert "orchestrate_benchmark_run" in md  # Phase-21 live pod-log streaming
+    assert "log" in lower and "stream" in lower  # the log-streaming substitute is described
+
+    # Custom PromQL is the user's OWN Prometheus/Grafana (cross-ref §3), not the benchmark CLI.
+    assert "grafana" in lower or "promql" in lower
+
+    # Grounded in upstream truth, not invented (the benchmark metrics doc names the gap).
+    assert "metrics_collection.md" in md

@@ -13,9 +13,44 @@ class ProbeEnvironmentInput(BaseModel):
     checks: list[str] | Literal["all"] = Field(
         default="all",
         description="Which checks to run, or 'all'. Options: container_runtime, repos, "
-                    "tools, venv, kind_clusters, kube_context, cluster_info, namespaces, stack",
+                    "tools, venv, kind_clusters, kube_context, cluster_info, namespaces, stack, "
+                    "prometheus_crds (are the Prometheus-operator PodMonitor/ServiceMonitor CRDs "
+                    "installed? read it before deciding --monitoring vs --no-monitoring), "
+                    "node_capacity (per-node allocatable/capacity CPU + the min allocatable across "
+                    "nodes — read it to right-size LLMDBENCH_HARNESS_CPU_NR for a small/Kind node), "
+                    "cluster_preconditions (the K8s server major.minor from `kubectl version` + the "
+                    "`spec`'s pinned vLLM/NIXL/UCX/NVSHMEM image tags — read it BEFORE a long "
+                    "real-cluster standup for an honest go/no-go: the go/no-go thresholds and "
+                    "verdict wording live in knowledge/infrastructure_preconditions.yaml, not here), "
+                    "provider_detection (detect the cloud provider — openshift/gke/doks/aks vs kind — "
+                    "from node labels + surface each node's GPU taints; read it to adapt commands "
+                    "and unstick Pending/PROGRAMMED=False failures: the which-CLI (oc vs kubectl) / "
+                    "which-toleration / which-known-issue (GMP / 'Undetected platform' / NVSHMEM) "
+                    "judgment lives in knowledge/infra_providers.yaml, not here)",
     )
     namespace: str | None = Field(default=None, description="Namespace to check for an existing stack")
+    spec: str | None = Field(
+        default=None,
+        description="Spec whose scenario image tags to parse for the cluster_preconditions check, "
+                    "e.g. 'cicd/kind' (resolves to config/scenarios/<spec>.yaml). Omit it for the "
+                    "other checks.",
+    )
+
+
+class AdviseAcceleratorsInput(BaseModel):
+    namespace: str | None = Field(
+        default=None,
+        description="Optional namespace (unused by the node-level extraction; reserved for "
+                    "future per-namespace scoping). Node-advertised accelerator facts are "
+                    "cluster-wide.",
+    )
+    # This tool reads each node's ADVERTISED accelerator/CPU/memory facts via the read-only
+    # `kubectl get nodes -o json` (which extended-resource key — nvidia.com/gpu or the
+    # amd/gaudi/tpu/xpu siblings — a node advertises, vs CPU-only, plus per-node cpu/memory).
+    # It returns FACTS ONLY — no can-it-run verdict. To turn the facts into a
+    # "can my hardware actually run this?" answer, the agent must call
+    # read_knowledge('accelerators') for the CUDA/driver minimums, the Device-Plugin vs DRA
+    # choice, and the real (non-sim) CPU-only 64c/64GB-per-replica floor (Kind/CPU-sim exempt).
 
 
 class ListCatalogInput(BaseModel):
@@ -80,9 +115,110 @@ class RunSetupInput(BaseModel):
 
 
 class WriteConfigInput(BaseModel):
-    artifact_type: Literal["workload", "run_config"]
+    artifact_type: Literal["workload", "run_config", "scenario"] = Field(
+        ...,
+        description="What kind of config artifact to author. 'workload'/'run_config' write a "
+                    "stock-shaped YAML as-is (MVP, rarely needed). 'scenario' AUTHORS finer "
+                    "per-knob vLLM/scheduling/storage edits beyond the parallelism/memory knobs "
+                    "that check_capacity + generate_doe_experiment already cover — see `content`.",
+    )
     target_filename: str = Field(..., description="Bare *.yaml filename (no path separators)")
-    content: dict[str, Any]
+    content: dict[str, Any] = Field(
+        ...,
+        description="The config body. For 'workload'/'run_config' it is written verbatim. "
+                    "For 'scenario' it is the set of per-knob OVERRIDES merged onto a minimal "
+                    "`scenario: [ {name, ...} ]` skeleton: a REQUIRED 'name' (the scenario item "
+                    "name) plus >=1 override keyed by the DOTTED upstream scenario field path. "
+                    "Supported knob paths include vllmCommon.flags.* (e.g. enforceEager, "
+                    "noPrefixCaching), vllmCommon.kvTransfer.* (enabled/connector/role), "
+                    "vllmCommon.kvEvents.* (enabled/publisher/port/topicPrefix), "
+                    "vllmCommon.priorityClassName, vllmCommon.ephemeralStorage, "
+                    "vllmCommon.networkResource, affinity.* (enabled/nodeSelector/podAffinity/"
+                    "podAntiAffinity), schedulerName, routing.servicePort, and per-section "
+                    "decode.*/prefill.* (schedulerName, priorityClassName, ...). To author a "
+                    "KUSTOMIZE-method deploy (Phase 46), set the kustomize.* family instead: "
+                    "kustomize.enabled (true ⇒ deploy the upstream llm-d guide directly — this "
+                    "OVERRIDES the rest of the scenario), kustomize.guideName (required; the "
+                    "guides/<name> dir), kustomize.repoPath (a local llm-d clone; else upstream "
+                    "clones it), kustomize.repoRef, kustomize.acceleratorBackend, "
+                    "kustomize.monitoring, kustomize.overlayPath, kustomize.extraHelmValues, "
+                    "kustomize.extraHelmSets, kustomize.guideVariableOverrides, and "
+                    "kustomize.patches (a LIST of {patch: <inline YAML>} strategic-merge patches "
+                    "against the guide's modelserver base). To CONFIGURE OpenTelemetry "
+                    "distributed tracing on the deployed modelservice pods (Phase 54), set the "
+                    "tracing.* family: tracing.enabled (true ⇒ turn it on), tracing.otlpEndpoint "
+                    "(the OTLP gRPC endpoint of the USER'S OTel collector, e.g. "
+                    "http://otel-collector:4317), tracing.sampling.sampler (e.g. "
+                    "parentbased_traceidratio) + tracing.sampling.samplerArg ('1.0'=100%, "
+                    "'0.1'=10%), tracing.serviceNames.{vllmDecode,vllmPrefill,routingProxy}, and "
+                    "tracing.vllm.collectDetailedTraces. NOTE: the benchmark only CONFIGURES "
+                    "tracing — it never deploys a collector/Jaeger and never collects/shows "
+                    "traces in the report (the user views them in their own backend). The knobs "
+                    "are SHAPE-validated against the repo's own scenario examples (read live). "
+                    "WHICH knobs to set is JUDGMENT — call read_knowledge('vllm_overrides') for "
+                    "vLLM tuning, read_knowledge('observability') for the tracing.* block + its "
+                    "config-only limitation, or read_knowledge('deploy_path_playbook') for WHICH "
+                    "guide/overlay/patches/repo the kustomize block should carry; the repos stay "
+                    "read-only (authored into the session workspace). Preview the authored file "
+                    "via execute_llmdbenchmark(subcommand='plan'/'run', flags={'dry_run': True}).",
+    )
+
+
+class ConvertGuideInput(BaseModel):
+    name: str = Field(
+        ...,
+        description="The guide/scenario name token (letters/digits/_/-/. only). It becomes "
+                    "ai.<name>.sh + ai.<name>.yaml in the SESSION WORKSPACE — the upstream "
+                    "'ai.' prefix marks an agent-generated scenario. The read-only repos are "
+                    "NEVER written; output goes to the session workspace only.",
+    )
+    env: dict[str, str] = Field(
+        ...,
+        description="REQUIRED. The already-resolved LLMDBENCH_* -> value map you derived from "
+                    "the guide. Each key MUST start with 'LLMDBENCH_' (e.g. "
+                    "{'LLMDBENCH_DEPLOY_MODEL_LIST': 'Qwen/Qwen3-32B', "
+                    "'LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS': '2'}); >=1 entry. The "
+                    "mapping JUDGMENT — WHICH Helm/kustomize path maps to WHICH LLMDBENCH_* var, "
+                    "the standard practices (DECODE_MODEL_COMMAND=custom, REPLACE_ENV_* "
+                    "placeholders, the preprocess command), and which defaults to override — is "
+                    "read_knowledge('convert_guide'), NOT this tool. The tool only EMITS the "
+                    "sorted, shell-quoted exports into the workspace .sh.",
+    )
+    sources: dict[str, str] | None = Field(
+        default=None,
+        description="Optional per-LLMDBENCH_* var -> a short source-trace string (e.g. "
+                    "'ms/values.yaml lines 23-24'), emitted as a '# SOURCE:' comment above "
+                    "each export for upstream's traceability requirement. Keys not present in "
+                    "`env` are ignored.",
+    )
+    scenario: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional per-knob dotted-path overrides for the VALIDATABLE companion YAML "
+                    "twin (same shape as write_and_validate_config content for "
+                    "artifact_type='scenario': a 'name' is forced to <name>, plus >=1 DOTTED "
+                    "upstream scenario field path, e.g. {'model.shortName': 'qwen3-32b', "
+                    "'decode.parallelism.tensor': 2}). The twin is what the determinism gate "
+                    "(plan/--dry-run) actually validates — a bare .sh is NOT gate-able. Omit it "
+                    "to derive a minimal twin carrying just the scenario name.",
+    )
+    harness: str | None = Field(
+        default=None,
+        description="Optional harness recorded into the .sh as LLMDBENCH_HARNESS_NAME. "
+                    "Defaults to 'inference-perf' (the upstream convert-guide default).",
+    )
+    profile: str | None = Field(
+        default=None,
+        description="Optional workload profile recorded into the .sh as "
+                    "LLMDBENCH_HARNESS_EXPERIMENT_PROFILE. Defaults to 'sanity_random.yaml' "
+                    "(the upstream convert-guide default).",
+    )
+    source_ref: str | None = Field(
+        default=None,
+        description="Optional guide URL/path, recorded only as a provenance header comment in "
+                    "the .sh (e.g. 'https://github.com/llm-d/llm-d/tree/main/guides/"
+                    "inference-scheduling'). Not fetched by this tool — you read the guide "
+                    "yourself via read_repo_doc / run_command git clone / your own file reads.",
+    )
 
 
 class ExecuteInput(BaseModel):
@@ -91,15 +227,183 @@ class ExecuteInput(BaseModel):
     namespace: str | None = None
     harness: str | None = Field(default=None, description="run/experiment only")
     workload: str | None = Field(default=None, description="run/experiment only")
+    models: str | None = Field(
+        default=None,
+        description="Phase 28 — a single model id (a HuggingFace id or short name, e.g. "
+                    "'facebook/opt-125m', 'meta-llama/Llama-3.1-8B') to deploy/serve for THIS "
+                    "standup (also valid on plan/run/experiment), OVERRIDING the spec's "
+                    "scenario-default model. Emitted as `-m <id>` (upstream spells it --models on "
+                    "standup/plan/experiment, --model on run; -m works on all). WHICH model is "
+                    "YOUR judgment, grounded in knowledge/model_override.md — there is no enumerable "
+                    "models catalog. CRITICAL: pass the SAME id to check_capacity(overrides="
+                    "{'model': <id>}) FIRST so the pre-flight validates the IDENTICAL model "
+                    "(HF config lookup, sizing, gated-access) you are about to deploy. Omit it to "
+                    "keep the spec's default model.",
+    )
+    kubeconfig: str | None = Field(
+        default=None,
+        description="Phase 29 — path to a NON-DEFAULT kubeconfig FILE to target a remote cluster "
+                    "for THIS command instead of the ambient kube context. Emitted as `-k <path>` "
+                    "(upstream --kubeconfig, sourced from LLMDBENCH_KUBECONFIG). Valid on every "
+                    "subcommand. It is a plain (non-secret) file path, value-pinned by the "
+                    "allowlist (no `..` traversal). WHEN/WHICH cluster to target is YOUR judgment, "
+                    "grounded in knowledge/preconditions.md — there is no enumerable cluster "
+                    "catalog. Omit it to use the ambient context (the local Kind cluster for the "
+                    "quickstart). To target a cluster by API URL + bearer TOKEN instead of a "
+                    "kubeconfig file, see flags.cluster_url / flags.cluster_token below — the "
+                    "TOKEN is a SECRET and travels backend-only (never argv, never shown).",
+    )
+    store: dict[str, Any] | None = Field(
+        default=None,
+        description="Phase 50 — ONLY for subcommand='results': drives the CLI's OPTIONAL git-like "
+                    "Results Store (a TEAM-SHARED store that publishes/pulls benchmark runs via "
+                    "GCS remotes). This is DISTINCT from the agent's OWN local history store (the "
+                    "result_history tool) — for tracking/trending YOUR runs locally use "
+                    "result_history; reach for THIS store only when a team SHARES results via the "
+                    "CLI store. read_knowledge('history') for WHICH one and WHEN. Shape: "
+                    "{command, ...}. `command` is one of init/remote/status/add/rm/ls/push/pull. "
+                    "init => `results init` (create a local .result_store/; read-only, auto-runs). "
+                    "status => `results status` (list local staged/untracked runs; read-only). "
+                    "remote => manage remotes; set remote_action to 'add' (with name + uri, where "
+                    "uri is a gs://bucket/prefix GCS URI), 'rm' (with name), or 'ls' (list — "
+                    "read-only). add/rm => stage/unstage runs: set paths to a list of local dir "
+                    "paths or run-uids (mutating). ls => `results ls <remote>` list a remote: set "
+                    "remote (alias like prod/staging) + optional model/hardware filters (read-only; "
+                    "NOTE wildcards are NOT supported — `*` is rejected, use an exact value). push "
+                    "=> publish staged runs (or an ad-hoc dir) to a remote: optional remote "
+                    "(default staging) + optional path + optional group; MUTATING (uploads to GCS, "
+                    "approval-gated). pull => download a run: optional remote (default prod) + "
+                    "REQUIRED run_uid; MUTATING (writes a workspace dir, approval-gated). The local "
+                    "history store is UNCHANGED by anything here.",
+    )
     flags: dict[str, Any] | None = Field(
         default=None,
-        description="Optional: {skip_smoketest, dry_run, list_endpoints, methods, output, "
-                    "endpoint_url}. `output` is a DESTINATION KEYWORD — 'local' (default), "
-                    "'gs://bucket/...', or 's3://bucket/...' — NOT a filesystem path; a `run` "
-                    "defaults to local output anchored under the session workspace. For "
-                    "subcommand='experiment' (a DoE sweep over a treatments "
-                    "file): {experiments (path to the experiment YAML), workspace (dir for "
-                    "outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, skip_teardown}.",
+        description="Optional: {skip, skip_smoketest, dry_run, list_endpoints, methods, repo_path, "
+                    "output, endpoint_url, monitoring, harness_cpu_nr, cluster_url, cluster_token, "
+                    "step, dataset, analyze, stack, parallel, gateway_class, wait_timeout, "
+                    "data_access_timeout, "
+                    "standalone_deploy_timeout, gateway_deploy_timeout, modelservice_deploy_timeout, "
+                    "kustomize_deploy_timeout, pvc_bind_timeout, fma_teardown_timeout, "
+                    "generate_config, run_config, debug}. "
+                    "`skip` => emit -z/--skip on a `run` to SKIP load execution and only "
+                    "COLLECT/ANALYZE data from the EXISTING results of a prior run in the same "
+                    "workspace (re-collect/re-analyze that run WITHOUT re-running the benchmark "
+                    "load); run-subcommand ONLY (upstream defines -z/--skip on `run` alone). It is "
+                    "collect-only/read-only, so it auto-runs. WHEN to use it is knowledge-driven "
+                    "(knowledge/collect_only.md). `methods` picks the deploy method (-t): one of "
+                    "standalone/modelservice/kustomize/fma. `repo_path` is a LOCAL llm-d clone path "
+                    "threaded as `--llmd-repo-path` for the KUSTOMIZE deploy method "
+                    "(`methods='kustomize'`, standup only) — the CLI fallback for the scenario "
+                    "block's kustomize.repoPath; omit it and upstream clones "
+                    "https://github.com/llm-d/llm-d.git into the workspace. The kustomize.* config "
+                    "BLOCK (guideName/repoPath/repoRef/patches/overlayPath/extraHelmValues/"
+                    "guideVariableOverrides) is AUTHORED via "
+                    "write_and_validate_config(artifact_type='scenario') using DOTTED kustomize.* "
+                    "keys, NOT here; WHICH guide/overlay/patches is judgment in "
+                    "knowledge/deploy_path_playbook.md. `cluster_url`/`cluster_token` (Phase 29) "
+                    "target a remote cluster by its API-server URL + bearer token (an alternative "
+                    "to the `kubeconfig` file above). They are carried BACKEND-ONLY as the "
+                    "LLMDBENCH_CLUSTER_URL / LLMDBENCH_CLUSTER_TOKEN child-env vars — NEVER as a CLI "
+                    "flag/argv — so the TOKEN never reaches the browser, a `command` event, or a "
+                    "log (it is scrubbed exactly like HF_TOKEN). The cluster URL is non-secret; the "
+                    "token is a SECRET, so never echo it back to the user. WHEN to target a remote "
+                    "cluster is knowledge-driven (knowledge/preconditions.md). `output` is a "
+                    "DESTINATION KEYWORD — 'local' (default), 'gs://bucket/...', or 's3://bucket/...' "
+                    "— NOT a filesystem path; a `run` defaults to local output anchored under the "
+                    "session workspace. The cloud schemes ('gs://'/'s3://') are OPT-IN (Phase 39): "
+                    "set one ONLY when the user explicitly wants results in their own bucket — the "
+                    "'do you have a bucket?' judgment is knowledge/cloud_results_sink.md; omit it (or "
+                    "use 'local') to keep results local. `monitoring` activates results.observability "
+                    "(metrics scraping): "
+                    "True => emit --monitoring (creates PodMonitor/ServiceMonitor + EPP verbosity "
+                    "on standup; scrapes vLLM /metrics on run/experiment) so KV-cache hit rate / "
+                    "queue depth / GPU util appear in the report; False => --no-monitoring on "
+                    "STANDUP ONLY (a clean opt-out for clusters lacking the Prometheus-operator "
+                    "CRDs — run/experiment have no such flag and simply skip scraping); omit to use "
+                    "scenario defaults. WHEN to set it is knowledge-driven, default ON (see "
+                    "knowledge/observability.md; probe prometheus_crds first to decide the opt-out). "
+                    "`harness_cpu_nr` is a backend-only INT that sets the LLMDBENCH_HARNESS_CPU_NR "
+                    "ENV VAR (NOT a CLI flag) on the launcher subprocess — the harness default is "
+                    "16; lower it to what a small/single-node cluster (e.g. Kind) can actually "
+                    "schedule so the launcher pod doesn't sit in FailedScheduling/Pending. WHEN and "
+                    "to WHAT (given probe_environment's node_capacity and the harness) is judgment "
+                    "in knowledge/harness_sizing.md; omit it to keep the default 16. It never "
+                    "reaches the browser. `step` is a step-list STRING (comma-separated numbers "
+                    "and/or N-M ranges, e.g. '5', '5-9', '3,7', '3-5,9') emitted as `-s <spec>`, "
+                    "valid on standup/smoketest/run/teardown — use it to RE-RUN a single failed "
+                    "step (or range) after a mid-phase failure instead of tearing down and "
+                    "redoing the whole phase; omit it to run the whole phase. WHICH step to "
+                    "re-run and the per-phase step numbering are judgment in "
+                    "knowledge/step_select.md (read_knowledge('step_select') first); -s does NOT "
+                    "change a command's mode, so re-running mutating steps stays approval-gated. "
+                    "`dataset` is a dataset-replay URL/path (run/experiment "
+                    "ONLY) emitted as `-x <url>`; its presence makes the harness REPLAY a real "
+                    "dataset instead of the synthetic workload profile, omit it to keep synthetic "
+                    "profiles driving the load. WHETHER to replay a dataset and WHICH one is "
+                    "knowledge-driven (read_knowledge('dataset_replay')). `analyze` => emit a bare "
+                    "`--analyze` on a `run` to ALSO generate the CLI's local matplotlib plot "
+                    "families (per-request distributions / session-lifecycle / Prometheus "
+                    "time-series, written under analysis/{distributions,session,graphs}) BESIDE "
+                    "the harness PNGs; run-subcommand ONLY (upstream defines --analyze on `run` "
+                    "alone). They are SUPPLEMENTARY visualizations — the agent's own SLO/goodput/"
+                    "Pareto math is UNCHANGED — and surfaced alongside the harness charts via the "
+                    "existing artifact route. It does NOT change the run's mutating mode. WHEN to "
+                    "set it is knowledge-driven (read_knowledge('analysis')). `stack` is a comma-separated "
+                    "list of stack NAMES (NAME[,NAME...], e.g. 'qwen3-06b' or 'qwen3-06b,llama-31-8b') "
+                    "that RESTRICTS a multi-stack scenario (N model pools behind one gateway, e.g. "
+                    "guides/multi-model-wva) to that SUBSET, emitted as `--stack <names>`, valid on "
+                    "standup/smoketest/run/teardown — use it to standup/smoketest/benchmark/teardown a "
+                    "SINGLE pool without touching siblings (on `run` the endpoint URL auto-resolves for "
+                    "the selected stack); omit it to operate on EVERY stack of the scenario. `parallel` "
+                    "is an INT that CAPS how many stacks deploy/smoketest in parallel (upstream "
+                    "default 4), emitted as `--parallel <n>`, valid on standup/smoketest/experiment — "
+                    "lower it (e.g. to 1) on a small/Kind node that can't bring up several pools at "
+                    "once. NOTE `parallel` is DISTINCT from `parallelism`/-j (the number of parallel "
+                    "harness PODS, run/experiment); they are NOT the same flag. WHICH stack(s) to "
+                    "target and HOW MANY to deploy at once is knowledge-driven "
+                    "(read_knowledge('multi_stack')). `gateway_class` selects the GATEWAY PROVIDER "
+                    "(one of istio/agentgateway/gke/epponly/data-science-gateway-class), emitted as "
+                    "`--gateway-class <provider>`, valid on EVERY subcommand — it OVERRIDES the "
+                    "spec's scenario gateway.className (effective on the modelservice deploy path "
+                    "only; ignored by kustomize/standalone/fma). WHICH provider to pick is "
+                    "knowledge-driven (read_knowledge('gateway_class')); omit it to inherit the "
+                    "spec's gateway.className. The per-phase CLI TIMEOUT "
+                    "keys (Phase 38) are positive-int SECONDS, each emitted as the matching "
+                    "`--*-timeout` CLI flag ONLY on the subcommand(s) upstream accepts it on: "
+                    "`wait_timeout`/`data_access_timeout` on run+experiment; "
+                    "`standalone_deploy_timeout`/`gateway_deploy_timeout`/`modelservice_deploy_timeout`/"
+                    "`kustomize_deploy_timeout`/`pvc_bind_timeout` on standup; `fma_teardown_timeout` "
+                    "on teardown. They are the CLI's OWN per-phase bound — a DEEPER timeout the CLI "
+                    "enforces internally — and MUST stay BELOW the runner's per-command deadline for "
+                    "that subcommand so the two layers do not fight (the runner deadline still bounds "
+                    "the whole process). WHEN/WHAT to set is judgment in "
+                    "knowledge/phase_timeouts.md (read_knowledge('phase_timeouts') first); omit them "
+                    "to keep the CLI's own defaults. `generate_config` and "
+                    "`run_config` drive the CLI's OWN run-config round-trip (run ONLY), an "
+                    "alternative to authoring a config in-workspace with write_and_validate_config: "
+                    "`generate_config`=True emits --generate-config, which GENERATES a reusable "
+                    "run-config YAML from the CURRENT settings (spec/harness/workload/model/etc.) "
+                    "under the session workspace and EXITS — it deploys nothing, so it is "
+                    "read-only/auto-runs; `run_config` is the path to a previously generated "
+                    "run-config, emitted as -c <path> to REPLAY it (run-only mode; this still "
+                    "executes the benchmark load, so it stays approval-gated). WHEN to generate vs "
+                    "reuse via run_config vs author in-workspace is YOUR judgment "
+                    "(read_knowledge('runconfig_roundtrip')). `debug` => emit a bare -d/--debug on "
+                    "a `run` or `experiment` to start the harness pods with `sleep infinity` "
+                    "INSTEAD of running the load (upstream LLMDBENCH_DEBUG) — use it to exec into a "
+                    "stuck/misbehaving harness pod and debug it. run/experiment ONLY: upstream "
+                    "defines -d=--debug there, but on `teardown` -d means --deep (a DESTRUCTIVE "
+                    "full-namespace wipe), so it is emitted on run/experiment ALONE and on NO other "
+                    "subcommand. A debug launch still LAUNCHES a REAL pod, so it STAYS "
+                    "approval-gated (NOT read-only/collect-only like `skip`). After it launches, "
+                    "EXPLAIN how to exec in (kubectl/oc exec -it <ns> <harness-pod> -- bash) but do "
+                    "NOT drive the interactive shell yourself — that is a MANUAL, user-driven step. "
+                    "WHEN to use debug mode (and the no-drive boundary) is knowledge-driven "
+                    "(read_knowledge('harness_debug')). For subcommand='experiment' "
+                    "(a DoE sweep over a "
+                    "treatments file): {experiments (path to the experiment YAML), workspace (dir "
+                    "for outputs), parallelism (int), overrides ('p=v,...'), stop_on_error, "
+                    "skip_teardown}.",
     )
     extra: list[str] | None = None
 
@@ -163,6 +467,41 @@ class OrchestrateBenchmarkInput(BaseModel):
     )
 
 
+class DiscoverStackInput(BaseModel):
+    endpoint_url: str = Field(
+        ...,
+        description="REQUIRED. The OpenAI-compatible endpoint URL of the deployed stack to trace, "
+                    "e.g. 'https://model.example.com/v1' or an in-cluster service URL. Phase 56: "
+                    "this OPTIONAL tool runs the standalone stack-discovery tool "
+                    "(`llm-d-discover <url> -f benchmark-report`) to capture the LIVE stack as "
+                    "BR-v0.2 scenario.stack components (model/role/replicas/parallelism/"
+                    "accelerator) for richer ENVIRONMENT capture than the agent's own endpoint "
+                    "probing. It COMPLEMENTS — it does NOT replace — probe_environment / "
+                    "check_endpoint_readiness, which remain the default. WHEN to use it is "
+                    "read_knowledge('stack_discovery'). Value-pinned by the allowlist endpoint_url "
+                    "constraint (same as `run -U/--endpoint-url`).",
+    )
+    kubeconfig: str | None = Field(
+        default=None,
+        description="Optional path to a NON-DEFAULT kubeconfig FILE to target a remote cluster "
+                    "(emitted as `-k`). A plain, NON-SECRET file path, value-pinned by the "
+                    "allowlist (no `..` traversal); omit it to use the ambient kube context. The "
+                    "secret cluster-by-URL+TOKEN route is NOT exposed here — it stays backend-only "
+                    "(as for execute_llmdbenchmark).",
+    )
+    context: str | None = Field(
+        default=None,
+        description="Optional Kubernetes context name to use (emitted as `-c`). Omit to use the "
+                    "current context.",
+    )
+    filter_type: str | None = Field(
+        default=None,
+        description="Optional component-type filter to narrow the discovered components (emitted "
+                    "as `--filter`, e.g. 'Pod', 'Service', 'vllm'). Omit to capture all "
+                    "components.",
+    )
+
+
 class CheckEndpointReadinessInput(BaseModel):
     namespace: str = Field(
         ...,
@@ -179,6 +518,15 @@ class CheckEndpointReadinessInput(BaseModel):
         description="Also corroborate via the benchmark CLI's read-only `run --list-endpoints` "
                     "(best-effort; the Kubernetes endpoint-address readiness is the gate). Set "
                     "False to skip it (e.g. the benchmark venv isn't installed yet).",
+    )
+    check_gateway: bool = Field(
+        default=True,
+        description="In gateway-mode deploys, ALSO read the Gateway-API control plane "
+                    "(gateway/gatewayclass/inferencepool/httproute) and surface the PROGRAMMED + "
+                    "Accepted/ResolvedRefs/Reconciled condition FACTS (read-only). This tells "
+                    "'the model pods are Ready' apart from 'traffic can actually reach them' — "
+                    "pods can be Ready while the Gateway is still PROGRAMMED:False. Set False on "
+                    "non-gateway/Kind deploys to skip the four extra kubectl reads.",
     )
 
 
@@ -227,6 +575,59 @@ class CheckCapacityInput(BaseModel):
         description="When True, shortfalls are tagged ERROR (deployment-halting) rather than "
                     "advisory WARNING — the strict read a real standup uses when "
                     "ignoreFailedValidation is off.",
+    )
+
+
+class AggregateRunsInput(BaseModel):
+    results_prefix: str = Field(
+        ...,
+        description="An EXISTING results dir holding the per-run result directories from "
+                    "completed runs (the upstream naming convention is "
+                    "'{results_prefix}/{harness}_{run_id}_{stack}'). This tool READS the "
+                    "Benchmark Report v0.2 files there; it does NOT run a benchmark.",
+    )
+    harness: str = Field(
+        ...,
+        description="The harness whose repeated runs to aggregate (e.g. 'inference-perf') — "
+                    "part of the per-run directory name.",
+    )
+    stack: str = Field(
+        ...,
+        description="The stack name the runs targeted (e.g. 'llm-d-7b-base') — part of the "
+                    "per-run directory name.",
+    )
+    run_ids: list[str] = Field(
+        ...,
+        description="The run IDs to combine (>=2 — aggregation needs repeated runs of the SAME "
+                    "benchmark to report run-to-run mean/std/min/max).",
+    )
+    output_name: str | None = Field(
+        default=None,
+        description="Optional subdir name (under the session workspace) to write the "
+                    "aggregated_summary.{txt,json} into. Defaults to 'aggregated'. Must stay "
+                    "within the workspace (no '..').",
+    )
+
+
+class ProvisionHfSecretInput(BaseModel):
+    namespace: str = Field(
+        ...,
+        description="The target Kubernetes namespace (an RFC1123 label, e.g. the plan's "
+                    "namespace) to create/update the HuggingFace token Secret in. This is the "
+                    "APPROVAL-GATED MUTATING step that materializes the cluster HF Secret a "
+                    "GATED-model standup needs (so a `standup` doesn't fail minutes in with an "
+                    "opaque image-pull/weights error). The token itself is BACKEND-ONLY (read "
+                    "from the backend HF_TOKEN env, never shown, never an input here). WHEN to "
+                    "call this is knowledge/capacity.md, NOT your guess: ONLY after a "
+                    "check_capacity GATED+UNAUTHORIZED verdict whose reason says NO token is "
+                    "configured cluster-side — never for a public model, and never when a token "
+                    "merely LACKS access (that needs a HuggingFace access request, not a secret).",
+    )
+    name: str | None = Field(
+        default=None,
+        description="The Secret name (an RFC1123 object name). Omit to use the upstream "
+                    "default 'llm-d-hf-token' (HF_TOKEN_NAME) that the llm-d standup expects; "
+                    "only override it if the deployment was configured with a different name.",
     )
 
 

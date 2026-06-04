@@ -157,13 +157,18 @@ class CommandRunner:
         return real, cwd
 
     # ---- environment ------------------------------------------------------
-    def _build_env(self) -> dict[str, str]:
+    def _build_env(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         env = {k: os.environ[k] for k in _ENV_PASSTHROUGH if k in os.environ}
         # Benchmark configuration vars are safe to forward; secrets are not among them.
         for k, v in os.environ.items():
             if k.startswith("LLMDBENCH_"):
                 env[k] = v
         env.update(self._extra_env)  # e.g. HF_TOKEN, explicitly provided to the backend
+        # Per-execution, agent-chosen env (e.g. a right-sized LLMDBENCH_HARNESS_CPU_NR for a
+        # small Kind node) is merged LAST so it wins over both os.environ and the global
+        # _extra_env. Backend-only — it never reaches the browser (no command event carries env).
+        if extra:
+            env.update({str(k): str(v) for k, v in extra.items()})
         env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
         return env
 
@@ -176,13 +181,16 @@ class CommandRunner:
         on_line: OnLine | None = None,
         timeout: float | None = None,
         cwd: str | Path | None = None,
+        extra_env: dict[str, str] | None = None,
     ) -> RunResult:
         """Resolve, run, and stream a command. Lines (stdout+stderr merged) are passed
         to ``on_line`` as they arrive and always captured (tail-bounded) in the result.
-        ``cwd`` overrides the resolved working directory (e.g. clone target dir)."""
+        ``cwd`` overrides the resolved working directory (e.g. clone target dir).
+        ``extra_env`` is a per-execution env overlay merged LAST into the built child env
+        (backend-only — never emitted to the browser)."""
         real_argv, resolved_cwd = self.resolve(logical_argv, entry)
         cwd = str(cwd) if cwd is not None else resolved_cwd
-        env = self._build_env()
+        env = self._build_env(extra_env)
         deadline = timeout if timeout is not None else self._default_timeout
 
         start = time.monotonic()
@@ -267,7 +275,10 @@ class SimRunner(CommandRunner):
         on_line: OnLine | None = None,
         timeout: float | None = None,
         cwd: str | Path | None = None,
+        extra_env: dict[str, str] | None = None,
     ) -> RunResult:
+        # ``extra_env`` is accepted for signature parity with CommandRunner.execute but never
+        # used here — SimRunner spawns no process, so there is no child env to overlay.
         lines = [
             f"[simulate] (no-op) would run: {' '.join(logical_argv)}",
             "[simulate] exit_code=0",

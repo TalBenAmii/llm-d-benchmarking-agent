@@ -42,7 +42,7 @@ class _GatedRunner(CommandRunner):
         self.peak = 0
         self.started = 0  # how many calls actually ENTERED execute (past the semaphore)
 
-    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None):
+    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
         self.started += 1
         self.active += 1
         self.peak = max(self.peak, self.active)
@@ -145,7 +145,7 @@ class _ThreadGatedRunner(CommandRunner):
         self._started = started
         self._gate = gate
 
-    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None):
+    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
         self._started.set()
         while not self._gate.is_set():
             await asyncio.sleep(0.01)
@@ -259,13 +259,20 @@ def test_post_disconnect_approval_stays_pending_and_reemits_on_reconnect(tmp_pat
             assert started.wait(timeout=5)
             gate.set()  # let the standup execute finish; the turn advances to the teardown gate
 
-            # The teardown approval must now be PARKED (pending), not auto-rejected.
+            # The teardown approval must now be PARKED (pending), not auto-rejected. Wait for the
+            # TEARDOWN gate specifically (tool_call_id "c2"): there is a brief window where the
+            # just-approved standup gate ("c1") is still being popped from `pending`, so grabbing
+            # an arbitrary first key could capture the stale standup rid instead.
             pending_rid = None
             for _ in range(250):
                 ch = app.state.channels.get(sid)
-                if ch and ch.pending:
-                    pending_rid = next(iter(ch.pending))
-                    break
+                if ch:
+                    pending_rid = next(
+                        (rid for rid, p in ch.pending.items() if p.get("tool_call_id") == "c2"),
+                        None,
+                    )
+                    if pending_rid:
+                        break
                 time.sleep(0.02)
             assert pending_rid, "teardown approval never parked as pending"
             assert not _tool_results_rejected(app.state.sessions.get(sid)), \

@@ -95,6 +95,97 @@ When the reports carry them, `pareto.informational_objectives` surfaces the §3.
 `leader` names the run that leads each informational metric. A metric absent from every run
 is simply omitted — say nothing about it. On the CPU-sim quickstart these are usually absent.
 
+## Optional `--analyze` plot families: supplementary pictures, not new math
+
+A `run` can be told to ALSO render the CLI's own workstation matplotlib **plot families** by
+setting `flags={'analyze': True}` on `execute_llmdbenchmark(subcommand='run', ...)` — it emits a
+bare `--analyze`. This is **run-only** (upstream defines `--analyze` on the `run` subcommand
+alone; never pass it on standup/plan/experiment) and it does **not** change the run's mutating
+mode (a real run still loads the cluster and stays approval-gated). It is pure *mechanism*; the
+judgment below is yours.
+
+It writes **three extra families**, all under the run's `analysis/` dir, **in addition** to the
+harness's own latency/throughput PNGs:
+
+- **`analysis/distributions/`** — *per-request distributions* (histograms/CDFs of TTFT, ITL,
+  end-to-end latency, token counts). Reach for this when the user asks about the **shape of the
+  tail** ("are a few requests dragging the p99?") rather than a single percentile.
+- **`analysis/session/`** — *session-lifecycle* bar charts (session rate, session duration
+  mean/p99, events & output-tokens per session, failed/cancelled sessions). Useful for
+  **multi-turn / agentic** workloads where per-session behavior matters; on single-turn runs the
+  harness writes no session-lifecycle files, so this family is simply empty (never fabricated).
+- **`analysis/graphs/`** — *Prometheus time-series* line graphs over the captured
+  `metrics/raw/*.log`. These need the **monitoring producer** to have run, so set
+  `flags['monitoring']=True` (Phase 27) on the standup/run too — otherwise there's nothing to
+  plot. Use them to **explain WHY** the frontier looks the way it does (KV-cache hit rate /
+  queue depth / GPU util over the run), corroborating the §3.4 informational metrics above.
+
+Each requires **matplotlib** on the workstation; if it's absent the CLI skips that family without
+failing the run. The generated PNGs are surfaced **alongside** the harness charts through the
+same artifact route (`locate_and_parse_report` lists them in `charts`, each titled with its
+family subdir — `Distributions: …`, `Session: …`, `Graphs: …` — so the families don't collide).
+
+**These plots are SUPPLEMENTARY visualizations — they do NOT change any number.** Your SLO
+verdicts, goodput estimate, and Pareto/`slo_frontier` analysis come from `analyze_results` over
+the **validated Benchmark Report**, exactly as above, whether or not `--analyze` ran. Use the
+plots to *illustrate* a finding to the user ("here's the TTFT distribution behind that p99"),
+never to derive the recommendation. WHEN to ask for them: the user wants to *see* the data
+(tail shape, per-session breakdown, time-series), or you're explaining a non-obvious frontier.
+Skip them for a quick pass/fail check, or when the user just wants the headline goodput number.
+
+## Jupyter notebook + standalone plotting scripts (exploratory — NOT part of the automated flow)
+
+The benchmark repo ships an **interactive Jupyter notebook** and a set of **standalone Python
+plotting scripts** under `llm-d-benchmark/docs/analysis/`. These are **power-user exploration
+tools the user drives on their own workstation** — they are deliberately **NOT** wired into the
+agent's `probe → standup → run → report` flow. You already (a) render the harness's own
+latency/throughput PNGs (and the optional `--analyze` families above) inline through the artifact
+route, and (b) compute the SLO verdicts, the goodput estimate, and the Pareto/`slo_frontier`
+analysis with `analyze_results` over the **validated Benchmark Report**. The notebook/scripts are
+*additional, hands-on* exploration the user opts into — so your job here is to **SURFACE and
+EXPLAIN** them when the user wants to dig deeper themselves, NOT to run them as part of a run.
+
+To show the user how to launch the notebook against their own results, read the upstream setup doc
+to them — `read_repo_doc('llm-d-benchmark/docs/analysis/README.md')` (venv + Jupyter Lab setup, how
+to run `analysis.ipynb`) or the pipeline overview `read_repo_doc('llm-d-benchmark/docs/analysis.md')`
+(in-container vs local `--analyze` vs notebook). The artifacts (all paths under the **read-only**
+`llm-d-benchmark/` repo — never edit them; the user copies/adapts them on their own machine):
+
+- **`docs/analysis/analysis.ipynb`** — the interactive notebook. It imports every Benchmark Report
+  found within a user-supplied **list of result directories** into a Pandas DataFrame, then exposes
+  pre-built plotting cells the user runs, edits, or extends with custom analysis. Needs **Python
+  ≥3.12 + Jupyter Lab + `build/requirements-analysis.txt`** — run on the **USER'S workstation**,
+  never by the agent.
+- **`docs/analysis/README.md`** — the setup guide (create the venv, install the analysis
+  requirements + Jupyter Lab, `jupyter lab analysis.ipynb`).
+- **`docs/analysis.md`** — the full analysis-pipeline overview (in-container analysis → local
+  `--analyze` → notebook → Prometheus metric visualization); the map of how all three layers fit.
+- **`docs/analysis/explorer.py` / `plotting.py` / `constants.py`** — the configuration-explorer +
+  plotting helper modules the notebook imports (the reusable functions behind the cells).
+- **`docs/analysis/aggregate_runs.py`** — the **one** standalone script parameterizable against a
+  results dir: it reads BR v0.2 reports across **repeated runs of the same experiment** and writes a
+  cross-run **mean / std / min / max** summary. It takes `--results-prefix` (the results dir),
+  `--harness`, `--stack`, `--run-ids …`, and `--output` (where to write the summary — and **only**
+  there). See the OPTIONAL scripted step below.
+- **`docs/analysis/to_be_incorporated/plot_ttft_vs_qps.py` / `plot_itl_vs_qps.py` /
+  `plot_throughput_vs_qps.py` / `plot_benchmark_metrics.py` / `plot_pd_results.py`** — **experimental
+  template** scripts. **Do NOT run these** as the agent: each is **hardcoded** to read CSVs from
+  `../data/k8s/lmbenchmark` (relative to its own location) and to write its PNG **back into the
+  repo directory** — so they cannot be pointed at a user results dir and they would write into the
+  read-only repo. They are illustrative starting points a user **copies and adapts** by hand; point
+  at them, but never invoke them.
+
+**OPTIONAL scripted step — cross-run aggregation.** When the user has run the **same benchmark
+multiple times** and wants the run-to-run variance (mean/std/min/max across repeats), you MAY run
+`aggregate_runs.py` **read-only** against an **existing** results dir via the allowlisted
+`scripts/aggregate_runs.py` wrapper (called through `run_command` — it auto-runs, like
+`capacity_check.py`). The wrapper **imports the repo's own `aggregate_runs` module** (never
+reimplements its math), reads the BR v0.2 reports under `--results-prefix`, and writes the
+`aggregated_summary.{txt,json}` **only** under a session-workspace `--output` dir you supply (the
+read-only repo and the results dir are never written). It needs **≥2 runs** to aggregate — with
+fewer it reports that and does nothing. This is the *only* plotting/analysis script the agent runs
+itself; the notebook and the `to_be_incorporated/` templates stay pointer-only.
+
 ## Caveat that still applies on the kind/CPU-sim quickstart
 
 The simulated CPU engine's absolute numbers are **not** representative of GPU serving, and

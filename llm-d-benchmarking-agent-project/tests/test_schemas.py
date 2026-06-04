@@ -11,10 +11,13 @@ def test_tool_definitions_complete():
     defs = tool_definitions()
     names = {d["name"] for d in defs}
     expected = {
-        "probe_environment", "list_catalog", "read_knowledge", "read_repo_doc", "fetch_key_docs",
-        "propose_session_plan", "check_capacity", "check_endpoint_readiness",
+        "probe_environment", "list_catalog", "advise_accelerators",
+        "read_knowledge", "read_repo_doc", "fetch_key_docs",
+        "propose_session_plan", "check_capacity", "aggregate_runs", "provision_hf_secret",
+        "check_endpoint_readiness", "discover_stack",
         "ensure_repos", "run_setup",
-        "write_and_validate_config", "generate_doe_experiment", "execute_llmdbenchmark",
+        "write_and_validate_config", "convert_guide_to_scenario",
+        "generate_doe_experiment", "execute_llmdbenchmark",
         "run_command", "locate_and_parse_report", "compare_reports", "compare_harness_runs",
         "analyze_results", "orchestrate_benchmark_run", "observe_run_metrics",
         "result_history", "cancel_run",

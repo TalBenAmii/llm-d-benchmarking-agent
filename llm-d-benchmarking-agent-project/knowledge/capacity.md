@@ -29,7 +29,11 @@ The spec carries defaults (e.g. `cicd/kind` is `facebook/opt-125m`, CPU-sim, no 
 `overrides` so the pre-flight checks what they actually asked for — not the stock spec:
 
 - `model` / `huggingface_id` — a different served model (this is what makes the check
-  meaningful: a 70B model on one 24 GB GPU will not fit).
+  meaningful: a 70B model on one 24 GB GPU will not fit). When the standup itself will carry
+  an explicit model override (`ExecuteInput.models`, emitted as `-m`, see
+  `knowledge/model_override.md`), you MUST pass that SAME id here as
+  `overrides={'model': '<id>'}` so the pre-flight sizes and gated-access-checks the IDENTICAL
+  model you are about to deploy — not the spec's stock default. The two must always match.
 - `max_model_len` — longer context costs KV-cache memory *per request*; this is the most
   common reason a model "loads but can't serve a single request".
 - `gpu_memory_gb` — per-GPU memory (e.g. 24, 40, 80). Without it, GPU-memory checks are
@@ -60,6 +64,88 @@ The sizing `info` lines (parameters, memory required, allocatable KV cache, **ma
 requests**) are useful even on the feasible path: surface "max concurrent requests" when the
 user cares about how many simultaneous users a config can serve.
 
+## Gated-model access pre-flight — "can your token even pull the weights?"
+
+`check_capacity` pairs the "will it fit?" sizing verdict with a **gated-model access**
+pre-flight, using the benchmark repo's OWN gating check (`check_model_access` /
+`GatedStatus`). The point: a gated model whose weights your HuggingFace token can't pull
+fails the standup minutes in, with an opaque image-pull / weights error. This surfaces the
+exact verdict **up front, at the plan gate, before any mutating step** — so a non-expert
+hears "your token can't pull this model, here's the fix" instead of watching a long deploy
+die. The result carries three facts (plus a per-model `gated_access.models` breakdown):
+
+- **`gated`** — `true` if any served model is gated, `false` if all are public, `null` if
+  the gating check couldn't run (offline / HF unreachable — see below).
+- **`authorized`** — for the gated case: `true` if your `HF_TOKEN` can pull **every** gated
+  model, `false` if it can't pull at least one, `null` if access couldn't be determined.
+  `null` for the public case (no token is needed). `gated_reason` is the upstream detail
+  text (it never contains the token).
+
+Read the three situations and say this (the **decision is here, not in Python**):
+
+- **PUBLIC** (`gated: false`) — *no token needed.* Say nothing about tokens; just proceed to
+  the capacity verdict. Don't ask the user for an HF token for a public model.
+- **GATED + AUTHORIZED** (`gated: true`, `authorized: true`) — *your token can pull it.*
+  Tell the user this model is gated but their configured HuggingFace token has access, so
+  the deploy can proceed. Continue to the "will it fit?" verdict.
+- **GATED + UNAUTHORIZED** (`gated: true`, `authorized: false`) — **do not stand up.**
+  Explain plainly: *"This model is gated and the HuggingFace token the backend has can't
+  pull it."* Quote `gated_reason` (it tells them whether **no token** is configured, or the
+  token simply **lacks access**). Then offer the fix:
+  - If **no token** is configured: they need to provide one. Offer to **provision the
+    `HF_TOKEN` secret (Phase 30 secret-provisioning)** so the backend has a token to use —
+    that is the next step to suggest, approval-gated like any secret write.
+  - If a token **lacks access**: the token is fine but this account isn't approved for the
+    model — point them to `https://huggingface.co/<model>` to request access, then retry the
+    pre-flight once granted. (Provisioning a *different* token with access is also valid.)
+  Either way, retry `check_capacity` after the fix to confirm `authorized: true` before
+  standing up.
+
+  ### Provisioning the cluster HF secret (`provision_hf_secret`)
+
+  The "no token" case has a concrete, in-agent fix. A gated-model standup pulls the weights
+  using a cluster Secret (the upstream `llm-d-hf-token`); if the backend HAS a real
+  `HF_TOKEN` configured but that Secret was never created in the target namespace, the
+  standup fails minutes in with an opaque image-pull/weights error. When the gated verdict's
+  `gated_reason` indicates **no token is configured cluster-side** (vs. a token that simply
+  lacks access), OFFER the approval-gated mutating step:
+
+  > `provision_hf_secret(namespace=<the plan's namespace>, name='llm-d-hf-token')`
+
+  This materializes the cluster HF token Secret from the backend's `HF_TOKEN`, exactly as
+  `llm-d/helpers/hf-token.md` does. It is **approval-gated** (it writes a Secret to the
+  cluster), so propose it and let the user Approve — never run it unprompted. State plainly:
+
+  - It must run **before** the standup (a gated standup can't pull weights without it).
+  - You **never see the token** — it is read backend-side and never shown, never logged,
+    never in the argv/command events. You only see kubectl's confirmation line.
+  - After it succeeds, **re-run `check_capacity`** (same model/overrides) to confirm
+    `authorized: true`, and only THEN proceed to standup.
+  - `name` defaults to the upstream `llm-d-hf-token`; only override it if the deployment was
+    configured to read a differently-named Secret.
+
+  ### Boundaries (when NOT to provision)
+
+  - **Never for a PUBLIC model** (`gated: false`). A public model needs no token and no
+    Secret — say nothing about tokens and just proceed to the sizing verdict.
+  - **A token that merely LACKS access is NOT a provisioning case.** If `gated_reason` says
+    the configured token does not have access to this model, a new Secret won't help — the
+    account isn't approved. Point the user to `https://huggingface.co/<model>` to request
+    access (or to provide a *different* token that has access), then retry `check_capacity`.
+    Provisioning the same access-less token would just re-create a Secret that still can't
+    pull the weights.
+  - **Only when the backend actually has an `HF_TOKEN`.** If none is configured at all, the
+    provisioning step can't materialize a Secret (it reports that plainly) — the user must
+    first set `HF_TOKEN` in the backend env (it stays backend-only), then provision.
+- **UNKNOWN** (`gated: null`) — the gating check couldn't run (HF unreachable / offline, or
+  the repo's gating util wasn't importable). `gated_reason` says "gated check unavailable".
+  Treat it like the `ran: false` capacity case: **not a green light** — tell the user the
+  gated verdict is unavailable and let them decide whether to proceed with caution.
+
+The **token stays backend-only**: it's read from the scrubbed child env, passed to the
+gating check, and never echoed into the result, the command events, or the logs. You will
+never see the token value — only these gated/authorized/`gated_reason` facts.
+
 ## `enforce`
 
 By default the planner tags shortfalls as advisory `WARNING` (matching the repo's
@@ -77,3 +163,10 @@ about to commit real GPU time and wants the same gate a production standup would
   pre-flight there mainly confirms the model config is reachable and flags nothing fatal.
 - This validates *capacity*, not cluster *availability* — whether a node actually has that
   GPU or that much memory free is a separate `probe_environment` / scheduling concern.
+  `advise_accelerators` + `read_knowledge('accelerators')` closes exactly that gap: it detects
+  whether a node ADVERTISES an accelerator extended resource (`nvidia.com/gpu` or the
+  amd/gaudi/tpu/xpu siblings) vs CPU-only, and carries the real (non-sim) CPU-only 64c/64GB-per-
+  replica floor (Kind/CPU-sim exempt) plus the CUDA/driver minimums and the Device-Plugin-vs-DRA
+  choice. Pair the two: `check_capacity` answers "will the model FIT in the accelerator's
+  memory?", `advise_accelerators` answers "does a node even ADVERTISE that accelerator / meet the
+  CPU floor?".

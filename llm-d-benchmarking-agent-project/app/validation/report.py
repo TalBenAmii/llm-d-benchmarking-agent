@@ -246,6 +246,97 @@ def extract_standard_metrics(
     return out
 
 
+# ---- session-level metrics (multi-turn inference-perf) ---------------------
+#
+# Multi-turn workloads carry a SECOND results block, results.session_performance.sessions,
+# alongside the per-request request_performance: session counts plus per-session Statistics
+# distributions (rate, duration, events/tokens per session). It is present ONLY for
+# multi-turn runs; single-turn reports omit it entirely, so a single-turn report must yield
+# None here (never a fabricated zero). WHICH field names carry the session data — and how to
+# read them — is DATA in knowledge/standard_metrics.yaml under the top-level
+# ``session_performance`` key (thin code / thick agent). The code below is pure mechanism: it
+# reads that catalog and copies through each present scalar / extracts each present
+# distribution via the same _stat() ladder used for latency/throughput. The committed JSON
+# Schema lags here (Results has additionalProperties:false), so a multi-turn report surfaces
+# session_performance as a NON-FATAL additionalProperties deviation under validate_report —
+# validation still passes; we do not touch validate_report.
+
+
+@lru_cache(maxsize=4)
+def _load_session_catalog(path: str) -> dict[str, Any]:
+    """Load (and cache) the session field-name catalog. Missing/malformed → empty (no crash)."""
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        data = yaml.safe_load(p.read_text())
+    except yaml.YAMLError:
+        return {}
+    sess = data.get("session_performance") if isinstance(data, dict) else None
+    return sess if isinstance(sess, dict) else {}
+
+
+def extract_session_performance(
+    report: dict[str, Any], *, catalog_path: str | Path | None = None
+) -> dict[str, Any] | None:
+    """Surface the multi-turn ``results.session_performance.sessions`` stats block.
+
+    Reads the session field-name catalog (knowledge/standard_metrics.yaml →
+    ``session_performance``) and mechanically pulls, from the report's
+    ``results.session_performance.sessions`` block: each catalogued integer scalar (copied
+    through) and each catalogued distribution (a Statistics object → the ``_stat`` units +
+    percentile ladder, with the field's informational ``label``/``unit_hint``/``direction``
+    attached as provenance). Returns ``None`` — not ``{}`` — when the block is absent or
+    yields nothing, so single-turn reports stay ``None``. A value the report does not carry
+    is NEVER fabricated.
+    """
+    if not isinstance(report, dict):
+        return None
+    results = report.get("results")
+    sp = results.get("session_performance") if isinstance(results, dict) else None
+    sessions = sp.get("sessions") if isinstance(sp, dict) else None
+    if not isinstance(sessions, dict):
+        return None
+
+    catalog = _load_session_catalog(
+        str(catalog_path) if catalog_path is not None else str(_STANDARD_METRICS_CATALOG)
+    )
+    scalars_spec = catalog.get("scalars")
+    dists_spec = catalog.get("distributions")
+
+    out: dict[str, Any] = {}
+
+    scalars: dict[str, Any] = {}
+    for name in scalars_spec if isinstance(scalars_spec, list) else []:
+        if not isinstance(name, str):
+            continue
+        v = sessions.get(name)
+        if isinstance(v, int) and not isinstance(v, bool):
+            scalars[name] = v
+    if scalars:
+        out["scalars"] = scalars
+
+    dists: dict[str, Any] = {}
+    if isinstance(dists_spec, dict):
+        for name, meta in dists_spec.items():
+            if not isinstance(name, str):
+                continue
+            stat = _stat(sessions.get(name))
+            if stat is None:
+                continue
+            meta = meta if isinstance(meta, dict) else {}
+            dists[name] = {
+                "label": meta.get("label"),
+                "value": stat,
+                "unit_hint": meta.get("unit_hint"),
+                "direction": meta.get("direction"),
+            }
+    if dists:
+        out["distributions"] = dists
+
+    return out or None
+
+
 def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     """Compute a compact, non-expert-friendly summary from a validated report.
 
@@ -317,6 +408,11 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     # Present only when the harness emitted them; gracefully omitted (None-equivalent) otherwise.
     standard = extract_standard_metrics(report)
     summary["standard_metrics"] = standard or None
+
+    # Session-level metrics — present only for multi-turn inference-perf workloads;
+    # None for single-turn / non-session runs (never fabricated). See report.py's
+    # extract_session_performance + knowledge/standard_metrics.yaml (session_performance).
+    summary["session_performance"] = extract_session_performance(report)
     return summary
 
 

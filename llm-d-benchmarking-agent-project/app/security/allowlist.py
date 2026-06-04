@@ -206,15 +206,8 @@ class Allowlist:
             self._walk(pre, flags=global_flags, positionals=[], base_mode=READ_ONLY, catalog=catalog)
 
             # Validate the subcommand region; global flags remain acceptable here too.
-            merged_flags = {**global_flags, **sub.get("flags", {})}
-            mode = self._walk(
-                post,
-                flags=merged_flags,
-                positionals=sub.get("positionals", []),
-                base_mode=sub.get("mode", MUTATING),
-                catalog=catalog,
-                # read_only_triggers from the global region matter too:
-                pre_tokens=pre,
+            mode = self._walk_subcommand(
+                subname, sub, post, global_flags=global_flags, pre_tokens=pre, catalog=catalog
             )
             return self._allow(argv, mode, exe, entry, subname, sub)
         except _Reject as exc:
@@ -261,6 +254,61 @@ class Allowlist:
         )
 
     # ---- internals --------------------------------------------------------
+    def _walk_subcommand(
+        self,
+        subname: str,
+        sub: dict[str, Any],
+        tokens: list[str],
+        *,
+        global_flags: dict,
+        pre_tokens: list[str],
+        catalog: dict | None,
+    ) -> str:
+        """Validate the region AFTER a matched subcommand token and return the effective mode.
+
+        Most subcommands are a single level: ``tokens`` is walked against the subcommand's own
+        flags (merged with the still-acceptable global flags) and positionals. But a subcommand
+        may itself declare ``subcommands:`` — a NESTED command group (e.g. ``llmdbenchmark
+        results <store-command>`` whose ``init``/``status``/``remote``/``add``/``push``/``pull``
+        each have their own mode + positionals, exactly mirroring the upstream argparse
+        sub-subparsers). In that case the FIRST positional after this subcommand selects the
+        nested subcommand and we recurse one level deeper with the same uniform rules. This is
+        PURE MECHANISM driven entirely by the YAML shape: a subcommand with no ``subcommands``
+        key is single-level (every pre-existing entry), so this is strictly additive. The mode
+        of the DEEPEST matched (leaf) subcommand wins, while any ``read_only_trigger`` flag at
+        any level still downgrades to read-only and global flags stay acceptable throughout."""
+        merged_flags = {**global_flags, **sub.get("flags", {})}
+        nested = sub.get("subcommands")
+        if nested:
+            # A nested command group: the next positional is the nested subcommand token. Flags
+            # belonging to THIS level (and globals) may precede it; we reuse the same scanner that
+            # finds the top-level subcommand so a leading flag never gets mistaken for the token.
+            idx = self._find_subcommand_index(tokens, merged_flags)
+            if idx is None:
+                raise _Reject(f"no subcommand provided for {subname!r}")
+            nested_name = tokens[idx]
+            nested_sub = nested.get(nested_name)
+            if nested_sub is None:
+                raise _Reject(f"subcommand {nested_name!r} is not allowlisted for {subname!r}")
+            pre = tokens[:idx]
+            post = tokens[idx + 1:]
+            # Validate this level's leading flags (flags only — no positionals before the nested
+            # token); read_only_triggers among them propagate down via pre_tokens.
+            self._walk(pre, flags=merged_flags, positionals=[], base_mode=READ_ONLY, catalog=catalog)
+            return self._walk_subcommand(
+                nested_name, nested_sub, post,
+                global_flags=merged_flags, pre_tokens=[*pre_tokens, *pre], catalog=catalog,
+            )
+        return self._walk(
+            tokens,
+            flags=merged_flags,
+            positionals=sub.get("positionals", []),
+            base_mode=sub.get("mode", MUTATING),
+            catalog=catalog,
+            # read_only_triggers from the global / outer region matter too:
+            pre_tokens=pre_tokens,
+        )
+
     def _find_subcommand_index(self, tokens: list[str], global_flags: dict) -> int | None:
         i = 0
         while i < len(tokens):
@@ -292,6 +340,7 @@ class Allowlist:
         unrecognized flag/positional or bad value."""
         read_only_triggered = self._has_read_only_trigger(pre_tokens or [], flags)
         pos_specs = list(positionals)
+        repeated_matched = False  # did a head `repeated` spec consume at least one token?
         i = 0
         while i < len(tokens):
             tok = tokens[i]
@@ -323,12 +372,32 @@ class Allowlist:
             # positional
             if not pos_specs:
                 raise _Reject(f"unexpected positional argument {tok!r}")
-            pspec = pos_specs.pop(0)
+            pspec = pos_specs[0]
             self._check_value(tok, pspec.get("value"), catalog, ctx="positional")
+            # A posspec marked `repeated: true` (DATA) is the LAST spec and matches one-or-more
+            # remaining positionals against the same constraint (e.g. the Results Store
+            # `add <paths...>` / `pull <remotes...>`, mapping to argparse nargs='+'/'*'). It stays
+            # on the stack so every following positional is validated against it. A normal spec is
+            # consumed once. PURE MECHANISM — the variable arity is the YAML's, not Python's.
+            if pspec.get("repeated"):
+                repeated_matched = True
+            else:
+                pos_specs.pop(0)
             i += 1
 
-        if pos_specs:
-            raise _Reject(f"missing required positional argument(s): {len(pos_specs)}")
+        # Any positional specs still unconsumed are acceptable only if they need not appear: a
+        # spec marked `optional: true` (zero-or-one); a `repeated` spec is zero-or-more when also
+        # marked `optional` (nargs='*'), otherwise one-or-more (nargs='+') and so still REQUIRED
+        # unless it already matched at least one token. This lets a subcommand take a VARIABLE
+        # number of positionals (e.g. `push [remote] [path]`, `add <paths...>`) without
+        # per-command Python. A required, unmatched spec is rejected as before. PURE MECHANISM
+        # from the YAML shape.
+        leftover_required = [
+            p for p in pos_specs
+            if not p.get("optional") and not (p.get("repeated") and repeated_matched)
+        ]
+        if leftover_required:
+            raise _Reject(f"missing required positional argument(s): {len(leftover_required)}")
 
         return READ_ONLY if read_only_triggered else base_mode
 
@@ -340,6 +409,21 @@ class Allowlist:
         if constraint is None:
             return  # any value (already metachar-screened)
         constraint = self._resolve(constraint)
+        # Alternation: the value satisfies the flag if it satisfies ANY listed sub-constraint.
+        # Pure DATA — used so e.g. `--spec` can be EITHER a live-catalog name OR a
+        # workspace-confined authored spec path, without baking either rule into Python.
+        if "any_of" in constraint:
+            alternatives = constraint["any_of"]
+            errs: list[str] = []
+            for alt in alternatives:
+                try:
+                    self._check_value(value, alt, catalog, ctx=ctx)
+                    return
+                except _Reject as exc:
+                    errs.append(str(exc))
+            raise _Reject(
+                f"value {value!r} for {ctx} matched no allowed form ({'; '.join(errs)})"
+            )
         if "enum" in constraint:
             if value not in constraint["enum"]:
                 raise _Reject(f"value {value!r} for {ctx} not in {constraint['enum']}")

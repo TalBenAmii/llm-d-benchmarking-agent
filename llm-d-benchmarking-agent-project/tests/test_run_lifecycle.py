@@ -44,7 +44,7 @@ class _BlockingRunner(CommandRunner):
         self._gate = gate
         self.entered = 0
 
-    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None):
+    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
         self.entered += 1
         await self._gate.wait()  # block until released; cancellation here unwinds the semaphore
         return RunResult(exit_code=0, duration_s=0.0, real_argv=list(logical_argv), cwd=None)

@@ -28,8 +28,17 @@ from pathlib import Path
 from typing import Any
 
 # Metrics we can build a trend over, mirroring the analyzer/comparator objective space.
-# (dotted summary path, human name, direction-better). "lower"/"higher" = which way is an
-# improvement; used only to LABEL the trend factually, never to decide pass/fail.
+# (dotted summary path, direction-better). "lower"/"higher" = which way is an improvement;
+# used only to LABEL the trend factually, never to decide pass/fail.
+#
+# The last three are the §3.4 standard/serving metrics (KV-cache hit rate, GPU utilization,
+# schedule-delay queue-depth proxy) surfaced for context. They live at the nested
+# ``standard_metrics.<key>.value`` stat path that report.summarize_report fills, and are
+# present ONLY when the run was done with monitoring on (Phase 27 / flags.monitoring) so
+# results.observability was populated; on runs without it those points are simply absent
+# (trend() skips records that lack the metric — see knowledge/results_interpretation.md and
+# knowledge/observability.md for how to read them). Their direction here is the same
+# informational label as the analyzer's Pareto objectives; they never affect dominance.
 _TREND_METRICS: dict[str, tuple[str, str]] = {
     "ttft": ("latency.ttft", "lower"),
     "tpot": ("latency.tpot", "lower"),
@@ -39,6 +48,9 @@ _TREND_METRICS: dict[str, tuple[str, str]] = {
     "total_token_rate": ("throughput.total_token_rate", "higher"),
     "request_rate": ("throughput.request_rate", "higher"),
     "success_rate_pct": ("success_rate_pct", "higher"),
+    "kv_cache_hit_rate": ("standard_metrics.kv_cache_hit_rate.value", "higher"),
+    "gpu_utilization": ("standard_metrics.gpu_utilization.value", "higher"),
+    "schedule_delay": ("standard_metrics.schedule_delay.value", "lower"),
 }
 _STAT_PREFERENCE = ("mean", "p50", "p90", "p95", "p99")
 

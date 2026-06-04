@@ -5,7 +5,7 @@ phase milestone. See [`ROADMAP.md`](ROADMAP.md) for the plan and phase status.
 
 Branch: `feature/roadmap` (integration; never merged to `main` during this effort).
 Test baseline at start (primary checkout `main` @ `04c06fe`): **111 passed / 5 skipped**.
-Latest completed phase: **Phase 26** (suite **591 passed / 9 skipped**). Each completed phase below
+Latest completed phase: **Phase 56 (ROADMAP_V4)** (suite **1469 passed / 20 skipped**). Each completed phase below
 is collapsed to a one-liner (date · phase · what shipped · branch · final suite count); see git
 history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the forward-looking plan.
 
@@ -13,6 +13,385 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 56 (ROADMAP_V4): Stack discovery tool (llm-d-discover) for richer environment
+  capture. Shipped the `discover_stack` tool (`app/tools/discover.py` + `DiscoverStackInput`) — a thin
+  async handler over `ctx.run_command` (mirrors `readiness.py`/`capacity.py`) that runs the allowlisted,
+  READ-ONLY `llm-d-discover <url> -f benchmark-report` (its own read-only RBAC + env-var redaction
+  upstream → auto-runs), writes the raw discovery JSON + the wrapped BR-v0.2 scenario capture
+  `{"scenario": {"stack": [...]}}` into the session workspace (read-only repos never written), and returns
+  structured stack FACTS (component count, models, roles, parallelism). Endpoint/readiness probing stays
+  the UNCONDITIONAL default; all WHEN-to-run JUDGMENT lives in `knowledge/stack_discovery.md`, never a
+  Python branch. Allowlisted DATA as read-only; only a non-secret kubeconfig FILE path is expressible
+  (the secret URL+TOKEN route stays backend-only). Branch `feature/roadmap-v4-p56-stack-discover`. Suite
+  **1469 passed / 20 skipped** (+18 via `tests/test_stack_discovery.py`); ruff + mypy clean. — done
+- 2026-06-04 — Phase 55 (ROADMAP_V4): Real-time metric streaming / custom Prometheus queries —
+  THIN-CODE (knowledge-only; no app behavior change). Appended `knowledge/observability.md` §5
+  documenting that the benchmark's own live metric STREAMING and user-defined custom Prometheus
+  QUERIES are UPSTREAM-UNIMPLEMENTED (grounded in `llm-d-benchmark/docs/metrics_collection.md`
+  "Not Yet Implemented") and scripting the HONEST answer to "can you stream live benchmark metrics?":
+  the agent states the gap plainly (static PNGs + `results.observability` only AFTER the run), then
+  offers the real substitutes — `observe_run_metrics` (`kubectl top` live CPU/mem) + Phase-21 live
+  pod-log streaming via `orchestrate_benchmark_run`; custom PromQL is the user's own
+  Prometheus/Grafana (§3). Added a hermetic knowledge-assertion test (mirrors the tracing-config
+  pattern). Branch `feature/roadmap-v4-p55-metric-streaming`. Suite **1452 passed / 20 skipped**
+  (+1 via `tests/test_observability.py`); ruff + mypy clean. — done
+- 2026-06-04 — Phase 51 (ROADMAP_V4): Jupyter / standalone plotting scripts surfacing. Shipped the
+  `aggregate_runs` tool (`app/tools/aggregate_runs.py` + `scripts/aggregate_runs.py` wrapper +
+  `AggregateRunsInput`) — the ONE parameterizable analysis script: it imports the benchmark repo's own
+  `docs/analysis/aggregate_runs.py` (never reimplements the math), reads BR v0.2 reports under an EXISTING
+  results dir, and writes `aggregated_summary.{txt,json}` ONLY into a session-workspace subdir (read-only →
+  auto-runs; allowlisted as `aggregate_runs.py`, run via the bench venv). The interactive `analysis.ipynb` +
+  `to_be_incorporated/` plot templates stay POINTER-ONLY (`knowledge/analysis.md`; surface via `read_repo_doc`).
+  Branch `feature/roadmap-v4-p51-jupyter-plots`. Suite **1451 passed / 20 skipped** (+23 via
+  `tests/test_aggregate_runs.py`); ruff + mypy clean. — done
+- 2026-06-04 — Phase 50 (ROADMAP_V4): Results Store (git-like result mgmt: remotes/push/pull). The agent
+  can now drive the CLI's OPTIONAL git-like team store via `run_benchmark`'s new `store` field on
+  `subcommand='results'`. `build_argv` (`app/tools/execute.py`) gains `_build_results_store_argv` — pure
+  mechanism, the only branch is on the discrete `command` enum (init/remote/status/add/rm/ls/push/pull) —
+  plus an early-return so a `results` invocation NEVER leaks namespace/harness/model/run-flags.
+  `security/allowlist.yaml` pins the store positionals: init/status/ls/remote-ls read-only/auto-run;
+  add/rm/push/pull/remote-add/remote-rm mutating/approval-gated. Kept DELIBERATELY SEPARATE from the
+  agent's own local history store (`result_history` → `app/storage/history.py`); WHEN to use the team GCS
+  store vs the local one is judgment in `knowledge/history.md`. Merged off a stale base — git's 3-way
+  merge cleanly reconciled `execute.py` (Phase 32 gateway-class + Phase 37 debug both preserved); only a
+  registry docstring needed manual both-sides resolution. Branch `feature/roadmap-v4-p50-results-store`.
+  Suite **1428 passed / 20 skipped**; ruff + mypy clean. — done
+
+- 2026-06-04 — Phase 37 (ROADMAP_V4): Harness debug mode (`-d/--debug`, sleep infinity). The agent can
+  now launch a DEBUG harness pod that sleeps (`sleep infinity`) INSTEAD of running the load — so a user
+  can exec into a stuck/misbehaving pod. `build_argv` (`app/tools/execute.py`) emits a bare `-d` off
+  `flags["debug"]`, SUBCOMMAND-GUARDED to `run`/`experiment` ONLY (upstream `-d`=`--debug` there, but on
+  `teardown` `-d`=`--deep`, a destructive full-namespace wipe — an unguarded `-d` would silently
+  deep-teardown). A debug launch creates a REAL pod, so it STAYS MUTATING/approval-gated (deliberately
+  NOT a read-only trigger like `-z`); the interactive in-pod `kubectl/oc exec -it … -- bash` stays a
+  MANUAL user step the agent explains but NEVER drives. `ExecuteInput.flags` (schemas) + `run_benchmark_cli`
+  (registry) document the `debug` key; `security/allowlist.yaml` (DATA) pins `-d`/`--debug` on run/experiment;
+  WHEN-to-debug + the no-drive boundary in `knowledge/harness_debug.md`. 18 hermetic tests
+  (`tests/test_harness_debug.py`). Merged into `feature/roadmap-v4`. Suite **1382 passed / 20 skipped /
+  0 failed**; ruff + mypy clean. — done
+- 2026-06-04 — Phase 32 (ROADMAP_V4): Gateway class / provider selection (`--gateway-class`). The
+  agent can now choose the gateway PROVIDER instead of inheriting it from the scenario: `build_argv`
+  (`app/tools/execute.py`) emits `flags["gateway_class"]` → `--gateway-class <provider>`
+  unconditionally across all six subcommands (pure mechanism — no subcommand guard, no if/elif on
+  value); `security/allowlist.yaml` (DATA) value-pins the full upstream enum (epp-only / istio /
+  agentgateway / gke / data-science-gateway-class) on each subcommand without changing any command's
+  mode (plan stays read_only, mutating ones stay approval-gated). Which-provider JUDGMENT lives in
+  `knowledge/gateway_class.md` (per-provider what-it-deploys + when-to-pick), with schemas.py +
+  registry.py documenting the flag. 77 hermetic tests (`tests/test_gateway_class.py`). Merged into
+  `feature/roadmap-v4`. Suite **1364 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+- 2026-06-04 — Phase 54 (ROADMAP_V4): Distributed tracing config (OpenTelemetry `tracing:` block).
+  Advanced users can now author a scenario `tracing.*` block (otlpEndpoint, sampling.sampler/samplerArg,
+  serviceNames.{vllmDecode,vllmPrefill,routingProxy}, vllm.collectDetailedTraces) via
+  `write_and_validate_config(artifact_type='scenario')`, gated through plan/--dry-run. `config_artifact.py`
+  adds `_SOFT_OPTIONAL_KNOBS={'tracing'}` unioned into the live scenario knob_keys so the dotted family
+  shape-validates WITHOUT weakening the typo-screen (rendered by the upstream jinja + deep-merged onto
+  defaults.yaml); `schemas.py` documents the family + points to `read_knowledge('observability')`;
+  `knowledge/observability.md` §4 documents the config-only limitation (the benchmark configures OTel on the
+  modelservice pods but never deploys a collector/Jaeger nor collects/shows traces — collection is the user's
+  external backend). 13 hermetic tests (`tests/test_tracing_config.py`); no cluster/GPU/network. Merged into
+  `feature/roadmap-v4`. Suite **1287 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+- 2026-06-04 — Phase 42 (ROADMAP_V4): Round-trip the CLI's run-config (`--generate-config` / `-c`).
+  Added two `run`-ONLY flag keys (upstream defines both on the `run` subparser alone): `flags.generate_config`
+  → `build_argv` (`app/tools/execute.py`) emits a bare `--generate-config` (the CLI writes a reusable run-config
+  YAML from the current settings under `--workspace` and EXITS — deploys nothing), and `flags.run_config`
+  → emits `-c <path>` to REPLAY a previously generated config (run-only mode). `security/allowlist.yaml` marks
+  `--generate-config` a `read_only_trigger` (auto-runs like `--dry-run`/`--list-endpoints`) while `-c/--config`
+  stays mutating/approval-gated, value-pinned to a `*.ya?ml` path (`run_config_path`, no `..`). This complements
+  the agent's in-workspace `write_and_validate_config`; `schemas.py` + `registry.py` document the round-trip and
+  point at `knowledge/runconfig_roundtrip.md` for WHEN to generate vs reuse vs author in-workspace.
+  `tests/test_runconfig_roundtrip.py` adds hermetic coverage. Merged into `feature/roadmap-v4` (no-ff); four
+  conflicts resolved — three additive (registry.py + schemas.py descriptions, allowlist.yaml run-flags block:
+  KEEP BOTH the Phase 33/38/40 `--stack`/`--parallel`/`--*-timeout`/`--analyze` entries AND the new
+  `--generate-config`/`-c` entries) and one structural (execute.py `build_argv`: the phase-timeout loop and the
+  run-config block are independent emissions, composed as a union). Branch `feature/roadmap-v4-p42-runconfig-roundtrip`.
+  Suite **1276 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+
+- 2026-06-04 — Phase 40 (ROADMAP_V4): Trigger the CLI's local `--analyze` plot families. Added a
+  `flags.analyze` key — `build_argv` (`app/tools/execute.py`) emits a bare `--analyze` on `run` ALONE
+  (upstream defines it on the `run` subparser only), so the CLI ALSO runs its optional workstation
+  matplotlib analysis, writing three EXTRA plot families under `analysis/{distributions,session,graphs}`
+  (per-request distributions / session-lifecycle / Prometheus time-series) BESIDE the harness PNGs.
+  `_discover_charts` (`app/tools/probe.py`) now carries the `analysis/` family subdir into each chart's
+  title + an explicit `family` field so the three families don't collide on bare filenames and the UI can
+  group them; they surface via the existing artifact route. `security/allowlist.yaml` permits `--analyze`
+  as a plain non-read-only flag (a real `run` stays mutating/approval-gated); `schemas.py` + `registry.py`
+  document the opt-in and point at `knowledge/analysis.md` for WHEN. The agent's own SLO/goodput/Pareto
+  math is UNCHANGED — these are supplementary visualizations. `tests/test_analyze_plots.py` adds hermetic
+  coverage. Merged into `feature/roadmap-v4` (no-ff); three additive conflicts (execute.py docstring,
+  registry.py + schemas.py descriptions) resolved by keeping BOTH the Phase 33/38/39
+  (`--stack`/`--parallel`/`--*-timeout`/cloud-sink) blocks AND the analyze block; allowlist.yaml
+  auto-merged. Branch `feature/roadmap-v4-p40-analyze-plots`. Suite **1254 passed / 20 skipped / 0
+  failed**; ruff + mypy clean. — done
+
+- 2026-06-04 — Phase 39 (ROADMAP_V4): Cloud results sink for the run flag (`-r gs://`, `s3://`).
+  Promoted `run`'s `-r/--output` from local-only to an OPT-IN cloud destination keyword. Added a
+  DEDICATED `results_sink` value constraint to `security/allowlist.yaml` (DATA) —
+  `^(gs|s3)://[A-Za-z0-9._/-]+$|^[A-Za-z0-9._/-]+$` — pointed ONLY at `run`'s `-r`/`--output`, so the
+  agent may emit a `gs://bucket/...`/`s3://bucket/...` URI when the user explicitly has a bucket, or
+  the `local` default otherwise. Deliberately NOT a widening of `output_dir`: `--workspace/--ws/-e/
+  --experiments` stay on `output_dir` (genuine filesystem paths, no cloud scheme), and the blanket
+  metacharacter screen still rejects shell-dangerous tokens. `schemas.py` + `registry.py` document the
+  opt-in and point at `knowledge/cloud_results_sink.md` for the "do you have a bucket?" judgment; the
+  actual upload (gcloud/aws helpers) stays the DEFERRED Phase 47. `tests/test_cloud_results_sink.py`
+  adds hermetic coverage (emission, allowlist accepts gs/s3 + local, rejects injection, default-local,
+  schema, knowledge discoverability). Merged into `feature/roadmap-v4` (no-ff); one additive registry.py
+  conflict resolved by keeping BOTH the Phase 33/38 (`--stack`/`--parallel`/`--*-timeout`) and the
+  cloud-sink description blocks. Branch `feature/roadmap-v4-p39-cloud-sink`. Suite **1239 passed / 20
+  skipped / 0 failed**; ruff + mypy clean. — done
+- 2026-06-04 — Phase 38 (ROADMAP_V4): Model the CLI's per-phase timeouts (`--*-timeout`).
+  Threaded the llmdbenchmark CLI's OWN per-phase timeout flags as pure mechanism + DATA (judgment in
+  `knowledge/phase_timeouts.md`): `build_argv` (`app/tools/execute.py`) iterates a static
+  `_PHASE_TIMEOUT_FLAGS` table to emit `--standalone/gateway/modelservice/kustomize-deploy-timeout` +
+  `--pvc-bind-timeout` on standup, `--wait-timeout`/`--data-access-timeout` on run+experiment, and
+  `--fma-teardown-timeout` on teardown — each gated on the upstream-accepting subcommand(s), no
+  if/elif on the value. The CLI bound is a DEEPER in-process timeout that stays BELOW the runner's
+  per-command `timeout_s` ceiling so the two layers don't fight (the host deadline still bounds the
+  whole process). `ExecuteInput.flags` (`schemas.py`) + the CLI tool description (`registry.py`)
+  document the eight keys; `security/allowlist.yaml` pins each to `positive_int`. Merge into
+  `feature/roadmap-v4` resolved three additive conflicts against Phase 33 (`--stack`/`--parallel`) by
+  keeping BOTH sides. Branch `feature/roadmap-v4-p38-phase-timeouts`. Suite **1214 passed / 20
+  skipped / 0 failed**; ruff + mypy clean. — done
+- 2026-06-04 — Phase 33 (ROADMAP_V4): Multi-stack scenarios + `--stack` subset + `--parallel` cap.
+  Modeled two previously-unmodeled multi-stack flags as pure mechanism + DATA (judgment in `knowledge/`):
+  `build_argv` (`app/tools/execute.py`) now emits subcommand-aware `--stack <names>` on standup/smoketest/
+  run/teardown to restrict a multi-stack scenario (N model pools behind one gateway) to a single stack or a
+  comma-separated subset, and `--parallel <int>` on standup/smoketest/experiment (an `is not None` guard so an
+  explicit `0` is honored) to cap how many stacks deploy at once — kept DISTINCT from the existing
+  `--parallelism`/`-j` harness-pod count (no regression). `schemas.py`/`registry.py` document both flags and
+  point at the judgment; `security/allowlist.yaml` (DATA) gains a `stack_list` value constraint (N RFC1123
+  labels) + the two flags on the matching subcommands. `knowledge/multi_stack.md` carries the WHICH-subset /
+  WHEN-to-cap judgment; `tests/test_multi_stack.py` adds 48 hermetic tests (emission, subcommand guards,
+  explicit-0, `-j` non-regression, allowlist value pinning + injection refusal, schema, knowledge
+  discoverability). Merged into `feature/roadmap-v4` (no-ff; no conflicts — branch was directly ahead of HEAD).
+  Suite **1153 passed / 20 skipped / 0 failed**; ruff + mypy clean. Branch `feature/roadmap-v4-p33-multi-stack`. — done
+- 2026-06-04 — Phase 53 (ROADMAP_V4): convert-guide (guide → scenario/experiment file generation).
+  Shipped `convert_guide_to_scenario` (`app/tools/convert_guide.py`), the workspace-only variant of upstream
+  `skills/convert-guide`: emits `ai.<name>.sh` (sorted, `shlex.quote`-safe `export LLMDBENCH_*` lines with
+  `# SOURCE:` provenance) plus a validatable companion `ai.<name>.yaml`/`.spec.yaml` (reusing the Phase-45
+  config_artifact mechanism so plan/--dry-run has a real `--spec` target). `LLMDBENCH_*` mappings + standard
+  practices are DATA in `knowledge/convert_guide.md` (thin code); all four outputs confined to `ctx.workspace`
+  — the read-only repos are never written, no allowlist change. Registered in `registry.py`/`schemas.py`;
+  28 new hermetic tests in `tests/test_convert_guide.py`. Merged into `feature/roadmap-v4`. Suite
+  **1105 passed / 20 skipped / 0 failed**; ruff + mypy clean.
+- 2026-06-04 — Phase 41 (ROADMAP_V4): Dataset replay URL (`-x`/`--dataset`). Promoted real-dataset
+  replay from unsupported (synthetic profiles only) to a modeled `flags["dataset"]`; `build_argv`
+  (`app/tools/execute.py`, `schemas.py`) emits `-x <url>` ONLY on `run`/`experiment` (the two subcommands
+  upstream accepts it on) so the harness REPLAYS a real dataset instead of the synthetic workload profile,
+  omitted ⇒ synthetic still drives the load. `-x`/`--dataset` are allowlisted on both subcommands with a
+  `dataset_url` value constraint (http(s)/hf/gs/s3 scheme or bare path; `security/allowlist.yaml`, DATA-only);
+  no env var is set here — the CLI derives `LLMDBENCH_RUN_DATASET_DIR/_FILE` from the URL. `knowledge/dataset_replay.md`
+  documents WHEN to replay vs stay synthetic; new hermetic suite `tests/test_dataset_replay.py` (+21 tests).
+  Merged into `feature/roadmap-v4` (no-ff); resolved additive/structural conflicts vs Phases 29/31/36 by
+  composing the union (kept every existing flag + the new `dataset` one). Full suite **1063 passed / 20 skipped
+  / 0 failed**; ruff + mypy clean. Branch `feature/roadmap-v4-p41-dataset-replay`. — done
+- 2026-06-04 — Phase 46 (ROADMAP_V4): Kustomize deploy config block (`kustomize.*`). Promoted the kustomize
+  deploy method from "only `-t kustomize` is allowlisted" to first-class config authoring:
+  `write_and_validate_config(artifact_type='scenario')` now authors the full `kustomize.*` block
+  (enabled/guideName/repoPath/repoRef/acceleratorBackend/monitoring/overlayPath/extraHelmValues/extraHelmSets/
+  guideVariableOverrides + a list of strategic-merge `patches`), deep-merged onto a minimal `scenario:` skeleton
+  and shape-validated against the repo's own scenario examples. `build_argv` (`app/tools/execute.py`,
+  `schemas.py`) threads `flags["repo_path"]` as the real standup `--llmd-repo-path` flag (the CLI fallback for
+  `kustomize.repoPath`), allowlisted + path-constrained (no `..`; `security/allowlist.yaml`, DATA-only).
+  `knowledge/deploy_path_playbook.md` carries the WHICH-guide/overlay/patches judgment; new hermetic suite
+  `tests/test_kustomize_block.py` (+14 tests). Merged into `feature/roadmap-v4` (no-ff); resolved additive
+  conflicts in `schemas.py`/`execute.py` by composing the union (kept every prior flag — skip/step/dataset/
+  cluster_url/cluster_token — plus the new `methods`/`repo_path`). Full suite **1077 passed / 20 skipped /
+  0 failed**; ruff + mypy clean. Branch `feature/roadmap-v4-p46-kustomize-block`. — done
+
+- 2026-06-04 — Phase 36 (ROADMAP_V4): First-class skip / collect-only mode (`-z`/`--skip`). Promoted
+  collect/analyze-only from the raw `extra` passthrough to a modeled `flags["skip"]`; `build_argv`
+  (`app/tools/execute.py`, `schemas.py`) emits a bare `-z` on `run` so the agent can re-collect/re-analyze the
+  EXISTING results of a prior run WITHOUT re-running the benchmark load. `-z`/`--skip` are allowlisted as
+  `read_only_trigger` on `run` ALONE (`security/allowlist.yaml`, DATA-only) so it auto-runs like
+  `--list-endpoints`/`--dry-run`. Added `knowledge/collect_only.md` (when to re-collect vs re-run). Merged into
+  feature/roadmap-v4 — resolved additive conflicts in `schemas.py` (flag-list union kept Phase 29/31
+  cluster_url/cluster_token/step) and `allowlist.yaml` (kept both the Phase 31 `-s` and Phase 36 `-z` blocks); the
+  Phase 27/29/31/36 build_argv wiring auto-merged into one coherent function. Suite **1042 passed / 20 skipped**
+  (+11 new `tests/test_collect_only.py`), ruff + mypy clean. Branch `feature/roadmap-v4-p36-skip-collect`. — done
+- 2026-06-04 — Phase 31 (ROADMAP_V4): First-class step selection / re-run (`-s`/`--step`). Promoted step
+  selection from the raw `extra` passthrough to a modeled `flags["step"]` (step-list grammar `N / N-M / comma`,
+  e.g. `5`, `5-9`, `3-5,9`); `build_argv` (`app/tools/execute.py`, `schemas.py`) emits `-s <spec>` on
+  standup/smoketest/run/teardown so a single failed step (or range) can be re-run instead of redoing the whole
+  phase. Value-pinned by a new `step_list` allowlist regex (`^[0-9]+([,-][0-9]+)*$`) on all four subcommands
+  (`security/allowlist.yaml`, DATA-only); `-s` does NOT change a command's mode, so mutating re-runs stay
+  approval-gated. Added `knowledge/step_select.md` (per-phase step numbering + when to re-run). Merged into
+  feature/roadmap-v4 (schemas.py flag-list union kept the Phase 29 cluster_url/cluster_token entries); suite
+  **1031 passed / 20 skipped** (+63 new tests), ruff + mypy clean. Branch `feature/roadmap-v4-p31-step-select`. — done
+- 2026-06-04 — Phase 29 (ROADMAP_V4): Explicit cluster access (`-k`/`--kubeconfig` FILE + backend-only URL/token).
+  A top-level `kubeconfig` field on `ExecuteInput` emits `-k <path>` after every subcommand via `build_argv`
+  (`app/tools/execute.py`, `schemas.py`) to target a non-default kubeconfig FILE — a plain, allowlist-pinned,
+  non-secret path (no `..`; `security/allowlist.yaml` widened DATA-only). The remote-by-URL+TOKEN route stays
+  BACKEND-ONLY: `flags.cluster_url`/`flags.cluster_token` ride the same scrubbed `child_env` overlay as
+  `LLMDBENCH_HARNESS_CPU_NR` (forwarded as `LLMDBENCH_CLUSTER_URL`/`LLMDBENCH_CLUSTER_TOKEN`), so the SECRET token
+  never crosses argv/allowlist, a `command` event, or a log (mirrors the HF_TOKEN non-leak). Judgment (WHEN/WHICH
+  cluster) in `knowledge/preconditions.md`. 30 hermetic tests (`tests/test_cluster_access.py`); no live cluster.
+  Merged into `feature/roadmap-v4`. Suite **968 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+- 2026-06-03 — Phase 66 (ROADMAP_V4): EPP HTTP-header decoder (interpret 429s + `x-llm-d-request-dropped-reason`).
+  DATA-only. New `knowledge/epp_headers.yaml` catalogues every EPP request/response header — the SLO set-headers
+  `x-llm-d-slo-ttft-ms`/`x-llm-d-slo-tpot-ms` + `x-llm-d-inference-objective`/`x-llm-d-inference-fairness-id` — and the
+  `x-llm-d-request-dropped-reason` enum → plain-language cause/remedy (`rejected-saturated` = at admission capacity, shed
+  before serving → lower concurrency or scale out; `evicted-priority` = preempted mid-flight by higher-priority work →
+  raise this request's inference-objective priority or add capacity), plus the deprecated header aliases. Wired into
+  `CORE_KNOWLEDGE` (`app/agent/prompt.py`) so it's reachable via `read_knowledge("epp_headers")`, and
+  `knowledge/results_interpretation.md` now routes failed-request/429 interpretation there, reframing a non-100%
+  `success_rate` as an admission/eviction (capacity) signal rather than "the system was broken." The
+  rejected-vs-evicted-vs-broken classification lives entirely in `knowledge/` — no Python `if/elif`. New hermetic
+  `tests/test_epp_headers.py` (15 tests) asserts the YAML loads, is reachable via `read_knowledge`, documents both
+  drop-reason enum values (`rejected-saturated`, `evicted-priority`) + the four SLO/objective/fairness header names, and
+  is listed in `CORE_KNOWLEDGE` — no GPU, no live cluster, no real benchmark run. Merged into `feature/roadmap-v4`. Suite
+  **938 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+- 2026-06-03 — Phase 65 (ROADMAP_V4): Gateway-mode readiness gate (Gateway PROGRAMMED + InferencePool
+  Accepted/ResolvedRefs). Extended `check_endpoint_readiness` to the Gateway-API control plane via a new `check_gateway`
+  flag (on by default; `app/tools/schemas.py`, registered in `app/tools/registry.py`). In gateway-mode deploys
+  `app/orchestrator/readiness.py` now reads `kubectl get gateway,gatewayclass,inferencepool,httproute -o json` and folds
+  the status conditions into FACTS on the `EndpointReadiness` verdict — Gateway `PROGRAMMED`, InferencePool
+  `Accepted`/`ResolvedRefs`, HTTPRoute `Accepted`/`Reconciled`, and the GatewayClass-exists fact — never branching on
+  them (the parser extracts conditions; the agent interprets), threaded through the tool layer in `app/tools/readiness.py`.
+  This tells "the model pods are Ready" apart from "traffic can actually reach them" (pods can be Ready while the Gateway
+  is still `PROGRAMMED:False`). `security/allowlist.yaml` (DATA only) widens the read-only `kubectl_resource` enum with
+  `gateway`/`gatewayclass`/`inferencepool`/`httproute` (read-only `get -o json` only; gatewayclass cluster-scoped). The
+  wait-vs-stand-up-vs-config-error judgment — incl. the GKE fault-filter-abort symptom and expected timings — is pure
+  JUDGMENT in new `knowledge/gateway_readiness.md` (no `if/elif` in Python). New hermetic suite
+  `tests/test_gateway_readiness.py` feeds canned Gateway/InferencePool/HTTPRoute JSON permutations (PROGRAMMED True/False,
+  ResolvedRefs True/False, GatewayClass present/absent) and asserts the verdict + condition tokens, plus an allowlist
+  assert that exactly the four new read-only `kubectl_resource` values are permitted under `get` — no GPU, no live
+  cluster, no real benchmark run. Merged into `feature/roadmap-v4`. Suite **923 passed / 20 skipped / 0 failed**; ruff +
+  mypy clean. — done
+- 2026-06-03 — Phase 64 (ROADMAP_V4): Provider-aware precondition pack (oc-vs-kubectl, GPU taints/tolerations,
+  GMP/known-issues). Added a read-only `provider_detection` capability to the `probe_environment` tool
+  (`app/tools/probe.py`, registered in `app/tools/registry.py`, enum widened in `app/tools/schemas.py`) that reuses the
+  already-allowlisted `kubectl get nodes -o json` to emit FACTS only — the detected cloud `provider`
+  (openshift/gke/doks/aks vs a `kind` default), `providers_seen`, per-node `gpu_taints` `{node,key,value,effect}`, and
+  per-node label/taint facts — via a plain label-prefix membership lookup (the mechanism prefix table is kept in lockstep
+  with the knowledge file by a test), with NO provider `if/elif` in Python. `security/allowlist.yaml` (DATA only) gains an
+  `oc:` tool entry carrying the SAME constrained read-only subcommands as `kubectl` (shared `kubectl_resource`/
+  `output_format`/`namespace`/`label_selector` refs — DATA, no oc-vs-kubectl branching). The per-provider playbook (which
+  CLI, which taint/toleration to author, which known issue — GMP / "Undetected platform" / NVSHMEM — applies) is pure
+  JUDGMENT in new `knowledge/infra_providers.yaml`, cross-linked from `knowledge/preconditions.md`; any toleration/patch is
+  authored into the session workspace and applied only as an approval-gated mutating step. New hermetic suites
+  `tests/test_provider_pack.py` + `tests/test_allowlist.py` (oc validates against the same read-only constraints as
+  kubectl; mutating/unknown subcommands denied) — no GPU, no live cluster, no real benchmark run. Merged into
+  `feature/roadmap-v4`. Suite **903 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+- 2026-06-03 — Phase 48 (ROADMAP_V4): Parse + surface `results.session_performance` (multi-turn). `app/validation/report.py`
+  gained `extract_session_performance`, which mechanically pulls the `results.session_performance.sessions` stats block
+  (session_rate/duration, events/tokens per session) with field-name discovery as DATA in `knowledge/standard_metrics.yaml`
+  (thin code / thick agent) — surfaced on the report summary and per-run in `analyze_results` (`app/tools/analyze.py`).
+  Single-turn reports yield `None` with no fabrication; the committed BR v0.2 schema lags, so a multi-turn report surfaces
+  session_performance as a non-fatal additionalProperties deviation (validate_report untouched). `knowledge/results_interpretation.md`
+  documents the multi-turn section. New hermetic suite `tests/test_session_performance.py` (multi-turn surfacing, single-turn
+  None, catalog-driven discovery, validation deviation, analyze end-to-end). Merged into `feature/roadmap-v4`. Suite
+  **879 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+- 2026-06-03 — Phase 30 (ROADMAP_V4): HuggingFace gated-model secret provisioning. New approval-gated mutating tool
+  `provision_hf_secret` (`app/tools/hf_secret.py`, registered in `app/tools/registry.py`, `ProvisionHfSecretInput` in
+  `app/tools/schemas.py`) materializes the cluster HF-token Secret (`llm-d-hf-token`) a gated-model standup needs — the
+  follow-on to the Phase 62 gated-access pre-flight. The token stays BACKEND-ONLY: a vetted `scripts/provision_hf_secret.py`
+  (allowlisted `project-script`, committed 0755) reads `HF_TOKEN` from the already-scrubbed child env and runs the upstream
+  `kubectl create secret … --dry-run=client -o yaml | kubectl apply -f -` shape over its OWN `shell=False` subprocess, so
+  the token never crosses the allowlist/argv or reaches a command event/log (a raw `kubectl create secret` is deliberately
+  NOT allowlisted). Judgment lives in `knowledge/capacity.md`. 22 hermetic tests (`tests/test_hf_secret.py`), incl. two
+  real-runner-exec tests; no live cluster/network/GPU. Merged into `feature/roadmap-v4`. Suite **857 passed / 20 skipped /
+  0 failed**; ruff + mypy clean. — done
+- 2026-06-03 — Phase 63 (ROADMAP_V4): Accelerator + CPU-inferencing precondition advisor ("can my hardware run
+  this?"). Added a read-only `advise_accelerators` probe (`app/tools/probe.py`, registered in `app/tools/registry.py`
+  with `AdviseAcceleratorsInput` in `app/tools/schemas.py`) that runs the already-allowlisted `kubectl get nodes -o
+  json` and mechanically extracts per-node `capacity`/`allocatable` cpu + memory (raw K8s quantity, never lossily
+  converted) and the advertised accelerator extended-resource keys (`nvidia.com/gpu` + amd/gaudi/tpu/Intel-XPU
+  siblings) — FACTS only (`any_accelerator`, `cpu_only`, `advertised_resources`, per-node `accelerators`); no allowlist
+  change. All feasibility judgment — CUDA/driver minimums, Device-Plugin vs DRA, the real-CPU 64c/64GB-per-replica
+  floor, and the Kind/CPU-sim exemption — lives as DATA in new `knowledge/accelerators.yaml` (pointers from
+  `knowledge/preconditions.md` + `knowledge/capacity.md`); no `if/elif` feasibility branch in Python. Complements
+  `check_capacity`'s GPU-memory sizing. Hermetic `tests/test_accel_advisor.py` feeds canned GPU-advertised + CPU-only
+  `kubectl get nodes` fixtures through a fake runner and asserts the extracted facts and knowledge floors; no GPU, no
+  live cluster. Merge into `feature/roadmap-v4` reconciled the new probe + helpers additively against Phase 60's
+  `cluster_preconditions` probe (both probes and both helper sets preserved). Suite **835 passed / 20 skipped / 0
+  failed**; ruff + mypy clean. — done
+- 2026-06-03 — Phase 60 (ROADMAP_V4): Infra precondition gate before a long real-cluster standup. Added a
+  `cluster_preconditions` read-only probe to `probe_environment` (`app/tools/probe.py`): a read-only
+  `kubectl version --output json` (already allowlisted) parsed into `cluster_info.server_version` `{major, minor}`,
+  plus the spec's pinned vLLM/NIXL/UCX/NVSHMEM `{repository, tag}` image tags parsed off the rendered scenario YAML.
+  The probe reports FACTS only — no version-comparison `if/elif` in Python. The thresholds (K8s ≥1.29, 1.33+ for
+  sidecars, the ≤1.28 Init:0/1 stall gotcha, vLLM 0.10.0+ / NIXL 0.5.0+ / UCX 0.19.0+ / NVSHMEM 3.3.9+) and verdict
+  bands live as DATA in new `knowledge/infrastructure_preconditions.yaml` (+ prose in `knowledge/preconditions.md`);
+  the LLM reasons over the table to issue the go/no-go. The `schemas.py` probe field was extended additively — the
+  Phase 28 model-override and Phase 45 vLLM-knob entries on the diverged base are both preserved. Hermetic
+  `tests/test_infra_preconditions.py` (10 tests, + command-event coverage) feeds canned 1.27/1.29/1.33 `kubectl version`
+  output and image tags through a fake runner and asserts the extracted facts and the knowledge thresholds; no live
+  cluster, no GPU, no real benchmark run. Branch `feature/roadmap-v4-p60-infra-precond` → `feature/roadmap-v4` (no-ff).
+  Full suite **818 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+
+- 2026-06-03 — Phase 49 (ROADMAP_V4): Surface results.observability serving metrics in the trend store. Added the 3
+  §3.4 standard/serving metrics — KV-cache hit rate, GPU utilization, and schedule-delay (queue-depth proxy) — to
+  `app/storage/history.py` `_TREND_METRICS` at their nested `standard_metrics.<key>.value` stat path. They are present
+  only when the run used monitoring (Phase 27 / `flags.monitoring`) so `results.observability` was populated; `trend()`
+  simply skips records lacking the metric on non-monitoring runs. Labelled informationally (same as the analyzer's
+  Pareto objectives) — they NEVER affect dominance/pass-fail. New hermetic tests in `tests/test_history.py`;
+  `knowledge/history.md` + `knowledge/results_interpretation.md` updated. Riding on the Phase 27 producer, this closes
+  the last slice of the standard-serving-metrics catalog row (🟡 → ✅). Merged into `feature/roadmap-v4` (no-ff).
+  Full suite **806 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+
+- 2026-06-03 — Phase 45 (ROADMAP_V4): Author per-knob vLLM scenario overrides. Extended in-workspace config
+  authoring (`app/tools/config_artifact.py`) so the agent can set finer vLLM/scheduling/storage knobs by DOTTED upstream
+  field path — `vllmCommon.flags.*`, `vllmCommon.kvTransfer.*`, `vllmCommon.kvEvents.*`, `vllmCommon.priorityClassName`,
+  `vllmCommon.ephemeralStorage`, `vllmCommon.networkResource`, `affinity.*`, `schedulerName` — writing into the session
+  workspace (the sibling repos stay read-only) and validating via the CLI plan/`--dry-run` determinism gate. WHICH knobs
+  to set is JUDGMENT, not Python: new `knowledge/vllm_overrides.md` (no enumerable knob catalog, no value `if/elif`).
+  `security/allowlist.yaml` gains a value-pinned `model_id` + workspace-confined `--spec` file rule; `app/security/
+  allowlist.py`, `registry.py`, and `schemas.py` wired additively (Phase 28 model-override entries preserved alongside).
+  Hermetic `tests/test_scenario_overrides.py` (26 tests) covers each knob path, structural validation against the repo
+  example shape, and the no-write-into-read-only-repo guarantee. Branch `feature/roadmap-v4-p45-vllm-overrides` →
+  `feature/roadmap-v4` (merge `a56eee7`). Suite **802 passed / 20 skipped / 0 failed**; ruff + mypy clean. — done
+- 2026-06-03 — Phase 28 (ROADMAP_V4): First-class model override (`-m/--models`). A top-level `models` field on
+  `ExecuteInput` threads through `execute_llmdbenchmark` into `build_argv` (`app/tools/execute.py`), emitting `-m <id>`
+  only when present — `-m` is the one short form valid across standup/plan/run/experiment (upstream uses `--models` on
+  standup/plan/experiment, `--model` on run). `security/allowlist.yaml` (DATA) gains a value-pinned, metachar-screened
+  `model_id` constraint plus the `-m`/`--models`/`--model` flagspecs under those four subcommands. Model lockstep with
+  the capacity pre-flight (pass the SAME id to `check_capacity` so it sizes + gated-checks the identical model) is
+  knowledge, not Python: new `knowledge/model_override.md` + a `knowledge/capacity.md` cross-link; no on-disk model
+  catalog and no value `if/elif`. Hermetic `tests/test_model_override.py` asserts `-m` is emitted per subcommand, the
+  allowlist permits + value-pins it and refuses injection, and the standup id + the `check_capacity` override resolve to
+  the IDENTICAL `plan_config` path. Also de-flaked a pre-existing full-suite-only race in `tests/test_concurrency.py`
+  (target the teardown gate by `tool_call_id` instead of an arbitrary first pending key) — no assertion weakened. Branch
+  `feature/roadmap-v4-p28-model-override` → `feature/roadmap-v4`. Suite **776 passed / 20 skipped / 0 failed** (5
+  consecutive clean full runs); ruff + mypy clean. — done
+- 2026-06-03 — Phase 62 (ROADMAP_V4): Gated-model access pre-flight before standup. The already-allowlisted read-only
+  capacity bridge `scripts/capacity_check.py` (driven by `app/capacity/planner.py`) now also calls the benchmark repo's
+  OWN `llmdbenchmark.utilities.huggingface.check_model_access` / `GatedStatus` (never reimplemented) and returns a
+  token-free `{gated, authorized, reason}` block alongside the sizing verdict. `CapacityVerdict` gained
+  `gated`/`authorized`/`gated_reason` fields (defaulted → non-gated/legacy paths unchanged), wired via a pure-field-copy
+  `merge_gated_access` (no `if/elif`). Per-status judgment (PUBLIC/authorized → proceed; gated+unauthorized → provision
+  the secret via Phase 30) lives in `knowledge/capacity.md`, not Python. `HF_TOKEN` is read from the scrubbed child env
+  only and never echoed into the result, events, or logs. No allowlist change. Hermetic tests
+  (`tests/test_capacity_gated.py`) drive a fixture `ModelAccessResult` per `GatedStatus` and assert the verdict + token
+  non-leak. Merged into `feature/roadmap-v4`; suite **756 passed / 20 skipped**; ruff + mypy clean.
+- 2026-06-03 — Phase 61 (ROADMAP_V4): Right-size the harness launcher CPU for small/Kind clusters. Added a read-only
+  `node_capacity` probe (per-node allocatable/capacity CPU + min-allocatable across nodes via `kubectl get nodes -o
+  json`) to `probe_environment` (`app/tools/probe.py`), and a backend-only `harness_cpu_nr` flag plumbed as the
+  `LLMDBENCH_HARNESS_CPU_NR` env var through `execute.py` → `context.run_command(env=)` → `runner._build_env` (merged
+  last so it wins; never an allowlist flag, never reaches the browser); the lower-it-or-not / to-what (inference-perf
+  multi-process vs vllm-benchmark single-process) judgment lives in `knowledge/harness_sizing.md`, not Python. Turns a
+  silent `FailedScheduling`/`Pending` launcher pod into a scheduled run on the MVP Kind path. Merge into
+  `feature/roadmap-v4` reconciled the two newly-added probes against Phase 27/59 (probe-emit/exec parity count 7→8:
+  `prometheus_crds` + `node_capacity`). Branch `feature/roadmap-v4-p61-harness-cpu-size`. Suite **735 passed / 20
+  skipped / 0 failed**; ruff + mypy clean. — done
+- 2026-06-03 — Phase 59 (ROADMAP_V4): Model-load serving-readiness gate (`/v1/models` vs `/health` + stuck-pod
+  diagnostics). Extended the endpoint-readiness path (`app/orchestrator/readiness.py`, `app/tools/readiness.py`,
+  `app/tools/registry.py`) to classify a `Running`-but-`NotReady` model server as "still loading weights (keep
+  waiting)" vs "wedged/broken (stop waiting)" from pod readiness conditions / `restartCount` / age (8000 prefill,
+  8200 decode) plus a GET-only `curl` probe pinned by `security/allowlist.yaml` to the enum `{/v1/models, /health}`
+  on in-namespace `*.svc` URLs. The loading-vs-broken JUDGMENT lives in the new `knowledge/readiness_probes.md`
+  (no Python `if/elif`). Hermetic fixtures only (canned `kubectl`/`curl` bodies). Suite: 723 passed, 20 skipped,
+  0 failed (ruff + mypy clean).
+
+- 2026-06-03 — Phase 27 (ROADMAP_V4): Default-enable benchmark `--monitoring` + surface `results.observability`
+  (THE headline observability gap — closed). Added a subcommand-aware `monitoring` flag to `ExecuteInput.flags` +
+  `build_argv`: `--monitoring` for standup/run/experiment/plan, `--no-monitoring` only for standup (matching upstream
+  argparse store_true vs both-flags); allowlisted those flags per subcommand (DATA-only `security/allowlist.yaml`);
+  added a read-only `_probe_prometheus_crds` probe (`app/tools/probe.py`, key `prometheus_crds`) that reports
+  PodMonitor/ServiceMonitor CRD presence so the on/off + CRD opt-out JUDGMENT lives in `knowledge/observability.md`
+  + `knowledge/results_interpretation.md`, not Python. Phase 35 (standup PodMonitor/ServiceMonitor + EPP verbosity)
+  folded in as a sub-deliverable. Unblocks Phase 49 (trend-store consumer). Merged into `feature/roadmap-v4`
+  (`feature/roadmap-v4-p27-monitoring-activate`). Suite **692 passed / 20 skipped** (+26 from the 666 baseline;
+  new `tests/test_monitoring_activate.py`); ruff + mypy clean. — done
 - 2026-06-02 — Phase 26: llm-d-inference-sim integration tests (opt-in). Proposal §5.3/§7 integration
   layer (`tests/integration/`) drives a sim-shaped BR v0.2 fixture through real `analyze_results`/
   `compare_reports`; a live sim test is opt-in (`LLMD_SIM_INTEGRATION=1`) and skips cleanly otherwise;

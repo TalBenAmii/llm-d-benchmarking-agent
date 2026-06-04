@@ -14,6 +14,19 @@ always tied to the user's stated goal. Never quote numbers that aren't in the su
 - **throughput.request_rate** — requests/sec completed.
 - **success_rate_pct** — fraction of requests that succeeded; flag anything below ~100%.
 
+## When requests fail: 429s and EPP drop reasons
+A non-100% `success_rate` is NOT automatically "the system was broken." If the run (or a
+harness/report) surfaces 429s or an `x-llm-d-request-dropped-reason` header, those are the
+llm-d router (EPP) **deliberately** shedding or preempting load at capacity. Before calling
+anything "failed", load `read_knowledge("epp_headers")` and decode the drop reason there:
+`rejected-saturated` = at admission capacity, shed before serving (remedy: lower concurrency
+or scale out); `evicted-priority` = preempted mid-flight by higher-priority work (remedy:
+raise this request's inference-objective priority, or add capacity). Reframe the failure
+fraction as an **admission/eviction** signal (capacity, not breakage); also decode the SLO
+set-headers (`x-llm-d-slo-ttft-ms`/`x-llm-d-slo-tpot-ms`, `x-llm-d-inference-objective`,
+`x-llm-d-inference-fairness-id`) when present. The full enum→cause→remedy table lives in
+`epp_headers.yaml` — this section only routes you there.
+
 ## Units — read them off the report, never guess
 
 Every latency/throughput entry in the summary carries an explicit `units` field. **Read it and
@@ -59,6 +72,82 @@ Report's standard ResourceMetrics; `native` = a harness-native metric like vLLM'
 
 On the CPU-sim quickstart these are usually absent or meaningless (no real GPU); only lean
 on them on a real GPU stack.
+
+**Why they're sometimes absent — and how to make them appear.** `standard_metrics` is `null`
+whenever the metrics PRODUCER didn't run. The producer is the benchmark's monitoring path,
+activated with `flags.monitoring: true` (emits `--monitoring`) on standup/run/experiment — that
+creates the PodMonitor/ServiceMonitor and scrapes vLLM `/metrics`, which is what fills
+`results.observability`. So if a user wants KV-cache / GPU / queue-depth numbers and they're
+coming back empty, the fix is almost always **re-run with monitoring on** (and on a CRD-less
+cluster, ensure the Prometheus-operator CRDs are installed or use the opt-out). The full decision
+procedure — default ON, the `prometheus_crds` probe, and the `--no-monitoring` /
+`monitoring.installPrometheusCrds` knobs — lives in `knowledge/observability.md` (§3). Never
+fabricate these numbers when the block is empty; instead explain that monitoring needs to be
+enabled.
+
+## Session-level metrics (multi-turn workloads)
+
+The summary may also carry `session_performance` — a SECOND results block that exists ONLY
+for **multi-turn** inference-perf workloads, where one *session* is a sequence of related
+turns/requests (e.g. a whole chat conversation). It is **separate from** the per-request
+latency/throughput numbers above: those describe individual requests; this describes whole
+conversations. For a **single-turn** run (one request per "session", or no session concept)
+the block is **absent and `session_performance` is `null`** — say nothing about sessions
+rather than inventing them. Never fabricate session numbers; only quote what's in the block.
+
+When present, `session_performance` has two parts:
+
+- **`scalars`** — integer counts for the whole run: `total` sessions, `succeeded`,
+  `failed`, `total_events` (all turns/requests across all sessions), `total_events_completed`,
+  `total_events_cancelled`. Lead with the session success story: e.g. "110 of 112 chat
+  sessions completed; 2 failed", and pair `total_events_cancelled` with `failed` — a run can
+  succeed at the session level while dropping individual turns.
+- **`distributions`** — per-session Statistics objects (each with a `value` stat = `units` +
+  `mean`/percentiles, plus an informational `label`/`unit_hint`/`direction`). Read the
+  `units` off `value` and trust it; the `direction` is for narration only, never a pass/fail:
+  - **`session_rate`** (`queries/s`, higher better) — how many sessions completed per second;
+    the multi-turn analogue of request throughput, i.e. conversational capacity.
+  - **`session_duration`** (`s`, lower better) — wall-clock length of a whole session across
+    all its turns. Convert to a human scale and **watch the tail** (`p90`/`p99`): a long-tailed
+    session duration means some conversations dragged. This is the metric users *feel* in a
+    multi-turn chat, distinct from per-turn TTFT.
+  - **`events_per_session`** (`count`, direction none) — turns per conversation; workload
+    SHAPE, not quality. Use it to characterise the run ("~12 turns per chat"), not to judge it.
+  - **`events_cancelled_per_session`** (`count`, lower better) — dropped turns per session; a
+    rising value signals the stack shedding turns under multi-turn load.
+  - **`input_tokens_per_session`** / **`output_tokens_per_session`** (`count`, direction none)
+    — prompt/generated tokens accumulated over a whole session (context grows across turns);
+    cost/context-size shape, not a quality signal.
+
+Caveats: `session_performance` is emitted by **multi-turn inference-perf only** — a guidellm
+or single-turn inference-perf report won't have it, and its absence is normal, not a failure.
+The committed BR v0.2 JSON Schema lags the live models and doesn't yet declare this block, so a
+multi-turn report lists it under `schema_deviations` (a non-fatal "report newer than schema"
+note) — validation still passes and the numbers are real; mention the deviation only if asked.
+The field catalogue lives in `knowledge/standard_metrics.yaml` (`session_performance`); the
+parsing is pure mechanism in `app/validation/report.py` (`extract_session_performance`).
+
+### Trending these over time
+
+These three standard/serving metrics also flow into the cross-session trend store, so
+`result_history` can chart them like any latency/throughput metric: `action="trend"` with
+`metric` one of `kv_cache_hit_rate`, `gpu_utilization`, or `schedule_delay`. A few caveats
+that are *your* judgment, not the tool's:
+
+- The trend's `better` label is **informational only** (it never decides pass/fail). For
+  `gpu_utilization`, `better: higher` just means "more utilized" — a rising GPU-util trend is
+  not automatically good; read it alongside the throughput trend (more util + more throughput =
+  healthier capacity use; more util + flat throughput = wasted work or contention).
+- Only trend **comparable** runs: the same model/stack and harness, with **monitoring on for
+  every point**. A run without monitoring contributes no point (the series skips it), so a
+  short or gappy series usually means monitoring wasn't on for some runs — not a regression.
+  Filter with `filter_tag` / `filter_model` to keep the series apples-to-apples.
+- A **rising `schedule_delay`** (the queue-depth proxy, requests waiting) across stored runs
+  signals **growing saturation** — the stack is increasingly queue-bound and latency tails will
+  follow. Pair it with the latency trends; a climbing queue-depth that tracks climbing TTFT is
+  a capacity story, not noise.
+- A **falling `kv_cache_hit_rate`** across runs often *explains* a TTFT/throughput regression
+  (less prefix reuse ⇒ more prefill work); use it as the "why", not as a separate SLO.
 
 ## How to talk about it
 - Lead with the answer to the user's question (e.g. "for a chat UX, first-token latency

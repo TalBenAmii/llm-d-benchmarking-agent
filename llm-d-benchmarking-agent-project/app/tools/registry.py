@@ -14,14 +14,20 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.tools import (
+    aggregate_runs as aggregate_runs_tool,
+)
+from app.tools import (
     analyze,
     cancel,
     capacity,
     command,
     compare,
     config_artifact,
+    convert_guide,
+    discover,
     doe,
     execute,
+    hf_secret,
     history,
     multiharness,
     observe,
@@ -33,12 +39,16 @@ from app.tools import (
 )
 from app.tools.context import ToolContext
 from app.tools.schemas import (
+    AdviseAcceleratorsInput,
+    AggregateRunsInput,
     AnalyzeResultsInput,
     CancelRunInput,
     CheckCapacityInput,
     CheckEndpointReadinessInput,
     CompareHarnessRunsInput,
     CompareReportsInput,
+    ConvertGuideInput,
+    DiscoverStackInput,
     EnsureReposInput,
     ExecuteInput,
     FetchKeyDocsInput,
@@ -48,6 +58,7 @@ from app.tools.schemas import (
     ObserveRunMetricsInput,
     OrchestrateBenchmarkInput,
     ProbeEnvironmentInput,
+    ProvisionHfSecretInput,
     ReadKnowledgeInput,
     ReadRepoDocInput,
     ResultHistoryInput,
@@ -71,12 +82,31 @@ _DESCRIPTIONS = {
         "Sense the local environment in one structured snapshot: container runtime, "
         "repos present, toolchain, venv, kind clusters, kube context/cluster reachability, "
         "namespaces, and whether a stack is already running in a namespace. Read-only; "
-        "ALWAYS run this first before proposing or doing anything."
+        "ALWAYS run this first before proposing or doing anything. Add checks=['provider_detection'] "
+        "to detect the cloud provider (openshift/gke/doks/aks vs kind) from node labels + surface "
+        "GPU taints, then read_knowledge('infra_providers') to pick the right CLI/toleration/fix."
     ),
     "list_catalog": (
         "Enumerate the valid specs, harnesses, workload profiles, and scenarios that "
         "actually exist in the llm-d-benchmark repo on disk. Use this to ground every "
         "choice — never invent a spec/harness/workload name."
+    ),
+    "advise_accelerators": (
+        "Accelerator / CPU-inferencing PRE-FLIGHT: \"can my hardware actually run this?\" "
+        "Read-only; auto-runs. Reads each node's ADVERTISED resources via the already-"
+        "allowlisted `kubectl get nodes -o json` and reports which extended-resource key a node "
+        "advertises — `nvidia.com/gpu` or the amd.com/gpu / habana.ai/gaudi / google.com/tpu / "
+        "Intel XPU (gpu.intel.com/i915|xe) siblings — vs CPU-only, plus each node's "
+        "capacity/allocatable cpu + memory. It returns FACTS ONLY (any_accelerator, cpu_only, "
+        "advertised_resources, per-node accelerators/cpu/memory) — no verdict. It COMPLEMENTS "
+        "check_capacity, which sizes model weights + KV cache against GPU MEMORY: this answers "
+        "whether a node even ADVERTISES the accelerator (or, if CPU-only, meets the floor). Call "
+        "read_knowledge('accelerators') to turn the facts into a verdict: the CUDA 12.9.1 / "
+        "driver minimums (>= 525.60.13, < 580; 575.x rec.) and the planned CUDA 13.0.2 / 580.65.06 "
+        "minimum, the Device-Plugin vs DRA choice, and the real (NON-sim) CPU-only "
+        "64-core/64GB-per-replica floor — with the Kind/CPU-sim path (cicd/kind) supported and "
+        "EXEMPT from that floor. Use this at the plan gate alongside check_capacity, BEFORE a "
+        "standup. The judgment is in knowledge/accelerators.yaml; this tool is only the mechanism."
     ),
     "read_knowledge": (
         "Load the FULL text of ONE of the agent's on-demand knowledge guides by topic name "
@@ -87,7 +117,14 @@ _DESCRIPTIONS = {
     ),
     "read_repo_doc": (
         "Read a documentation or spec file from inside the (read-only) repos, e.g. the "
-        "quickstart guide. Use to confirm the authoritative flow/flags before acting."
+        "quickstart guide. Use to confirm the authoritative flow/flags before acting. Also "
+        "use this to SURFACE the benchmark repo's exploratory analysis tooling to the user — "
+        "read_repo_doc('llm-d-benchmark/docs/analysis/README.md') (how to set up the venv + "
+        "launch the interactive analysis.ipynb notebook against their results) or "
+        "read_repo_doc('llm-d-benchmark/docs/analysis.md') (the full analysis-pipeline overview). "
+        "Those notebook/scripts are user-driven power-user exploration you POINT AT, not part of "
+        "the automated run flow — see knowledge/analysis.md (and the aggregate_runs tool for the "
+        "one script the agent itself may run)."
     ),
     "fetch_key_docs": (
         "Fetch the LIVE content of the authoritative docs pinned in knowledge/key_docs.yaml "
@@ -113,15 +150,47 @@ _DESCRIPTIONS = {
         "profile so the plan follows the recommended path."
     ),
     "check_capacity": (
-        "Capacity PRE-FLIGHT: will this deployment fit? Runs the benchmark repo's OWN "
-        "capacity planner over the spec's rendered config (model weights + activation + KV "
-        "cache vs GPU memory, valid tensor-parallelism, max-context limits) and returns a "
-        "feasible/infeasible verdict with the planner's diagnostics. Read-only; auto-runs. "
-        "Pass `overrides` to reflect what the user actually asked for (a bigger model, "
-        "longer context, a real GPU). Call this right after propose_session_plan and BEFORE "
-        "standing anything up — it catches OOM / won't-load / can't-serve cases before a "
-        "long standup fails opaquely. Call read_knowledge('capacity') to interpret the "
-        "verdict. (Needs the benchmark venv: run_setup installs it.)"
+        "Capacity PRE-FLIGHT: will this deployment fit AND can your token pull the weights? "
+        "Runs the benchmark repo's OWN capacity planner over the spec's rendered config "
+        "(model weights + activation + KV cache vs GPU memory, valid tensor-parallelism, "
+        "max-context limits) for a feasible/infeasible verdict, AND the repo's OWN gated-"
+        "model access check — returning `gated`/`authorized`/`gated_reason`: PUBLIC (no "
+        "token needed), GATED+AUTHORIZED (your token can pull it, proceed), or "
+        "GATED+UNAUTHORIZED (your token can't — knowledge says how to fix it / provision the "
+        "secret). Read-only; auto-runs; the HF token never appears in the result. Pass "
+        "`overrides` to reflect what the user actually asked for (a bigger model, longer "
+        "context, a real GPU). Call this right after propose_session_plan and BEFORE "
+        "standing anything up — it catches OOM / won't-load / can't-serve AND can't-pull-"
+        "weights cases before a long standup fails opaquely. Call read_knowledge('capacity') "
+        "to interpret BOTH verdicts. (Needs the benchmark venv: run_setup installs it.)"
+    ),
+    "aggregate_runs": (
+        "OPTIONAL cross-run aggregation: when the user has run the SAME benchmark MULTIPLE "
+        "times and wants the run-to-run variance (mean/std/min/max across repeats), run the "
+        "benchmark repo's OWN standalone docs/analysis/aggregate_runs.py against an EXISTING "
+        "results dir. Read-only; auto-runs. Pass results_prefix (the existing results dir), "
+        "harness, stack, and run_ids (>=2). It reads the BR v0.2 reports for those runs and "
+        "writes aggregated_summary.{txt,json} ONLY into a session-workspace subdir (the "
+        "read-only repos and the results dir are never written), returning the per-metric "
+        "mean/std/min/max. This is EXPLORATORY (it does NOT run a benchmark and does NOT "
+        "replace analyze_results' SLO/goodput/Pareto verdicts) — it is the ONE exploratory "
+        "analysis script the agent runs itself; the interactive Jupyter notebook and the "
+        "to_be_incorporated/ plot templates are POINTER-ONLY (surface them with read_repo_doc, "
+        "never run them). WHEN to aggregate is your judgment — read_knowledge('analysis')."
+    ),
+    "provision_hf_secret": (
+        "APPROVAL-GATED MUTATING step: create/update the cluster's HuggingFace token Secret "
+        "(default name 'llm-d-hf-token') in a namespace so a GATED-model standup can pull the "
+        "gated weights — the natural follow-on to check_capacity's gated-access pre-flight. "
+        "The HF token stays BACKEND-ONLY: it is read from the backend HF_TOKEN env by the "
+        "vetted script and is NEVER an input here, never in the argv, never in any command "
+        "event or log. Requires approval (it writes a Secret to the cluster). Call this ONLY "
+        "after a check_capacity GATED+UNAUTHORIZED verdict whose reason says NO token is "
+        "configured cluster-side — NEVER for a public model, and NEVER when a token merely "
+        "LACKS access (that needs a HuggingFace access request, not a secret). After it "
+        "succeeds, re-run check_capacity to confirm authorization, THEN stand up. WHEN to use "
+        "it is knowledge/capacity.md ('Gated-model access pre-flight'); this is only the "
+        "mechanism."
     ),
     "check_endpoint_readiness": (
         "Endpoint READINESS gate: is the inference endpoint in a namespace actually SERVING — "
@@ -131,9 +200,40 @@ _DESCRIPTIONS = {
         "own read-only `run --list-endpoints`. Returns a structured `ready` verdict with the "
         "per-service ready/not-ready endpoint counts; when NOT ready it includes a "
         "`standup_suggestion` you can OFFER the user (standing up is mutating and needs "
-        "approval — never do it unprompted). Call this BEFORE running a benchmark against an "
-        "existing stack; orchestrate_benchmark_run also gates on it automatically. This is the "
-        "mechanism; WHEN to stand up is your judgment — read_knowledge('orchestrator')."
+        "approval — never do it unprompted). When a Service exists but is Running-but-NotReady, "
+        "it ALSO classifies WHY via `serving_readiness`: it folds the pod readiness conditions / "
+        "restartCount / age with two constrained GET probes — `/v1/models` (model-serving-ready) "
+        "vs `/health` (process-alive) — so you can tell 'still loading model weights (legitimate "
+        "— keep waiting)' from 'wedged/broken (stop)' BEFORE submitting a benchmark; "
+        "read_knowledge('readiness_probes') for that judgment. In GATEWAY-mode deploys it ALSO "
+        "reads the Gateway-API control plane (gateway/gatewayclass/inferencepool/httproute) and "
+        "surfaces the PROGRAMMED + Accepted/ResolvedRefs/Reconciled condition FACTS on `gateway` "
+        "(Phase 65) — telling 'the model pods are Ready' apart from 'traffic can actually reach "
+        "them' (pods can be Ready while the Gateway is PROGRAMMED:False). When the control plane "
+        "isn't wired the result carries `gateway_readiness_guidance`; "
+        "read_knowledge('gateway_readiness') for the wait-vs-stand-up-vs-config-error judgment "
+        "(set check_gateway=False on non-gateway/Kind deploys). Call this BEFORE running a "
+        "benchmark against an existing stack; orchestrate_benchmark_run also gates on it "
+        "automatically. This is the mechanism; WHEN to stand up is your judgment — "
+        "read_knowledge('orchestrator')."
+    ),
+    "discover_stack": (
+        "OPTIONAL richer ENVIRONMENT capture: trace the LIVE llm-d stack behind an "
+        "OpenAI-compatible endpoint URL and capture it as BR-v0.2 scenario.stack components. "
+        "Read-only; auto-runs. It runs the standalone stack-discovery tool "
+        "(`llm-d-discover <url> -f benchmark-report`), which connects with its OWN read-only "
+        "Kubernetes RBAC + env-var redaction and emits the deployed stack's components "
+        "(model / role / replicas / parallelism / accelerator) — then writes a "
+        "`{scenario: {stack: [...]}}` capture into the session workspace and returns structured "
+        "stack FACTS (component/model/role counts, per-engine replicas + parallelism). This "
+        "COMPLEMENTS — it does NOT replace — probe_environment / check_endpoint_readiness, which "
+        "stay the unconditional default for sensing the environment; use this only when you want "
+        "a precise capture of what is actually deployed (e.g. a remote/pre-existing stack you did "
+        "not stand up). It needs llm_d_stack_discovery installed in the benchmark venv (a "
+        "self-contained subpackage install.sh does NOT install — `pip install -e "
+        "llm-d-benchmark/llm_d_stack_discovery`); if absent it returns ran=False with how to "
+        "install it. WHEN to use it (vs endpoint probing) is your judgment — "
+        "read_knowledge('stack_discovery')."
     ),
     "ensure_repos": (
         "Clone the llm-d-benchmark and/or llm-d repos if missing (mutating; needs approval). "
@@ -144,8 +244,46 @@ _DESCRIPTIONS = {
         "(mutating; needs approval). Required before any llmdbenchmark command."
     ),
     "write_and_validate_config": (
-        "Write a generated workload/run config into the session workspace and validate it. "
-        "MVP uses stock profiles, so you rarely need this."
+        "Write/validate a generated config artifact in the session workspace (never the "
+        "read-only repos). artifact_type='workload'/'run_config' write a stock-shaped YAML "
+        "as-is (MVP, rarely needed). artifact_type='scenario' AUTHORS finer per-knob vLLM/"
+        "scheduling/storage scenario edits beyond the parallelism/memory knobs check_capacity "
+        "+ generate_doe_experiment already cover: pass `content` as the per-knob OVERRIDES — a "
+        "REQUIRED 'name' plus >=1 DOTTED upstream field path (vllmCommon.flags.*, "
+        "vllmCommon.kvTransfer.*, vllmCommon.kvEvents.*, vllmCommon.priorityClassName, "
+        "vllmCommon.ephemeralStorage, vllmCommon.networkResource, affinity.*, schedulerName, "
+        "routing.servicePort, decode.*/prefill.* schedulerName/priorityClassName). To author a "
+        "KUSTOMIZE-method deploy (Phase 46) set the kustomize.* family instead — "
+        "kustomize.enabled/guideName/repoPath/repoRef/acceleratorBackend/monitoring/overlayPath/"
+        "extraHelmValues/extraHelmSets/guideVariableOverrides and kustomize.patches (a list of "
+        "{patch: ...} strategic-merge patches). The tool deep-merges them onto a minimal "
+        "`scenario: [ {name, ...} ]` skeleton and SHAPE-validates the knobs against the repo's "
+        "own scenario examples (read live). Read-only (only writes the workspace), auto-runs. "
+        "WHICH knobs to set is YOUR judgment — call read_knowledge('vllm_overrides') for vLLM "
+        "tuning, or read_knowledge('deploy_path_playbook') for the kustomize guide/overlay/"
+        "patches/repo choice. Then preview the returned `path` via the determinism gate: "
+        "execute_llmdbenchmark(subcommand='plan'/'run', flags.dry_run=True)."
+    ),
+    "convert_guide_to_scenario": (
+        "Convert an arbitrary llm-d deployment guide into a benchmark scenario, authored "
+        "WORKSPACE-ONLY (the agent's variant of upstream's skills/convert-guide, which writes "
+        "ai.<name>.sh + ai.<name>.yaml INTO the read-only benchmark repo — this NEVER does "
+        "that). FIRST read the guide yourself (read_repo_doc / run_command git clone / your own "
+        "file reads) and resolve its Helm/kustomize config to the LLMDBENCH_* env map using "
+        "read_knowledge('convert_guide') — WHICH vars map to what, the standard practices "
+        "(DECODE_MODEL_COMMAND=custom, REPLACE_ENV_* placeholders, preprocess) and the default "
+        "inference-perf / sanity_random.yaml are KNOWLEDGE, not this tool. Then pass the "
+        "resolved `env` map (+ optional per-var `sources` provenance, `harness`/`profile`, "
+        "`source_ref`, and an optional `scenario` dotted-knob override for the validatable "
+        "twin). It writes FOUR files into the session workspace — ai.<name>.sh (the "
+        "upstream-shaped scenario of sorted, shell-quoted LLMDBENCH_* exports), ai.<name>.yaml "
+        "(a structurally-validated scenario twin), and ai.<name>.spec.yaml (its companion "
+        "--spec) — NEVER the read-only repo. A bare .sh is NOT consumable by the determinism "
+        "gate, so the YAML+spec twin is the gate-able artifact: GATE it via "
+        "execute_llmdbenchmark(subcommand='plan', spec=<spec_path>, flags={'dry_run': True}) "
+        "BEFORE any standup. To then deploy the converted guide, stand up directly off the "
+        "workspace YAML via --spec=<spec_path> (the standup -c/--scenario .sh route is not "
+        "modeled here)."
     ),
     "generate_doe_experiment": (
         "AUTHOR a Design-of-Experiments (DoE) experiment YAML: you supply the FACTORS to "
@@ -169,7 +307,63 @@ _DESCRIPTIONS = {
         "auto-run; standup/run/teardown/experiment are mutating and require approval. "
         "'experiment' runs a full DoE sweep (standup+run+teardown per treatment) over an "
         "experiment YAML you pass via flags.experiments; its per-treatment reports land in "
-        "the session workspace. Results from a 'run' are written into the session workspace too."
+        "the session workspace. Results from a 'run' are written into the session workspace too. "
+        "To serve a NON-DEFAULT model (not the spec's scenario default), set the top-level "
+        "`models` field (a HF id/short name) — it emits `-m`; FIRST run "
+        "check_capacity(overrides={'model': <same id>}) so the pre-flight validates that EXACT "
+        "model (sizing + gated access). WHICH model is your judgment — see "
+        "knowledge/model_override.md. "
+        "To RE-COLLECT/RE-ANALYZE the results of a prior `run` WITHOUT re-running the benchmark "
+        "load, set flags={'skip': True} on a `run` (emits -z; collect-only, read-only/auto-runs) "
+        "— see knowledge/collect_only.md for WHEN. "
+        "To REPLAY a real dataset instead of a synthetic workload profile (run/experiment only), "
+        "set flags.dataset to its URL/path — it emits `-x`; WHEN to replay vs stay synthetic is "
+        "your judgment, see knowledge/dataset_replay.md. "
+        "For a MULTI-STACK scenario (N model pools behind one gateway, e.g. guides/multi-model-wva), "
+        "set flags.stack to a stack name or comma-separated subset (NAME[,NAME...]) to target ONE "
+        "pool — it emits `--stack` on standup/smoketest/run/teardown; and set flags.parallel to an "
+        "int to CAP how many stacks deploy in parallel (emits `--parallel` on standup/smoketest/"
+        "experiment; lower it on a small/Kind node). WHICH stack(s) and HOW MANY at once is your "
+        "judgment — see knowledge/multi_stack.md. "
+        "To choose the GATEWAY PROVIDER instead of inheriting the spec's gateway.className, set "
+        "flags.gateway_class to one of istio/agentgateway/gke/epponly/data-science-gateway-class — "
+        "it emits --gateway-class on any subcommand (effective on the modelservice deploy path "
+        "only); WHICH provider is your judgment, see knowledge/gateway_class.md. "
+        "To give one slow PHASE more rope (or fail it faster), set the CLI's per-phase timeout "
+        "keys in flags (seconds): wait_timeout/data_access_timeout on run+experiment; "
+        "standalone_deploy_timeout/gateway_deploy_timeout/modelservice_deploy_timeout/"
+        "kustomize_deploy_timeout/pvc_bind_timeout on standup; fma_teardown_timeout on teardown. "
+        "Each is a DEEPER bound that MUST stay below the runner deadline for that subcommand so "
+        "the two timeout layers don't fight — WHEN/WHAT to set is your judgment, see "
+        "knowledge/phase_timeouts.md. "
+        "To send a `run`'s results to a CLOUD bucket instead of local-only, set flags.output to a "
+        "`gs://bucket/...` or `s3://bucket/...` URI (default is `local`); this is OPT-IN — WHETHER "
+        "the user has a bucket and WHICH one is their choice, see knowledge/cloud_results_sink.md. "
+        "To ALSO generate the CLI's local matplotlib plot families (per-request distributions, "
+        "session-lifecycle, Prometheus time-series) beside the harness PNGs, set flags={'analyze': "
+        "True} on a `run` — it emits `--analyze`; the plots are surfaced via the artifact route and "
+        "are SUPPLEMENTARY (your SLO/goodput/Pareto math is unchanged). WHEN to ask for them is "
+        "your judgment, see knowledge/analysis.md. "
+        "To round-trip a reusable run-config via the CLI's OWN mechanism (run only): set "
+        "flags={'generate_config': True} to GENERATE a run-config YAML from current settings under "
+        "the session workspace and exit (emits --generate-config; read-only/auto-runs), then later "
+        "set flags={'run_config': '<path>'} to REPLAY it (emits -c; still approval-gated). WHEN to "
+        "generate vs reuse vs author in-workspace is your judgment, see "
+        "knowledge/runconfig_roundtrip.md. "
+        "To launch a DEBUG harness pod that sleeps (`sleep infinity`) INSTEAD of running the "
+        "benchmark — so you (or the user) can exec into a misbehaving harness pod — set "
+        "flags={'debug': True} on a run/experiment (emits -d; still approval-gated, it launches a "
+        "real pod). NOT on teardown (there -d means --deep, a destructive wipe). After it is up, "
+        "EXPLAIN how to exec into it (kubectl/oc exec -it <ns> <harness-pod> -- bash) but do NOT "
+        "drive the interactive shell yourself — that stays a manual user step. WHEN to use it is "
+        "your judgment, see knowledge/harness_debug.md. "
+        "For the OPTIONAL git-like Results Store (a TEAM-SHARED store that publishes/pulls runs "
+        "via GCS remotes), use subcommand='results' with the top-level `store` field "
+        "({command: init/remote/status/add/rm/ls/push/pull, ...}): init/status/ls/remote-ls are "
+        "read-only/auto-run; add/rm/push/pull/remote-add/remote-rm are mutating/approval-gated. "
+        "This is SEPARATE from your OWN local history (the result_history tool) — that local "
+        "store is unchanged; reach for the CLI store ONLY for team GCS sharing. WHICH store and "
+        "WHEN is your judgment, see knowledge/history.md."
     ),
     "locate_and_parse_report": (
         "Find the newest Benchmark Report from a completed run, validate it against the "
@@ -266,15 +460,20 @@ def build_registry() -> dict[str, ToolSpec]:
     specs = [
         ToolSpec("probe_environment", _DESCRIPTIONS["probe_environment"], ProbeEnvironmentInput, probe.probe_environment),
         ToolSpec("list_catalog", _DESCRIPTIONS["list_catalog"], ListCatalogInput, probe.list_catalog),
+        ToolSpec("advise_accelerators", _DESCRIPTIONS["advise_accelerators"], AdviseAcceleratorsInput, probe.advise_accelerators),
         ToolSpec("read_knowledge", _DESCRIPTIONS["read_knowledge"], ReadKnowledgeInput, probe.read_knowledge),
         ToolSpec("read_repo_doc", _DESCRIPTIONS["read_repo_doc"], ReadRepoDocInput, probe.read_repo_doc),
         ToolSpec("fetch_key_docs", _DESCRIPTIONS["fetch_key_docs"], FetchKeyDocsInput, probe.fetch_key_docs),
         ToolSpec("propose_session_plan", _DESCRIPTIONS["propose_session_plan"], SessionPlan, plan.propose_session_plan),
         ToolSpec("check_capacity", _DESCRIPTIONS["check_capacity"], CheckCapacityInput, capacity.check_capacity),
+        ToolSpec("aggregate_runs", _DESCRIPTIONS["aggregate_runs"], AggregateRunsInput, aggregate_runs_tool.aggregate_runs),
+        ToolSpec("provision_hf_secret", _DESCRIPTIONS["provision_hf_secret"], ProvisionHfSecretInput, hf_secret.provision_hf_secret),
         ToolSpec("check_endpoint_readiness", _DESCRIPTIONS["check_endpoint_readiness"], CheckEndpointReadinessInput, readiness.check_endpoint_readiness),
+        ToolSpec("discover_stack", _DESCRIPTIONS["discover_stack"], DiscoverStackInput, discover.discover_stack),
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),
         ToolSpec("run_setup", _DESCRIPTIONS["run_setup"], RunSetupInput, repos.run_setup),
         ToolSpec("write_and_validate_config", _DESCRIPTIONS["write_and_validate_config"], WriteConfigInput, config_artifact.write_and_validate_config),
+        ToolSpec("convert_guide_to_scenario", _DESCRIPTIONS["convert_guide_to_scenario"], ConvertGuideInput, convert_guide.convert_guide_to_scenario),
         ToolSpec("generate_doe_experiment", _DESCRIPTIONS["generate_doe_experiment"], GenerateDoeInput, doe.generate_doe_experiment),
         ToolSpec("execute_llmdbenchmark", _DESCRIPTIONS["execute_llmdbenchmark"], ExecuteInput, execute.execute_llmdbenchmark),
         ToolSpec("run_command", _DESCRIPTIONS["run_command"], RunCommandInput, command.run_command),

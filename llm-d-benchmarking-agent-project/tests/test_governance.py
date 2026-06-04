@@ -126,10 +126,16 @@ def test_shipped_llmdbenchmark_timeouts_come_from_yaml(catalog):
     """The per-subcommand budgets that USED to live in _TIMEOUTS now ride on the Decision,
     sourced from the YAML alone."""
     al = Allowlist.from_file(ALLOWLIST_PATH)
-    expect = {"plan": 300, "standup": 3600, "smoketest": 900,
-              "run": 3600, "teardown": 900, "results": 300, "experiment": 14400}
-    for sub, secs in expect.items():
-        argv = ["llmdbenchmark", "--spec", "cicd/kind", sub]
+    # `results` is now the git-like Results Store group (Phase 50): it REQUIRES a store-command
+    # (mirroring upstream argparse `results_command` required=True), so it is exercised via
+    # `results status` and carries the `results` entry's 600s budget on the Decision.
+    expect = {
+        "plan": ("plan", 300), "standup": ("standup", 3600), "smoketest": ("smoketest", 900),
+        "run": ("run", 3600), "teardown": ("teardown", 900),
+        "results": ("results status", 600), "experiment": ("experiment", 14400),
+    }
+    for sub, (tail, secs) in expect.items():
+        argv = ["llmdbenchmark", "--spec", "cicd/kind", *tail.split()]
         d = al.validate(argv, catalog=catalog)
         assert d.allowed, (sub, d.reason)
         assert d.timeout_s == secs, f"{sub}: expected {secs}, got {d.timeout_s}"
@@ -205,7 +211,7 @@ class _CountingRunner(CommandRunner):
         super().__init__({})
         self.runs = 0
 
-    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None):
+    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
         self.runs += 1
         from app.security.runner import RunResult
         return RunResult(exit_code=0, duration_s=0.0, real_argv=list(logical_argv), cwd=None)

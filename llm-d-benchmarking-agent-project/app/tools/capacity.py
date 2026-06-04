@@ -17,6 +17,14 @@ Flow (all mechanism):
 This is read-only: it reads repo files, does arithmetic, and may look up a model config
 on HuggingFace. It never touches the cluster. Judgment about what to do with an
 infeasible verdict lives in ``knowledge/capacity.md``.
+
+Alongside the "will it fit?" verdict the bridge also returns a "can your token pull the
+weights?" gated-access block (from the repo's OWN ``check_model_access``): ``gated`` /
+``authorized`` / ``gated_reason`` are threaded onto the verdict so the agent sees the
+PUBLIC / GATED+AUTHORIZED / GATED+UNAUTHORIZED facts at the plan gate. What to *say* for
+each — and whether to offer Phase 30 secret-provisioning when gated+unauthorized — is the
+agent's judgment, read from ``knowledge/capacity.md``, never an if/elif here. The HF token
+stays backend-only (scrubbed child env) and never appears in the result or events.
 """
 from __future__ import annotations
 
@@ -26,6 +34,7 @@ from typing import Any
 from app.capacity.planner import (
     CapacityError,
     classify_diagnostics,
+    merge_gated_access,
     plan_config_for_spec,
 )
 from app.tools.context import ToolContext, ToolError
@@ -92,6 +101,10 @@ async def check_capacity(
         }
 
     verdict = classify_diagnostics(bridge.get("diagnostics", []))
+    # Thread the bridge's gated-access facts onto the verdict (pure field copy, no policy).
+    # gated_access may be absent (legacy bridge) or None (no model id) — both leave the
+    # verdict's gated/authorized/gated_reason at their None/"" defaults.
+    merge_gated_access(verdict, bridge.get("gated_access"))
     return {
         "spec": spec,
         "ran": True,
@@ -105,7 +118,20 @@ async def check_capacity(
             "knowledge/capacity.md for how to read the errors and what to change before "
             "you stand anything up."
         ),
+        "gated_note": _GATED_NOTE,
     }
+
+
+# A static *pointer* to the knowledge file — NOT the decision. The actual per-status
+# verdict wording (PUBLIC = no token needed/proceed; GATED+AUTHORIZED = proceed;
+# GATED+UNAUTHORIZED = "your HF token can't pull this; provision the secret via Phase 30")
+# lives in knowledge/capacity.md, never in an if/elif here. This text never branches on
+# the facts; it just routes the agent to where the judgment is written.
+_GATED_NOTE = (
+    "Gated-model access facts (gated/authorized/gated_reason) are attached. Read the "
+    "'Gated-model access pre-flight' section of knowledge/capacity.md for the verdict "
+    "wording for PUBLIC vs GATED+AUTHORIZED vs GATED+UNAUTHORIZED before you stand up."
+)
 
 
 def _parse_bridge_output(output: str) -> dict[str, Any]:

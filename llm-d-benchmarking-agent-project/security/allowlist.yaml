@@ -98,20 +98,120 @@ value_constraints:
   namespace:       { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" }   # RFC1123 label
   llmd_clone_url:  { regex: "^https://github\\.com/llm-d/(llm-d|llm-d-benchmark)(\\.git)?$" }
   output_dir:      { regex: "^[A-Za-z0-9._/-]+$" }
+  # ---- cloud results sink (Phase 39): the `run -r/--output` DESTINATION KEYWORD ----
+  # This is the value of `run`'s -r/--output: a DESTINATION KEYWORD, NOT a filesystem path.
+  # Accepts EITHER the local default (`local`, or a bare safe-charset path) OR an OPT-IN cloud
+  # bucket URI — `gs://bucket/prefix` (GCS) / `s3://bucket/prefix` (S3). The cloud schemes are
+  # OPT-IN ONLY: the agent emits a `gs://`/`s3://` value ONLY when the USER explicitly says they
+  # have a bucket and want results there; when the agent omits `output`, execute_llmdbenchmark
+  # defaults it to `local`, so the LOCAL default stands. This is a DEDICATED constraint (NOT a
+  # widening of output_dir): output_dir is shared by --workspace/--ws/-e/--experiments, which are
+  # genuine filesystem paths that must NOT accept a `gs://`/`s3://` scheme. The blanket
+  # metacharacter screen in app/security/allowlist.py still rejects shell-dangerous tokens
+  # (`;|&$<>(){}[]*?` etc.) regardless. The actual upload runs INSIDE the benchmark CLI subprocess
+  # (gcloud storage cp / aws s3 cp, using the USER's own cloud credentials) — that is the DEFERRED
+  # Phase 47, NOT built/allowlisted here. WHETHER the user has a bucket (and WHICH) is the agent's
+  # judgment in knowledge/cloud_results_sink.md, not data here.
+  results_sink:    { regex: "^(gs|s3)://[A-Za-z0-9._/-]+$|^[A-Za-z0-9._/-]+$" }
+  # ---- results store (Phase 50): the git-like CLI Results Store positionals ----
+  # `llmdbenchmark results <store-command>` is a SEPARATE, OPTIONAL git-like store for sharing
+  # benchmark runs across a team via GCS remotes (init/remote/status/add/rm/ls/push/pull). It is
+  # DISTINCT from the agent's own local history store (the result_history tool / app/storage/
+  # history.py) — see knowledge/history.md for WHICH one to reach for. These constraints pin the
+  # nested store-command positionals (the validator now recurses one level for a subcommand that
+  # declares its own `subcommands:`); each remains metachar-screened as defense-in-depth.
+  #   * remote_name — a remote alias (e.g. prod, staging, private): a safe DNS-ish label.
+  #   * remote_uri  — a remote bucket URI. GCS-ONLY (`gs://…`), matching the upstream prod/staging
+  #     defaults (result_store/client/gcs.py); s3:// is deliberately NOT accepted here.
+  #   * run_uid     — a run UUID/short uid to pull (hex/uuid charset). NOTE wildcards (`c6bc*`)
+  #     are NOT expressible: `*` is a blocked shell metacharacter, so only an EXACT run-uid works.
+  #   * store_paths — a local workspace dir path or run-uid to stage/push (reuses output_dir's
+  #     safe-charset path; no `..` is NOT enforced here because a staged path is a local dir the
+  #     user already produced, but the metachar screen still rejects shell-dangerous tokens).
+  remote_name:     { regex: "^[A-Za-z0-9._-]+$" }
+  remote_uri:      { regex: "^gs://[A-Za-z0-9._/-]+$" }
+  run_uid:         { regex: "^[A-Za-z0-9-]+$" }
+  store_paths:     { regex: "^[A-Za-z0-9._/-]+$" }
   endpoint_url:    { regex: "^https?://[A-Za-z0-9._:/-]+$" }
+  # ---- stack discovery (Phase 56): llm-d-discover -f/--output-format value ----
+  # The standalone stack-discovery tool's output format. We drive it with
+  # `benchmark-report` (a JSON LIST of BR-v0.2 scenario.stack[] Component dicts) to capture the
+  # LIVE stack for richer ENVIRONMENT capture than endpoint probing; the other formats are the
+  # upstream-supported set. Pinned to the exact upstream click.Choice enum (cli.py) so no other
+  # value is expressible.
+  discovery_output_format:
+    enum: [json, yaml, summary, native, native-yaml, benchmark-report]
+  # ---- model override (Phase 28): -m/--models/--model value ----
+  # A HuggingFace model id or short name (org/name), e.g. facebook/opt-125m,
+  # meta-llama/Llama-3.1-8B. Same safe charset as output_dir; the metacharacter screen
+  # additionally rejects shell-dangerous tokens. WHICH model is valid is the agent + the
+  # capacity pre-flight's job (HF config lookup), not an enumerable on-disk catalog.
+  model_id:        { regex: "^[A-Za-z0-9._/-]+$" }
+  # ---- cluster access (Phase 29): -k/--kubeconfig value ----
+  # A path to a NON-DEFAULT kubeconfig FILE (targets a remote cluster). It is a plain,
+  # NON-SECRET file path — same safe charset as output_dir/json_path, with NO `..` traversal so
+  # only a normal absolute/relative path is expressible (never a directory-climbing escape). The
+  # cluster URL + bearer TOKEN route is deliberately NOT a flag here: the token is a SECRET that
+  # must never be expressible as an argv token, so it travels ONLY as a backend-only, scrubbed
+  # child env var (LLMDBENCH_CLUSTER_URL/_TOKEN) — see the cluster-access non-leak note on the
+  # llmdbenchmark entry below and knowledge/preconditions.md for the WHEN-to-target judgment.
+  kubeconfig_path: { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+$" }
   output_format:   { enum: [json, yaml, wide, name] }
   methods:         { enum: [standalone, modelservice, kustomize, fma] }
+  # ---- gateway provider selection (Phase 32): --gateway-class value ----
+  # The gateway PROVIDER, OVERRIDING the scenario's gateway.className. The enum is the closed set
+  # of providers the CLI's `--gateway-class` help advertises on every subcommand (verified in
+  # llm-d-benchmark/llmdbenchmark/interface/{plan,standup,smoketest,run,teardown,experiment}.py):
+  # epponly / istio / agentgateway / gke / data-science-gateway-class. Upstream applies it ONLY on
+  # the modelservice deploy path (it is ignored by kustomize/standalone/fma). WHICH provider to
+  # pick is the agent's judgment (knowledge/gateway_class.md), not data here — this constraint only
+  # bounds the value to the legitimate provider set so an out-of-enum value is refused.
+  gateway_class:   { enum: [epponly, istio, agentgateway, gke, data-science-gateway-class] }
+  # ---- kustomize deploy method (Phase 46): --llmd-repo-path value ----
+  # A LOCAL filesystem path to an llm-d clone, threaded as `--llmd-repo-path` for the kustomize
+  # deploy method (`-t kustomize`). It is the CLI fallback for the scenario block's
+  # kustomize.repoPath (see llm-d-benchmark/docs/kustomize.md); empty/unset ⇒ upstream clones
+  # https://github.com/llm-d/llm-d.git into workspace/llm-d. Same safe charset as output_dir,
+  # with NO '..' traversal; the metacharacter screen additionally rejects shell-dangerous tokens.
+  repo_path:       { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+$" }
   # experiment (DoE) extras:
   namespaces:      { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(,[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$" }  # one or two (deploy,bench)
+  # ---- multi-stack subset (Phase 33): --stack value ----
+  # A comma-separated list of ONE OR MORE stack names (NAME[,NAME...]) selecting which pools of a
+  # multi-stack scenario (e.g. guides/multi-model-wva: qwen3-06b,llama-31-8b) to operate on. Each
+  # name is an RFC1123 label (same per-name shape as `namespace`/`namespaces`); this generalizes the
+  # two-name `namespaces` regex to N names. WHICH stack(s) is the agent's judgment
+  # (knowledge/multi_stack.md), not an enumerable table — names come from the scenario's `scenario:`
+  # list. The metacharacter screen additionally rejects any shell-dangerous token.
+  stack_list:      { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(,[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*$" }  # one or more (NAME[,NAME...])
   overrides:       { regex: "^[A-Za-z0-9_.,=:/+-]+$" }   # param=value,param=value
   positive_int:    { regex: "^[0-9]+$" }
+  # ---- step selection / re-run (Phase 31): -s/--step value ----
+  # An upstream step-list spec: a single step number, a comma-separated list, and/or N-M
+  # ranges — e.g. 5, 5-9, 3,7, 3-5,9. Charset-pinned to digits, commas and hyphens with NO
+  # spaces (so the metacharacter screen stays clean); parsed by the CLI's StepExecutor
+  # (`^(\d+)-(\d+)$` per comma-part). WHICH step to re-run is the agent's judgment
+  # (knowledge/step_select.md), not an enumerable on-disk table.
+  step_list:       { regex: "^[0-9]+([,-][0-9]+)*$" }
   kubectl_resource:
     enum: [ns, namespace, namespaces, po, pod, pods, svc, service, services,
            deploy, deployment, deployments, ep, endpoints, events, nodes, node,
            job, jobs,                # job/jobs: the orchestrator submits benchmark runs as K8s Jobs.
                         # ep/endpoints: the Phase 24 endpoint-readiness gate reads a Service's
                         # ready backing endpoints (read-only) before submitting a benchmark.
-           cm, configmap, configmaps]  # cm/configmaps: a DOE sweep's checkpoint (Phase 22 source of truth)
+           cm, configmap, configmaps,  # cm/configmaps: a DOE sweep's checkpoint (Phase 22 source of truth)
+           crd, crds, customresourcedefinition, customresourcedefinitions,
+                        # crd: the Phase 27 prometheus_crds probe lists CRDs (read-only) to detect
+                        # whether the Prometheus-operator PodMonitor/ServiceMonitor CRDs are present,
+                        # so the agent can decide --monitoring vs --no-monitoring per knowledge/.
+           gateway, gatewayclass, inferencepool, httproute]
+                        # Phase 65 (gateway-readiness): read-only `get -o json` DATA feeding the
+                        # Gateway-mode readiness gate. In gateway-mode deploys the agent reads these
+                        # Gateway-API status conditions — Gateway PROGRAMMED, InferencePool
+                        # Accepted/ResolvedRefs, HTTPRoute Accepted/Reconciled, GatewayClass
+                        # existence — to tell "the model pods are Ready" from "traffic can actually
+                        # reach them". The existing kubectl `get` flagspec already permits `-n`/`-o
+                        # json`; gatewayclass is cluster-scoped (queried without -n). Read-only only.
   git_ref:         { regex: "^[A-Za-z0-9._/-]+$" }
   cluster_name:    { regex: "^[a-z0-9]([-a-z0-9]{0,40}[a-z0-9])?$" }   # kind cluster name
   duration:        { regex: "^[0-9]+(s|m|h)?$" }                       # e.g. 120s, 5m
@@ -122,6 +222,46 @@ value_constraints:
   label_selector:  { regex: "^[A-Za-z0-9._/=,-]+$" }                   # e.g. run-id=abc,function=load_generator
   # ---- capacity pre-flight (Phase 6): a workspace-confined JSON request file ----
   json_path:       { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.json$" }  # a .json file; no '..' traversal
+  # ---- per-knob scenario overrides (Phase 45): a workspace-authored --spec file ----
+  # write_and_validate_config(artifact_type="scenario", …) authors a companion specification
+  # file (``<name>.spec.yaml``) into the SESSION WORKSPACE pointing scenario_file.path at the
+  # authored scenario. This lets the agent feed that file to ``--spec`` so plan/--dry-run can
+  # GATE the authored knobs. Constrained to a ``*.spec.yaml`` path with NO ``..`` traversal —
+  # so only the tool's own workspace artifact is expressible, never an arbitrary file write
+  # target. Used as an ALTERNATIVE to a live-catalog spec name (see the --spec flagspec).
+  spec_workspace_path: { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.spec\\.yaml$" }
+  # ---- model-load readiness probe (Phase 59): a TIGHTLY-CONSTRAINED model-server URL ----
+  # GET-only serving-readiness probe URL. Pins host to an in-namespace `*.svc` (cluster DNS),
+  # the port to the model-server serving ports (8000 prefill / 8200 decode) ONLY, and the path
+  # to the readiness/liveness ENUM {/v1/models, /health} ONLY. No other host/port/path is
+  # expressible — and the metacharacter screen already rejects shell-dangerous tokens. This is
+  # how the Phase 59 gate distinguishes "still loading weights" (/health 200, /v1/models 503)
+  # from "wedged/broken". See knowledge/readiness_probes.md for the loading-vs-broken judgment.
+  modelserver_probe_url:
+    regex: "^http://[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?\\.svc(\\.cluster\\.local)?:(8000|8200)(/v1/models|/health)$"
+  http_get_verb:   { enum: [GET] }
+  # ---- dataset replay (Phase 41): -x/--dataset value ----
+  # The URL/path of a real dataset the harness REPLAYS instead of the synthetic workload
+  # profile (upstream -x/--dataset, run/experiment only). Accepts the remote schemes the
+  # harness fetches from — http(s)://, hf:// (HuggingFace), gs:// (GCS), s3:// (S3) — OR a
+  # bare workspace/cluster filesystem path. The safe charset matches the README's `-x DATASET`
+  # examples (e.g. a https://.../qwen_traceA_blksz_16.jsonl trace URL); the blanket
+  # metacharacter screen in app/security/allowlist.py already rejects `;|&$<>(){}[]*?` etc. as
+  # defense-in-depth, so no shell-dangerous token is expressible regardless. WHICH dataset (and
+  # dataset-vs-synthetic) is the agent's judgment in knowledge/dataset_replay.md, not data here.
+  dataset_url:
+    regex: "^(https?|hf|gs|s3)://[A-Za-z0-9._:/@~-]+$|^[A-Za-z0-9._/~-]+$"
+  # ---- run-config round-trip (Phase 42): -c/--config value ----
+  # The path to a run-config YAML that `run -c <path>` REPLAYS (upstream argparse dest
+  # `run_config`, "Path to run config YAML file (enables run-only mode)"). It is the file
+  # PREVIOUSLY emitted by `run --generate-config`, which writes it UNDER the session
+  # --workspace; so this is a plain, workspace-relative *.yaml/*.yml path. Pinned with NO `..`
+  # traversal (mirrors json_path/manifest_path/spec_workspace_path) so only a normal config
+  # file is expressible, never a directory-climbing escape; the blanket metacharacter screen in
+  # app/security/allowlist.py rejects shell-dangerous tokens as defense-in-depth. WHEN to
+  # generate-vs-replay-vs-author-in-workspace is the agent's judgment in
+  # knowledge/runconfig_roundtrip.md, not data here.
+  run_config_path: { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.ya?ml$" }
 
 executables:
 
@@ -187,6 +327,9 @@ executables:
           "--containers": {}
       get:
         mode: read_only
+        # `pods -o json` (already in the kubectl_resource enum) now ALSO feeds the Phase 59
+        # serving-readiness classifier (pod phase / Ready conditions / restartCount / age /
+        # role-by-port), alongside the Phase 24 endpoint check. No schema change here.
         positionals: [ { value: { ref: kubectl_resource } } ]
         flags:
           "-n": { takes_value: true, value: { ref: namespace } }
@@ -244,6 +387,74 @@ executables:
           "--namespace": { takes_value: true, value: { ref: namespace } }
           "--ignore-not-found": {}
           "--wait": {}
+
+  # ---- OpenShift CLI: the kubectl-equivalent (Phase 64) -----------------
+  # `oc` is OpenShift's drop-in for `kubectl`. On a detected OpenShift cluster the agent prefers
+  # `oc` for the SAME read-only probes/diagnostics it runs with kubectl. This entry is a
+  # READ-ONLY mirror of kubectl's read-only subcommands, referencing the SAME shared value
+  # constraints (kubectl_resource / output_format / namespace / label_selector) — so it is
+  # DATA-EQUIVALENT, with NO Python oc-vs-kubectl branching anywhere. The mutating kubectl
+  # surfaces (apply/delete) are DELIBERATELY NOT mirrored here: `oc` stays strictly read-only in
+  # this phase. Any provider-specific mutation (e.g. an `oc patch` toleration) is authored into
+  # the session workspace and applied via the existing approval-gated mutating path — the
+  # per-provider playbook (which CLI / which toleration / which known issue) lives in
+  # knowledge/infra_providers.yaml, never in Python.
+  oc:
+    subcommands:
+      config:
+        mode: read_only
+        positionals: [ { value: { enum: [current-context, view, get-contexts] } } ]
+        flags:
+          "-o": { takes_value: true, value: { ref: output_format } }
+          "--minify": {}
+      cluster-info: { mode: read_only }
+      version: { mode: read_only, flags: { "--output": { takes_value: true, value: { ref: output_format } }, "--client": {} } }
+      top:
+        mode: read_only
+        positionals: [ { value: { enum: [pod, pods, node, nodes] } } ]
+        flags:
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-A": {}
+          "--all-namespaces": {}
+          "-l": { takes_value: true, value: { ref: label_selector } }
+          "--selector": { takes_value: true, value: { ref: label_selector } }
+          "--no-headers": {}
+          "--sort-by": { takes_value: true, value: { enum: [cpu, memory] } }
+          "--containers": {}
+      get:
+        mode: read_only
+        positionals: [ { value: { ref: kubectl_resource } } ]
+        flags:
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-A": {}
+          "--all-namespaces": {}
+          "-o": { takes_value: true, value: { ref: output_format } }
+          "-l": { takes_value: true }
+          "--selector": { takes_value: true }
+          "--field-selector": { takes_value: true }
+          "--no-headers": {}
+          "-w": {}
+          "--watch": {}
+      logs:
+        mode: read_only
+        positionals: [ ]   # by label selector, not a positional pod name
+        flags:
+          "-n": { takes_value: true, value: { ref: namespace } }
+          "--namespace": { takes_value: true, value: { ref: namespace } }
+          "-l": { takes_value: true, value: { ref: label_selector } }
+          "--selector": { takes_value: true, value: { ref: label_selector } }
+          "-f": {}
+          "--follow": {}
+          "-p": {}
+          "--previous": {}
+          "-c": { takes_value: true, value: { ref: resource_name } }
+          "--container": { takes_value: true, value: { ref: resource_name } }
+          "--tail": { takes_value: true, value: { ref: positive_int } }
+          "--since": { takes_value: true, value: { ref: duration } }
+          "--timestamps": {}
+          "--all-containers": {}
 
   git:
     subcommands:
@@ -312,13 +523,165 @@ executables:
     positionals:
       - { value: { ref: json_path } }
 
+  # Cross-run aggregation (Phase 51): a vetted project script that surfaces the benchmark
+  # repo's OWN standalone docs/analysis/aggregate_runs.py against an EXISTING results dir to
+  # report run-to-run mean/std/min/max. It imports the repo's own module (never reimplements
+  # the math), READS the BR v0.2 reports under the results dir, and writes
+  # aggregated_summary.{txt,json} ONLY into a session-workspace output dir the calling tool
+  # supplies — the read-only repos and the results dir are never written. Read-only (it only
+  # reads results + writes a workspace summary, like capacity_check.py), so it auto-runs (no
+  # approval). `python_via` runs it with the benchmark venv's interpreter (the upstream module
+  # uses an optional `yaml`). The single argument is constrained to a workspace-confined .json
+  # request file (no '..'), so there is no arbitrary-code surface beyond this audited script and
+  # the read-only upstream module it imports — the calling tool (app/tools/aggregate_runs.py)
+  # confines the OUTPUT dir to the session workspace. The interactive notebook + the
+  # to_be_incorporated/ plot templates are deliberately NOT scripted here (pointer-only).
+  # WHEN to aggregate (>=2 repeats of the same benchmark) is JUDGMENT in knowledge/analysis.md.
+  aggregate_runs.py:
+    flat: true
+    mode: read_only
+    runner:
+      invoke: "project-script"
+      script: "scripts/aggregate_runs.py"
+      python_via: "repo:llm-d-benchmark/.venv"
+    positionals:
+      - { value: { ref: json_path } }
+
+  # Gated-model HF secret provisioner (Phase 30): a vetted project script that creates/
+  # updates the cluster's HuggingFace token Secret a GATED-model standup needs, exactly as
+  # llm-d/helpers/hf-token.md does (`kubectl create secret generic <name> --from-literal=
+  # HF_TOKEN=$HF_TOKEN --namespace <ns> --dry-run=client -o yaml | kubectl apply -f -`). It
+  # is MUTATING — it writes a Secret to the cluster — so it is approval-gated like any other
+  # cluster mutation; the agent proposes it and the user must Approve.
+  #
+  # TOKEN-NON-LEAK RATIONALE (mirrors the capacity_check.py block above): there is NO token
+  # flag here, and the kubectl `create secret` subcommand is deliberately NOT added to the
+  # `kubectl` entry. ToolContext._emit_command emits the FULL argv of every executed command
+  # into a `command` event (browser + log + persisted trail), so a `--from-literal=
+  # HF_TOKEN=<token>` argument would leak the secret. Instead the script reads HF_TOKEN from
+  # the (already-scrubbed) child env — the runner injects settings.extra_subprocess_env →
+  # HF_TOKEN — and runs kubectl over its OWN subprocess. The agent's allowlisted argv only
+  # ever carries `--namespace`/`--name`, never the token.
+  #
+  # WHEN to provision (only on a Phase 62 GATED+UNAUTHORIZED-with-no-token capacity verdict;
+  # never for a public model) is JUDGMENT and lives in knowledge/capacity.md — not here.
+  provision_hf_secret.py:
+    flat: true
+    mode: mutating
+    timeout_s: 120
+    runner:
+      invoke: "project-script"
+      script: "scripts/provision_hf_secret.py"
+    flags:
+      "--namespace": { takes_value: true, value: { ref: namespace } }
+      "-p":          { takes_value: true, value: { ref: namespace } }
+      "--name":      { takes_value: true, value: { ref: resource_name } }
+      "-h": {}
+      "--help": {}
+
+  # ---- model-load serving-readiness probe (Phase 59) --------------------
+  # A READ-ONLY, GET-only HTTP probe used by the endpoint-readiness gate to tell WHY a Running
+  # model-server pod is still NotReady: GET /v1/models is model-serving-ready (startup/readiness
+  # probe) while GET /health is only process-alive (liveness probe). It is DATA-only and
+  # TIGHTLY constrained — the verb is pinned to GET, and the single URL positional is pinned by
+  # `modelserver_probe_url` to an in-namespace `*.svc` host on port 8000/8200 at the path enum
+  # {/v1/models, /health}. No POST/PUT/etc., no other port/path/host is expressible. The probe
+  # runs `-s -S` (quiet, but still surface errors) `-i` (dump headers so the HTTP status line is
+  # readable) `-m <secs>` (a bounded deadline); we read only the HTTP status / a connection-refused
+  # outcome, never the body. `-o /dev/null` is additionally PERMITTED (constrained to /dev/null)
+  # for callers that prefer to discard the body, but is not required. The bare `curl` binary
+  # resolves via PATH (like docker/kubectl).
+  # The loading-vs-broken JUDGMENT lives in knowledge/readiness_probes.md — never in Python.
+  # We read the HTTP status from the response STATUS LINE (`-i` dumps headers: `HTTP/1.1 200 OK`
+  # / `HTTP/1.1 503 ...`) — `curl -w '%{http_code}'` is deliberately NOT used because the
+  # `{`/`}` it needs are rejected by the metacharacter screen (defense in depth). `-i` is
+  # brace-free and the status line is trivially parsed; a connection-refused outcome is a
+  # non-zero curl exit with no status line.
+  curl:
+    flat: true
+    mode: read_only
+    timeout_s: 10
+    flags:
+      "-X": { takes_value: true, value: { ref: http_get_verb } }
+      "--request": { takes_value: true, value: { ref: http_get_verb } }
+      "-s": {}
+      "--silent": {}
+      "-S": {}
+      "--show-error": {}
+      "-i": {}
+      "--include": {}
+      "-o": { takes_value: true, value: { regex: "^/dev/null$" } }
+      "-m": { takes_value: true, value: { ref: positive_int } }
+      "--max-time": { takes_value: true, value: { ref: positive_int } }
+    positionals:
+      - { value: { ref: modelserver_probe_url } }
+
+  # ---- stack discovery (Phase 56): the standalone llm-d-discover tool ----
+  # OPTIONAL richer ENVIRONMENT capture: given an OpenAI-compatible endpoint URL,
+  # `llm-d-discover <url> -f benchmark-report` traces the LIVE llm-d stack behind it and emits
+  # BR-v0.2 scenario.stack[] Component dicts (model/role/replicas/parallelism/accelerator). The
+  # agent feeds that into the report/scenario-capture path (app/tools/discover.py) for a richer
+  # picture than its own endpoint probing — but endpoint probing (probe_environment /
+  # check_endpoint_readiness) stays the UNCONDITIONAL default; this only adds detail.
+  #
+  # READ-ONLY by nature, so it AUTO-RUNS and never mutates the cluster: upstream connects with
+  # its OWN read-only Kubernetes RBAC and applies env-var REDACTION on the configs it reads
+  # (llm_d_stack_discovery), so a discovery trace only READS the live stack. We model it as a
+  # `read_only` flat executable, so no approval prompt is needed.
+  #
+  # The console script `llm-d-discover` (its setup.py console_scripts entry) lands in the
+  # benchmark venv when the user `pip install -e`s llm_d_stack_discovery (a self-contained
+  # subpackage with its OWN setup.py/requirements — install.sh does NOT install it). The
+  # `venv-bin` runner raises a clear "not set up yet" error if the binary is absent (same
+  # fail-loud rationale as capacity_check.py / the llmdbenchmark venv binary). WHEN to run
+  # discovery vs rely on endpoint probing is JUDGMENT in knowledge/stack_discovery.md, not here.
+  #
+  # The positional URL reuses the EXISTING endpoint_url constraint (the OpenAI endpoint URL,
+  # same as `run -U/--endpoint-url`). `-k/--kubeconfig` is a NON-SECRET kubeconfig FILE path
+  # (kubeconfig_path, no `..`), exactly as on llmdbenchmark; the secret cluster-by-URL+TOKEN
+  # route stays BACKEND-ONLY (never an argv token here, same as for llmdbenchmark). `-o/--output`
+  # writes the discovery JSON into the session workspace (output_dir). The metacharacter screen
+  # still rejects shell-dangerous tokens regardless.
+  llm-d-discover:
+    flat: true
+    mode: read_only
+    timeout_s: 120
+    runner: { invoke: "venv-bin", venv: "repo:llm-d-benchmark/.venv", bin: "llm-d-discover" }
+    flags:
+      "-f": { takes_value: true, value: { ref: discovery_output_format } }
+      "--output-format": { takes_value: true, value: { ref: discovery_output_format } }
+      "-o": { takes_value: true, value: { ref: output_dir } }
+      "--output": { takes_value: true, value: { ref: output_dir } }
+      "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+      "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
+      "-c": { takes_value: true, value: { ref: resource_name } }
+      "--context": { takes_value: true, value: { ref: resource_name } }
+      "--filter": { takes_value: true, value: { regex: "^[A-Za-z0-9._-]+$" } }
+      "-v": {}
+      "--verbose": {}
+    positionals:
+      - { value: { ref: endpoint_url } }
+
   # ---- the benchmark CLI (the primary target) ---------------------------
+  # CLUSTER ACCESS (Phase 29): each subcommand permits `-k`/`--kubeconfig <path>` to target a
+  # NON-DEFAULT kubeconfig FILE (a remote cluster), value-pinned by `kubeconfig_path` (a plain,
+  # non-secret path with no `..` traversal). build_argv emits `-k` AFTER the subcommand, so the
+  # flagspec lives on each subcommand (parallel to the Phase 28 `-m` model override). The cluster
+  # URL + bearer TOKEN route is DELIBERATELY NOT a flag anywhere here: the token is a SECRET and
+  # must never be an argv token. It travels ONLY as the backend-only, scrubbed child-env vars
+  # LLMDBENCH_CLUSTER_URL/LLMDBENCH_CLUSTER_TOKEN (forwarded by runner._build_env's LLMDBENCH_*
+  # passthrough) — ToolContext._emit_command emits only argv/text/mode, so the token never reaches
+  # the browser, a `command` event, or a log (same non-leak rationale as the HF token in
+  # provision_hf_secret.py). WHEN to target a remote cluster is JUDGMENT in knowledge/preconditions.md.
   llmdbenchmark:
     cwd_must_be: "repo:llm-d-benchmark"
     runner: { invoke: "venv-bin", venv: "repo:llm-d-benchmark/.venv", bin: "llmdbenchmark" }
     global_flags:
-      "--spec": { takes_value: true, value: { ref_catalog: specs } }
-      "--specification_file": { takes_value: true, value: { ref_catalog: specs } }
+      # --spec is EITHER a live-catalog name (e.g. cicd/kind) OR a workspace-authored
+      # *.spec.yaml (Phase 45) — the companion spec write_and_validate_config emits so an
+      # authored per-knob scenario can be GATEd through plan/--dry-run.
+      "--spec": { takes_value: true, value: { any_of: [ { ref_catalog: specs }, { ref: spec_workspace_path } ] } }
+      "--specification_file": { takes_value: true, value: { any_of: [ { ref_catalog: specs }, { ref: spec_workspace_path } ] } }
       "-v": {}
       "--verbose": {}
       "--version": { read_only_trigger: true }
@@ -331,6 +694,20 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 29: target a non-default kubeconfig FILE (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
+          # Phase 28: preview a model override; upstream spells it --models on plan, -m is the short form.
+          "-m": { takes_value: true, value: { ref: model_id } }
+          "--models": { takes_value: true, value: { ref: model_id } }
+          # Phase 27: preview the monitoring-enabled rendering (PodMonitor + EPP verbosity).
+          # plan uses store_true upstream, so only --monitoring exists here (no --no-monitoring).
+          "--monitoring": {}
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className.
+          # Upstream registers --gateway-class on ALL SIX subcommands; value-pinned to the
+          # gateway_class enum. It does NOT change the mode (plan stays read_only). WHICH provider
+          # is the agent's judgment (knowledge/gateway_class.md).
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       standup:
@@ -339,9 +716,56 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 29: target a non-default kubeconfig FILE (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "--skip-smoketest": {}
           "-t": { takes_value: true, value: { ref: methods } }
           "--methods": { takes_value: true, value: { ref: methods } }
+          # Phase 46 (kustomize deploy method): point `-t kustomize` at a LOCAL llm-d clone.
+          # `--llmd-repo-path` is a real standup argparse flag (the CLI fallback for the scenario
+          # block's kustomize.repoPath — llm-d-benchmark/docs/kustomize.md); without it upstream
+          # clones https://github.com/llm-d/llm-d.git into workspace/llm-d. Promoted here from an
+          # unconstrained unknown flag to a KNOWN, path-constrained one (no '..' traversal). It is
+          # standup-only upstream (NOT on plan), so it is not added under plan; the kustomize.*
+          # config BLOCK is authored as a scenario and GATED through plan/--dry-run separately.
+          "--llmd-repo-path": { takes_value: true, value: { ref: repo_path } }
+          # Phase 28: deploy/serve a model OVERRIDING the spec default. Upstream spells it
+          # --models on standup; -m is the short form. The capacity pre-flight must validate
+          # the SAME id (knowledge/model_override.md + knowledge/capacity.md).
+          "-m": { takes_value: true, value: { ref: model_id } }
+          "--models": { takes_value: true, value: { ref: model_id } }
+          # Phase 27: activate results.observability. standup uses BooleanOptionalAction
+          # upstream, so BOTH --monitoring (create PodMonitor/ServiceMonitor + EPP verbosity)
+          # and --no-monitoring (clean opt-out for CRD-less clusters) are real here.
+          "--monitoring": {}
+          "--no-monitoring": {}
+          # Phase 31: step selection / re-run a single failed step (or range) of the phase.
+          "-s": { takes_value: true, value: { ref: step_list } }
+          "--step": { takes_value: true, value: { ref: step_list } }
+          # Phase 33: multi-stack SUBSET (--stack NAME[,NAME...], standup/smoketest/run/teardown
+          # upstream) restricts a multi-stack scenario to specific pools; --parallel <int>
+          # (standup/smoketest/experiment upstream) caps how many stacks deploy in parallel
+          # (default 4). Both are value-pinned DATA — WHICH stack(s) / HOW MANY at once is the
+          # agent's judgment (knowledge/multi_stack.md).
+          "--stack": { takes_value: true, value: { ref: stack_list } }
+          "--parallel": { takes_value: true, value: { ref: positive_int } }
+          # Phase 38: the CLI's OWN per-phase standup deploy/bind timeouts (seconds, type=int
+          # upstream). Each is a DEEPER bound the CLI enforces on one deploy phase — it MUST
+          # stay BELOW this subcommand's runner `timeout_s` ceiling (3600 above) so the two
+          # timeout layers do not fight (the runner deadline still bounds the whole process).
+          # WHEN/WHAT-to-set judgment lives in knowledge/phase_timeouts.md. Value-pinned to a
+          # positive integer (reuses the existing positive_int constraint).
+          "--standalone-deploy-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--gateway-deploy-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--modelservice-deploy-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--kustomize-deploy-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--pvc-bind-timeout": { takes_value: true, value: { ref: positive_int } }
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className.
+          # Value-pinned to the gateway_class enum. It does NOT change the mode (standup stays
+          # mutating/approval-gated). Effective only on the modelservice deploy path upstream
+          # (ignored by kustomize/standalone/fma). Judgment: knowledge/gateway_class.md.
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       smoketest:
@@ -350,8 +774,22 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 29: target a non-default kubeconfig FILE (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "-t": { takes_value: true, value: { ref: methods } }
           "--methods": { takes_value: true, value: { ref: methods } }
+          # Phase 31: step selection / re-run a single failed step (or range) of the phase.
+          "-s": { takes_value: true, value: { ref: step_list } }
+          "--step": { takes_value: true, value: { ref: step_list } }
+          # Phase 33: multi-stack SUBSET (--stack) + per-pool parallelism CAP (--parallel).
+          # smoketest accepts both upstream. Value-pinned DATA; judgment in knowledge/multi_stack.md.
+          "--stack": { takes_value: true, value: { ref: stack_list } }
+          "--parallel": { takes_value: true, value: { ref: positive_int } }
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className.
+          # Value-pinned to the gateway_class enum. Mode unchanged (smoketest stays mutating).
+          # Judgment: knowledge/gateway_class.md.
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
       run:
@@ -364,6 +802,9 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 29: target a non-default kubeconfig FILE (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "-l": { takes_value: true, value: { ref_catalog: harnesses } }
           "--harness": { takes_value: true, value: { ref_catalog: harnesses } }
           "-w": { takes_value: true, value: { ref_catalog: workloads } }
@@ -372,11 +813,81 @@ executables:
           "--methods": { takes_value: true, value: { ref: methods } }
           "-U": { takes_value: true, value: { ref: endpoint_url } }
           "--endpoint-url": { takes_value: true, value: { ref: endpoint_url } }
-          "-r": { takes_value: true, value: { ref: output_dir } }
-          "--output": { takes_value: true, value: { ref: output_dir } }
+          # Phase 39: -r/--output is the results-sink DESTINATION KEYWORD. results_sink permits the
+          # LOCAL default (`local`/bare path) OR an OPT-IN `gs://`/`s3://` cloud bucket URI. This is
+          # the ONLY flagspec pointed at results_sink: --workspace/--ws/-e/--experiments below stay
+          # on output_dir (genuine filesystem paths, no cloud scheme). Default stays local — see
+          # knowledge/cloud_results_sink.md. The upload itself is the deferred Phase 47, not here.
+          "-r": { takes_value: true, value: { ref: results_sink } }
+          "--output": { takes_value: true, value: { ref: results_sink } }
+          # Phase 28: model override stored against the run plan. Upstream spells it --model
+          # (singular) on run; -m is the short form valid here too.
+          "-m": { takes_value: true, value: { ref: model_id } }
+          "--model": { takes_value: true, value: { ref: model_id } }
           # Sweep workload params (e.g. max-concurrency) across N runs against ONE standup.
           "-e": { takes_value: true, value: { ref: output_dir } }
           "--experiments": { takes_value: true, value: { ref: output_dir } }
+          # Phase 27: activate results.observability (vLLM /metrics scraping + pod log capture).
+          # run uses store_true upstream, so only --monitoring is real here (no --no-monitoring).
+          "--monitoring": {}
+          # Phase 31: step selection / re-run a single failed step (or range) of the phase.
+          "-s": { takes_value: true, value: { ref: step_list } }
+          "--step": { takes_value: true, value: { ref: step_list } }
+          # Phase 36: collect/analyze-only mode. -z/--skip SKIPS the load execution and only
+          # collects + analyzes data from the EXISTING results of a prior run in the workspace
+          # (upstream help: "Skip execution and only collect data from existing results"). It
+          # mutates nothing on the cluster, so it is a read-only trigger (auto-runs), exactly
+          # like --list-endpoints / --dry-run. Upstream defines -z/--skip on `run` ALONE.
+          "-z": { read_only_trigger: true }
+          "--skip": { read_only_trigger: true }
+          # Phase 37: harness DEBUG mode. -d/--debug starts the harness pods with `sleep infinity`
+          # instead of running the load (upstream LLMDBENCH_DEBUG) — for exec-ing into a stuck
+          # harness pod to debug it. Plain boolean flag (NO read_only_trigger): a debug launch
+          # still creates a REAL pod, so it STAYS mutating/approval-gated. run/experiment ONLY
+          # upstream; deliberately NOT added under teardown (there -d means --deep, a DESTRUCTIVE
+          # full-namespace wipe). The interactive in-pod exec is a MANUAL user step the agent never
+          # drives — there is NO kubectl/oc `exec` subcommand in this allowlist, so that boundary is
+          # structurally enforced; WHEN-to-debug judgment lives in knowledge/harness_debug.md.
+          "-d": {}
+          "--debug": {}
+          # Phase 40: activate the CLI's local matplotlib analysis (extra plot families written
+          # under analysis/{distributions,session,graphs}: per-request distributions,
+          # session-lifecycle, Prometheus time-series) IN ADDITION to the harness PNGs. A plain
+          # boolean flag — NO read_only_trigger, so a real `run` stays mutating/approval-gated.
+          # Run-only upstream; supplementary to the harness charts (the agent's own analyzer math
+          # is unchanged).
+          "--analyze": {}
+          # Phase 41: dataset-replay URL (run/experiment only upstream) — REPLAY a real dataset
+          # instead of the synthetic workload profile. Value constrained to dataset_url.
+          "-x": { takes_value: true, value: { ref: dataset_url } }
+          "--dataset": { takes_value: true, value: { ref: dataset_url } }
+          # Phase 33: multi-stack SUBSET (--stack NAME[,NAME...]) — benchmark a single pool of a
+          # multi-stack scenario WITHOUT re-deploying siblings (endpoint URL auto-resolves for the
+          # selected stack). `run` accepts --stack upstream but NOT --parallel — run uses the
+          # SEPARATE --parallelism/-j (parallel harness PODS) above; do NOT add --parallel here.
+          # Value-pinned DATA; WHICH stack is judgment in knowledge/multi_stack.md.
+          "--stack": { takes_value: true, value: { ref: stack_list } }
+          # Phase 38: the CLI's OWN per-phase wait / data-access timeouts (seconds, type=int
+          # upstream; run + experiment only). A DEEPER bound the CLI enforces internally — each
+          # MUST stay BELOW this subcommand's runner `timeout_s` ceiling (3600 above) so the two
+          # timeout layers do not fight. WHEN/WHAT judgment in knowledge/phase_timeouts.md.
+          "--wait-timeout": { takes_value: true, value: { ref: positive_int } }
+          "--data-access-timeout": { takes_value: true, value: { ref: positive_int } }
+          # Phase 42: run-config round-trip — both flags are upstream `run`-ONLY.
+          # --generate-config GENERATES a reusable run-config YAML from the current settings and
+          # EXITS (deploys nothing); it auto-runs like --list-endpoints/--dry-run, so it is a
+          # read_only_trigger. The generated config lands under the session --workspace.
+          "--generate-config": { read_only_trigger: true }
+          # -c/--config REPLAYS a previously generated run-config (run-only mode). A replay still
+          # executes the benchmark load against an existing stack, so it STAYS mutating (NOT a
+          # read_only_trigger) — approval-gated like a normal run. Value-pinned to a *.yaml/*.yml
+          # config path (no `..`). Round-trip: `run … --generate-config` then `run -c <path>`.
+          "-c": { takes_value: true, value: { ref: run_config_path } }
+          "--config": { takes_value: true, value: { ref: run_config_path } }
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className when
+          # the run phase re-renders templates. Value-pinned to the gateway_class enum. Mode
+          # unchanged (a real run stays mutating/approval-gated). Judgment: knowledge/gateway_class.md.
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "--list-endpoints": { read_only_trigger: true }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
@@ -386,16 +897,94 @@ executables:
         flags:
           "-p": { takes_value: true, value: { ref: namespace } }
           "--namespace": { takes_value: true, value: { ref: namespace } }
+          # Phase 29: target a non-default kubeconfig FILE (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "-t": { takes_value: true, value: { ref: methods } }
           "--methods": { takes_value: true, value: { ref: methods } }
+          # Phase 31: step selection / re-run a single failed step (or range) of the phase.
+          "-s": { takes_value: true, value: { ref: step_list } }
+          "--step": { takes_value: true, value: { ref: step_list } }
+          # Phase 33: multi-stack SUBSET (--stack NAME[,NAME...]) — tear down one pool of a
+          # multi-stack scenario while leaving siblings in place (when set, the per-namespace WVA
+          # controller is preserved; --deep overrides this). teardown accepts --stack but NOT
+          # --parallel upstream — do NOT add --parallel here. Value-pinned DATA; judgment in
+          # knowledge/multi_stack.md.
+          "--stack": { takes_value: true, value: { ref: stack_list } }
+          # Phase 38: the CLI's OWN teardown-drain timeout (seconds, type=int upstream) — how
+          # long to wait for the FMA launcher/requester pods to terminate before the Helm
+          # uninstall removes the controller. A DEEPER bound under this subcommand's runner
+          # `timeout_s` ceiling (900 above) so the two timeout layers do not fight. WHEN/WHAT
+          # judgment in knowledge/phase_timeouts.md.
+          "--fma-teardown-timeout": { takes_value: true, value: { ref: positive_int } }
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className
+          # (only meaningful if teardown re-renders templates). Value-pinned to the gateway_class
+          # enum. Mode unchanged (teardown stays mutating). Judgment: knowledge/gateway_class.md.
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }
+      # ---- Results Store (Phase 50): the OPTIONAL git-like, team-shared result store ----
+      # `llmdbenchmark results <store-command>` is a SEPARATE store from the agent's own local
+      # history (result_history / app/storage/history.py). It lets teams publish + pull runs via
+      # GCS remotes. The validator now recurses for a subcommand that declares its own
+      # `subcommands:` (PURE MECHANISM, additive), so each store-command is modeled here with its
+      # OWN mode + positionals — exactly mirroring the upstream argparse sub-subparsers
+      # (interface/results.py). init/status/ls/remote-ls are READ-ONLY (auto-run); add/rm/push/
+      # pull/remote-add/remote-rm are MUTATING (approval-gated) — that satisfies the spec's
+      # "push/pull are approval-gated" requirement. `--spec` is still emitted globally before
+      # `results` (cli.py errors without it even for the store), but no namespace/harness/model is
+      # accepted here. WHEN to reach for this store vs the local one is judgment in
+      # knowledge/history.md, not data here.
       results:
-        mode: read_only
-        timeout_s: 300
-        flags:
-          "-r": { takes_value: true, value: { ref: output_dir } }
-          "--output": { takes_value: true, value: { ref: output_dir } }
+        mode: read_only          # conservative top-level mode; the leaf store-command's mode wins
+        timeout_s: 600           # GCS push/pull a run's artifacts — may be slower than a local op
+        subcommands:
+          init:
+            mode: read_only       # creates a local .result_store/ dir only — no remote mutation
+          status:
+            mode: read_only       # lists local staged/untracked runs — read-only
+          ls:                     # `results ls <remote> [-m model] [-w hardware]` — list a remote
+            mode: read_only
+            positionals: [ { value: { ref: remote_name } } ]   # remote alias (prod/staging/…)
+            flags:
+              "-m": { takes_value: true, value: { ref: model_id } }
+              "--model": { takes_value: true, value: { ref: model_id } }
+              "-w": { takes_value: true, value: { ref: resource_name } }
+              "--hardware": { takes_value: true, value: { ref: resource_name } }
+          remote:                 # `results remote {add NAME URI | rm NAME | ls}`
+            mode: read_only
+            subcommands:
+              add:                # add a remote: a MUTATING config change to the local store
+                mode: mutating
+                positionals:
+                  - { value: { ref: remote_name } }   # alias, e.g. prod
+                  - { value: { ref: remote_uri } }    # gs://bucket/prefix (GCS-only)
+              rm:                 # remove a remote — mutating config change
+                mode: mutating
+                positionals: [ { value: { ref: remote_name } } ]
+              ls:                 # list remotes — read-only
+                mode: read_only
+          add:                    # `results add <paths...>` — STAGE runs (mutating local state)
+            mode: mutating
+            # 1+ local dir paths / run-uids (argparse nargs='+'): one required, the rest variadic.
+            positionals: [ { value: { ref: store_paths }, repeated: true } ]
+          rm:                     # `results rm <paths...>` — UNSTAGE runs (mutating local state)
+            mode: mutating
+            positionals: [ { value: { ref: store_paths }, repeated: true } ]
+          push:                   # `results push [remote] [path] [-g group]` — UPLOAD to a remote
+            mode: mutating        # publishes to GCS — APPROVAL-GATED (spec requirement)
+            positionals:
+              - { value: { ref: remote_name }, optional: true }   # remote (default staging)
+              - { value: { ref: store_paths }, optional: true }   # optional ad-hoc local dir
+            flags:
+              "-g": { takes_value: true, value: { ref: remote_name } }
+              "--group": { takes_value: true, value: { ref: remote_name } }
+          pull:                   # `results pull <remote...> --run-uid <uid>` — DOWNLOAD a run
+            mode: mutating        # writes a workspace dir from GCS — APPROVAL-GATED (spec)
+            # remote(s): argparse nargs='*' (default prod) → zero-or-more.
+            positionals: [ { value: { ref: remote_name }, repeated: true, optional: true } ]
+            flags:
+              "--run-uid": { takes_value: true, value: { ref: run_uid } }
       # DoE sweep: standup+run+teardown for each treatment in the experiments YAML.
       # Mutating (it deploys); --dry-run/-n previews it. Cloud output stores (gs://, s3://)
       # are deliberately NOT permitted here — results go to a local dir for the MVP.
@@ -407,6 +996,10 @@ executables:
           "--experiments": { takes_value: true, value: { ref: output_dir } }
           "-p": { takes_value: true, value: { ref: namespaces } }
           "--namespace": { takes_value: true, value: { ref: namespaces } }
+          # Phase 29: target a non-default kubeconfig FILE for every per-treatment standup/run/
+          # teardown in the sweep (a remote cluster). Non-secret path.
+          "-k": { takes_value: true, value: { ref: kubeconfig_path } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
           "-l": { takes_value: true, value: { ref_catalog: harnesses } }
           "--harness": { takes_value: true, value: { ref_catalog: harnesses } }
           "-w": { takes_value: true, value: { ref_catalog: workloads } }
@@ -415,14 +1008,41 @@ executables:
           "--methods": { takes_value: true, value: { ref: methods } }
           "-r": { takes_value: true, value: { ref: output_dir } }
           "--output": { takes_value: true, value: { ref: output_dir } }
+          # Phase 28: a default model override across the sweep's per-treatment standups.
+          # Upstream spells it --models on experiment; -m is the short form.
+          "-m": { takes_value: true, value: { ref: model_id } }
+          "--models": { takes_value: true, value: { ref: model_id } }
           "-o": { takes_value: true, value: { ref: overrides } }
           "--overrides": { takes_value: true, value: { ref: overrides } }
           "-j": { takes_value: true, value: { ref: positive_int } }
           "--parallelism": { takes_value: true, value: { ref: positive_int } }
           "--parallel": { takes_value: true, value: { ref: positive_int } }
+          # Phase 38: the CLI's OWN per-phase wait / data-access timeouts (seconds, type=int
+          # upstream) — a DEEPER bound under this subcommand's runner `timeout_s` ceiling
+          # (14400 above) so the two timeout layers do not fight. WHEN/WHAT judgment in
+          # knowledge/phase_timeouts.md. (Already present before Phase 38; tagged for parity.)
           "--wait-timeout": { takes_value: true, value: { ref: positive_int } }
           "--data-access-timeout": { takes_value: true, value: { ref: positive_int } }
           "--stop-on-error": {}
           "--skip-teardown": {}
+          # Phase 27: activate results.observability (PodMonitor + vLLM /metrics scraping per
+          # treatment). experiment uses store_true upstream, so only --monitoring is real here.
+          "--monitoring": {}
+          # Phase 41: dataset-replay URL (run/experiment only upstream) — REPLAY a real dataset
+          # instead of the synthetic workload profile. Value constrained to dataset_url.
+          "-x": { takes_value: true, value: { ref: dataset_url } }
+          "--dataset": { takes_value: true, value: { ref: dataset_url } }
+          # Phase 32: select the gateway PROVIDER, OVERRIDING the scenario's gateway.className
+          # across the sweep's per-treatment standups. Value-pinned to the gateway_class enum.
+          # Mode unchanged (experiment stays mutating). Judgment: knowledge/gateway_class.md.
+          "--gateway-class": { takes_value: true, value: { ref: gateway_class } }
+          # Phase 37: harness DEBUG mode (run/experiment ONLY upstream). -d/--debug starts the
+          # harness pods with `sleep infinity` instead of running the load. Plain boolean flag (NO
+          # read_only_trigger): a debug launch still creates a REAL pod, so it STAYS mutating/
+          # approval-gated. Deliberately NOT under teardown (there -d means --deep, destructive).
+          # The interactive in-pod exec is a MANUAL user step (no kubectl/oc `exec` is allowlisted);
+          # WHEN-to-debug judgment lives in knowledge/harness_debug.md.
+          "-d": {}
+          "--debug": {}
           "-n": { read_only_trigger: true }
           "--dry-run": { read_only_trigger: true }

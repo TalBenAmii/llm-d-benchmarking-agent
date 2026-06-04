@@ -95,6 +95,10 @@ async def analyze_results(
         # This makes them visible for a SINGLE run too (no sweep -> no Pareto block).
         if summary.get("standard_metrics"):
             run_item["standard_metrics"] = summary["standard_metrics"]
+        # Session-level metrics (multi-turn inference-perf): surfaced per run when the report
+        # carried results.session_performance — None/omitted for single-turn, never fabricated.
+        if summary.get("session_performance"):
+            run_item["session_performance"] = summary["session_performance"]
         if slo_targets is not None:
             run_item["slo"] = evaluate_slo(summary, slo_targets)
         runs.append(run_item)

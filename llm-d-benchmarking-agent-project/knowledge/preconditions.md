@@ -56,3 +56,120 @@ ready it includes a `standup_suggestion`.
   stand up is yours and the user's; the readiness check is only the mechanism.
 `orchestrate_benchmark_run` applies this same gate automatically before submitting a Job
 (see knowledge/orchestrator.md).
+
+## Targeting a remote cluster (-k / kubeconfig, URL, token)
+By default every `llmdbenchmark` command runs against your **ambient kube context** — for the
+quickstart that is the local Kind cluster `probe_environment` already sees. You only need to
+target a **different** cluster when the user explicitly points you at a remote one (e.g. "run
+this on our GKE/OpenShift staging cluster", "use this kubeconfig", "here's an API URL + token").
+WHEN to do this is the user's call — never reach for a remote cluster on your own.
+
+There are two ways to target a non-ambient cluster, both threaded through `execute_llmdbenchmark`:
+
+1. **A non-default kubeconfig FILE** — the simplest and preferred lever. Pass the top-level
+   `kubeconfig="<path>"` argument; it is emitted as the CLI's `-k/--kubeconfig <path>` (upstream
+   `LLMDBENCH_KUBECONFIG`) and is valid on every subcommand. The path is a **non-secret** file
+   path (allowlist-pinned, no `..` traversal); it appears normally in the command trail. Use this
+   whenever the user already has a kubeconfig for the target cluster — it also carries the right
+   context, CA, and auth in one file.
+2. **An API-server URL + bearer TOKEN** — when there is no kubeconfig file, pass
+   `flags={"cluster_url": "https://api.cluster:6443", "cluster_token": "<token>"}`. These are
+   carried **backend-only** as the `LLMDBENCH_CLUSTER_URL` / `LLMDBENCH_CLUSTER_TOKEN` child-env
+   vars; the benchmark CLI's `kube_connect` uses them as the API host + `Bearer` token.
+
+**The token is a SECRET. Treat it exactly like an HF token:**
+- It is **never** a CLI flag and **never** an argv token, so it can never appear in a `command`
+  event, the executed-command trail, a log line, or anything the browser sees. It rides only the
+  scrubbed backend child env.
+- **Never echo the token back to the user**, never put it in a plan summary, and never read it
+  into any other tool's arguments. If the user pastes a token in chat, use it via
+  `flags.cluster_token` and do not repeat it.
+- The cluster **URL** is not secret (you may name it); only the token is.
+
+Whichever lever you use, the cluster you target is still subject to all the usual gates — run
+`probe_environment` / `check_endpoint_readiness` against it first, and keep the same
+"don't redeploy a healthy stack" and approval-before-mutation rules below. Prefer `kubeconfig`
+when a file exists; use URL+token only when that's all the user has.
+
+## Infra precondition gate (before a real-cluster standup)
+Before committing to a **long real-cluster standup** — especially a sidecar-based prefill/decode
+(P/D) guide — run `probe_environment` with `checks=["cluster_preconditions"]` and the planned
+`spec` (e.g. `spec="cicd/kind"`). This is a read-only go/no-go you give the user UP FRONT,
+instead of letting them watch an opaque `Init:0/1` stall eat minutes into the standup before it
+fails.
+
+The check returns FACTS only:
+- `cluster_preconditions.server_version` — the cluster's **Kubernetes server** `major.minor`
+  (from `kubectl version --output json`; a trailing `+` like GKE's `"29+"` is stripped). `null`
+  when there's no reachable cluster yet or kubectl returned client-only output.
+- `cluster_preconditions.image_tags` — the spec's pinned image tags parsed from its scenario
+  YAML (`{name, repository, tag, path}` for each, e.g. `images.vllm` → `v0.8.2`).
+
+The check makes **no verdict** — that judgment lives in
+`read_knowledge("infrastructure_preconditions")`. Load it and reason over its thresholds:
+- **K8s 1.27 (≤ 1.28):** the sidecar P/D guide won't init (stuck in `Init:0/1`) — tell the user
+  to **upgrade to 1.33+** or **pick a non-sidecar path** (e.g. `cicd/kind` / optimized-baseline).
+- **K8s 1.29 (1.29–1.32):** runs (clears the 1.29 minimum), but **1.33+ is recommended** for
+  full sidecar init-container support — green for non-sidecar paths, "should work, recommend
+  1.33+" for sidecar P/D.
+- **K8s 1.33+:** green.
+- Flag any **below-minimum** image tags (vLLM 0.10.0 / NIXL 0.5.0 / UCX 0.19.0 / NVSHMEM 3.3.9).
+
+This gate is **advisory for the Kind / CPU-sim MVP** — a freshly created Kind cluster runs a
+modern Kubernetes, and the quickstart path uses the inference-**sim** image (not real vLLM), so
+the vLLM/NIXL minimums don't apply to it. It **matters on a real cluster** the user points us at.
+
+## Accelerator / CPU-inferencing preconditions ("can my hardware run this?")
+Before a standup, decide whether the cluster's hardware can actually serve the model. Call
+`advise_accelerators` — a read-only tool that reads each node's ADVERTISED resources
+(`kubectl get nodes -o json`) and tells you which extended-resource key a node advertises
+(`nvidia.com/gpu`, or the `amd.com/gpu` / `habana.ai/gaudi` / `google.com/tpu` / Intel XPU
+`gpu.intel.com/{i915,xe}` siblings) **vs CPU-only**, plus each node's allocatable/capacity
+cpu + memory. It returns facts only (`any_accelerator`, `cpu_only`, `advertised_resources`,
+per-node `accelerators`/`cpu`/`memory`) — then call `read_knowledge('accelerators')` to turn
+them into a verdict:
+- **GPU-advertised** → name the vendor/resource; for NVIDIA, the node driver must satisfy the
+  CUDA 12.9.1 minimum (`>= 525.60.13`, `< 580`; `575.x` recommended) for today's images
+  (CUDA 13.0.2 will require `580.65.06`); exposure is via a Device Plugin **or** a DRA driver.
+- **CPU-only for a REAL deployment** → a real (non-sim) replica needs **64 cores + 64GB RAM
+  each**; check the node's allocatable cpu/memory against that floor and pair the warning with
+  `check_capacity`'s GPU-memory sizing.
+- **Kind / CPU-sim (`cicd/kind`)** → supported and **exempt** from the 64c/64GB floor (it runs
+  llm-d-inference-sim, not a real CPU engine); a small Kind node is fine.
+
+This **complements** `check_capacity` (which sizes weights + KV cache against GPU memory): one
+asks "does a node ADVERTISE the accelerator / meet the CPU floor?", the other "will the model
+FIT in that accelerator's memory?". The feasibility judgment lives in
+knowledge/accelerators.yaml — never in Python.
+
+## Provider-aware precondition pack (oc-vs-kubectl, GPU taints, known issues)
+On a real cluster the agent must adapt to the **cloud provider** so its commands work and it can
+unstick the common `Pending` / `PROGRAMMED=False` failures. Run `probe_environment` with
+`checks=["provider_detection"]` to get the FACTS:
+- `provider_detection.provider` — the detected provider (`openshift` / `gke` / `doks` / `aks` /
+  `minikube` vs `kind`), inferred from node **labels** (e.g. `cloud.google.com/*` → gke,
+  `doks.digitalocean.com/*` → doks, `node.openshift.io/*` → openshift). `kind` when no node
+  carries a cloud-provider label (the local quickstart).
+- `provider_detection.providers_seen` — every provider hint seen across nodes (mixed/migrating).
+- `provider_detection.gpu_taints` — per-node `{node, key, value, effect}` for each taint whose
+  key names a GPU; **these are what leave model-server pods `Pending`** until you author a
+  matching toleration.
+
+The probe makes **no decision** — that judgment lives in
+`read_knowledge("infra_providers")`. Load it and reason over its tables:
+- **OpenShift** → prefer **`oc`** (not `kubectl`) for read-only diagnostics (the `oc` allowlist
+  entry mirrors kubectl's read-only subcommands); BEFORE standup confirm **no ServiceMesh(OSSM)/
+  Istio** install conflicts with the gateway; if a `gpu_taint` leaves pods `Pending`, author the
+  matching `nvidia.com/gpu` toleration (Equal+value when the taint is value-bearing — e.g.
+  `NVIDIA-L40S-PRIVATE` — else Exists).
+- **DOKS / GKE / AKS** → keep `kubectl`; if a `gpu_taint` leaves pods `Pending`, author the
+  `nvidia.com/gpu` Exists toleration; surface the provider's known issues — **GKE**: Google
+  Managed Prometheus (GMP) is the metrics path, the **"Undetected platform"** vLLM 0.10.0 fix,
+  and the **NVSHMEM** DeepEP caveats; **DOKS**: LoadBalancer-`<pending>`; **AKS**: NRI
+  locked-memory + `nvidia-peermem`.
+
+Any toleration/patch is **advice the user approves** — author it **into the session workspace**
+(prefer the Phase 45 scenario-override path so it is validated via plan/`--dry-run`) and apply it
+only as an **approval-gated mutating step**; the sibling repos stay read-only. Every which-CLI /
+which-toleration / which-known-issue decision is sourced from knowledge/infra_providers.yaml,
+**never** a Python `if/elif`.

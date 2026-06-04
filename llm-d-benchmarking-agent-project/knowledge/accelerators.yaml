@@ -1,0 +1,140 @@
+# Accelerator + CPU-inferencing precondition advisor — "can my hardware actually run this?"
+#
+# PURE DATA the LLM reasons over to turn advise_accelerators' node-advertised facts (which
+# extended resource a node advertises — nvidia.com/gpu / amd / gaudi / tpu / xpu — vs CPU-only,
+# plus per-node cpu/memory) into a can-my-hardware-run-this verdict BEFORE a ~10-min standup.
+# It complements check_capacity (knowledge/capacity.md), which sizes model weights + KV cache
+# against GPU memory: advise_accelerators answers "does a node even ADVERTISE the accelerator,
+# and if it's CPU-only does it meet the CPU-inferencing floor?".
+#
+# NO feasibility logic lives in Python — every threshold/judgment below is the agent's to apply.
+# Transcribed from upstream llm-d/docs/accelerators/README.md (read it live with
+# read_repo_doc path='llm-d/docs/accelerators/README.md' if you need the source of truth).
+
+source: "llm-d/docs/accelerators/README.md"
+
+# ---------------------------------------------------------------------------
+# (1) CUDA runtime + NVIDIA driver minimums.
+# CUDA 12.x and 13.x have NON-OVERLAPPING driver compatibility ranges — a given driver supports
+# ONE major CUDA family, not both. llm-d images currently ship CUDA 12.9.1; a future release
+# moves to CUDA 13.0.2. advise_accelerators reports the advertised nvidia.com/gpu resource but
+# does NOT read the node's driver version; tell the user to check `nvidia-smi` against this table.
+cuda_driver:
+  current:
+    cuda_version: "12.9.1"
+    status: "current (llm-d images ship this today)"
+    min_driver: "525.60.13"
+    max_driver: "< 580"          # strictly below 580 — 580+ is the CUDA 13.x range
+    recommended_driver: "575.x"  # latest features/fixes within the CUDA 12.x driver range
+  planned:
+    cuda_version: "13.0.2"
+    status: "planned (a future llm-d release)"
+    min_driver: "580.65.06"
+    max_driver: null
+  note: >-
+    CUDA 12.x and 13.x driver ranges do NOT overlap. For today's CUDA 12.9.1 images the driver
+    must be >= 525.60.13 and < 580 (575.x recommended). Plan to upgrade node drivers to 580+
+    BEFORE llm-d moves to CUDA 13.0.2 (min driver then becomes 580.65.06). Full matrix:
+    https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html
+
+# ---------------------------------------------------------------------------
+# (2) Accelerator extended-resource keys, per vendor. advise_accelerators detects which of
+# these a node advertises under status.capacity / status.allocatable. NVIDIA is the DEFAULT for
+# all llm-d guides; any NVIDIA GPU is supported (capabilities set by the inference image). Use
+# this map to NAME the advertised resource and point the user at the right well-lit path.
+accelerator_resources:
+  - vendor: "NVIDIA"
+    model_family: "GPU (CUDA)"
+    resource_key: "nvidia.com/gpu"
+    default: true
+    note: "Default accelerator for all llm-d guides. No special cluster config beyond the device plugin or DRA driver."
+  - vendor: "AMD"
+    model_family: "ROCm"
+    resource_key: "amd.com/gpu"
+    note: "Supported models depend on the inference container image."
+  - vendor: "Intel"
+    model_family: "Gaudi (HPU)"
+    resource_key: "habana.ai/gaudi"
+    note: "Gaudi 1/2/3 via DRA; needs the Intel Resource Drivers for Kubernetes installed."
+  - vendor: "Google"
+    model_family: "TPU"
+    resource_key: "google.com/tpu"
+    note: "TPU v6e/v7 on GKE; see the GKE infra-providers docs for cluster setup."
+  - vendor: "Intel"
+    model_family: "XPU (Data Center GPU Max / BMG)"
+    resource_keys: ["gpu.intel.com/i915", "gpu.intel.com/xe"]
+    note: >-
+      XPU uses DRA with a unified accelerator type that auto-selects the i915 vs xe driver.
+      The exact advertised key depends on the Intel resource driver / device plugin in use.
+
+# ---------------------------------------------------------------------------
+# (3) Device-Plugin vs DRA: the two Kubernetes mechanisms that expose accelerator devices to
+# containers. Clusters TYPICALLY use one OR the other (both at once needs special, undocumented
+# config). This is WHY a node may have GPUs physically yet advertise no nvidia.com/gpu resource:
+# neither mechanism is installed. advise_accelerators reports the advertised resource (the
+# observable effect of one mechanism being present); the DRA-vs-device-plugin choice is judgment.
+resource_management:
+  mechanisms:
+    - name: "Device Plugins"
+      summary: >-
+        Per-vendor device plugin advertises the extended resource (e.g. nvidia.com/gpu) on the
+        node. The mature, widely-used path. The plugin existing is what makes the resource show
+        up in status.capacity/allocatable.
+      vendor_plugins:
+        nvidia: "https://github.com/NVIDIA/k8s-device-plugin"
+        amd: "https://github.com/ROCm/k8s-device-plugin"
+        intel_xpu: "https://github.com/intel/intel-device-plugins-for-kubernetes/blob/main/cmd/gpu_plugin.md"
+        intel_gaudi: "https://docs.habana.ai/en/latest/Installation_Guide/Additional_Installation/Kubernetes_Installation/Intel_Gaudi_Kubernetes_Device_Plugin.html"
+        google_tpu: "automatically enabled for TPU instances"
+        rebellions_npu: "https://docs.rbln.ai/latest/software/system_management/kubernetes/about_npu_operator.html"
+    - name: "Dynamic Resource Allocation (DRA)"
+      summary: >-
+        Newer Kubernetes mechanism; some clusters expose accelerators via DRA resource drivers
+        instead of device plugins (Intel XPU and Gaudi use DRA). Being newer, DRA may require
+        specific feature gates — consult your vendor + cluster-provider docs.
+      vendor_drivers:
+        nvidia: "https://github.com/NVIDIA/k8s-dra-driver-gpu"
+        amd: "https://github.com/ROCm/k8s-gpu-dra-driver"
+        intel: "https://github.com/intel/intel-resource-drivers-for-kubernetes"
+        google_gke: "https://docs.cloud.google.com/kubernetes-engine/docs/how-to/set-up-dra"
+  distinction: >-
+    Clusters typically use ONE mechanism, not both. If a node has accelerators but advertises no
+    extended resource, the most likely cause is that neither the device plugin NOR a DRA driver
+    is installed/working — that is a cluster-prep step, not a hardware limit. DRA is the newer
+    path and may need feature gates enabled.
+
+# ---------------------------------------------------------------------------
+# (4) CPU-only inferencing floor. When a node advertises NO accelerator extended resource it is
+# CPU-only. llm-d supports CPU-only inference, but a REAL (non-sim) replica is expensive:
+cpu_inferencing:
+  supported: true
+  cpu_cores_per_replica_min: 64
+  memory_gb_per_replica_min: 64
+  processor_requirement: "4th Gen Intel Xeon (Sapphire Rapids) or later, or equivalent AMD"
+  note: >-
+    A REAL CPU-only replica needs a MINIMUM of 64 CPU cores AND 64GB RAM. Compare this against
+    advise_accelerators' per-node status.allocatable cpu/memory: if the (CPU-only) node's
+    allocatable cpu < 64 cores or memory < 64Gi, a real replica will NOT schedule — warn the
+    user and pair it with check_capacity's GPU-memory sizing verdict.
+
+# ---------------------------------------------------------------------------
+# (5) The Kind / CPU SIM path is supported and EXEMPT from the 64c/64GB floor — this is the MVP
+# quickstart (cicd/kind) which runs llm-d-inference-sim, NOT a real CPU inference engine. It
+# serves synthetic responses, so it does not need 64 cores / 64GB. Do NOT block a sim standup on
+# a small Kind node for failing the CPU-inferencing floor; that floor is for REAL CPU inference.
+kind_cpu_sim:
+  path: "cicd/kind"
+  engine: "llm-d-inference-sim (simulated, CPU)"
+  floor_exempt: true
+  note: >-
+    The Kind/CPU-sim quickstart is fully supported and is NOT subject to the 64c/64GB real-CPU
+    floor — it simulates inference and serves synthetic responses. A small single-node Kind
+    cluster is the expected, supported environment for this path.
+
+# ---------------------------------------------------------------------------
+# How to apply this (the agent's judgment — NOT Python branches):
+verdict_guidance:
+  - "GPU-advertised node (advise_accelerators reports a known resource_key, e.g. nvidia.com/gpu): name the vendor/resource. For NVIDIA, remind the user the driver must satisfy cuda_driver.current (>= 525.60.13, < 580; 575.x recommended) for today's CUDA 12.9.1 images, and that exposure is via a device plugin OR a DRA driver. Then defer the does-it-FIT sizing to check_capacity (knowledge/capacity.md)."
+  - "CPU-only node for a REAL deployment (no accelerator resource advertised, NOT the sim path): warn that a real replica needs 64 cores + 64GB RAM each; check the node's allocatable cpu/memory against that floor and pair the warning with check_capacity's GPU-memory sizing."
+  - "Kind / CPU SIM (cicd/kind): confirm the path is supported and floor-exempt — do NOT apply the 64c/64GB requirement; a small Kind node is fine."
+  - "Node has hardware but advertises no resource: most likely no device plugin / DRA driver is installed — a cluster-prep step (resource_management), not a hardware limit."

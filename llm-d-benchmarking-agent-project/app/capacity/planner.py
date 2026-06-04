@@ -60,6 +60,13 @@ class CapacityVerdict:
     warnings: list[str] = field(default_factory=list)   # WARNING:-tagged lines
     info: list[str] = field(default_factory=list)       # everything else (sizing facts)
     diagnostics: list[str] = field(default_factory=list)  # the raw list, verbatim
+    # Gated-model access pre-flight (Phase 62) — facts from the repo's OWN gating check.
+    # gated: any served model is gated. authorized: True if your token can pull every gated
+    # model, False if any cannot, None when gating is N/A or unknown. gated_reason: the
+    # upstream detail text (never the token). All None/"" when no gating check ran.
+    gated: bool | None = None
+    authorized: bool | None = None
+    gated_reason: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -69,6 +76,9 @@ class CapacityVerdict:
             "warnings": self.warnings,
             "info": self.info,
             "diagnostics": self.diagnostics,
+            "gated": self.gated,
+            "authorized": self.authorized,
+            "gated_reason": self.gated_reason,
         }
 
 
@@ -104,6 +114,25 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
         info=info,
         diagnostics=diags,
     )
+
+
+def merge_gated_access(
+    verdict: CapacityVerdict, gated_access: dict[str, Any] | None
+) -> CapacityVerdict:
+    """Copy the bridge's ``gated_access`` block onto the verdict — facts only, no policy.
+
+    A pure field copy of the repo gating check's output (gated / authorized / reason).
+    There is NO if/elif decision here: what to *say* for PUBLIC vs GATED+AUTHORIZED vs
+    GATED+UNAUTHORIZED (and whether to offer Phase 30 secret-provisioning) is the agent's
+    judgment, read from ``knowledge/capacity.md``. A ``None`` block (no model id, or no
+    bridge gating field) leaves the defaulted None/"" fields unchanged.
+    """
+    if not isinstance(gated_access, dict):
+        return verdict
+    verdict.gated = gated_access.get("gated")
+    verdict.authorized = gated_access.get("authorized")
+    verdict.gated_reason = str(gated_access.get("reason", ""))
+    return verdict
 
 
 def resolve_scenario_file(bench_repo: Path, spec: str) -> Path:
