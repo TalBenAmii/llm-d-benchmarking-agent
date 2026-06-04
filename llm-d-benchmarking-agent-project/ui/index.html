@@ -71,8 +71,10 @@
       </div>
     </div>
     <div class="header-actions">
+      <button id="builder-toggle" type="button" class="builder-btn" title="Design a benchmark — guided builder (⌘/Ctrl+J)" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span> Design</button>
       <div id="token-total" class="token-chip" title="Total tokens used this session (input + output + cached)" hidden>Σ 0 tokens</div>
       <button id="debug-toggle" type="button" class="icon-btn" title="Toggle debug view — show only the commands the agent executed" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
+      <button id="glossary-toggle" type="button" class="icon-btn" title="Glossary — what the metrics mean" aria-label="Open the metrics glossary">📖</button>
       <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
       <button id="help-toggle" type="button" class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
       <div id="status" class="status" title="connection status">connecting…</div>
@@ -131,11 +133,101 @@
     </div>
     <dl class="shortcuts-list">
       <dt><kbd>⌘</kbd><kbd>Ctrl</kbd><kbd>K</kbd></dt><dd>Focus the message box</dd>
+      <dt><kbd>⌘</kbd><kbd>Ctrl</kbd><kbd>J</kbd></dt><dd>Open the benchmark builder</dd>
       <dt><kbd>Enter</kbd></dt><dd>Send message <span class="muted">(<kbd>Shift</kbd><kbd>Enter</kbd> = newline)</span></dd>
       <dt><kbd>⌘</kbd><kbd>Ctrl</kbd><kbd>B</kbd></dt><dd>Hide / show the chat sidebar</dd>
       <dt><kbd>?</kbd></dt><dd>Show this help</dd>
       <dt><kbd>Esc</kbd></dt><dd>Close this dialog</dd>
     </dl>
+  </dialog>
+
+  <!-- Guided benchmark builder: a non-expert answers a few friendly prompts (use case, scale,
+       token shape, SLO targets, hardware); the form composes a plain-language brief and sends it
+       as an ordinary chat message. ALL mapping (scenario/harness/workload, flags) stays with the
+       agent — this is a structured way to *say* the request, never a place that decides it. -->
+  <dialog id="builder" class="builder">
+    <div class="builder-head">
+      <span><span aria-hidden="true">✨</span> Design a benchmark</span>
+      <button id="builder-close" class="icon-btn icon-btn-sm" type="button" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="builder-intro">Answer what you know — leave the rest. I'll turn this into a request and
+      recommend the right scenario, harness, and workload for you. You can edit the message before sending.</p>
+    <div class="builder-body">
+      <fieldset class="builder-field">
+        <legend>What are you serving?</legend>
+        <div class="chip-group" data-field="usecase" role="group" aria-label="Use case">
+          <button type="button" class="bchip" data-value="a chat assistant">Chat assistant</button>
+          <button type="button" class="bchip" data-value="long-context RAG / document Q&amp;A">Long-context RAG</button>
+          <button type="button" class="bchip" data-value="code completion">Code completion</button>
+          <button type="button" class="bchip" data-value="batch summarization">Batch summarization</button>
+          <button type="button" class="bchip" data-value="an agentic / tool-calling pipeline">Agentic pipeline</button>
+        </div>
+      </fieldset>
+      <fieldset class="builder-field">
+        <legend>How much load?</legend>
+        <div class="chip-group" data-field="scale" role="group" aria-label="Concurrency">
+          <button type="button" class="bchip" data-value="light load (around 10 concurrent users)">Light · ~10</button>
+          <button type="button" class="bchip" data-value="moderate load (around 100 concurrent users)">Moderate · ~100</button>
+          <button type="button" class="bchip" data-value="heavy load (around 500 concurrent users)">Heavy · ~500</button>
+        </div>
+        <div class="chip-group" data-field="pattern" role="group" aria-label="Load pattern">
+          <button type="button" class="bchip" data-value="steady traffic">Steady</button>
+          <button type="button" class="bchip" data-value="bursty traffic">Bursty</button>
+          <button type="button" class="bchip" data-value="a sweep to find the maximum sustainable throughput">Find max throughput</button>
+        </div>
+      </fieldset>
+      <fieldset class="builder-field">
+        <legend>Token shape</legend>
+        <div class="builder-pair">
+          <div class="chip-group" data-field="input" data-noun="input prompts" role="group" aria-label="Input length">
+            <span class="chip-group-label">Input</span>
+            <button type="button" class="bchip" data-value="short">Short</button>
+            <button type="button" class="bchip" data-value="medium">Medium</button>
+            <button type="button" class="bchip" data-value="long">Long</button>
+          </div>
+          <div class="chip-group" data-field="output" data-noun="responses" role="group" aria-label="Output length">
+            <span class="chip-group-label">Output</span>
+            <button type="button" class="bchip" data-value="short">Short</button>
+            <button type="button" class="bchip" data-value="medium">Medium</button>
+            <button type="button" class="bchip" data-value="long">Long</button>
+          </div>
+        </div>
+      </fieldset>
+      <fieldset class="builder-field">
+        <legend>Quality targets (SLO) <span class="builder-opt">optional</span></legend>
+        <div class="builder-slo">
+          <label>TTFT ≤ <input type="number" id="slo-ttft" class="slo-input" min="0" step="10" inputmode="numeric" placeholder="—"> ms</label>
+          <label>TPOT ≤ <input type="number" id="slo-tpot" class="slo-input" min="0" step="1" inputmode="numeric" placeholder="—"> ms</label>
+          <label>Throughput ≥ <input type="number" id="slo-tput" class="slo-input" min="0" step="10" inputmode="numeric" placeholder="—"> tok/s</label>
+        </div>
+      </fieldset>
+      <fieldset class="builder-field">
+        <legend>Hardware</legend>
+        <div class="chip-group" data-field="hardware" role="group" aria-label="Hardware">
+          <button type="button" class="bchip sel" data-value="CPU-only — the local kind quickstart with a simulated engine">CPU-only (local kind)</button>
+          <button type="button" class="bchip" data-value="GPU">GPU</button>
+        </div>
+      </fieldset>
+    </div>
+    <div class="builder-preview-wrap">
+      <label class="builder-preview-label" for="builder-preview">This is what I'll send — edit if you like:</label>
+      <textarea id="builder-preview" class="builder-preview" rows="6" aria-label="Message preview"></textarea>
+    </div>
+    <div class="builder-actions">
+      <button type="button" id="builder-cancel" class="ghost-btn">Cancel</button>
+      <button type="button" id="builder-send" class="primary-btn">Send to assistant →</button>
+    </div>
+  </dialog>
+
+  <!-- Metrics glossary: plain-language definitions fetched from /api/glossary (parsed from
+       knowledge/glossary.md). Helps a non-expert read TTFT / TPOT / goodput etc. The list is
+       populated by app.js once fetched; empty until then. -->
+  <dialog id="glossary" class="glossary">
+    <div class="glossary-head">
+      <span><span aria-hidden="true">📖</span> Glossary — what the words mean</span>
+      <button id="glossary-close" class="icon-btn icon-btn-sm" type="button" title="Close" aria-label="Close">✕</button>
+    </div>
+    <dl id="glossary-list" class="glossary-list" aria-live="polite"></dl>
   </dialog>
 
   <!-- Split view: the live resource view slides in on the right while a run is active (chat-adjacent,

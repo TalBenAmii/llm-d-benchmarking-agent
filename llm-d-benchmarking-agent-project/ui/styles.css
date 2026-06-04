@@ -886,3 +886,118 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
   .working-logo .hx2,
   .working-logo .hx3 { animation: none !important; }
 }
+
+/* ── Guided benchmark builder ──────────────────────────────────────────────
+   The header CTA + the modal <dialog> wizard a non-expert uses to compose a
+   request from a few choices. Brand-purple accent, Red Hat type, theme tokens. */
+.builder-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 600 12.5px/1 var(--serif); padding: 7px 12px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); color: var(--text);
+  cursor: pointer; white-space: nowrap;
+}
+.builder-btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--panel-2)); }
+.builder-btn:active { transform: scale(.97); }
+
+.builder {
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--panel); color: var(--text); box-shadow: var(--shadow);
+  padding: 0; max-width: 94vw; width: 560px; max-height: 90vh; overflow: auto;
+}
+.builder::backdrop { background: rgba(0, 0, 0, .55); }
+.builder-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  font: 700 15px/1.2 var(--serif);
+  position: sticky; top: 0; background: var(--panel); z-index: 1;
+}
+.builder-intro { margin: 0; padding: 12px 18px 4px; font: 400 13px/1.5 var(--serif); color: var(--muted); }
+.builder-body { padding: 6px 18px 0; }
+.builder-field { border: none; margin: 0; padding: 10px 0; }
+.builder-field + .builder-field { border-top: 1px solid var(--border); }
+.builder-field legend { font: 600 13px/1.2 var(--serif); color: var(--text); padding: 0; margin-bottom: 9px; }
+.builder-opt { font: 400 11px/1 var(--mono); color: var(--muted); margin-left: 4px; }
+.chip-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.chip-group + .chip-group { margin-top: 8px; }
+.chip-group-label { font: 600 11px/1 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; width: 46px; }
+.builder-pair { display: flex; flex-direction: column; gap: 8px; }
+.bchip {
+  font: 500 12.5px/1.2 var(--serif); padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2); color: var(--text); transition: border-color .12s, background .12s;
+}
+.bchip:hover { border-color: var(--accent); }
+.bchip.sel {
+  border-color: var(--accent); color: var(--on-accent);
+  background: var(--accent-strong); font-weight: 600;
+}
+.builder-slo { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.builder-slo label { display: inline-flex; align-items: center; gap: 6px; font: 400 12.5px/1.4 var(--serif); color: var(--text); }
+.slo-input {
+  width: 76px; font: 500 12.5px/1 var(--mono); color: var(--text);
+  background: var(--code-bg); border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 8px;
+}
+.slo-input:focus { outline: none; border-color: var(--accent); }
+.builder-preview-wrap { padding: 12px 18px 4px; }
+.builder-preview-label { display: block; font: 600 11px/1.3 var(--mono); color: var(--muted); margin-bottom: 6px; }
+.builder-preview {
+  width: 100%; resize: vertical; min-height: 96px;
+  font: 400 12.5px/1.5 var(--mono); color: var(--text);
+  background: var(--code-bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 10px 12px;
+}
+.builder-preview:focus { outline: none; border-color: var(--accent); }
+.builder-actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 14px 18px; position: sticky; bottom: 0; background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+.primary-btn {
+  font: 600 13px/1 var(--serif); padding: 9px 16px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--accent-strong); background: var(--accent-strong); color: var(--on-accent);
+}
+.primary-btn:hover { filter: brightness(1.08); }
+.primary-btn:active { transform: scale(.98); }
+.ghost-btn {
+  font: 500 13px/1 var(--serif); padding: 9px 16px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: transparent; color: var(--muted);
+}
+.ghost-btn:hover { color: var(--text); border-color: var(--accent); }
+
+/* Prominent "Design a benchmark" CTA on the start-of-chat welcome card. */
+.welcome-build {
+  display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 12px;
+  font: 600 13px/1 var(--serif); padding: 9px 16px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel-2)); color: var(--text);
+}
+.welcome-build:hover { background: color-mix(in srgb, var(--accent) 26%, var(--panel-2)); }
+.welcome-build:active { transform: scale(.98); }
+
+/* ── Metrics glossary ──────────────────────────────────────────────────────
+   The header dialog of plain-language definitions, plus the inline "?" badge a
+   results-card metric carries (hover shows the definition via the native title). */
+.glossary {
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--panel); color: var(--text); box-shadow: var(--shadow);
+  padding: 0; max-width: 94vw; width: 480px; max-height: 86vh; overflow: auto;
+}
+.glossary::backdrop { background: rgba(0, 0, 0, .55); }
+.glossary-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  font: 700 15px/1.2 var(--serif);
+  position: sticky; top: 0; background: var(--panel);
+}
+.glossary-list { margin: 0; padding: 14px 18px; }
+.glossary-list dt { font: 700 13px/1.3 var(--serif); color: var(--accent); margin-top: 12px; }
+.glossary-list dt:first-child { margin-top: 0; }
+.glossary-list dd { margin: 3px 0 0; font: 400 13px/1.5 var(--serif); color: var(--text); }
+.glossary-empty { font: 400 13px/1.5 var(--serif); color: var(--muted); }
+.metric-help {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; margin-left: 6px; vertical-align: middle;
+  font: 700 10px/1 var(--mono); border-radius: 50%; cursor: help;
+  color: var(--muted); border: 1px solid var(--border-strong); background: var(--panel-2);
+}
+.metric-help:hover { color: var(--on-accent); background: var(--accent-strong); border-color: var(--accent-strong); }

@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agent import events as ws_events
 from app.agent.channel import Channel
+from app.agent.glossary import build_glossary
 from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
@@ -290,6 +291,15 @@ async def history_trend(metric: str, tag: str | None = None, model: str | None =
     the value series + the metric's better-direction; no regression verdict (that's the agent)."""
     records = _history_store().list(tag=tag, model=model)
     return JSONResponse(trend(records, metric))
+
+
+@app.get("/api/glossary", dependencies=[Depends(rate_limit)])
+async def glossary() -> JSONResponse:
+    """Plain-language definitions (TTFT, goodput, harness, …) parsed from
+    ``knowledge/glossary.md`` — feeds the UI's glossary dialog and the hover "?" explainers on
+    results-card metrics, so a non-expert can read the numbers. Content lives in knowledge
+    (editable); this route is mechanism only."""
+    return JSONResponse({"terms": build_glossary(get_settings().knowledge_dir)})
 
 
 def _history_items(session) -> list[dict[str, Any]]:
