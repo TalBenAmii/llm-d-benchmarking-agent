@@ -112,6 +112,19 @@ def build_argv(
     is the agent's judgment in knowledge/phase_timeouts.md. Omitted ⇒ nothing emitted (the CLI's
     own defaults / env stand) and the runner deadline still bounds the whole process.
 
+    ``flags["debug"]`` (Phase 37) emits a bare short ``-d`` to start the harness pods with
+    ``sleep infinity`` INSTEAD of running the load (the upstream ``--debug`` mode, env
+    ``LLMDBENCH_DEBUG``) — so a user can exec into a stuck/misbehaving harness pod and poke at
+    it. It is SUBCOMMAND-GUARDED to ``run``/``experiment`` ONLY: upstream defines ``-d`` as
+    ``--debug`` on the ``run`` and ``experiment`` subparsers, but ``-d`` on ``teardown`` means
+    ``--deep`` (a DIFFERENT, DESTRUCTIVE full-namespace wipe). Emitting an unguarded ``-d``
+    would therefore turn a debug request into a deep teardown — so we NEVER emit it outside
+    run/experiment. A debug launch still creates a REAL harness pod, so it stays MUTATING and
+    approval-gated (it is NOT a read-only trigger like ``-z``/``--analyze``). This is pure
+    MECHANISM — WHEN to debug, and the boundary that the in-pod ``kubectl/oc exec -it … -- bash``
+    is a MANUAL, user-driven step the agent NEVER drives, is judgment in
+    knowledge/harness_debug.md, never an if/elif on the value. Omitted/None/False emits nothing.
+
     ``flags["analyze"]`` (Phase 40) emits a bare ``--analyze`` ONLY on ``run``. Upstream defines
     ``--analyze`` (store_true, env ``LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY=1``) SOLELY on the
     ``run`` subparser (llmdbenchmark/interface/run.py) — the shared parser and experiment/standup/
@@ -344,6 +357,18 @@ def build_argv(
     # ``-z`` (the -m precedent). Emission is unconditional mechanism — no if/elif on the value.
     if flags.get("skip"):
         argv.append("-z")
+    # Harness debug mode (Phase 37): emit a bare ``-d`` so the CLI starts the harness pods with
+    # ``sleep infinity`` INSTEAD of running the load (upstream --debug, env LLMDBENCH_DEBUG) — for
+    # exec-ing into a stuck/misbehaving harness pod to debug it. SUBCOMMAND-GUARDED to run/
+    # experiment ONLY: upstream defines -d=--debug on run.py and experiment.py, but on teardown.py
+    # -d means --deep (a DESTRUCTIVE full-namespace wipe), so an unguarded -d would silently turn a
+    # debug request into a deep teardown — we must NOT emit it outside run/experiment (mirrors the
+    # dataset/-x subcommand guard above). A debug launch still creates a REAL pod, so it stays
+    # MUTATING/approval-gated (it is deliberately NOT a read-only trigger like -z). PURE MECHANISM —
+    # WHEN to debug, and the boundary that the interactive in-pod exec is a MANUAL user step the
+    # agent never drives, is judgment in knowledge/harness_debug.md, never an if/elif on the value.
+    if flags.get("debug") and subcommand in ("run", "experiment"):
+        argv.append("-d")
     # Local analysis plot families (Phase 40): emit a bare ``--analyze`` so the CLI ALSO runs its
     # optional workstation matplotlib analysis on the collected results, writing three EXTRA plot
     # families under analysis/ (per-request distributions, session-lifecycle, Prometheus
