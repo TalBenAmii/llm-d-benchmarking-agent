@@ -1,0 +1,132 @@
+"""Structural regression tests for the frontend UI/UX iteration.
+
+There is no JS runtime in CI, so (like ``test_ui_split_view.py``) these assert the three served
+static assets stay mutually consistent: every element the JS reaches for exists in the HTML, every
+new visual component is wired in all three files, and ``app.js`` stays brace-balanced. They guard
+the wiring against drift; the visual behaviour itself is exercised by hand via ``ui/preview.html``.
+
+Covers this iteration's additions:
+  * run progress stepper (workflow phase rail)
+  * Stop button (cancel control frame + the previously-ignored `cancelled` event)
+  * goodput gauge, Pareto scatter, A/B delta bars, harness-compare table
+  * live per-pod resource trend sparklines
+  * copy-to-clipboard buttons, jump-to-latest, off-canvas mobile sidebar
+"""
+from __future__ import annotations
+
+from app.config import get_settings
+
+
+def _ui(name: str) -> str:
+    return (get_settings().ui_dir / name).read_text(encoding="utf-8")
+
+
+def test_app_js_is_brace_balanced():
+    """A cheap structural smoke test: block braces must balance (catches a truncated edit)."""
+    js = _ui("app.js")
+    assert js.count("{") == js.count("}"), "app.js brace mismatch — likely a broken edit"
+
+
+def test_every_new_element_id_is_wired_in_js():
+    """Each new element the JS controls must exist in the HTML AND be looked up in the JS."""
+    html = _ui("index.html")
+    js = _ui("app.js")
+    for el_id in ("run-steps", "stop-run", "jump-latest", "sidebar-toggle", "sidebar-scrim"):
+        assert f'id="{el_id}"' in html, f"missing #{el_id} in index.html"
+        assert f'getElementById("{el_id}")' in js, f"#{el_id} not wired in app.js"
+
+
+def test_run_progress_stepper():
+    html = _ui("index.html")
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    assert 'id="run-steps"' in html
+    # Driven from the tool_call stream and rendered from the per-chat record.
+    assert "advancePhase(data.name, data.input)" in js
+    assert "function renderRunSteps" in js
+    assert "RUN_PHASES" in js and "TOOL_PHASE" in js
+    # execute_llmdbenchmark spans phases via its subcommand.
+    assert "EXECUTE_SUBCMD_PHASE" in js
+    # Phase state is per-chat (survives switches) and resets on a full transcript rebuild.
+    assert "phaseReached" in js and "phaseActive" in js
+    assert ".run-step.active" in css and ".run-step.done" in css
+
+
+def test_stop_button_and_cancelled_event():
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    # Sends the cancel control frame the backend has supported since Phase 16…
+    assert 'type: "cancel"' in js
+    assert "function cancelRun" in js
+    # …and now HANDLES the cancelled event the UI used to ignore.
+    assert 'case "cancelled"' in js
+    assert ".stop-run" in css
+
+
+def test_goodput_gauge_in_results_card():
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    assert "function goodputGauge" in js
+    assert "results-goodput" in js
+    # Binding-constraint surfacing: the first missed SLO verdict.
+    assert "Limited by" in js
+    assert ".gauge-val" in css
+
+
+def test_pareto_scatter_and_comparison_cards():
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    # Prominent renders dispatched from the analysis tool_results in finishTool.
+    for fn in ("renderParetoCard", "renderComparisonCard", "renderHarnessCompareCard",
+               "scatterPlot", "deltaBar"):
+        assert f"function {fn}" in js, f"missing {fn}"
+    assert "renderParetoCard(r)" in js
+    assert "renderComparisonCard(r)" in js
+    # Pareto uses the per-run objective coordinates already on the analyze_results result.
+    assert "on_frontier" in js and "pareto.objectives" in js
+    # A/B colours by direction-aware improvement vs the baseline.
+    assert "delta_pct" in js
+    assert ".scatter-frontier" in css and ".delta-fill" in css
+
+
+def test_live_resource_trend_sparklines():
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    assert "function accumulateResourceHistory" in js
+    assert "function renderResourceTrends" in js
+    assert "function resSpark" in js
+    # kubectl-top unit normalisation so the sparklines share a stable scale.
+    assert "parseCpuMillicores" in js and "parseMemMiB" in js
+    # History lives on the per-chat record (survives reconnect/switch).
+    assert "resourceHistory" in js
+    assert ".res-spark-line" in css
+
+
+def test_preview_harness_exists_and_is_self_contained():
+    """ui/preview.html drives the renderers with fixtures and no backend, for hand verification.
+    It must set the preview flag (so app.js skips its live boot), reference the assets relatively
+    (works from a plain static server), and use the exposed render API."""
+    html = _ui("preview.html")
+    js = _ui("app.js")
+    assert "__LLMD_PREVIEW__" in html
+    assert "__LLMD_PREVIEW__" in js, "app.js must honor the preview flag in its boot guard"
+    assert 'src="app.js"' in html and 'href="styles.css"' in html, "preview must use relative assets"
+    # The boot guard exposes the render entry points the preview calls.
+    assert "window.__llmd" in js
+    for fn in ("renderParetoCard", "renderComparisonCard", "renderResultsCard", "renderResourceStats"):
+        assert f"A.{fn}(" in html or f"{fn}," in js
+
+
+def test_copy_buttons_jump_latest_and_mobile_sidebar():
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    # Copy-to-clipboard on code/JSON blocks, with a non-secure-context fallback.
+    assert "function wrapWithCopy" in js and "function fallbackCopy" in js
+    assert "enhanceCodeBlocks(bubble)" in js
+    assert ".copy-btn" in css
+    # Jump-to-latest floating button.
+    assert "function" in js and 'getElementById("jump-latest")' in js
+    assert ".jump-latest" in css
+    # Off-canvas sidebar is desktop-inert (only acts within the breakpoint).
+    assert "function setSidebar" in js
+    assert "body.sidebar-open .sidebar" in css

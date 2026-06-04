@@ -1937,6 +1937,17 @@ if (sidebarScrim) sidebarScrim.addEventListener("click", () => setSidebar(false)
 if (resourceSideClose) resourceSideClose.addEventListener("click", clearResourceStats);
 
 // ---- boot ---------------------------------------------------------------
-loadSessions();
-loadHistory();
-bootChat();
+// ui/preview.html sets window.__LLMD_PREVIEW__ to drive the renderers with fixture data and no
+// backend. In that mode we skip the live boot (sessions/history fetch + WebSocket connect) and
+// expose the render entry points so the preview can exercise the real rendering paths.
+if (window.__LLMD_PREVIEW__) {
+  window.__llmd = {
+    handle, bootChat, startWorking,
+    renderResultsCard, renderParetoCard, renderComparisonCard, renderHarnessCompareCard,
+    renderResourceStats,
+  };
+} else {
+  loadSessions();
+  loadHistory();
+  bootChat();
+}

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>llm-d Benchmarking Assistant — UI preview (fixture data)</title>
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 27 9.5 27 22.5 16 29 5 22.5 5 9.5Z' fill='none' stroke='%237f317f' stroke-width='3.2' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700&family=Red+Hat+Mono:wght@400;500;600&display=swap" />
+
+  <!-- Relative asset paths so this page works whether served by the app at /static/preview.html
+       or by a plain static server (`python3 -m http.server`) run from this ui/ directory. -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <style>
+    /* Preview-only banner explaining this is fixture data, not a live session. */
+    .preview-banner {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      background: var(--accent-strong); color: var(--on-accent);
+      font: 600 12px/1.4 var(--mono); text-align: center; padding: 5px 12px;
+    }
+    body { padding-top: 26px; }
+  </style>
+
+  <script>
+    // Apply theme like the real page…
+    (function () {
+      try {
+        var t = localStorage.getItem("llmd-theme") || "dark";
+        document.documentElement.setAttribute("data-theme", t);
+        document.documentElement.setAttribute("data-debug", "off");
+      } catch (e) {}
+    })();
+    // …then flip into preview mode and neutralize the live transport BEFORE app.js runs:
+    // a no-op WebSocket so connect() is inert, and we skip the sessions/history fetches via
+    // the boot guard keyed on this flag.
+    window.__LLMD_PREVIEW__ = true;
+    window.WebSocket = function () { this.readyState = 1; this.send = function () {}; this.close = function () {}; };
+    window.WebSocket.OPEN = 1;
+  </script>
+</head>
+<body>
+  <div class="preview-banner">UI PREVIEW · all numbers below are fixture data driving the real render code — no backend, no LLM</div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-head">
+      <button id="new-chat" class="new-chat" type="button"><span aria-hidden="true">+</span> New chat</button>
+    </div>
+    <div class="sidebar-label">Recent</div>
+    <nav id="conv-list" class="conv-list" aria-label="Recent conversations"></nav>
+    <section id="history" class="history" aria-label="Stored benchmark results">
+      <div class="sidebar-label history-head">
+        <span>Results</span>
+        <button id="history-refresh" class="icon-btn icon-btn-sm" type="button" title="Refresh">⟳</button>
+      </div>
+      <div class="history-controls">
+        <label class="sr-only" for="trend-metric">Trend metric</label>
+        <select id="trend-metric" class="trend-metric"><option value="">Trend: pick a metric…</option></select>
+      </div>
+      <div id="trend-view" class="trend-view" aria-live="polite"></div>
+      <div id="history-list" class="history-list" aria-live="polite"><div class="history-empty">No stored results yet.</div></div>
+    </section>
+  </aside>
+  <div class="main-col">
+  <header>
+    <div class="brand">
+      <button id="sidebar-toggle" class="icon-btn sidebar-toggle" type="button" title="Show / hide chats" aria-label="Toggle sidebar" aria-expanded="false">☰</button>
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 30 32" width="34" height="36" role="img" aria-label="llm-d">
+          <g fill="none" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
+            <path class="hx-p" d="M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z" />
+            <path class="hx-g" d="M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z" />
+            <path class="hx-p" d="M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z" />
+          </g>
+        </svg>
+      </span>
+      <div>
+        <h1>llm-d Benchmarking Assistant</h1>
+        <p class="sub">Describe a use case — I'll deploy, benchmark, and explain the results.</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div id="token-total" class="token-chip" title="Total tokens used this session" hidden>Σ 0 tokens</div>
+      <button id="debug-toggle" type="button" class="icon-btn" title="Toggle debug view" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
+      <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
+      <div id="status" class="status" title="connection status">preview</div>
+    </div>
+  </header>
+
+  <div id="run-steps" class="run-steps" role="list" aria-label="Benchmark workflow progress" hidden></div>
+
+  <main id="transcript" aria-live="polite"></main>
+
+  <section id="cmdlog" class="cmdlog" aria-label="Executed commands">
+    <div class="cmdlog-head"><span>Executed commands</span></div>
+    <div id="cmdlog-list" class="cmdlog-list" aria-live="polite"><div class="cmdlog-empty">No commands executed yet.</div></div>
+  </section>
+
+  <footer>
+    <div id="working" class="working" role="status" aria-live="polite" hidden>
+      <span class="working-logo" aria-hidden="true">
+        <svg viewBox="0 0 30 32" width="19" height="20" focusable="false">
+          <g class="working-hex" fill="none" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
+            <path class="hx1" d="M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z" />
+            <path class="hx2" d="M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z" />
+            <path class="hx3" d="M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z" />
+          </g>
+        </svg>
+      </span>
+      <span class="working-word">Thinking</span><span class="working-dots">…</span>
+      <span class="working-stats"></span>
+      <button id="stop-run" class="stop-run" type="button" title="Stop the current run" aria-label="Stop the current run">◼ Stop</button>
+    </div>
+    <form id="composer" autocomplete="off">
+      <textarea id="input" rows="1" placeholder="e.g. Benchmark a small chat model on my laptop"></textarea>
+      <button id="send" type="submit">Send</button>
+    </form>
+    <p class="hint">Read-only checks run automatically. Anything that changes your system waits for your approval.</p>
+  </footer>
+  <button id="jump-latest" class="jump-latest" type="button" title="Jump to the latest message" hidden>↓ Latest</button>
+  </div>
+
+  <aside id="resource-side" class="resource-side" aria-label="Live resource usage" aria-live="polite" hidden>
+    <div class="resource-side-head">
+      <span class="resource-side-title">Live resources</span>
+      <button id="resource-side-close" class="icon-btn icon-btn-sm" type="button" title="Hide" aria-label="Hide">×</button>
+    </div>
+    <div id="resource-side-body" class="resource-side-body"></div>
+  </aside>
+
+  <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
+
+  <script src="app.js"></script>
+  <script>
+    // ---- fixtures: representative shapes of what the backend streams to the client ----
+    const A = window.__llmd;
+    A.bootChat();   // sets up the active chat pane the renderers append into
+
+    // 1) Run progress stepper — drive a sequence of tool_calls through the real handler.
+    [["probe_environment", {}], ["propose_session_plan", {}], ["ensure_repos", {}],
+     ["write_and_validate_config", {}], ["execute_llmdbenchmark", { subcommand: "standup" }],
+     ["execute_llmdbenchmark", { subcommand: "run" }]
+    ].forEach((t, i) => A.handle({ type: "tool_call", data: { id: "t" + i, name: t[0], input: t[1] } }));
+
+    // 2) Assistant message with a fenced code block (copy button) + markdown.
+    A.handle({ type: "assistant_text", data: { text:
+      "I'll stand up a small CPU-only stack, then run **inference-perf** against it:\n\n" +
+      "```bash\nkind create cluster --name llmd-quickstart\nllmdbenchmark standup --spec cicd/kind\n```\n\n" +
+      "Below are the structured results once the run finishes." } });
+
+    // 3) Single-run results card with the goodput gauge + binding constraint.
+    A.renderResultsCard({
+      kind: "run", model: "facebook/opt-125m", harness: "inference-perf",
+      requests_total: 1000, requests_failures: 7, success_rate_pct: 99.3,
+      duration: "PT2M30S", load: "100 req/s",
+      metrics: [
+        { label: "Time to first token", value: 0.123, stat: "mean", units: "s", direction: "lower is better" },
+        { label: "Time per output token", value: 0.0151, stat: "mean", units: "s", direction: "lower is better" },
+        { label: "End-to-end request latency", value: 1.84, stat: "p95", units: "s", direction: "lower is better" },
+        { label: "Output token throughput", value: 523.9, stat: "mean", units: "tokens/s", direction: "higher is better" },
+      ],
+      slo: {
+        overall_met: false, checked_count: 3, success_rate_pct: 99.3,
+        goodput: { estimate_pct: 82.4, estimate_fraction: 0.824 },
+        verdicts: [
+          { metric: "ttft", statistic: "p99", direction: "max", target: 200, observed: 178, units: "ms", met: true },
+          { metric: "tpot", statistic: "p99", direction: "max", target: 15, observed: 21, units: "ms", met: false },
+          { metric: "request_latency", statistic: "p95", direction: "max", target: 2000, observed: 1840, units: "ms", met: true },
+        ],
+      },
+    });
+
+    // 4) Pareto frontier scatter (from an analyze_results sweep).
+    A.renderParetoCard({
+      analyzed: true, n: 5,
+      runs: [
+        { label: "r1", slo: { overall_met: true } }, { label: "r2", slo: { overall_met: true } },
+        { label: "r3", slo: { overall_met: false } }, { label: "r4", slo: { overall_met: true } },
+        { label: "r5", slo: { overall_met: false } },
+      ],
+      pareto: {
+        objectives: [
+          { name: "output_token_rate", direction: "higher", units: "tok/s" },
+          { name: "ttft_p99", direction: "lower", units: "ms" },
+        ],
+        runs: [
+          { label: "r1", objectives: { output_token_rate: 420, ttft_p99: 90 }, on_frontier: true },
+          { label: "r2", objectives: { output_token_rate: 540, ttft_p99: 140 }, on_frontier: true },
+          { label: "r3", objectives: { output_token_rate: 300, ttft_p99: 160 }, on_frontier: false },
+          { label: "r4", objectives: { output_token_rate: 610, ttft_p99: 230 }, on_frontier: true },
+          { label: "r5", objectives: { output_token_rate: 350, ttft_p99: 120 }, on_frontier: false },
+        ],
+        frontier: ["r1", "r2", "r4"],
+      },
+    });
+
+    // 5) A/B comparison delta bars (from compare_reports).
+    A.renderComparisonCard({
+      compared: true, n: 2, baseline: "baseline",
+      comparison: {
+        labels: ["baseline", "candidate"], baseline: "baseline",
+        metrics: [
+          { key: "latency.ttft", name: "TTFT", stat: "p99", units: "ms", direction: "lower", baseline_value: 200,
+            per_run: [{ label: "baseline", value: 200, delta_pct: 0 }, { label: "candidate", value: 150, delta_pct: -25 }] },
+          { key: "throughput.output_token_rate", name: "output tok/s", stat: "mean", units: "tok/s", direction: "higher", baseline_value: 500,
+            per_run: [{ label: "baseline", value: 500, delta_pct: 0 }, { label: "candidate", value: 560, delta_pct: 12 }] },
+          { key: "latency.tpot", name: "TPOT", stat: "p99", units: "ms", direction: "lower", baseline_value: 15,
+            per_run: [{ label: "baseline", value: 15, delta_pct: 0 }, { label: "candidate", value: 18, delta_pct: 20 }] },
+        ],
+        headline: "Compared 2 runs (baseline: baseline). best TTFT: candidate (150 ms); best output tok/s: candidate (560 tok/s).",
+      },
+    });
+
+    // 6) Live resource sparklines — feed several ticks so per-pod history accumulates.
+    const podBase = { "vllm-server-0": [850, 1024], "inference-gateway-0": [120, 256] };
+    for (let i = 0; i < 9; i++) {
+      const rows = Object.keys(podBase).map((name) => {
+        const [c, m] = podBase[name];
+        const cpu = Math.round(c * (0.6 + 0.4 * Math.sin(i / 1.7) + i * 0.03));
+        const mem = Math.round(m * (1 + i * 0.05));
+        return { name, "cpu(cores)": cpu + "m", "memory(bytes)": mem + "Mi" };
+      });
+      A.renderResourceStats({ available: true, namespace: "llmd-quickstart", rows });
+    }
+
+    // 7) Start the working indicator so the live status line + Stop button are visible
+    //    (a real run does this on send; here it just ticks against fixture state).
+    A.startWorking("Benchmarking");
+  </script>
+</body>
+</html>
