@@ -55,6 +55,7 @@
   <div class="main-col">
   <header>
     <div class="brand">
+      <button id="sidebar-toggle" class="icon-btn sidebar-toggle" type="button" title="Show / hide chats" aria-label="Toggle sidebar" aria-expanded="false">☰</button>
       <span class="logo" aria-hidden="true">
         <svg viewBox="0 0 30 32" width="34" height="36" role="img" aria-label="llm-d">
           <g fill="none" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
@@ -116,7 +117,10 @@
     </form>
     <p class="hint">Read-only checks run automatically. Anything that changes your system waits for your approval.</p>
   </footer>
+  <button id="jump-latest" class="jump-latest" type="button" title="Jump to the latest message" hidden>↓ Latest</button>
   </div>
+  <!-- Backdrop for the off-canvas sidebar on narrow screens (tap to close). -->
+  <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
 
   <!-- Split view: the live resource view slides in on the right while a run is active (chat-adjacent,
        not inline in the transcript). Hosts the live kubectl-top table today; structured to host a

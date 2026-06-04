@@ -29,6 +29,9 @@ const resourceSide = document.getElementById("resource-side");
 const resourceSideBody = document.getElementById("resource-side-body");
 const resourceSideClose = document.getElementById("resource-side-close");
 const runSteps = document.getElementById("run-steps");
+const sidebarToggle = document.getElementById("sidebar-toggle");
+const sidebarScrim = document.getElementById("sidebar-scrim");
+const jumpBtn = document.getElementById("jump-latest");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -279,6 +282,7 @@ function switchTo(sid) {
   currentSession = sid || null;
   evictPanes();
   connect(sid || null, cacheHit ? rec.lastSeq : null);
+  setSidebar(false);                                  // close the mobile drawer once a chat is chosen
 }
 
 function newChat() { switchTo(null); }
@@ -680,6 +684,7 @@ function addBubble(role, text) {
     // own `**` is never interpreted and errors show raw).
     const bubble = el("div", "bubble markdown");
     bubble.innerHTML = renderMarkdown(text || "");
+    enhanceCodeBlocks(bubble);
     wrap.appendChild(bubble);
   } else {
     wrap.appendChild(el("div", "bubble", text || ""));
@@ -1646,13 +1651,54 @@ function openLightbox(src, title) {
   else dlg.setAttribute("open", "");
 }
 
+// ---- copy-to-clipboard for code / JSON blocks ----------------------------
+// Wrap a <pre> in a hover container with a Copy button. Clipboard API with a textarea fallback
+// for non-secure contexts; the button flashes "Copied" on success. Used for assistant fenced
+// code (post-processed after markdown render) and tool-result JSON dumps.
+function copyText(text, btn) {
+  const flash = () => {
+    const prev = btn.textContent;
+    btn.textContent = "Copied"; btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = prev; btn.classList.remove("copied"); }, 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(flash).catch(() => fallbackCopy(text, flash));
+  } else {
+    fallbackCopy(text, flash);
+  }
+}
+function fallbackCopy(text, onDone) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    document.execCommand("copy"); ta.remove();
+    if (onDone) onDone();
+  } catch (e) { /* clipboard unavailable — silently skip */ }
+}
+function wrapWithCopy(pre) {
+  const parent = pre.parentNode;
+  const wrap = el("div", "code-wrap");
+  const btn = el("button", "copy-btn", "Copy");
+  btn.type = "button"; btn.title = "Copy to clipboard"; btn.setAttribute("aria-label", "Copy to clipboard");
+  btn.addEventListener("click", () => copyText(pre.textContent || "", btn));
+  if (parent) parent.insertBefore(wrap, pre);   // take the pre's place in the DOM…
+  wrap.appendChild(btn);
+  wrap.appendChild(pre);                         // …then re-home the pre inside the wrapper
+  return wrap;
+}
+// Post-process a freshly-rendered markdown bubble: give each fenced code block a Copy button.
+function enhanceCodeBlocks(container) {
+  container.querySelectorAll("pre.md-code").forEach(wrapWithCopy);
+}
+
 function prettyJson(obj) {
   const pre = el("pre", "json");
   let s;
   try { s = JSON.stringify(obj, null, 2); } catch { s = String(obj); }
   if (s && s.length > 4000) s = s.slice(0, 4000) + "\n… (truncated)";
   pre.textContent = s;
-  return pre;
+  return wrapWithCopy(pre);
 }
 
 // Build the body (heading + command/plan detail) shared by the live approval card and the
@@ -1863,6 +1909,29 @@ input.addEventListener("input", () => { input.style.height = "auto"; input.style
 
 newChatBtn.addEventListener("click", newChat);
 if (stopBtn) stopBtn.addEventListener("click", cancelRun);
+
+// Jump-to-latest: a floating button that appears once the user scrolls up off the bottom of the
+// transcript, and pins them back to the newest message on click. Complements the sticky
+// auto-scroll (which only follows new content when already near the bottom).
+if (jumpBtn) {
+  transcript.addEventListener("scroll", () => {
+    jumpBtn.hidden = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) < 120;
+  });
+  jumpBtn.addEventListener("click", () => {
+    stickBottom = true; transcript.scrollTop = transcript.scrollHeight; jumpBtn.hidden = true;
+  });
+}
+
+// Mobile sidebar: off-canvas under a media-query breakpoint, toggled by the header hamburger.
+// On desktop the body class is inert (CSS only acts on it within the breakpoint), so toggling is
+// harmless there. Selecting a chat closes the drawer (see switchTo).
+function setSidebar(open) {
+  document.body.classList.toggle("sidebar-open", open);
+  if (sidebarToggle) sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (sidebarScrim) sidebarScrim.hidden = !open;
+}
+if (sidebarToggle) sidebarToggle.addEventListener("click", () => setSidebar(!document.body.classList.contains("sidebar-open")));
+if (sidebarScrim) sidebarScrim.addEventListener("click", () => setSidebar(false));
 
 // Manual collapse of the split view; the next `resource_stats` tick of a still-running run reopens it.
 if (resourceSideClose) resourceSideClose.addEventListener("click", clearResourceStats);
