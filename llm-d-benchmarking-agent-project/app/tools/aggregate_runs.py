@@ -29,18 +29,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.paths import is_within
 from app.tools.context import ToolContext, ToolError
+from app.tools.json_tail import find_last_json
 
 _REQUEST_FILENAME = "aggregate_request.json"
 _OUTPUT_DIRNAME = "aggregated"
-
-
-def _is_within(child: Path, parent: Path) -> bool:
-    try:
-        child.resolve().relative_to(parent.resolve())
-        return True
-    except ValueError:
-        return False
 
 
 async def aggregate_runs(
@@ -84,7 +78,7 @@ async def aggregate_runs(
     output_dir = (ctx.workspace / (output_name or _OUTPUT_DIRNAME)).resolve()
     # The summary MUST land inside the session workspace — never the read-only repos, never the
     # results dir we are only reading. A traversing output_name would escape; refuse it.
-    if not _is_within(output_dir, ctx.workspace):
+    if not is_within(output_dir, ctx.workspace):
         raise ToolError("output_name must stay within the session workspace (no '..' escape).")
 
     request_path = ctx.workspace / _REQUEST_FILENAME
@@ -139,18 +133,11 @@ async def aggregate_runs(
 
 def _parse_bridge_output(output: str) -> dict[str, Any]:
     """The wrapper prints exactly one JSON object on stdout. Be tolerant of leading noise by
-    taking the last balanced JSON object on the captured stream (mirrors capacity_check)."""
+    taking the last balanced JSON object on the captured stream (see ``json_tail``)."""
     text = (output or "").strip()
     if not text:
         return {"ok": False, "error": "aggregation bridge produced no output"}
-    try:
-        return json.loads(text)
-    except ValueError:
-        pass
-    start = text.rfind("{")
-    while start != -1:
-        try:
-            return json.loads(text[start:])
-        except ValueError:
-            start = text.rfind("{", 0, start)
+    result = find_last_json(text, "{")
+    if result is not None:
+        return result
     return {"ok": False, "error": f"aggregation bridge output was not JSON: {text[-500:]}"}

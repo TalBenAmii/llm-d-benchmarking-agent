@@ -49,14 +49,23 @@ _RESULTS_STORE_COMMANDS = frozenset(
 def _build_results_store_argv(store: dict[str, Any]) -> list[str]:
     """Translate a structured ``store`` request into the upstream-exact ``results``
     sub-positionals. PURE MECHANISM — the single branch is on the discrete ``command`` enum
-    token (a fixed set), never on a value. Unknown/missing fields simply emit nothing for the
-    optional slots; the allowlist + the CLI's own argparse reject a malformed shape."""
+    token (a fixed set), never on a value. Optional slots emit nothing when absent; a missing
+    REQUIRED sub-field raises a clean ToolError the agent can self-correct from, rather than a
+    raw KeyError. The allowlist + the CLI's own argparse still reject a malformed shape."""
     command = str(store.get("command", ""))
     if command not in _RESULTS_STORE_COMMANDS:
         raise ToolError(
             f"unsupported results-store command {command!r}; "
             f"allowed: {sorted(_RESULTS_STORE_COMMANDS)}"
         )
+
+    def _req(field: str) -> str:
+        """A required sub-positional — clean, self-correctable ToolError over a raw KeyError."""
+        val = store.get(field)
+        if val is None or str(val) == "":
+            raise ToolError(f"results {command!r} requires a {field!r} value")
+        return str(val)
+
     out: list[str] = [command]
     if command in ("add", "rm"):
         # `results add|rm <paths...>` — one or more local dir paths / run-uids to (un)stage.
@@ -66,12 +75,12 @@ def _build_results_store_argv(store: dict[str, Any]) -> list[str]:
         action = str(store.get("remote_action", ""))
         out.append(action)
         if action == "add":
-            out += [str(store["name"]), str(store["uri"])]
+            out += [_req("name"), _req("uri")]
         elif action == "rm":
-            out.append(str(store["name"]))
+            out.append(_req("name"))
     elif command == "ls":
         # `results ls <remote> [-m model] [-w hardware]` — list a remote, optional filters.
-        out.append(str(store["remote"]))
+        out.append(_req("remote"))
         if store.get("model"):
             out += ["-m", str(store["model"])]
         if store.get("hardware"):
@@ -88,7 +97,7 @@ def _build_results_store_argv(store: dict[str, Any]) -> list[str]:
         # `results pull [remote...] --run-uid <uid>` — download a run from a remote.
         if store.get("remote"):
             out.append(str(store["remote"]))
-        out += ["--run-uid", str(store["run_uid"])]
+        out += ["--run-uid", _req("run_uid")]
     return out
 
 

@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from app.paths import is_within
 from app.tools.context import ToolContext, ToolError
 from app.validation.report import load_report, summarize_report, validate_report
 
@@ -411,7 +412,7 @@ def read_repo_doc(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) -> di
         raise ToolError(f"could not resolve repo path {path!r}")
 
     roots = [r.resolve() for r in repos.values()]
-    if not any(_is_within(resolved, root) for root in roots):
+    if not any(is_within(resolved, root) for root in roots):
         raise ToolError(f"path {path!r} resolves outside the read-only repos — refused")
     if not resolved.is_file():
         raise ToolError(f"not a file: {resolved}")
@@ -907,9 +908,3 @@ def _find_report(roots: list[Path]) -> Path | None:
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
-def _is_within(child: Path, parent: Path) -> bool:
-    try:
-        child.relative_to(parent)
-        return True
-    except ValueError:
-        return False

@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from app.paths import is_within
 from app.security.runner import RunResult
 from app.tools.context import ToolContext
 
@@ -27,14 +28,6 @@ _STREAM_DONE = object()
 
 class KubeError(RuntimeError):
     pass
-
-
-def _is_within(child: Path, parent: Path) -> bool:
-    try:
-        child.relative_to(parent)
-        return True
-    except ValueError:
-        return False
 
 
 def parse_items(output: str) -> list[dict[str, Any]]:
@@ -85,7 +78,7 @@ class RealKubeClient:
     def _confine_to_workspace(self, manifest_path: str | Path) -> Path:
         p = Path(manifest_path).resolve()
         ws = self._ctx.settings.resolved_workspace_dir.resolve()
-        if not _is_within(p, ws):
+        if not is_within(p, ws):
             raise KubeError(f"refusing to apply a manifest outside the workspace: {p}")
         return p
 

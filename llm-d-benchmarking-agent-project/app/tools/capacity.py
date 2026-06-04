@@ -38,6 +38,7 @@ from app.capacity.planner import (
     plan_config_for_spec,
 )
 from app.tools.context import ToolContext, ToolError
+from app.tools.json_tail import find_last_json
 
 _REQUEST_FILENAME = "capacity_request.json"
 
@@ -140,16 +141,7 @@ def _parse_bridge_output(output: str) -> dict[str, Any]:
     text = (output or "").strip()
     if not text:
         return {"ok": False, "error": "capacity bridge produced no output"}
-    # Fast path: the whole stream is the JSON object.
-    try:
-        return json.loads(text)
-    except ValueError:
-        pass
-    # Fallback: find the last balanced {...} block.
-    start = text.rfind("{")
-    while start != -1:
-        try:
-            return json.loads(text[start:])
-        except ValueError:
-            start = text.rfind("{", 0, start)
+    result = find_last_json(text, "{")
+    if result is not None:
+        return result
     return {"ok": False, "error": f"capacity bridge output was not JSON: {text[-500:]}"}

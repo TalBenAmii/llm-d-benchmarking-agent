@@ -129,9 +129,10 @@ _STANDARD_METRICS_CATALOG = (
 )
 
 
-@lru_cache(maxsize=4)
-def _load_standard_metrics_catalog(path: str) -> dict[str, Any]:
-    """Load (and cache) the metric→field-name catalog. Missing/malformed → empty (no crash)."""
+@lru_cache(maxsize=8)
+def _load_catalog_section(path: str, section: str) -> dict[str, Any]:
+    """Load (and cache) one top-level mapping ``section`` from a knowledge YAML catalog.
+    Missing file / malformed YAML / a missing-or-non-mapping section → empty (no crash)."""
     p = Path(path)
     if not p.exists():
         return {}
@@ -139,8 +140,8 @@ def _load_standard_metrics_catalog(path: str) -> dict[str, Any]:
         data = yaml.safe_load(p.read_text())
     except yaml.YAMLError:
         return {}
-    metrics = data.get("metrics") if isinstance(data, dict) else None
-    return metrics if isinstance(metrics, dict) else {}
+    section_val = data.get(section) if isinstance(data, dict) else None
+    return section_val if isinstance(section_val, dict) else {}
 
 
 def _native_stat(entry: Any) -> dict[str, Any] | None:
@@ -233,8 +234,9 @@ def extract_standard_metrics(
     observability = results.get("observability", {}) if isinstance(results, dict) else {}
     if not isinstance(observability, dict):
         return {}
-    catalog = _load_standard_metrics_catalog(
-        str(catalog_path) if catalog_path is not None else str(_STANDARD_METRICS_CATALOG)
+    catalog = _load_catalog_section(
+        str(catalog_path) if catalog_path is not None else str(_STANDARD_METRICS_CATALOG),
+        "metrics",
     )
     out: dict[str, Any] = {}
     for name, spec in catalog.items():
@@ -262,20 +264,6 @@ def extract_standard_metrics(
 # validation still passes; we do not touch validate_report.
 
 
-@lru_cache(maxsize=4)
-def _load_session_catalog(path: str) -> dict[str, Any]:
-    """Load (and cache) the session field-name catalog. Missing/malformed → empty (no crash)."""
-    p = Path(path)
-    if not p.exists():
-        return {}
-    try:
-        data = yaml.safe_load(p.read_text())
-    except yaml.YAMLError:
-        return {}
-    sess = data.get("session_performance") if isinstance(data, dict) else None
-    return sess if isinstance(sess, dict) else {}
-
-
 def extract_session_performance(
     report: dict[str, Any], *, catalog_path: str | Path | None = None
 ) -> dict[str, Any] | None:
@@ -298,8 +286,9 @@ def extract_session_performance(
     if not isinstance(sessions, dict):
         return None
 
-    catalog = _load_session_catalog(
-        str(catalog_path) if catalog_path is not None else str(_STANDARD_METRICS_CATALOG)
+    catalog = _load_catalog_section(
+        str(catalog_path) if catalog_path is not None else str(_STANDARD_METRICS_CATALOG),
+        "session_performance",
     )
     scalars_spec = catalog.get("scalars")
     dists_spec = catalog.get("distributions")

@@ -30,6 +30,7 @@ import json
 from typing import Any
 
 from app.tools.context import ToolContext, ToolError
+from app.tools.json_tail import find_last_json
 
 # Where the raw discovery output + the wrapped scenario-capture land in the session workspace.
 _DISCOVERY_FILENAME = "stack_discovery.json"
@@ -43,24 +44,9 @@ def _parse_components(output: str) -> list[dict[str, Any]]:
     text = (output or "").strip()
     if not text:
         raise ToolError("stack discovery produced no output")
-    # Fast path: the whole stream is the JSON list.
-    try:
-        data = json.loads(text)
-        if isinstance(data, list):
-            return data
-    except ValueError:
-        pass
-    # Fallback: find the last balanced [...] block.
-    start = text.rfind("[")
-    while start != -1:
-        try:
-            data = json.loads(text[start:])
-        except ValueError:
-            start = text.rfind("[", 0, start)
-            continue
-        if isinstance(data, list):
-            return data
-        start = text.rfind("[", 0, start)
+    result = find_last_json(text, "[")
+    if isinstance(result, list):
+        return result
     raise ToolError(
         f"stack discovery output was not a JSON list of components: {text[-500:]}"
     )

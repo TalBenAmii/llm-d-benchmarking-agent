@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.config import PROJECT_ROOT
+from app.paths import is_within
 
 # Records emitted here automatically carry the turn's corr_id/session_id/tool via the
 # logging ContextFilter installed at startup — no need to thread anything through (Phase 11).
@@ -50,14 +51,6 @@ class RunResult:
     output: str = ""              # captured stdout+stderr (tail-bounded)
     timed_out: bool = False
     lines: list[str] = field(default_factory=list)
-
-
-def _is_within(child: Path, parent: Path) -> bool:
-    try:
-        child.relative_to(parent)
-        return True
-    except ValueError:
-        return False
 
 
 def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
@@ -129,7 +122,7 @@ class CommandRunner:
             # which script + flags may run; the script's own contents are the only commands it
             # can execute (the allowlist grants no raw apt-get/curl/sudo).
             script = (PROJECT_ROOT / runner["script"]).resolve()
-            if not _is_within(script, PROJECT_ROOT.resolve()):
+            if not is_within(script, PROJECT_ROOT.resolve()):
                 raise RunnerError(f"project script {runner['script']!r} escapes the project root")
             if not script.exists():
                 raise RunnerError(f"project script {script} not found")

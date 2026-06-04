@@ -26,6 +26,7 @@ flows yet. Those are FACTS only; the wait-vs-stand-up-vs-config-error JUDGMENT l
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import shutil
 from typing import Any
@@ -212,10 +213,15 @@ async def _gateway_readiness(ctx: ToolContext, namespace: str) -> GatewayReadine
             return ""
         return res.output if res.exit_code == 0 else ""
 
-    gateway_json = await _get("gateway", namespaced=True)
-    gatewayclass_json = await _get("gatewayclass", namespaced=False)  # cluster-scoped
-    inferencepool_json = await _get("inferencepool", namespaced=True)
-    httproute_json = await _get("httproute", namespaced=True)
+    # The four reads are independent and read-only (read-only commands skip the run semaphore),
+    # so gather them — one round-trip instead of four serial ones. On a Kind cluster with no
+    # Gateway-API CRDs all four fast-fail together rather than in series.
+    gateway_json, gatewayclass_json, inferencepool_json, httproute_json = await asyncio.gather(
+        _get("gateway", namespaced=True),
+        _get("gatewayclass", namespaced=False),  # cluster-scoped
+        _get("inferencepool", namespaced=True),
+        _get("httproute", namespaced=True),
+    )
     return analyze_gateway(
         namespace=namespace,
         gateway_json=gateway_json,
