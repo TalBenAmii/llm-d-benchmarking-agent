@@ -77,6 +77,12 @@
     </div>
   </header>
 
+  <!-- Run progress rail: a slim phased stepper that appears once the agent starts working a
+       benchmark and tracks which workflow phase it's in (pre-flight → … → analyze). Driven
+       purely client-side from tool_call events; per-chat, restored byte-for-byte on switch.
+       Hidden until the active chat has reached at least one phase. -->
+  <div id="run-steps" class="run-steps" role="list" aria-label="Benchmark workflow progress" hidden></div>
+
   <main id="transcript" aria-live="polite"></main>
 
   <section id="cmdlog" class="cmdlog" aria-label="Executed commands">

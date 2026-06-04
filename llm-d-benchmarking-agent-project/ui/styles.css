@@ -250,6 +250,49 @@ header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin:
 .icon-btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel-2)); }
 .icon-btn:active { transform: scale(.94); }
 
+/* ── Run progress stepper (workflow phase rail under the header) ─────────── */
+/* Slim, horizontally-scrollable rail that appears once a benchmark workflow starts and tracks
+   which phase the agent is in. Pure chrome, driven from the tool_call stream (see app.js). */
+.run-steps {
+  display: flex; align-items: center; gap: 2px;
+  padding: 9px 22px; overflow-x: auto; white-space: nowrap;
+  background: color-mix(in srgb, var(--panel) 70%, var(--bg));
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+.run-steps::-webkit-scrollbar { display: none; }
+.run-steps[hidden] { display: none; }
+.run-step { display: inline-flex; align-items: center; gap: 7px; flex: none; }
+.run-step-dot {
+  width: 19px; height: 19px; flex: none; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 10.5px/1 var(--mono); border: 1.5px solid var(--border-strong);
+  color: var(--muted); background: var(--panel-2); transition: all .2s ease;
+}
+.run-step-label {
+  font: 600 11.5px/1 var(--mono); letter-spacing: .02em; color: var(--muted);
+  text-transform: uppercase; transition: color .2s ease;
+}
+.run-step-sep { flex: none; width: 22px; height: 1.5px; background: var(--border); border-radius: 2px; }
+/* done: filled accent dot with a check; label brightens */
+.run-step.done .run-step-dot {
+  background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent);
+}
+.run-step.done .run-step-label { color: var(--text); }
+/* active: pulsing ring, the current phase */
+.run-step.active .run-step-dot {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel-2));
+  border-color: var(--accent); color: var(--accent);
+  animation: stepPulse 1.5s ease-in-out infinite;
+}
+.run-step.active .run-step-label { color: var(--accent); }
+/* pending stays muted (default) */
+@keyframes stepPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .run-step.active .run-step-dot { animation: none; } }
+
 /* ── Transcript ───────────────────────────────────────────────────────── */
 main {
   flex: 1; overflow-y: auto; padding: 26px 22px;

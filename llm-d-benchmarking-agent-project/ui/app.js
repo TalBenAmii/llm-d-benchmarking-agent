@@ -27,6 +27,7 @@ const tokenChip = document.getElementById("token-total");
 const resourceSide = document.getElementById("resource-side");
 const resourceSideBody = document.getElementById("resource-side-body");
 const resourceSideClose = document.getElementById("resource-side-close");
+const runSteps = document.getElementById("run-steps");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -106,6 +107,13 @@ function makeRecord(sid) {
     turnUsage: null, sessionTokens: 0,
     cmdlogHTML: "", lastSeq: 0, running: false, scrollTop: 0,
     pendingApprovals: {}, order: viewClock,
+    // Run progress stepper: furthest workflow phase this chat has reached + the one currently
+    // running (-1 = none). State lives only on the record; the shared #run-steps rail renders
+    // from the ACTIVE chat's record, so a switch restores each chat's own progress (see activate).
+    phaseReached: -1, phaseActive: -1,
+    // Live resource history: per-pod CPU/mem samples accumulated from resource_stats ticks,
+    // drawn as sparklines in the side panel (the raw kubectl-top table only shows the latest).
+    resourceHistory: {},
   };
 }
 
@@ -140,6 +148,7 @@ function activate(rec) {
   resourceData = rec.resourceData;
   resourceActive = rec.resourceActive;
   renderResourceSide();                 // reflect THIS chat's run in the shared right-hand panel
+  renderRunSteps();                     // reflect THIS chat's workflow progress in the shared rail
   readyNoteTimer = null;
   workStart = rec.workStart; workActivity = rec.workActivity; workWordFixed = rec.workWordFixed;
   turnUsage = rec.turnUsage;
@@ -168,6 +177,8 @@ function clearActivePane() {
   resourceData = null; resourceActive = false;
   if (cur) { cur.resourceData = null; cur.resourceActive = false; }
   renderResourceSide();
+  if (cur) { cur.phaseReached = -1; cur.phaseActive = -1; cur.resourceHistory = {}; }
+  renderRunSteps();
   turnUsage = null; if (cur) cur.turnUsage = null;
   if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }
   if (cur) { cur.pendingApprovals = {}; cur.lastSeq = 0; }
@@ -335,16 +346,16 @@ function handle(msg) {
       addBubble("assistant", data.text);
       if (!workingEl.hidden) resumeThinking();      // between steps: back to generic cycling
       break;
-    case "tool_call": startTool(data); setWorkTool(data.name); break;
+    case "tool_call": startTool(data); setWorkTool(data.name); advancePhase(data.name, data.input); break;
     case "command": removeWelcomeCard(); onCommand(data); setWorkActivity(data.text || (data.argv || []).join(" ")); break;
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "results_card": renderResultsCard(data.card); break;
-    case "approval_request": addApprovalCard(data); if (cur) cur.running = false; stopWorking(); break;  // now waiting on the user, not the model
-    case "error": addBubble("error", data.message); if (cur) cur.running = false; stopWorking(); break;
+    case "approval_request": addApprovalCard(data); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // now waiting on the user, not the model
+    case "error": addBubble("error", data.message); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
-    case "done": setEnabled(true); activeConsole = null; if (cur) cur.running = false; appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
+    case "done": setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
     case "pong": break;
   }
   // Advance this chat's resume cursor for every turn event we rendered (live or replayed); the
@@ -826,6 +837,86 @@ function clearResourceStats() {
   resourceActive = false;
   if (cur) cur.resourceActive = false;
   renderResourceSide();
+}
+
+// ---- run progress stepper (workflow phase rail) --------------------------
+// A slim phased rail under the header that makes the agent's long benchmark workflow legible to
+// a non-expert: which phase is it in, what's done, what's still ahead. Driven ENTIRELY from the
+// tool_call stream (no backend/LLM cost) — every one of the agent's tools maps to a phase below.
+// State lives on the per-chat record (phaseReached = furthest phase, phaseActive = the one
+// running now), so switching chats restores each chat's own progress. Monotonic within a chat:
+// a re-run advances `active` but the rail keeps the furthest milestone marked done.
+const RUN_PHASES = [
+  { key: "preflight", label: "Pre-flight" },
+  { key: "plan", label: "Plan" },
+  { key: "setup", label: "Setup" },
+  { key: "configure", label: "Configure" },
+  { key: "deploy", label: "Deploy" },
+  { key: "benchmark", label: "Benchmark" },
+  { key: "analyze", label: "Analyze" },
+];
+// Tool name -> phase index. The 28 tools are a fixed enum, so this mapping is exhaustive and
+// stable. Tools that run alongside any phase (observe_run_metrics, run_command, cancel_run) are
+// intentionally absent → they don't move the rail.
+const TOOL_PHASE = {
+  probe_environment: 0, list_catalog: 0, advise_accelerators: 0, check_capacity: 0,
+  check_endpoint_readiness: 0, read_knowledge: 0, search_knowledge: 0, read_repo_doc: 0, fetch_key_docs: 0,
+  propose_session_plan: 1,
+  ensure_repos: 2, run_setup: 2, provision_hf_secret: 2,
+  write_and_validate_config: 3, convert_guide_to_scenario: 3, generate_doe_experiment: 3,
+  orchestrate_benchmark_run: 5,
+  locate_and_parse_report: 6, analyze_results: 6, compare_reports: 6, compare_harness_runs: 6,
+  aggregate_runs: 6, result_history: 6,
+};
+// execute_llmdbenchmark spans several phases; disambiguate by its `subcommand` argument.
+// teardown (-1) is cleanup — it deliberately doesn't move the rail backward.
+const EXECUTE_SUBCMD_PHASE = { plan: 3, standup: 4, smoketest: 4, run: 5, experiment: 5, results: 6, teardown: -1 };
+
+function phaseForTool(name, input) {
+  if (name === "execute_llmdbenchmark") {
+    const sub = input && input.subcommand;
+    return (sub && sub in EXECUTE_SUBCMD_PHASE) ? EXECUTE_SUBCMD_PHASE[sub] : 4;
+  }
+  return (name in TOOL_PHASE) ? TOOL_PHASE[name] : -1;
+}
+
+// A tool started → mark its phase active (and the furthest reached). No-op for off-rail tools.
+function advancePhase(name, input) {
+  if (!cur) return;
+  const i = phaseForTool(name, input);
+  if (i < 0) return;
+  if (i > cur.phaseReached) cur.phaseReached = i;
+  cur.phaseActive = i;
+  renderRunSteps();
+}
+
+// Turn ended / paused on approval / errored → nothing is actively running; drop the pulse but
+// keep the furthest milestone so the rail still shows how far the chat got.
+function clearPhaseActive() {
+  if (cur) cur.phaseActive = -1;
+  renderRunSteps();
+}
+
+// Render the shared rail from the active chat's record. Hidden until at least one phase reached.
+function renderRunSteps() {
+  if (!runSteps) return;
+  const reached = cur ? cur.phaseReached : -1;
+  const active = cur ? cur.phaseActive : -1;
+  if (reached < 0) { runSteps.hidden = true; runSteps.innerHTML = ""; return; }
+  runSteps.hidden = false;
+  runSteps.innerHTML = "";
+  RUN_PHASES.forEach((ph, i) => {
+    let state = i < reached ? "done" : (i > reached ? "pending" : "done");
+    if (i === active) state = "active";
+    const step = el("div", "run-step " + state);
+    step.setAttribute("role", "listitem");
+    const dot = el("span", "run-step-dot", state === "done" ? "✓" : String(i + 1));
+    step.appendChild(dot);
+    step.appendChild(el("span", "run-step-label", ph.label));
+    step.title = `${ph.label} — ${state}`;
+    runSteps.appendChild(step);
+    if (i < RUN_PHASES.length - 1) runSteps.appendChild(el("span", "run-step-sep", ""));
+  });
 }
 
 // ---- deterministic structured results card (B2) --------------------------
