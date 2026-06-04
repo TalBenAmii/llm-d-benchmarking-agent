@@ -120,6 +120,40 @@ def _validate_governance_schema(executables: dict[str, Any]) -> None:
                 _validate_one_governance_block(sub_entry, f"executables.{exe}.subcommands.{sub}")
 
 
+def _validate_one_positional_list(positionals: Any, where: str) -> None:
+    """Enforce the invariant the positional walker (``_walk``) relies on: a ``repeated`` positional
+    spec (nargs='+'/'*') is the LAST spec in its list. The walker keeps a ``repeated`` spec on the
+    stack so it matches every following token; a ``repeated`` spec placed BEFORE another positional
+    would therefore silently swallow the following positional's tokens. Catch that LOUDLY at LOAD
+    time (startup/test) rather than mis-parsing a real command. A non-list ``positionals`` is left
+    to the walker (which treats it as no positionals); we only police the repeated-ordering rule."""
+    if not isinstance(positionals, list):
+        return
+    for idx, spec in enumerate(positionals):
+        if isinstance(spec, dict) and spec.get("repeated") and idx != len(positionals) - 1:
+            raise AllowlistError(
+                f"{where}: a `repeated` positional spec must be LAST (it consumes all following "
+                f"tokens), but one appears at index {idx} of {len(positionals)}"
+            )
+
+
+def _validate_positionals_schema(executables: dict[str, Any]) -> None:
+    """Walk every positional list in the policy — flat executables, subcommands, and NESTED
+    subcommands (the recursion ``_walk_subcommand`` supports) — and enforce the repeated-last
+    invariant on each. No per-command knowledge: it police the SHAPE uniformly."""
+    def _walk_entry(entry: dict[str, Any], where: str) -> None:
+        _validate_one_positional_list(entry.get("positionals"), f"{where}.positionals")
+        subs = entry.get("subcommands")
+        if isinstance(subs, dict):
+            for sub, sub_entry in subs.items():
+                if isinstance(sub_entry, dict):
+                    _walk_entry(sub_entry, f"{where}.subcommands.{sub}")
+
+    for exe, entry in executables.items():
+        if isinstance(entry, dict):
+            _walk_entry(entry, f"executables.{exe}")
+
+
 class Allowlist:
     """Loads the policy once and validates argv lists against it."""
 
@@ -130,6 +164,10 @@ class Allowlist:
         # Schema-validate the governance fields (timeout_s / quota) AT STARTUP so a
         # malformed allowlist fails loudly here instead of mis-enforcing at run time.
         _validate_governance_schema(self._executables)
+        # Enforce the positional walker's `repeated`-must-be-last invariant at LOAD time, so a
+        # future allowlist edit putting a repeated spec before another positional fails loudly here
+        # rather than silently swallowing the following positional's tokens in the hot _walk path.
+        _validate_positionals_schema(self._executables)
 
     # ---- construction -----------------------------------------------------
     @classmethod

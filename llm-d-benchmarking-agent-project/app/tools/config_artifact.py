@@ -34,6 +34,7 @@ The authored scenario is then previewed via the CLI's own determinism gate using
 """
 from __future__ import annotations
 
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -84,8 +85,20 @@ def _scenario_reference(bench_repo: Path) -> dict[str, Any]:
     an authored scenario must satisfy: the union of top-level scenario-item knob keys the
     repo's own examples actually use, plus the example file names (for provenance). Reads
     repo truth; never vendors a copy. Returns ``{}`` (and the caller falls back to the
-    intrinsic shape contract) when the repo / its scenario examples are absent."""
-    scen_dir = bench_repo.joinpath(*_SCENARIOS_SUBDIR)
+    intrinsic shape contract) when the repo / its scenario examples are absent.
+
+    The repo's scenario examples are STATIC between runs, but the underlying rglob+parse runs on
+    every authored scenario, so we memoize on the scenarios-dir path string. Both fields are sorted
+    lists; the two callers treat the result READ-ONLY (validate_scenario_structure copies knob_keys
+    into a fresh set; _author_scenario only reads examples), so sharing one cached dict is safe."""
+    return _scenario_reference_cached(str(bench_repo.joinpath(*_SCENARIOS_SUBDIR)))
+
+
+@cache
+def _scenario_reference_cached(scenarios_dir: str) -> dict[str, Any]:
+    """Memoized core of ``_scenario_reference``, keyed by the scenarios-dir path string. See the
+    wrapper's docstring for the read-only-sharing contract that makes caching the dict safe."""
+    scen_dir = Path(scenarios_dir)
     if not scen_dir.is_dir():
         return {}
     knob_keys: set[str] = set()

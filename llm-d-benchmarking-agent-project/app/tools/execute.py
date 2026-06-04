@@ -116,6 +116,56 @@ _PHASE_TIMEOUT_FLAGS: dict[str, tuple[str, tuple[str, ...]]] = {
 }
 
 
+# Single-flag, subcommand-guarded emissions, collapsed into ONE data-driven loop (sibling of
+# _PHASE_TIMEOUT_FLAGS). Each row is flags-key -> (cli_flag, accepting_subcommands, takes_value,
+# allow_falsy) where:
+#   * accepting_subcommands  — the subcommands upstream accepts the flag on; an EMPTY tuple means
+#                              "every subcommand" (no guard — gateway_class/step ride all of them).
+#   * takes_value            — True emits ``cli_flag <value>``; False emits a BARE ``cli_flag``.
+#   * allow_falsy            — True uses an ``is not None`` guard so an explicit 0 still emits
+#                              (parallel's per-pool cap); False uses the plain truthy guard.
+# This table is DERIVED 1:1 from the former hand-written branches — same flags-key, cli_flag,
+# accepting-subcommand tuple, valued/bare, and guard for each — and carries NO judgment (WHICH
+# value to set lives in the per-flag knowledge/*.md). The per-flag rationale that used to sit on
+# each branch is summarized below; the subcommand guards are EXACTLY as before (notably ``-d``
+# stays run/experiment-only, never teardown where -d means the destructive --deep). ``monitoring``
+# is NOT in this table — its True/False asymmetry (BooleanOptionalAction) needs a real branch.
+_SUBCOMMAND_FLAGS: dict[str, tuple[str, tuple[str, ...], bool, bool]] = {
+    # Multi-stack SUBSET (Phase 33): --stack <names> restricts a multi-stack scenario to a subset.
+    # standup/smoketest/run/teardown only (plan/experiment reject it). knowledge/multi_stack.md.
+    "stack": ("--stack", ("standup", "smoketest", "run", "teardown"), True, False),
+    # Per-pool parallelism CAP (Phase 33): --parallel <int> caps how many stacks deploy/smoketest
+    # at once (default 4). standup/smoketest/experiment only (run uses -j harness PODS). The
+    # is-not-None guard (allow_falsy) honors an explicit 0. knowledge/multi_stack.md.
+    "parallel": ("--parallel", ("standup", "smoketest", "experiment"), True, True),
+    # Gateway PROVIDER selection (Phase 32): --gateway-class <provider> OVERRIDES the scenario's
+    # gateway.className. Registered on ALL SIX subcommands upstream, so NO guard (empty tuple).
+    # knowledge/gateway_class.md; value is allowlist-pinned to the gateway_class enum.
+    "gateway_class": ("--gateway-class", (), True, False),
+    # Step selection / re-run (Phase 31): -s <spec> re-runs one step / step range. -s is valid on
+    # standup/smoketest/run/teardown upstream, but the allowlist screens an -s on a non-accepting
+    # subcommand, so this kept NO Python subcommand guard before — preserved (empty tuple).
+    # knowledge/step_select.md.
+    "step": ("-s", (), True, False),
+    # Dataset replay (Phase 41): -x <url> replays a real dataset instead of the synthetic profile.
+    # run/experiment only. knowledge/dataset_replay.md.
+    "dataset": ("-x", ("run", "experiment"), True, False),
+    # Run-config round-trip (Phase 42): --generate-config GENERATES a reusable run-config YAML and
+    # exits (run-only, read_only_trigger); -c <path> REPLAYS one (run-only). knowledge/
+    # runconfig_roundtrip.md.
+    "generate_config": ("--generate-config", ("run",), False, False),
+    "run_config": ("-c", ("run",), True, False),
+    # Harness debug mode (Phase 37): bare -d starts harness pods with `sleep infinity` instead of
+    # the load (upstream --debug). GUARDED to run/experiment ONLY — on teardown -d means the
+    # DESTRUCTIVE --deep, so an unguarded -d would turn a debug request into a deep teardown.
+    # Stays mutating/approval-gated. knowledge/harness_debug.md.
+    "debug": ("-d", ("run", "experiment"), False, False),
+    # Local analysis plot families (Phase 40): bare --analyze ALSO runs the optional workstation
+    # matplotlib analysis (extra plot families under analysis/). run-only. knowledge/analysis.md.
+    "analyze": ("--analyze", ("run",), False, False),
+}
+
+
 def build_argv(
     subcommand: str,
     *,
@@ -333,34 +383,22 @@ def build_argv(
         argv += ["-o", str(flags["overrides"])]
     if flags.get("parallelism") is not None:
         argv += ["-j", str(flags["parallelism"])]
-    # Multi-stack SUBSET (Phase 33): emit --stack <names> to restrict a multi-stack scenario
-    # (N model pools behind one gateway, e.g. guides/multi-model-wva) to one stack or a
-    # comma-separated subset. SUBCOMMAND-AWARE: upstream --stack is accepted ONLY on
-    # standup/smoketest/run/teardown (plan/experiment reject it), so we guard on the subcommand;
-    # an absent/None stack emits nothing (every stack is operated on). PURE MECHANISM — WHICH
-    # stack(s) to target is the agent's judgment (knowledge/multi_stack.md), never an if/elif on
-    # the value.
-    if flags.get("stack") and subcommand in ("standup", "smoketest", "run", "teardown"):
-        argv += ["--stack", str(flags["stack"])]
-    # Per-pool parallelism CAP (Phase 33): emit --parallel <int> to cap how many stacks deploy/
-    # smoketest in parallel (upstream default 4). SUBCOMMAND-AWARE: upstream --parallel is on
-    # standup/smoketest/experiment ONLY (run uses the SEPARATE --parallelism/-j harness-pod count;
-    # teardown/plan have neither), so we guard on the subcommand. `is not None` (mirroring the
-    # parallelism guard above) honors an explicit 0; absent/None emits nothing (default 4 stands).
-    # PURE MECHANISM — HOW MANY stacks at once is the agent's judgment (knowledge/multi_stack.md),
-    # never an if/elif on the value. DISTINCT from flags["parallelism"]->-j (parallel harness PODS).
-    if flags.get("parallel") is not None and subcommand in ("standup", "smoketest", "experiment"):
-        argv += ["--parallel", str(flags["parallel"])]
-    # Gateway PROVIDER selection (Phase 32): emit --gateway-class <provider> to OVERRIDE the
-    # scenario's gateway.className. Emitted UNCONDITIONALLY across subcommands — upstream
-    # registers --gateway-class on ALL SIX (plan/standup/smoketest/run/teardown/experiment), so
-    # there is no subcommand guard and no judgment branch in Python. PURE MECHANISM — WHICH
-    # provider (istio/agentgateway/gke/epponly/data-science-gateway-class) is the agent's judgment
-    # in knowledge/gateway_class.md, never an if/elif on the value. Upstream applies it only on
-    # the modelservice deploy path (ignored by kustomize/standalone/fma). Omitted ⇒ the spec's
-    # gateway.className stands. The provider value is allowlist-pinned to the gateway_class enum.
-    if flags.get("gateway_class"):
-        argv += ["--gateway-class", str(flags["gateway_class"])]
+    # Single-flag, subcommand-guarded emissions (stack / parallel / gateway_class / step / dataset /
+    # generate_config / run_config / debug / analyze) — emitted in ONE data-driven loop over the
+    # _SUBCOMMAND_FLAGS table (sibling of the _PHASE_TIMEOUT_FLAGS loop below). The per-flag CLI
+    # flag, accepting-subcommand guard, valued/bare shape, and explicit-0 handling all live in that
+    # table; the per-flag rationale is on its rows. PURE MECHANISM — no if/elif on a value, no
+    # judgment (WHICH value to set lives in the per-flag knowledge/*.md). monitoring is NOT here —
+    # its True/False (BooleanOptionalAction) asymmetry stays a real branch below.
+    for key, (cli_flag, accepts, takes_value, allow_falsy) in _SUBCOMMAND_FLAGS.items():
+        value = flags.get(key)
+        present = value is not None if allow_falsy else bool(value)
+        if not present or (accepts and subcommand not in accepts):
+            continue
+        if takes_value:
+            argv += [cli_flag, str(value)]
+        else:
+            argv.append(cli_flag)
     if flags.get("stop_on_error"):
         argv.append("--stop-on-error")
     if flags.get("skip_teardown"):
@@ -380,24 +418,6 @@ def build_argv(
         argv.append("--monitoring")
     elif monitoring is False and subcommand == "standup":
         argv.append("--no-monitoring")
-    # Step selection / re-run (Phase 31): emit -s <spec> so the agent can re-run a single
-    # failed step or step range instead of redoing the whole phase. PURE MECHANISM — we emit
-    # whatever step-spec the agent chose; WHICH step to re-run (and per-phase step numbering)
-    # is judgment in knowledge/step_select.md, never an if/elif on the value. -s is the short
-    # form valid upstream on standup/smoketest/run/teardown; the step-list grammar (N / N-M
-    # ranges / N,M lists / combos like 3-5,9) is parsed by the CLI's StepExecutor. An unknown
-    # -s on a subcommand that doesn't accept it is screened by the allowlist (only the four
-    # accepting subcommands permit it). Re-running mutating steps stays approval-gated — -s
-    # does not change a command's mode.
-    if flags.get("step"):
-        argv += ["-s", str(flags["step"])]
-    # Dataset replay (Phase 41): emit -x <url> so the harness REPLAYS a real dataset instead of
-    # the synthetic workload profile. Upstream -x/--dataset is accepted ONLY on run/experiment, so
-    # we guard on the subcommand; an absent/None dataset emits nothing (synthetic profile stands).
-    # PURE MECHANISM — WHICH dataset / dataset-vs-synthetic is the agent's judgment
-    # (knowledge/dataset_replay.md), never an if/elif on the value.
-    if flags.get("dataset") and subcommand in ("run", "experiment"):
-        argv += ["-x", str(flags["dataset"])]
     # Per-phase CLI timeouts (Phase 38): emit the CLI's OWN per-phase timeout flags (seconds)
     # so a slow deploy / data-access / teardown phase can be given a longer DEEPER bound than
     # the host's blunt per-command runner deadline. This is pure MECHANISM driven by the
@@ -415,25 +435,6 @@ def build_argv(
         value = flags.get(key)
         if value is not None and subcommand in accepts:
             argv += [cli_flag, str(value)]
-    # Run-config round-trip (Phase 42): use the CLI's OWN --generate-config / -c reuse
-    # mechanism. Both are upstream `run`-ONLY (interface/run.py: --generate-config is store_true,
-    # "Generate a run config YAML from current settings and exit"; -c/--config dest=run_config,
-    # "Path to run config YAML file (enables run-only mode)"), so we guard on subcommand == "run".
-    #   * flags["generate_config"] => append --generate-config: the CLI writes a reusable run-config
-    #     YAML from the current settings UNDER --workspace (which execute_llmdbenchmark anchors to
-    #     ctx.workspace for a non-preview run) and EXITS — it deploys nothing, so the allowlist
-    #     marks it a read_only_trigger and it auto-runs (like --list-endpoints/--dry-run).
-    #   * flags["run_config"] => append -c <path>: REPLAY a previously generated run-config
-    #     (run-only mode). The path is the file --generate-config emitted under the session
-    #     workspace, so a generated config lands under and replays from the same session dir.
-    # This is pure MECHANISM. WHEN to generate vs reuse via -c vs author in-workspace with
-    # write_and_validate_config is the agent's judgment in knowledge/runconfig_roundtrip.md, never
-    # an if/elif on the value. We emit the short -c so its value can be a workspace-relative path,
-    # and set NO env var (the CLI consumes --generate-config/run_config directly).
-    if flags.get("generate_config") and subcommand == "run":
-        argv.append("--generate-config")
-    if flags.get("run_config") and subcommand == "run":
-        argv += ["-c", str(flags["run_config"])]
     if flags.get("list_endpoints"):
         argv.append("--list-endpoints")
     # Collect-only / skip-execution mode (Phase 36): emit ``-z`` to SKIP the harness/load
@@ -446,28 +447,6 @@ def build_argv(
     # ``-z`` (the -m precedent). Emission is unconditional mechanism — no if/elif on the value.
     if flags.get("skip"):
         argv.append("-z")
-    # Harness debug mode (Phase 37): emit a bare ``-d`` so the CLI starts the harness pods with
-    # ``sleep infinity`` INSTEAD of running the load (upstream --debug, env LLMDBENCH_DEBUG) — for
-    # exec-ing into a stuck/misbehaving harness pod to debug it. SUBCOMMAND-GUARDED to run/
-    # experiment ONLY: upstream defines -d=--debug on run.py and experiment.py, but on teardown.py
-    # -d means --deep (a DESTRUCTIVE full-namespace wipe), so an unguarded -d would silently turn a
-    # debug request into a deep teardown — we must NOT emit it outside run/experiment (mirrors the
-    # dataset/-x subcommand guard above). A debug launch still creates a REAL pod, so it stays
-    # MUTATING/approval-gated (it is deliberately NOT a read-only trigger like -z). PURE MECHANISM —
-    # WHEN to debug, and the boundary that the interactive in-pod exec is a MANUAL user step the
-    # agent never drives, is judgment in knowledge/harness_debug.md, never an if/elif on the value.
-    if flags.get("debug") and subcommand in ("run", "experiment"):
-        argv.append("-d")
-    # Local analysis plot families (Phase 40): emit a bare ``--analyze`` so the CLI ALSO runs its
-    # optional workstation matplotlib analysis on the collected results, writing three EXTRA plot
-    # families under analysis/ (per-request distributions, session-lifecycle, Prometheus
-    # time-series) IN ADDITION to the harness PNGs. Upstream defines ``--analyze`` (store_true) on
-    # the ``run`` subparser ALONE, so we guard on the subcommand; experiment/standup/plan reject
-    # it. It does NOT change a run's mutating mode (a real run still loads + needs approval), and
-    # the agent's own SLO/goodput/Pareto math is untouched. PURE MECHANISM — WHEN to ask for it is
-    # the agent's judgment (knowledge/analysis.md), never an if/elif on the value.
-    if flags.get("analyze") and subcommand == "run":
-        argv.append("--analyze")
     if flags.get("dry_run"):
         argv.append("--dry-run")
     argv += list(extra or [])

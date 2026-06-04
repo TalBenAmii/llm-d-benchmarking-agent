@@ -5,7 +5,9 @@ read-only/mutating classification, and that everything outside the policy is den
 """
 from __future__ import annotations
 
-from app.security.allowlist import MUTATING, READ_ONLY
+import pytest
+
+from app.security.allowlist import MUTATING, READ_ONLY, Allowlist, AllowlistError
 
 # ---- permitted commands, correct classification ---------------------------
 
@@ -285,3 +287,77 @@ def test_install_prereqs_unknown_flag_now_allowed(allowlist):
 def test_install_prereqs_bad_kind_version_denied(allowlist):
     # kind_version must look like vX.Y.Z
     assert not allowlist.validate(["install_prereqs.sh", "--kind", "--kind-version", "latest; rm -rf /"]).allowed
+
+
+# ---- positional shape invariant: a `repeated` spec must be LAST ------------
+# The positional walker keeps a `repeated` spec on the stack so it matches every following token;
+# a `repeated` spec placed before another positional would silently swallow the next positional's
+# tokens. The loader enforces "repeated must be last" LOUDLY so a future allowlist edit can't slip
+# that past — these tests pin both the load-time rejection and that a legitimate trailing-repeated
+# spec (mirroring the live `results add <paths...>` shape) still loads.
+
+def test_real_allowlist_loads_with_repeated_last(allowlist):
+    # The shipped security/allowlist.yaml has trailing `repeated` positionals (results store);
+    # loading it via the fixture must not raise — the invariant holds for the real policy.
+    assert allowlist is not None
+
+
+def test_repeated_positional_before_another_is_rejected_at_load():
+    policy = {
+        "executables": {
+            "demo": {
+                "flat": True,
+                "mode": READ_ONLY,
+                # A `repeated` spec FOLLOWED by another positional — the invariant violation.
+                "positionals": [
+                    {"value": None, "repeated": True},
+                    {"value": None},
+                ],
+            }
+        }
+    }
+    with pytest.raises(AllowlistError, match="repeated"):
+        Allowlist(policy)
+
+
+def test_repeated_positional_last_is_accepted_at_load():
+    policy = {
+        "executables": {
+            "demo": {
+                "flat": True,
+                "mode": READ_ONLY,
+                "positionals": [
+                    {"value": None},
+                    {"value": None, "repeated": True},  # trailing repeated — legitimate (nargs='+')
+                ],
+            }
+        }
+    }
+    # Loads without raising, and still validates a multi-token tail against the repeated spec.
+    al = Allowlist(policy)
+    assert al.validate(["demo", "a", "b", "c"]).allowed
+
+
+def test_repeated_positional_before_another_in_nested_subcommand_rejected():
+    # The validation must also reach NESTED subcommands (the `results <store-command>` shape).
+    policy = {
+        "executables": {
+            "demo": {
+                "subcommands": {
+                    "group": {
+                        "subcommands": {
+                            "leaf": {
+                                "mode": READ_ONLY,
+                                "positionals": [
+                                    {"value": None, "repeated": True},
+                                    {"value": None},
+                                ],
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    with pytest.raises(AllowlistError, match="repeated"):
+        Allowlist(policy)

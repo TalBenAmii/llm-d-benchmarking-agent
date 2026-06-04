@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 from app.paths import is_within
+from app.security.runner import RunResult
 from app.tools.context import ToolContext, ToolError
 from app.validation.report import load_report, summarize_report, validate_report
 
@@ -104,12 +105,20 @@ async def probe_environment(
         out["stack"] = await _probe_stack(ctx, namespace)
     if "prometheus_crds" in wanted:
         out["prometheus_crds"] = await _probe_prometheus_crds(ctx)
+    # node_capacity + provider_detection BOTH parse `kubectl get nodes -o json`; fetch it ONCE
+    # here and hand the SAME RunResult to both probes so a single probe_environment call runs the
+    # node list query just once. The probes still accept the pre-fetched result OPTIONALLY (None =>
+    # fetch themselves), so each remains correct when called standalone; the kubectl-missing /
+    # non-zero-exit degraded defaults are unchanged. Pure mechanism — no behavior change.
+    nodes_res = None
+    if shutil.which("kubectl") and ({"node_capacity", "provider_detection"} & set(wanted)):
+        nodes_res = await ctx.run_readonly(["kubectl", "get", "nodes", "-o", "json"], timeout=12.0)
     if "node_capacity" in wanted:
-        out["node_capacity"] = await _probe_node_capacity(ctx)
+        out["node_capacity"] = await _probe_node_capacity(ctx, nodes_res=nodes_res)
     if "cluster_preconditions" in wanted:
         out["cluster_preconditions"] = await _probe_cluster_preconditions(ctx, spec)
     if "provider_detection" in wanted:
-        out["provider_detection"] = await _probe_provider_detection(ctx)
+        out["provider_detection"] = await _probe_provider_detection(ctx, nodes_res=nodes_res)
     return out
 
 
@@ -230,18 +239,22 @@ async def _probe_prometheus_crds(ctx: ToolContext) -> dict[str, Any]:
     }
 
 
-async def _probe_node_capacity(ctx: ToolContext) -> dict[str, Any]:
+async def _probe_node_capacity(ctx: ToolContext, *, nodes_res: RunResult | None = None) -> dict[str, Any]:
     """Report each node's allocatable/capacity CPU so the agent can right-size the harness
     launcher's CPU request for a small/single-node cluster (e.g. Kind). MECHANISM ONLY: it
     reports the numbers; WHETHER to lower LLMDBENCH_HARNESS_CPU_NR and to WHAT value is the
     agent's judgment, grounded in knowledge/harness_sizing.md — never a Python branch here.
 
-    Uses the already-allowlisted read-only ``kubectl get nodes -o json``. Returns a structured,
+    Uses the already-allowlisted read-only ``kubectl get nodes -o json``. ``nodes_res`` may carry
+    a PRE-FETCHED result (so probe_environment runs the node list query once for both node probes);
+    when None we fetch it ourselves so the probe still works standalone. Returns a structured,
     never-raising result; ``min_allocatable_cpu`` (the binding constraint for scheduling) is the
     minimum allocatable CPU across nodes, or None when it can't be determined."""
     if not shutil.which("kubectl"):
         return {"available": False, "nodes": [], "min_allocatable_cpu": None}
-    res = await ctx.run_readonly(["kubectl", "get", "nodes", "-o", "json"], timeout=12.0)
+    res = nodes_res if nodes_res is not None else await ctx.run_readonly(
+        ["kubectl", "get", "nodes", "-o", "json"], timeout=12.0
+    )
     if res.exit_code != 0:
         return {"available": False, "nodes": [], "min_allocatable_cpu": None}
     nodes = _node_cpu_summaries(res.output)
@@ -283,7 +296,7 @@ async def _probe_cluster_preconditions(ctx: ToolContext, spec: str | None) -> di
     }
 
 
-async def _probe_provider_detection(ctx: ToolContext) -> dict[str, Any]:
+async def _probe_provider_detection(ctx: ToolContext, *, nodes_res: RunResult | None = None) -> dict[str, Any]:
     """Report the cloud-PROVIDER facts a provider-aware precondition pack needs: which provider
     the cluster is (openshift / gke / doks / aks / minikube vs kind) inferred from node LABELS,
     and each node's GPU TAINTS — the taints that leave a model-server pod Pending until a matching
@@ -303,7 +316,11 @@ async def _probe_provider_detection(ctx: ToolContext) -> dict[str, Any]:
       - ``providers_seen``  the sorted set of every provider hint seen across nodes.
       - ``gpu_taints``      per-node ``{node, key, value, effect}`` for each taint whose key names
                             a GPU — what the agent authors a toleration against.
-      - ``nodes``           per-node ``{name, provider, labels_seen, taints}`` facts."""
+      - ``nodes``           per-node ``{name, provider, labels_seen, taints}`` facts.
+
+    ``nodes_res`` may carry a PRE-FETCHED ``kubectl get nodes -o json`` result (so probe_environment
+    runs that query once for both node probes); when None we fetch it ourselves so the probe still
+    works standalone. The kubectl-missing / non-zero-exit degraded defaults are unchanged."""
     if not shutil.which("kubectl"):
         return {
             "available": False,
@@ -312,7 +329,9 @@ async def _probe_provider_detection(ctx: ToolContext) -> dict[str, Any]:
             "gpu_taints": [],
             "nodes": [],
         }
-    res = await ctx.run_readonly(["kubectl", "get", "nodes", "-o", "json"], timeout=12.0)
+    res = nodes_res if nodes_res is not None else await ctx.run_readonly(
+        ["kubectl", "get", "nodes", "-o", "json"], timeout=12.0
+    )
     if res.exit_code != 0:
         return {
             "available": False,
