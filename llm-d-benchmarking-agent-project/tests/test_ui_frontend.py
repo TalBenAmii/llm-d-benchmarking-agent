@@ -102,6 +102,36 @@ def test_live_resource_trend_sparklines():
     assert ".res-spark-line" in css
 
 
+def test_analyzer_next_steps_chips():
+    """The analyzer's ranked next_steps render as clickable chips that send the step as a message."""
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    assert "function renderNextSteps" in js
+    assert "next_steps" in js
+    assert "renderNextSteps(r)" in js                 # dispatched alongside the sweep scatter
+    assert "sendUserMessage(prompt)" in js            # a click acts on the suggestion
+    assert ".next-step-chip" in css
+
+
+def test_preflight_status_cards():
+    """The read-only diagnostic tools render friendly status cards (not just raw JSON)."""
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    for fn in ("renderEnvStatus", "renderCapacityCard", "renderReadinessCard",
+               "renderAcceleratorCard", "renderDoeCard", "renderOrchestrateCard", "statusCell"):
+        assert f"function {fn}" in js, f"missing {fn}"
+    # Each is dispatched from finishTool by tool name.
+    for tool, fn in (("probe_environment", "renderEnvStatus"),
+                     ("check_capacity", "renderCapacityCard"),
+                     ("check_endpoint_readiness", "renderReadinessCard"),
+                     ("advise_accelerators", "renderAcceleratorCard"),
+                     ("generate_doe_experiment", "renderDoeCard"),
+                     ("orchestrate_benchmark_run", "renderOrchestrateCard")):
+        assert f'data.name === "{tool}") {fn}(r)' in js, f"{tool} not dispatched to {fn}"
+    # Shared status visuals.
+    assert ".status-dot-ok" in css and ".status-grid" in css and ".diag-list" in css
+
+
 def test_preview_harness_exists_and_is_self_contained():
     """ui/preview.html drives the renderers with fixtures and no backend, for hand verification.
     It must set the preview flag (so app.js skips its live boot), reference the assets relatively

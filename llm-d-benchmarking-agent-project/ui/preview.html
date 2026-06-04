@@ -225,7 +225,64 @@
       A.renderResourceStats({ available: true, namespace: "llmd-quickstart", rows });
     }
 
-    // 7) Start the working indicator so the live status line + Stop button are visible
+    // 6b) Actionable "next steps" chips (clickable; from the analyzer).
+    A.renderNextSteps({ next_steps: [
+      { action: "save_baseline", tool: "result_history", reason: "save this run as your baseline so future runs can be trended against it" },
+      { action: "compare_to_baseline", tool: "compare_reports", reason: "compare this run against a prior comparable run to spot a regression or win" },
+      { action: "run_sweep", tool: "generate_doe_experiment", reason: "sweep concurrency/config to find the best operating point for this model" },
+    ] });
+
+    // 7) Pre-flight / status cards (from the read-only diagnostic tools).
+    A.renderEnvStatus({
+      container_runtime: { type: "docker", present: true, daemon_up: true },
+      tools: { docker: true, kubectl: true, kind: true, helm: false },
+      venv: { exists: true, path: ".venv" },
+      repos: { "llm-d": { present: true }, "llm-d-benchmark": { present: true } },
+      kube_context: { available: true, context: "kind-llmd-quickstart" },
+      cluster_info: { reachable: true },
+      kind_clusters: { available: true, clusters: ["llmd-quickstart"] },
+      namespaces: { available: true, namespaces: ["default", "llmd-quickstart", "kube-system"] },
+      stack: { checked: true, exists: true, pod_count: 4, ready_count: 3 },
+    });
+    A.renderCapacityCard({
+      spec: "cicd/kind", ran: true, feasible: false, gated: false,
+      errors: ["ERROR: requested KV-cache (21Gi) exceeds per-GPU budget (20Gi) by 1Gi"],
+      warnings: ["WARNING: tensor-parallelism 2 with 1 visible accelerator will under-utilize"],
+    });
+    A.renderReadinessCard({
+      namespace: "llmd-quickstart", ready: false, detail: "1 of 2 services not ready",
+      ready_endpoints: [{ service: "vllm-decode", ready_addresses: 1, not_ready_addresses: 0 }],
+      not_ready_endpoints: [{ service: "vllm-prefill", ready_addresses: 0, not_ready_addresses: 1 }],
+      gateway: { control_plane_ready: true },
+      serving_readiness: { pods: [
+        { name: "vllm-decode-0", ready_condition: "True" },
+        { name: "vllm-prefill-0", ready_condition: "False" },
+      ], health_reachable: true, models_reachable: false },
+    });
+    A.renderAcceleratorCard({
+      available: true, any_accelerator: false, cpu_only: true, advertised_resources: [],
+      nodes: [{ name: "llmd-quickstart-control-plane", accelerators: {}, cpu_only: true, allocatable: { cpu: 8 } }],
+    });
+    A.renderDoeCard({
+      generated: true, experiment_name: "pd-ratio-sweep", total_matrix: 4,
+      n_setup_treatments: 2, n_run_treatments: 2,
+      setup_treatments: [
+        { name: "tp1", "decode.parallelism.tensor": 1 }, { name: "tp2", "decode.parallelism.tensor": 2 },
+      ],
+      run_treatments: [
+        { name: "qps10", "load.rate_qps": 10 }, { name: "qps50", "load.rate_qps": 50 },
+      ],
+    });
+    A.renderOrchestrateCard({
+      namespace: "llmd-quickstart", run_id: "run-abc123", succeeded: false, dead_lettered: true,
+      attempts: [
+        { phase: "failed", reason: "BackoffLimitExceeded", failure: { kind: "oom", message: "container OOMKilled" } },
+        { phase: "failed", reason: "DeadlineExceeded", failure: { kind: "timeout", message: "exceeded activeDeadlineSeconds" } },
+      ],
+      final_failure: { kind: "oom", message: "container OOMKilled (limit 2Gi)" },
+    });
+
+    // 8) Start the working indicator so the live status line + Stop button are visible
     //    (a real run does this on send; here it just ticks against fixture state).
     A.startWorking("Benchmarking");
   </script>

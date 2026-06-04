@@ -1347,6 +1347,268 @@ function renderHarnessCompareCard(result) {
   scroll();
 }
 
+// ---- actionable "next steps" chips (from analyze_results) ----------------
+// The analyzer ranks concrete post-run next steps ({action, tool, reason}). Surface them as
+// clickable chips (like the welcome chips): clicking sends the step's reason as a message so the
+// agent carries it out — turning the analyzer's advice into one-tap actions for a non-expert.
+const NEXT_STEP_LABELS = {
+  save_baseline: "Save as baseline",
+  compare_to_baseline: "Compare to baseline",
+  trend_metric: "Trend a metric",
+  run_again: "Try a different config",
+  run_sweep: "Run a sweep",
+};
+function renderNextSteps(r) {
+  if (!r || !Array.isArray(r.next_steps) || !r.next_steps.length) return;
+  const row = el("div", "next-steps");
+  row.appendChild(el("div", "next-steps-label", "Suggested next steps"));
+  const chips = el("div", "next-steps-chips");
+  for (const s of r.next_steps) {
+    if (!s || !s.action) continue;
+    const btn = el("button", "chip next-step-chip", NEXT_STEP_LABELS[s.action] || humanizeTool(s.action));
+    btn.type = "button";
+    if (s.reason) btn.title = s.reason;
+    const prompt = s.reason || String(s.action).replace(/_/g, " ");
+    btn.onclick = () => sendUserMessage(prompt);
+    chips.appendChild(btn);
+  }
+  if (!chips.childNodes.length) return;
+  row.appendChild(chips);
+  activePane.appendChild(row);
+  scroll();
+}
+
+// ---- pre-flight / status cards (from read-only diagnostic tool_results) ---
+// The data-rich read-only tools (probe / capacity / readiness / accelerators / DoE / orchestrate)
+// emit no results_card event, so their output was only ever raw JSON in the collapsed tool panel.
+// These render them as friendly status cards — exactly the "is my setup ready?" signal a
+// non-expert needs. Each no-ops on a shape it can't draw; the JSON stays as the fallback.
+
+// A small coloured status dot (state ∈ ok|warn|bad|na).
+function statusDot(state) { return el("span", "status-dot status-dot-" + (state || "na")); }
+// A status-grid cell: dot + label + detail.
+function statusCell(state, label, detail) {
+  const c = el("div", "status-cell");
+  c.appendChild(statusDot(state));
+  const t = el("div", "status-cell-txt");
+  t.appendChild(el("div", "status-cell-label", label));
+  if (detail != null) t.appendChild(el("div", "status-cell-detail", String(detail)));
+  c.appendChild(t);
+  return c;
+}
+
+// probe_environment → a compact at-a-glance status grid of whatever checks ran.
+function renderEnvStatus(r) {
+  if (!r || typeof r !== "object") return;
+  const items = [];
+  const cr = r.container_runtime;
+  if (cr) items.push([cr.daemon_up ? "ok" : cr.present ? "warn" : "bad", (cr.type || "container") + " runtime",
+    cr.daemon_up ? "running" : cr.present ? "daemon down" : "not found"]);
+  if (r.tools && typeof r.tools === "object") {
+    for (const [name, ok] of Object.entries(r.tools)) items.push([ok ? "ok" : "bad", name, ok ? "present" : "missing"]);
+  }
+  if (r.venv) items.push([r.venv.exists ? "ok" : "warn", "venv", r.venv.exists ? "ready" : "not built"]);
+  if (r.repos && typeof r.repos === "object") {
+    const names = Object.keys(r.repos);
+    const present = names.filter((n) => r.repos[n] && r.repos[n].present).length;
+    if (names.length) items.push([present === names.length ? "ok" : present ? "warn" : "bad", "repos", `${present}/${names.length} present`]);
+  }
+  if (r.kube_context) items.push([r.kube_context.available ? "ok" : "na", "kube context", r.kube_context.context || "none"]);
+  if (r.cluster_info) items.push([r.cluster_info.reachable ? "ok" : "bad", "cluster",
+    r.cluster_info.reachable ? "reachable" : (r.cluster_info.timed_out ? "timed out" : "unreachable")]);
+  if (r.kind_clusters) {
+    const cs = r.kind_clusters.clusters || [];
+    items.push([cs.length ? "ok" : "na", "kind clusters", cs.length ? cs.join(", ") : "none"]);
+  }
+  if (r.namespaces && r.namespaces.available) items.push(["ok", "namespaces", String((r.namespaces.namespaces || []).length)]);
+  if (r.stack && r.stack.checked) items.push([r.stack.exists ? "ok" : "na", "llm-d stack",
+    r.stack.exists ? `${r.stack.ready_count || 0}/${r.stack.pod_count || 0} pods ready` : "not deployed"]);
+  if (!items.length) return;
+  removeWelcomeCard();
+  const root = el("div", "results-card status-card");
+  root.appendChild(el("div", "results-head", "Environment status"));
+  const grid = el("div", "status-grid");
+  for (const [state, label, detail] of items) grid.appendChild(statusCell(state, label, detail));
+  root.appendChild(grid);
+  activePane.appendChild(root);
+  scroll();
+}
+
+// check_capacity → feasibility verdict + the planner's error/warning diagnostics.
+function renderCapacityCard(r) {
+  if (!r || r.ran !== true) return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  const feasible = r.feasible;
+  root.appendChild(el("div", "results-head",
+    "Capacity pre-flight" + (feasible === true ? " — feasible ✓" : feasible === false ? " — not feasible ✗" : "")));
+  const sub = [];
+  if (r.spec) sub.push(r.spec);
+  if (r.gated === true) sub.push(r.authorized ? "gated model · authorized ✓" : "gated model · not authorized ✗");
+  if (sub.length) root.appendChild(el("div", "report-sub", sub.join(" · ")));
+  const addList = (title, arr, cls) => {
+    if (!Array.isArray(arr) || !arr.length) return;
+    root.appendChild(el("div", "results-subhead", title));
+    const ul = el("ul", "diag-list " + cls);
+    for (const line of arr.slice(0, 12)) ul.appendChild(el("li", null, String(line)));
+    root.appendChild(ul);
+  };
+  addList("Blocking issues", r.errors, "diag-bad");
+  addList("Warnings", r.warnings, "diag-warn");
+  if (feasible === true && !(r.errors || []).length && !(r.warnings || []).length) {
+    root.appendChild(el("div", "results-note", "No blocking issues found — the configuration fits."));
+  }
+  activePane.appendChild(root);
+  scroll();
+}
+
+// check_endpoint_readiness → a status grid (services/gateway/serving pods + health probes).
+function renderReadinessCard(r) {
+  if (!r || typeof r !== "object" || typeof r.ready !== "boolean") return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  root.appendChild(el("div", "results-head", "Endpoint readiness — " + (r.ready ? "ready ✓" : "not ready ✗")));
+  const sub = [r.namespace, r.detail].filter(Boolean).join(" · ");
+  if (sub) root.appendChild(el("div", "report-sub", sub));
+  const ready = r.ready_endpoints || [], notReady = r.not_ready_endpoints || [];
+  const grid = el("div", "status-grid");
+  if (ready.length || notReady.length) {
+    grid.appendChild(statusCell(ready.length ? "ok" : "na", "ready services", String(ready.length)));
+    grid.appendChild(statusCell(notReady.length ? "bad" : "ok", "not ready", String(notReady.length)));
+  }
+  const g = r.gateway;
+  if (g) grid.appendChild(statusCell(g.control_plane_ready ? "ok" : "warn", "gateway",
+    g.control_plane_ready ? "programmed" : (g.not_ready_reason || "not ready")));
+  const sr = r.serving_readiness;
+  if (sr && Array.isArray(sr.pods)) {
+    const readyPods = sr.pods.filter((p) => p.ready_condition === "True").length;
+    grid.appendChild(statusCell(readyPods === sr.pods.length ? "ok" : "warn", "serving pods", `${readyPods}/${sr.pods.length} ready`));
+    if (sr.health_reachable != null) grid.appendChild(statusCell(sr.health_reachable ? "ok" : "bad", "/health", sr.health_reachable ? "reachable" : "unreachable"));
+    if (sr.models_reachable != null) grid.appendChild(statusCell(sr.models_reachable ? "ok" : "bad", "/v1/models", sr.models_reachable ? "reachable" : "unreachable"));
+  }
+  if (grid.childNodes.length) root.appendChild(grid);
+  if (notReady.length) {
+    root.appendChild(el("div", "results-subhead", "Not-ready services"));
+    const ul = el("ul", "diag-list diag-warn");
+    for (const e of notReady) ul.appendChild(el("li", null, `${e.service}: ${e.ready_addresses || 0} ready / ${e.not_ready_addresses || 0} not ready`));
+    root.appendChild(ul);
+  }
+  activePane.appendChild(root);
+  scroll();
+}
+
+// advise_accelerators → CPU-only vs accelerated verdict + a per-node table.
+function renderAcceleratorCard(r) {
+  if (!r || r.available !== true) return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  root.appendChild(el("div", "results-head", "Accelerators — " + (r.any_accelerator === true ? "available ✓" : "CPU-only")));
+  const res = r.advertised_resources || [];
+  if (res.length) root.appendChild(el("div", "report-sub", "advertised: " + res.join(", ")));
+  const nodes = r.nodes || [];
+  if (nodes.length) {
+    const table = el("table", "results-table");
+    const head = el("tr");
+    for (const h of ["node", "accelerators", "cpu"]) head.appendChild(el("th", null, h));
+    table.appendChild(head);
+    for (const n of nodes) {
+      const tr = el("tr");
+      tr.appendChild(el("td", "results-name", n.name || ""));
+      const accs = n.accelerators
+        ? Object.entries(n.accelerators).filter(([, v]) => v != null).map(([k, v]) => `${k}: ${v}`).join(", ")
+        : "";
+      tr.appendChild(el("td", null, accs || (n.cpu_only ? "none (CPU-only)" : "—")));
+      const cap = n.allocatable || n.capacity || {};
+      tr.appendChild(el("td", null, cap.cpu != null ? String(cap.cpu) : "—"));
+      table.appendChild(tr);
+    }
+    root.appendChild(table);
+  }
+  activePane.appendChild(root);
+  scroll();
+}
+
+// generate_doe_experiment → the treatment matrix (setup × run) as tables.
+function renderDoeCard(r) {
+  if (!r || r.generated !== true) return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  const total = r.total_matrix || 0;
+  root.appendChild(el("div", "results-head", `DoE experiment — ${total} treatment${total === 1 ? "" : "s"}`));
+  const sub = [];
+  if (r.experiment_name) sub.push(r.experiment_name);
+  sub.push(`${r.n_setup_treatments || 0} setup × ${r.n_run_treatments || 0} run`);
+  root.appendChild(el("div", "report-sub", sub.join(" · ")));
+  const renderTreatments = (title, arr) => {
+    if (!Array.isArray(arr) || !arr.length) return;
+    const keys = [];
+    for (const t of arr) for (const k of Object.keys(t)) if (k !== "name" && !keys.includes(k)) keys.push(k);
+    root.appendChild(el("div", "results-subhead", title));
+    const table = el("table", "results-table");
+    const head = el("tr");
+    head.appendChild(el("th", null, "name"));
+    for (const k of keys) head.appendChild(el("th", null, k));
+    table.appendChild(head);
+    for (const t of arr) {
+      const tr = el("tr");
+      tr.appendChild(el("td", "results-name", t.name || ""));
+      for (const k of keys) tr.appendChild(el("td", null, t[k] != null ? String(t[k]) : "—"));
+      table.appendChild(tr);
+    }
+    root.appendChild(table);
+  };
+  renderTreatments("Setup treatments", r.setup_treatments);
+  renderTreatments("Run treatments", r.run_treatments);
+  activePane.appendChild(root);
+  scroll();
+}
+
+// orchestrate_benchmark_run → outcome + the per-attempt timeline with fault classification.
+function renderOrchestrateCard(r) {
+  if (!r || typeof r !== "object") return;
+  if (r.submitted === false && r.ready === false) {
+    removeWelcomeCard();
+    const root = el("div", "results-card");
+    root.appendChild(el("div", "results-head", "Run not submitted — endpoint not ready"));
+    if (r.note) root.appendChild(el("div", "results-note", String(r.note)));
+    activePane.appendChild(root);
+    scroll();
+    return;
+  }
+  if (typeof r.succeeded !== "boolean") return;   // unwatched submit / other shape
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  const dead = r.dead_lettered === true;
+  root.appendChild(el("div", "results-head",
+    "Orchestrated run — " + (r.succeeded ? "succeeded ✓" : dead ? "dead-lettered ✗" : "failed ✗")));
+  const sub = [r.namespace, r.run_id].filter(Boolean).join(" · ");
+  if (sub) root.appendChild(el("div", "report-sub", sub));
+  const attempts = r.attempts || [];
+  if (attempts.length) {
+    root.appendChild(el("div", "results-subhead", `${attempts.length} attempt${attempts.length === 1 ? "" : "s"}`));
+    const table = el("table", "results-table");
+    const head = el("tr");
+    for (const h of ["#", "phase", "reason", "fault"]) head.appendChild(el("th", null, h));
+    table.appendChild(head);
+    attempts.forEach((a, i) => {
+      const tr = el("tr");
+      const ph = a.phase || "";
+      tr.appendChild(el("td", "results-name", String(i + 1)));
+      tr.appendChild(el("td", ph === "succeeded" ? "slo-pass" : ph === "failed" ? "slo-fail" : "slo-na", ph));
+      tr.appendChild(el("td", null, a.reason || ""));
+      tr.appendChild(el("td", null, a.failure && a.failure.kind ? a.failure.kind : ""));
+      table.appendChild(tr);
+    });
+    root.appendChild(table);
+  }
+  if (r.final_failure && r.final_failure.kind) {
+    root.appendChild(el("div", "results-subhead", "Final fault: " + r.final_failure.kind));
+    if (r.final_failure.message) root.appendChild(el("div", "results-note", String(r.final_failure.message)));
+  }
+  activePane.appendChild(root);
+  scroll();
+}
+
 function renderHistory(items, commands) {
   for (const it of items) {
     if (it.role === "user") addBubble("user", it.text);
@@ -1440,9 +1702,15 @@ function finishTool(data) {
   if (data.name === "locate_and_parse_report" && r && r.summary) {
     renderReportSummary(r);                 // (no JSON dump — the summary IS the friendly view)
   } else {
-    if (data.name === "analyze_results") renderParetoCard(r);            // sweeps only
+    if (data.name === "analyze_results") { renderParetoCard(r); renderNextSteps(r); }  // sweep scatter + actionable chips
     else if (data.name === "compare_reports") renderComparisonCard(r);   // A/B delta bars
     else if (data.name === "compare_harness_runs") renderHarnessCompareCard(r);
+    else if (data.name === "probe_environment") renderEnvStatus(r);      // host/cluster status
+    else if (data.name === "check_capacity") renderCapacityCard(r);      // capacity pre-flight
+    else if (data.name === "check_endpoint_readiness") renderReadinessCard(r);
+    else if (data.name === "advise_accelerators") renderAcceleratorCard(r);
+    else if (data.name === "generate_doe_experiment") renderDoeCard(r);  // sweep matrix
+    else if (data.name === "orchestrate_benchmark_run") renderOrchestrateCard(r);
     if (d) d.querySelector(".body").appendChild(prettyJson(r));
   }
   activeConsole = null;
@@ -1944,7 +2212,9 @@ if (window.__LLMD_PREVIEW__) {
   window.__llmd = {
     handle, bootChat, startWorking,
     renderResultsCard, renderParetoCard, renderComparisonCard, renderHarnessCompareCard,
-    renderResourceStats,
+    renderResourceStats, renderNextSteps,
+    renderEnvStatus, renderCapacityCard, renderReadinessCard,
+    renderAcceleratorCard, renderDoeCard, renderOrchestrateCard,
   };
 } else {
   loadSessions();
