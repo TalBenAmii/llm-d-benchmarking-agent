@@ -31,6 +31,15 @@ The tool **refuses to store a report that fails schema validation** (determinism
 if `stored: false` with a validation reason, fix/locate a valid report first; never
 hand-edit numbers to make it store.
 
+### Let `analyze_results` tell you when to offer save/compare
+After a run, `analyze_results` returns a ranked `next_steps` list computed over the validated
+results AND your saved history (does this run's `run_uid` already exist in the store? how many
+comparable runs of the same model are saved?). It deliberately ranks **save-to-trend** and
+**compare-to-baseline** above teardown/run-again — so when nothing is saved yet its top step is
+"save this as your baseline", and once a comparable run exists it's "compare against your last
+run". Use it to pick the ONE follow-up to offer (per `knowledge/conversation_style.md`); it's
+input to your judgment, not a script — never recite the list to the user.
+
 ## Reading a trend
 `action="trend"` with a `metric` returns the chronological series (oldest → newest), the
 metric's `better` direction (`lower` for latency, `higher` for throughput/success-rate),

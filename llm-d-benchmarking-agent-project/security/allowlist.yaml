@@ -486,6 +486,31 @@ executables:
       "-h": {}
       "--help": {}
 
+  # UPSTREAM llm-d GUIDE client prerequisites installer — the script the published llm-d
+  # well-lit-path guides (e.g. guides/optimized-baseline) tell you to run BEFORE a guide-based
+  # deploy. It installs the *deployment client* toolchain those guides need: git/curl/tar, yq
+  # (mikefarah), kubectl, helm + the helm-diff plugin, helmfile, kustomize (and chart-testing
+  # only under --dev). This is a DIFFERENT script from the two install steps already above:
+  #   • install.sh (benchmark repo) builds the BENCHMARK FRAMEWORK venv/toolchain;
+  #   • install_prereqs.sh (project) installs the Docker daemon + the kind binary.
+  # install-deps.sh overlaps neither's job — it provisions the helm/helmfile/kustomize client
+  # the GUIDE deploy path uses. Like install.sh it is a `repo-script` resolved against the
+  # READ-ONLY llm-d guide repo (cwd_must_be "repo:llm-d"); the allowlist only PINS the script +
+  # its flags — the only commands it can run are the ones baked into the audited script (it
+  # grants NO raw apt-get/curl/sudo). Mutating → the agent invokes it via run_command and the
+  # user must Approve. WHEN to offer it (missing client prereqs before a guide deploy) is
+  # JUDGMENT in knowledge/preconditions.md + knowledge/deploy_path_playbook.md, never here.
+  install-deps.sh:
+    flat: true
+    mode: mutating
+    timeout_s: 900
+    cwd_must_be: "repo:llm-d"
+    runner: { invoke: "repo-script", script: "helpers/client-setup/install-deps.sh" }
+    flags:
+      "--dev": {}
+      "-h": {}
+      "--help": {}
+
   # Vetted, project-local prerequisite installer. install.sh (above) installs the
   # framework toolchain (kubectl/helm/jq/…) but NOT the Docker daemon or the kind binary;
   # this script does exactly that and nothing else. The agent invokes it via run_command

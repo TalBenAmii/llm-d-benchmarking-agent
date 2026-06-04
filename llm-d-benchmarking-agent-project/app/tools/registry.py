@@ -152,7 +152,10 @@ _DESCRIPTIONS = {
         "deny-by-default allowlist validates it; read-only commands auto-run, mutating ones "
         "need approval. Use for allowlisted commands without a dedicated tool — notably "
         "creating/deleting the kind cluster and installing the prerequisites (Docker + kind) "
-        "via install_prereqs.sh. Prefer the dedicated tools (execute_llmdbenchmark, "
+        "via install_prereqs.sh, OR the UPSTREAM llm-d guide client toolchain "
+        "(helm/helmfile/kustomize/yq/kubectl) via ['install-deps.sh'] before a guide-based "
+        "deploy (see knowledge/preconditions.md + deploy_path_playbook.md for which installer "
+        "to offer when). Prefer the dedicated tools (execute_llmdbenchmark, "
         "ensure_repos, run_setup) when one fits."
     ),
     "propose_session_plan": (
@@ -415,6 +418,10 @@ _DESCRIPTIONS = {
         "also returns the Pareto-optimal configs and the SLO-feasible frontier (best trade-off "
         "subject to the constraints). Use after a run or sweep when the user has QoS targets or "
         "wants the best config. compare_reports gives raw deltas; this adds SLO/goodput/Pareto. "
+        "Also returns `next_steps`: a RANKED list of recommended follow-ups over the validated "
+        "facts + your saved history, prioritizing save-to-trend / compare-to-baseline over "
+        "teardown/run-again — turn the TOP item into a single concise offer (don't recite the "
+        "list; see read_knowledge('conversation_style') for the one-offer cadence). "
         "Call read_knowledge('analysis') to interpret it (and read_knowledge('sweep_playbook') "
         "when designing or reading a sweep/A-B)."
     ),
