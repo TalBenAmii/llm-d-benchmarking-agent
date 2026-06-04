@@ -707,3 +707,115 @@ def test_ws_stale_cursor_falls_back_to_full_history():
             ready2 = ws2.receive_json()
             assert ready2["type"] == "ready" and ready2["data"]["resume"]["incremental"] is False
             assert _next_protocol(ws2)["type"] == "history", "stale cursor must fall back to history"
+
+
+# --- TODO #7: in-flight (pending) approval state survives chat switch / eviction ------------
+
+_PARK_TURNS = [
+    AssistantTurn(text="Plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+        "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+        "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+    })]),
+    AssistantTurn(text="done.", tool_calls=[]),
+]
+
+
+def _drive_to_parked_gate(ws):
+    """Send a message and read until the turn parks at the first approval gate; return its rid."""
+    ws.send_json({"type": "user_message", "text": "go"})
+    for _ in range(40):
+        ev = ws.receive_json()
+        if ev["type"] == "approval_request":
+            return ev["data"]["request_id"]
+    raise AssertionError("turn never parked at an approval gate")
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_pending_approval_persisted_and_replayed_in_history():
+    """A turn parked at an approval gate persists the still-undecided gate onto the session
+    (session.in_flight_approvals), and a full history rebuild on reconnect replays it as an
+    `approval_request` item interleaved right after its tool_call — so an in-flight gate is
+    restored in its transcript position, not only re-surfaced at the bottom by reemit_pending."""
+    from app.main import app
+
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider(list(_PARK_TURNS))
+        with client.websocket_connect("/ws") as ws1:
+            sid = ws1.receive_json()["data"]["session_id"]
+            rid = _drive_to_parked_gate(ws1)
+
+        # The undecided gate is persisted on the session, tied to its tool call.
+        s = app.state.sessions.get(sid)
+        assert [a["request_id"] for a in s.in_flight_approvals] == [rid]
+        assert s.in_flight_approvals[0]["tool_call_id"] == "c1"
+
+        # A full history rebuild (no after_seq) includes the pending gate as an approval_request
+        # item directly after its tool_call (so it lands in its transcript position).
+        with client.websocket_connect(f"/ws?session={sid}") as ws2:
+            items = None
+            for _ in range(20):
+                ev = ws2.receive_json()
+                if ev["type"] == "history":
+                    items = ev["data"]["items"]
+                    break
+            assert items is not None, "no history replayed on reconnect"
+            pending = [it for it in items if it["role"] == "approval_request"]
+            assert len(pending) == 1 and pending[0]["request_id"] == rid
+            for i, it in enumerate(items):
+                if it["role"] == "approval_request":
+                    assert i > 0 and items[i - 1]["role"] == "tool_call", \
+                        "pending gate must replay directly after its tool_call"
+
+            # Answer the gate (re-surfaced live by reemit_pending); the parked turn runs to done.
+            ws2.send_json({"type": "approval", "request_id": rid, "approved": True})
+            for _ in range(40):
+                if ws2.receive_json()["type"] == "done":
+                    break
+
+        # Once decided, the gate is no longer pending (cleared from the persisted in-flight set).
+        assert app.state.sessions.get(sid).in_flight_approvals == []
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_pending_approval_survives_channel_eviction():
+    """Even if the in-memory Channel is gone (e.g. evicted), a chat reopened while its turn is
+    parked at a gate restores the pending approval card from PERSISTED session state via the
+    history rebuild — so the gate isn't lost when only the Channel's in-memory `pending` is."""
+    from app.main import app
+
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider(list(_PARK_TURNS))
+        with client.websocket_connect("/ws") as ws1:
+            sid = ws1.receive_json()["data"]["session_id"]
+            rid = _drive_to_parked_gate(ws1)
+
+        # Simulate channel eviction: drop the in-memory Channel entirely. The persisted in-flight
+        # approval on the session is the only remaining record of the gate.
+        evicted = app.state.channels.pop(sid, None)
+        assert evicted is not None and rid in evicted.pending
+
+        # Reopen: a brand-new Channel is created (no in-memory pending), but the history rebuild
+        # still restores the pending gate from session.in_flight_approvals.
+        with client.websocket_connect(f"/ws?session={sid}") as ws2:
+            saw_pending = False
+            for _ in range(20):
+                ev = ws2.receive_json()
+                if ev["type"] == "history":
+                    items = ev["data"]["items"]
+                    saw_pending = any(it["role"] == "approval_request" and it["request_id"] == rid
+                                      for it in items)
+                    break
+            assert saw_pending, "pending gate must be restored from persisted state after eviction"
+
+        # Re-attach the original channel so its parked background turn can be answered + drained,
+        # leaving no forever-parked task (the fresh channel above can't resolve the original future).
+        evicted.ws = None
+        app.state.channels[sid] = evicted
+        with client.websocket_connect(f"/ws?session={sid}") as ws3:
+            for _ in range(20):
+                if ws3.receive_json()["type"] == "history":
+                    break
+            ws3.send_json({"type": "approval", "request_id": rid, "approved": True})
+            for _ in range(40):
+                if ws3.receive_json()["type"] == "done":
+                    break

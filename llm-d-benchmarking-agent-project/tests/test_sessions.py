@@ -94,6 +94,44 @@ def test_derive_title_defaults_without_user_message():
     assert derive_title([{"role": "assistant", "content": "hi"}]) == "New chat"
 
 
+def test_derive_title_skips_synthetic_pre_probe(tmp_path):
+    # Regression (TODO #6 probe-leak): the injected environment pre-probe snapshot is a
+    # synthetic user message the human never typed. derive_title must skip it and pick the
+    # first REAL user message, so it never leaks into the sidebar chat title.
+    messages = [
+        {"role": "user", "synthetic": True,
+         "content": "[environment pre-probe — read-only snapshot …] {\"tools\": {}}"},
+        {"role": "user", "content": "deploy a tiny model on kind"},
+    ]
+    assert derive_title(messages) == "deploy a tiny model on kind"
+
+
+def test_derive_title_synthetic_only_falls_back(tmp_path):
+    # If the ONLY user message is synthetic (e.g. a chat persisted after pre-probe but before
+    # the human sent anything), the title stays the clean default — never the snapshot.
+    messages = [{"role": "user", "synthetic": True,
+                 "content": "[environment pre-probe …] {\"tools\": {}}"}]
+    assert derive_title(messages) == "New chat"
+
+
+def test_synthetic_pre_probe_never_leaks_into_namespace_folder_title(tmp_path):
+    # End-to-end: a session whose messages start with a synthetic pre-probe must show its real
+    # title (not the snapshot) in the /api/sessions list the sidebar folders render from.
+    manager = make_manager(tmp_path)
+    s = manager.create()
+    s.messages.append({"role": "user", "synthetic": True,
+                       "content": "[environment pre-probe …] {\"kind_clusters\": {}}"})
+    s.messages.append({"role": "user", "content": "run a quick benchmark"})
+    s.persist()
+    manager._sessions.clear()
+    with TestClient(app) as client:
+        client.app.state.sessions = manager
+        listed = client.get("/api/sessions").json()["sessions"]
+        row = next(x for x in listed if x["id"] == s.id)
+        assert row["title"] == "run a quick benchmark"
+        assert "pre-probe" not in row["title"]
+
+
 # ---- REST endpoints that feed the sidebar ------------------------------------
 def test_api_sessions_list_and_delete(tmp_path):
     manager = make_manager(tmp_path)
@@ -120,6 +158,47 @@ def test_create_stamps_default_namespace(manager):
     # conftest sets DEFAULT_SESSION_NAMESPACE=test, so every session the suite mints is born
     # "test" — keeping test chats out of the real list and exercising the folder feature.
     assert manager.create().namespace == "test"
+
+
+def test_in_flight_approval_survives_persist_load(manager):
+    # Regression (TODO #7 approval-state): a still-PENDING (undecided) approval gate must be
+    # persisted so it survives a chat switch / pane eviction / channel eviction and can be
+    # replayed in its transcript position on reconnect — not held only in-memory on the Channel.
+    s = _seed(manager, "parked at a gate")
+    s.record_in_flight_approval({"tool_call_id": "c1", "request_id": "r1",
+                                 "kind": "command", "payload": {"command": "kubectl apply"}})
+    # Idempotent: re-recording the same request_id (e.g. a reemit) must not duplicate it.
+    s.record_in_flight_approval({"tool_call_id": "c1", "request_id": "r1",
+                                 "kind": "command", "payload": {"command": "kubectl apply"}})
+    s.persist()
+    manager._sessions.clear()  # force a disk load
+    loaded = manager.load(s.id)
+    assert loaded is not None
+    assert len(loaded.in_flight_approvals) == 1
+    assert loaded.in_flight_approvals[0]["request_id"] == "r1"
+    assert loaded.in_flight_approvals[0]["tool_call_id"] == "c1"
+
+
+def test_clear_in_flight_approval_removes_only_target(manager):
+    s = _seed(manager, "two gates")
+    s.record_in_flight_approval({"tool_call_id": "c1", "request_id": "r1", "kind": "command", "payload": {}})
+    s.record_in_flight_approval({"tool_call_id": "c2", "request_id": "r2", "kind": "session_plan", "payload": {}})
+    s.clear_in_flight_approval("r1")
+    assert [a["request_id"] for a in s.in_flight_approvals] == ["r2"]
+    s.clear_in_flight_approval("missing")  # no-op when absent
+    assert [a["request_id"] for a in s.in_flight_approvals] == ["r2"]
+
+
+def test_in_flight_approvals_default_empty_on_legacy_state(manager):
+    # A state.json persisted before the field existed must load with an empty in-flight list.
+    s = _seed(manager, "legacy")
+    state = manager._root / s.id / "state.json"
+    data = json.loads(state.read_text())
+    data.pop("in_flight_approvals", None)
+    state.write_text(json.dumps(data))
+    manager._sessions.clear()
+    loaded = manager.load(s.id)
+    assert loaded is not None and loaded.in_flight_approvals == []
 
 
 def test_namespace_survives_persist_load(manager):
