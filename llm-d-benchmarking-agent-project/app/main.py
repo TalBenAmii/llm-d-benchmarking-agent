@@ -298,11 +298,19 @@ def _history_items(session) -> list[dict[str, Any]]:
     shape the live event stream produces so the client can reuse its renderers.
     Decided approval gates (kept off the LLM stream, in ``session.approvals``) are
     interleaved right after the tool call they belong to, so the resolved ✓/✗ cards
-    show up in their original place.
+    show up in their original place. Still-PENDING gates (``session.in_flight_approvals``
+    — the turn is parked on them) are interleaved the same way as live, clickable
+    ``approval_request`` cards, so an in-flight gate survives a chat switch / pane
+    eviction and is restored in its transcript position even on a full history rebuild
+    (the in-memory Channel's ``reemit_pending`` is then de-duped on the client by
+    request_id, so the card never double-renders).
     """
     approvals_by_tc: dict[str, list[dict[str, Any]]] = {}
     for a in getattr(session, "approvals", []) or []:
         approvals_by_tc.setdefault(a.get("tool_call_id"), []).append(a)
+    pending_by_tc: dict[str, list[dict[str, Any]]] = {}
+    for p in getattr(session, "in_flight_approvals", []) or []:
+        pending_by_tc.setdefault(p.get("tool_call_id"), []).append(p)
 
     items: list[dict[str, Any]] = []
     for m in session.messages:
@@ -322,6 +330,9 @@ def _history_items(session) -> list[dict[str, Any]]:
                 for a in approvals_by_tc.get(tc.get("id"), []):
                     items.append({"role": "approval_decision", "kind": a.get("kind"),
                                   "payload": a.get("payload"), "approved": a.get("approved")})
+                for p in pending_by_tc.get(tc.get("id"), []):
+                    items.append({"role": "approval_request", "request_id": p.get("request_id"),
+                                  "kind": p.get("kind"), "payload": p.get("payload")})
     return items
 
 

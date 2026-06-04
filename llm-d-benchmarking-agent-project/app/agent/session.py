@@ -76,6 +76,12 @@ class Session:
     # tool call they belong to. Not part of the LLM message stream — recorded so a resumed
     # chat can replay the approval cards + their ✓/✗ outcome in the transcript.
     approvals: list[dict[str, Any]] = field(default_factory=list)
+    # STILL-PENDING (undecided) approval gates the turn is currently parked on. The Channel
+    # records each one here (and removes it once decided/cancelled) and persists it, so an
+    # in-flight gate survives a chat switch / pane eviction / channel eviction and can be
+    # replayed in its transcript position on reconnect — not just while the in-memory Channel
+    # happens to be alive. Keyed to its tool call (like ``approvals``) for ordered replay.
+    in_flight_approvals: list[dict[str, Any]] = field(default_factory=list)
     title: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -112,6 +118,20 @@ class Session:
         if len(self.approvals) > _COMMANDS_MAX:
             del self.approvals[: len(self.approvals) - _COMMANDS_MAX]
 
+    def record_in_flight_approval(self, entry: dict[str, Any]) -> None:
+        """Track a still-undecided approval gate (by ``request_id``). Idempotent — a re-emit of
+        the same gate does not duplicate the entry."""
+        rid = entry.get("request_id")
+        if any(a.get("request_id") == rid for a in self.in_flight_approvals):
+            return
+        self.in_flight_approvals.append(entry)
+
+    def clear_in_flight_approval(self, request_id: str | None) -> None:
+        """Drop a pending gate once it is decided or cancelled. No-op if already absent."""
+        self.in_flight_approvals = [
+            a for a in self.in_flight_approvals if a.get("request_id") != request_id
+        ]
+
     def persist(self) -> None:
         """Best-effort transcript snapshot for resumability/debugging."""
         try:
@@ -131,6 +151,7 @@ class Session:
                         "namespace": self.namespace,
                         "commands": self.commands[-_COMMANDS_MAX:],
                         "approvals": self.approvals[-_COMMANDS_MAX:],
+                        "in_flight_approvals": self.in_flight_approvals,
                         "total_input_tokens": self.total_input_tokens,
                         "total_output_tokens": self.total_output_tokens,
                         "total_cache_read_tokens": self.total_cache_read_tokens,
@@ -208,6 +229,7 @@ class SessionManager:
             namespace=data.get("namespace"),
             commands=data.get("commands", []),
             approvals=data.get("approvals", []),
+            in_flight_approvals=data.get("in_flight_approvals", []),
             title=data.get("title", ""),
             created_at=data.get("created_at") or time.time(),
             updated_at=data.get("updated_at") or time.time(),

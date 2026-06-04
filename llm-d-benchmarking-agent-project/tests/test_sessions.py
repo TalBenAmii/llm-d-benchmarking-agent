@@ -160,6 +160,47 @@ def test_create_stamps_default_namespace(manager):
     assert manager.create().namespace == "test"
 
 
+def test_in_flight_approval_survives_persist_load(manager):
+    # Regression (TODO #7 approval-state): a still-PENDING (undecided) approval gate must be
+    # persisted so it survives a chat switch / pane eviction / channel eviction and can be
+    # replayed in its transcript position on reconnect — not held only in-memory on the Channel.
+    s = _seed(manager, "parked at a gate")
+    s.record_in_flight_approval({"tool_call_id": "c1", "request_id": "r1",
+                                 "kind": "command", "payload": {"command": "kubectl apply"}})
+    # Idempotent: re-recording the same request_id (e.g. a reemit) must not duplicate it.
+    s.record_in_flight_approval({"tool_call_id": "c1", "request_id": "r1",
+                                 "kind": "command", "payload": {"command": "kubectl apply"}})
+    s.persist()
+    manager._sessions.clear()  # force a disk load
+    loaded = manager.load(s.id)
+    assert loaded is not None
+    assert len(loaded.in_flight_approvals) == 1
+    assert loaded.in_flight_approvals[0]["request_id"] == "r1"
+    assert loaded.in_flight_approvals[0]["tool_call_id"] == "c1"
+
+
+def test_clear_in_flight_approval_removes_only_target(manager):
+    s = _seed(manager, "two gates")
+    s.record_in_flight_approval({"tool_call_id": "c1", "request_id": "r1", "kind": "command", "payload": {}})
+    s.record_in_flight_approval({"tool_call_id": "c2", "request_id": "r2", "kind": "session_plan", "payload": {}})
+    s.clear_in_flight_approval("r1")
+    assert [a["request_id"] for a in s.in_flight_approvals] == ["r2"]
+    s.clear_in_flight_approval("missing")  # no-op when absent
+    assert [a["request_id"] for a in s.in_flight_approvals] == ["r2"]
+
+
+def test_in_flight_approvals_default_empty_on_legacy_state(manager):
+    # A state.json persisted before the field existed must load with an empty in-flight list.
+    s = _seed(manager, "legacy")
+    state = manager._root / s.id / "state.json"
+    data = json.loads(state.read_text())
+    data.pop("in_flight_approvals", None)
+    state.write_text(json.dumps(data))
+    manager._sessions.clear()
+    loaded = manager.load(s.id)
+    assert loaded is not None and loaded.in_flight_approvals == []
+
+
 def test_namespace_survives_persist_load(manager):
     s = _seed(manager, "ns roundtrip")
     s.namespace = "llmd-quickstart"

@@ -183,11 +183,25 @@ class Channel:
         tool_call_id = self.session.ctx.current_tool_call_id
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self.pending[rid] = {"future": fut, "kind": kind, "payload": payload, "tool_call_id": tool_call_id}
+        # Persist the still-undecided gate so it survives a chat switch / pane eviction / channel
+        # eviction: it can be replayed in its transcript position from session state on reconnect
+        # (via _history_items), independent of whether this in-memory Channel is still alive.
+        self.session.record_in_flight_approval({
+            "tool_call_id": tool_call_id, "request_id": rid, "kind": kind, "payload": payload,
+        })
+        self.session.persist()
         await self.emit(events.APPROVAL_REQUEST, {"request_id": rid, "kind": kind, "payload": payload})
         try:
             approved = bool(await fut)
         finally:
             self.pending.pop(rid, None)
+            # Resolved OR cancelled: the gate is no longer pending, so drop it from the in-flight
+            # set and persist the cleared state right here (a decided gate is additionally recorded
+            # below as a durable approval). Persisting in finally — not only on the resolved path —
+            # keeps the on-disk snapshot correct even when the future is CANCELLED (the lines below
+            # never run), so a resumed chat never re-surfaces a gate that's already gone.
+            self.session.clear_in_flight_approval(rid)
+            self.session.persist()
         # Persist the decision (and only a real decision — a cancelled future never reaches
         # here) so the resolved card replays in the transcript on resume.
         self.session.record_approval({

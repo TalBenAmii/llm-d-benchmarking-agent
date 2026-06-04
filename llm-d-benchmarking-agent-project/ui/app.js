@@ -754,6 +754,11 @@ function renderHistory(items, commands) {
     else if (it.role === "assistant") addBubble("assistant", it.text);
     else if (it.role === "tool_call") addHistoryTool(it);
     else if (it.role === "approval_decision") addDecisionCard(it);
+    // A still-PENDING gate the turn is parked on (persisted in-flight): restore it as a LIVE,
+    // clickable card in its transcript position. Registering it in cur.pendingApprovals lets the
+    // server's subsequent reemit_pending be de-duped (addApprovalCard skips a known request_id),
+    // so it survives a chat switch / pane eviction without double-rendering.
+    else if (it.role === "approval_request") addApprovalCard(it);
   }
   if (commands && commands.length) {
     clearCmdlog();
