@@ -3,7 +3,6 @@ execution -> feed results back, until the model stops calling tools.
 """
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -13,6 +12,7 @@ from app.agent.context_mgmt import compact_messages
 from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.results_card import build_results_card
 from app.agent.session import Session
+from app.agent.tool_result_budget import clamp_tool_result_content
 from app.llm.provider import LLMProvider, Usage
 from app.observability.logctx import bind as log_bind
 from app.tools.context import ApprovalRejected, QuotaError, ToolError
@@ -57,9 +57,12 @@ class AgentLoop:
             session.messages.append({
                 "role": "user",
                 "synthetic": True,
+                # Same budget bound as tool results: a big snapshot (a real cluster's
+                # cluster_info + namespaces) gets a VALID truncation envelope, not a JSON object
+                # sliced mid-structure. Small snapshots serialize byte-identically (fast path).
                 "content": ("[environment pre-probe — read-only snapshot, already gathered for "
                             "you so you don't need to call probe_environment again this turn]\n"
-                            + json.dumps(session.env_snapshot)[:4000]),
+                            + clamp_tool_result_content(session.env_snapshot, 4000)),
             })
             session.prewarmed = True
         # Inject the LIVE catalog ONCE per session as a synthetic conversation message instead of
@@ -174,7 +177,9 @@ class AgentLoop:
                 tool_result_msgs.append({
                     "tool_call_id": tc.id,
                     "name": tc.name,
-                    "content": json.dumps(result)[:_TOOL_RESULT_BUDGET],
+                    # Bound the result to the feed-back budget WITHOUT slicing mid-JSON: an
+                    # overflow becomes a valid truncation envelope, never malformed JSON.
+                    "content": clamp_tool_result_content(result, _TOOL_RESULT_BUDGET),
                 })
 
             session.messages.append({"role": "tool_results", "results": tool_result_msgs})

@@ -81,6 +81,36 @@ async def test_prewarm_snapshot_injected_before_user_text(tmp_path):
     assert session.prewarmed is True
 
 
+async def test_prewarm_large_snapshot_stays_valid_json(tmp_path):
+    # A real cluster's snapshot (many namespaces / verbose cluster_info) can exceed the 4000-char
+    # budget. The injected message must carry VALID JSON, not an object sliced mid-structure.
+    import json
+
+    if not get_settings().bench_repo.is_dir():
+        pytest.skip("repo not present")
+    session = _session(tmp_path)
+    session.env_snapshot = {
+        "tools": {"kubectl": True},
+        "namespaces": {"items": [f"ns-{i}-{'x' * 40}" for i in range(300)]},
+    }
+    provider = FakeProvider()
+
+    async def emit(t, p):
+        pass
+
+    async def approve(kind, payload):
+        return True
+
+    await AgentLoop(provider).run_turn(session, "go", emit=emit, request_approval=approve)
+
+    pre = _pre_probe_msgs(session.messages)
+    assert len(pre) == 1
+    # The message is "<prose prefix>\n<json>"; the JSON tail must parse cleanly.
+    json_part = pre[0]["content"].split("\n", 1)[1]
+    parsed = json.loads(json_part)  # would raise on the old mid-structure slice
+    assert parsed["_truncated"] is True  # overflow -> truncation envelope
+
+
 async def test_prewarm_snapshot_excluded_from_history_items(tmp_path):
     # Regression (TODO #6 probe-leak): the synthetic pre-probe message must NOT be replayed as a
     # user bubble when a resumed chat rebuilds its transcript (_history_items skips synthetic).
