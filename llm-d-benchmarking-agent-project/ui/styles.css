@@ -487,6 +487,25 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 .slo-fail { color: color-mix(in srgb, var(--red) 55%, var(--text)); font-weight: 600; }
 .slo-na { color: var(--muted); }
 
+/* Goodput gauge (radial) + binding-constraint note, beside the SLO table. */
+.results-goodput {
+  display: flex; align-items: center; gap: 16px; margin: 4px 0 10px;
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 14px;
+}
+.gauge { width: 110px; height: auto; flex: none; }
+.gauge-track { fill: none; stroke: var(--border-strong); stroke-width: 9; stroke-linecap: round; }
+.gauge-val { fill: none; stroke-width: 9; stroke-linecap: round; }
+.gauge-val.good { stroke: var(--green); }
+.gauge-val.mid { stroke: var(--amber); }
+.gauge-val.low { stroke: var(--red); }
+.gauge-text { fill: var(--text); font: 700 17px var(--mono); }
+.results-goodput-note { min-width: 0; }
+.results-goodput-label { font: 600 13px/1.3 var(--serif); color: var(--text); }
+.results-goodput-bind { font: 500 12px/1.4 var(--mono); color: color-mix(in srgb, var(--red) 50%, var(--text)); margin-top: 3px; }
+.results-goodput-bind.good { color: color-mix(in srgb, var(--green) 50%, var(--text)); }
+.results-goodput-sub { font: 400 11px/1.4 var(--serif); color: var(--muted); margin-top: 3px; }
+
 /* ── Buttons ──────────────────────────────────────────────────────────── */
 button {
   font: 600 14px/1 var(--serif); cursor: pointer; border-radius: 9px;

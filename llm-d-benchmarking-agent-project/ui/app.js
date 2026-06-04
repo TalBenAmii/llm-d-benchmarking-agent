@@ -944,6 +944,42 @@ function metaRow(card, parent) {
   if (meta.childNodes.length) parent.appendChild(meta);
 }
 
+// ---- results visualizations (SVG; built from data already on the wire) ---
+// Small dependency-free SVG widgets. Each takes already-validated numbers and returns an
+// <svg>; no layout libs, no network. Shared by the results card (gauge) and the prominent
+// analysis/comparison cards rendered from tool_results (scatter, delta bars).
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svgEl(name, attrs) {
+  const e = document.createElementNS(SVG_NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+// Radial (semicircle) goodput gauge: a colored arc from 0→pct over a muted track, % in the
+// center. Arc drawn as a polyline of points (no arc-flag ambiguity); color steps by threshold.
+function goodputGauge(pct) {
+  pct = Math.max(0, Math.min(100, Number(pct) || 0));
+  const W = 132, H = 78, cx = W / 2, cy = H - 12, r = 52;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "gauge", role: "img",
+    "aria-label": `estimated goodput ${Math.round(pct)} percent` });
+  // 180° (left) → 0° (right) over the top; y = cy - r·sinθ puts the apex up.
+  const arc = (fromDeg, toDeg) => {
+    const steps = 48, pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const d = (fromDeg + (toDeg - fromDeg) * (i / steps)) * Math.PI / 180;
+      pts.push(`${(cx + r * Math.cos(d)).toFixed(1)},${(cy - r * Math.sin(d)).toFixed(1)}`);
+    }
+    return pts.join(" ");
+  };
+  svg.appendChild(svgEl("polyline", { points: arc(180, 0), class: "gauge-track" }));
+  const cls = pct >= 90 ? "good" : pct >= 70 ? "mid" : "low";
+  svg.appendChild(svgEl("polyline", { points: arc(180, 180 - (pct / 100) * 180), class: "gauge-val " + cls }));
+  const t = svgEl("text", { x: cx, y: cy - 6, "text-anchor": "middle", class: "gauge-text" });
+  t.textContent = `${fmtNum(pct)}%`;
+  svg.appendChild(t);
+  return svg;
+}
+
 function renderResultsCard(card) {
   if (!card || typeof card !== "object") return;
   removeWelcomeCard();
@@ -974,6 +1010,21 @@ function renderResultsCard(card) {
   if (slo && Array.isArray(slo.verdicts) && slo.verdicts.length) {
     root.appendChild(el("div", "results-subhead",
       "SLO check" + (slo.overall_met != null ? (slo.overall_met ? " — all targets met ✓" : " — not all targets met ✗") : "")));
+    // Goodput gauge — the proposal's key differentiator. A radial gauge of the estimated
+    // fraction of requests meeting ALL SLOs, beside the binding constraint (first missed target).
+    if (slo.goodput && slo.goodput.estimate_pct != null) {
+      const gp = el("div", "results-goodput");
+      gp.appendChild(goodputGauge(slo.goodput.estimate_pct));
+      const note = el("div", "results-goodput-note");
+      note.appendChild(el("div", "results-goodput-label", "Estimated goodput"));
+      const missed = slo.verdicts.find((v) => v.met === false);
+      if (missed) note.appendChild(el("div", "results-goodput-bind",
+        `Limited by ${missed.metric || "an SLO target"}${missed.statistic ? " (" + missed.statistic + ")" : ""}`));
+      else note.appendChild(el("div", "results-goodput-bind good", "All SLO targets met"));
+      note.appendChild(el("div", "results-goodput-sub", "upper-bound estimate from reported percentiles"));
+      gp.appendChild(note);
+      root.appendChild(gp);
+    }
     const table = el("table", "results-table");
     const head = el("tr");
     for (const h of ["metric", "target", "observed", "verdict"]) head.appendChild(el("th", null, h));
@@ -990,10 +1041,6 @@ function renderResultsCard(card) {
       table.appendChild(tr);
     }
     root.appendChild(table);
-    if (slo.goodput && slo.goodput.estimate_pct != null) {
-      root.appendChild(el("div", "results-note",
-        `Estimated goodput: ~${fmtNum(slo.goodput.estimate_pct)}% (upper-bound estimate from reported percentiles).`));
-    }
   }
 
   // Sweep: per-run rows + the Pareto frontier (facts only — the agent picks the winner).
