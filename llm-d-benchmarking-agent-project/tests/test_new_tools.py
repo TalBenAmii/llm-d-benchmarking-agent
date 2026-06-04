@@ -1,5 +1,6 @@
-"""Tests for the generic run_command tool, the fetch_key_docs context tool, and the
-vetted install_prereqs.sh prerequisite installer (allowlist + runner wiring)."""
+"""Tests for the generic run_command tool, the fetch_key_docs context tool, the vetted
+install_prereqs.sh prerequisite installer, and the UPSTREAM llm-d guide client-prereq
+installer install-deps.sh (allowlist + runner wiring)."""
 from __future__ import annotations
 
 import os
@@ -44,6 +45,16 @@ async def test_run_command_install_prereqs_requires_approval(tool_ctx):
         await command.run_command(tool_ctx, argv=["install_prereqs.sh", "--all"])
 
 
+async def test_run_command_install_deps_requires_approval(tool_ctx):
+    # The UPSTREAM llm-d guide client-prereq installer is mutating — approval-gated too.
+    async def reject(kind, payload):
+        return False
+
+    tool_ctx.request_approval = reject
+    with pytest.raises(ApprovalRejected):
+        await command.run_command(tool_ctx, argv=["install-deps.sh"])
+
+
 async def test_run_command_schema_requires_argv(tool_ctx):
     result = await dispatch(tool_ctx, "run_command", {})
     assert result.get("error") == "invalid arguments"
@@ -58,6 +69,21 @@ def test_install_prereqs_resolves_to_executable_project_script(tool_ctx):
     assert script.name == "install_prereqs.sh"
     assert script.is_file() and os.access(script, os.X_OK)
     assert real[1:] == ["--all"]
+
+
+def test_install_deps_resolves_to_upstream_guide_script(tool_ctx):
+    # The `repo-script` runner invoke type must resolve install-deps.sh to the REAL upstream
+    # script under the read-only llm-d guide repo, with cwd pinned to that repo root.
+    if not tool_ctx.settings.guide_repo.is_dir():
+        pytest.skip("guide repo (llm-d) not present")
+    entry = tool_ctx.allowlist.executable("install-deps.sh")
+    real, cwd = tool_ctx.runner.resolve(["install-deps.sh", "--dev"], entry)
+    script = Path(real[0])
+    assert script.name == "install-deps.sh"
+    assert script.parts[-3:] == ("helpers", "client-setup", "install-deps.sh")
+    assert script.is_file()
+    assert cwd == str(tool_ctx.settings.guide_repo)
+    assert real[1:] == ["--dev"]
 
 
 # ---- fetch_key_docs (hard-coded pointers, live content) -------------------

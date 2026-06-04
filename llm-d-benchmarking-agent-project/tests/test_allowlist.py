@@ -168,6 +168,23 @@ def test_install_prereqs_kind_version_allowed(allowlist):
     assert d.allowed and d.mode == MUTATING
 
 
+def test_install_deps_allowed_and_mutating(allowlist):
+    # UPSTREAM llm-d guide client-prereq installer (helm/helmfile/kustomize/yq/kubectl).
+    d = allowlist.validate(["install-deps.sh"])
+    assert d.allowed and d.mode == MUTATING and d.requires_approval
+
+
+def test_install_deps_dev_flag_allowed(allowlist):
+    d = allowlist.validate(["install-deps.sh", "--dev"])
+    assert d.allowed and d.mode == MUTATING
+
+
+def test_install_deps_has_governance_timeout(allowlist):
+    # The mutating guide installer declares a per-command deadline (DATA, not Python).
+    d = allowlist.validate(["install-deps.sh"])
+    assert d.timeout_s == 900
+
+
 # ---- denials --------------------------------------------------------------
 
 def test_unknown_executable_denied(allowlist):
@@ -287,6 +304,11 @@ def test_install_prereqs_unknown_flag_now_allowed(allowlist):
 def test_install_prereqs_bad_kind_version_denied(allowlist):
     # kind_version must look like vX.Y.Z
     assert not allowlist.validate(["install_prereqs.sh", "--kind", "--kind-version", "latest; rm -rf /"]).allowed
+
+
+def test_install_deps_metachar_arg_denied(allowlist):
+    # The guide installer's args are still metachar-screened — no shell injection.
+    assert not allowlist.validate(["install-deps.sh", "--dev; rm -rf /"]).allowed
 
 
 # ---- positional shape invariant: a `repeated` spec must be LAST ------------

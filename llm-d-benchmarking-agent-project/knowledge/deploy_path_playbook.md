@@ -15,6 +15,26 @@ gated models. Confirm specs with `list_catalog` and read the spec/guide with
 `read_repo_doc` before promising anything. Do NOT attempt on the local kind node — it has
 no GPUs and not enough CPU/RAM for the default sizes.
 
+### Deploying a published llm-d GUIDE (optimized-baseline as the reference)
+`guides/optimized-baseline` is the reference well-lit-path guide — load-aware + prefix-cache-aware
+scheduling, the closest catalog spec to the upstream "inference-scheduling" guide. Two ways to
+drive it (BOTH go through `execute_llmdbenchmark` / `run_command` — code is mechanism only):
+- **Through the benchmark CLI** — `execute_llmdbenchmark subcommand=standup flags={spec:"guides/optimized-baseline", ...}`
+  (after `propose_session_plan` + `check_capacity`; standup is mutating → user Approves).
+- **As the guide's own manifests** — the `-t kustomize` path with `kustomize.guideName: optimized-baseline`
+  (see "Kustomize deploy method" below); applies the guide verbatim via helm+kustomize.
+
+**Client prerequisites — offer `install-deps.sh` when they're MISSING.** A guide deploy needs the
+deployment client toolchain (`helm` + helm-diff plugin, `helmfile`, `kustomize`, `yq`, `kubectl`).
+`probe_environment` reports each in `tools.*`. When the user wants a guide-based deploy and those
+client tools are absent (and `run_setup`/`install.sh` hasn't already supplied them), OFFER the
+UPSTREAM guide installer: `run_command argv=["install-deps.sh"]` (add `--dev` for chart-testing).
+It is mutating → the user Approves. This is the llm-d guide repo's OWN
+`helpers/client-setup/install-deps.sh` — DISTINCT from `install_prereqs.sh` (Docker daemon + kind
+binary) and from the benchmark repo's `install.sh` (framework venv). See
+`preconditions.md` ("Guide-based deploy: the UPSTREAM client prerequisites") for which of the
+three install steps to run when, and never re-offer one whose tools are already present.
+
 ## 3. Hand-run llm-d guides + run_only.sh (not automated here)
 The `llm-d` repo `guides/*` deploy via helm+kustomize and then benchmark an EXISTING stack
 with `existing_stack/run_only.sh`. This is a different entry point than `llmdbenchmark` and
