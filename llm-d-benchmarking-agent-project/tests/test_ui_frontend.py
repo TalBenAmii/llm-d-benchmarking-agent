@@ -132,6 +132,26 @@ def test_preflight_status_cards():
     assert ".status-dot-ok" in css and ".status-grid" in css and ".diag-list" in css
 
 
+def test_keyboard_shortcuts_and_help_overlay():
+    html = _ui("index.html")
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    assert 'id="shortcuts"' in html and 'id="help-toggle"' in html
+    assert "function toggleHelp" in js and "showModal" in js
+    # Modifier-gated shortcuts that never swallow typing.
+    assert 'e.key === "k"' in js and "input.focus()" in js          # Cmd/Ctrl+K
+    assert "sidebar-hidden" in js and "body.sidebar-hidden .sidebar" in css  # Cmd/Ctrl+B focus mode
+    assert ".shortcuts::backdrop" in css and "kbd" in css
+
+
+def test_results_card_copy_summary():
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    assert "function resultsCardMarkdown" in js and "function addCardCopy" in js
+    assert "addCardCopy(root, resultsCardMarkdown(card))" in js
+    assert ".card-copy" in css
+
+
 def test_preview_harness_exists_and_is_self_contained():
     """ui/preview.html drives the renderers with fixtures and no backend, for hand verification.
     It must set the preview flag (so app.js skips its live boot), reference the assets relatively

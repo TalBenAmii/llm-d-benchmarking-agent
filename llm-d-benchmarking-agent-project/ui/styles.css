@@ -203,6 +203,10 @@ body {
 .sidebar-toggle { display: none; }
 .sidebar-scrim { display: none; }
 
+/* Focus mode: ⌘/Ctrl+B collapses the sidebar on desktop to give the chat full width. */
+.sidebar { transition: width .18s ease; }
+body.sidebar-hidden .sidebar { width: 0; border-right: none; overflow: hidden; }
+
 @media (max-width: 760px) {
   /* Off-canvas sidebar: it slides over the chat (which now spans full width) and a tap-scrim
      dismisses it. The header hamburger toggles body.sidebar-open. */
@@ -506,11 +510,21 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 
 /* ── Deterministic structured results card (B2) ───────────────────────── */
 .results-card {
-  max-width: 900px; width: 100%; margin: 8px auto 16px;
+  max-width: 900px; width: 100%; margin: 8px auto 16px; position: relative;
   border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--panel); padding: 14px 18px; box-shadow: var(--shadow);
 }
 .results-head { font: 600 14px/1.4 var(--serif); color: var(--text); margin-bottom: 8px; }
+/* Hover-reveal "Copy summary" button on a results card (markdown to clipboard). */
+.card-copy {
+  position: absolute; top: 12px; right: 14px; z-index: 1;
+  padding: 3px 10px; font: 600 10.5px/1 var(--mono); letter-spacing: .03em;
+  color: var(--muted); background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 7px; opacity: 0; transition: opacity .12s, color .12s, border-color .12s;
+}
+.results-card:hover .card-copy, .card-copy:focus-visible { opacity: 1; }
+.card-copy:hover { color: var(--accent); border-color: var(--accent); filter: none; }
+.card-copy.copied { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--border)); opacity: 1; }
 .results-subhead { font: 600 12px/1.4 var(--serif); color: var(--text); margin: 14px 0 6px; }
 .results-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .results-tag {
@@ -765,6 +779,31 @@ input[type="range"].slider:focus { box-shadow: 0 0 0 3px rgba(165, 64, 165, .18)
 .pctl-table tr:first-child th { color: var(--muted); border-bottom: 1px solid var(--border-strong); }
 .pctl-table tr th:first-child { text-align: left; color: var(--muted); font-weight: 600; }
 .pctl-table td { color: var(--accent); }
+
+/* Keyboard-shortcuts help — modal <dialog>. */
+.shortcuts {
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--panel); color: var(--text); box-shadow: var(--shadow);
+  padding: 0; max-width: 92vw; width: 380px;
+}
+.shortcuts::backdrop { background: rgba(0, 0, 0, .55); }
+.shortcuts-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  font: 700 14px/1.2 var(--serif);
+}
+.shortcuts-list {
+  display: grid; grid-template-columns: auto 1fr; gap: 10px 16px;
+  margin: 0; padding: 16px 18px;
+}
+.shortcuts-list dt { margin: 0; display: flex; gap: 4px; align-items: center; }
+.shortcuts-list dd { margin: 0; font-size: 13px; color: var(--text); align-self: center; }
+.shortcuts-list dd .muted { color: var(--muted); font-size: 12px; }
+kbd {
+  font: 600 11px/1 var(--mono); color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--border-strong);
+  border-bottom-width: 2px; border-radius: 6px; padding: 3px 6px; white-space: nowrap;
+}
 
 /* Chart lightbox — full-size plot in a modal <dialog>. */
 .lightbox {

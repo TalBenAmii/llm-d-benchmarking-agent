@@ -85,6 +85,7 @@
       <div id="token-total" class="token-chip" title="Total tokens used this session" hidden>Σ 0 tokens</div>
       <button id="debug-toggle" type="button" class="icon-btn" title="Toggle debug view" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
       <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
+      <button id="help-toggle" type="button" class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
       <div id="status" class="status" title="connection status">preview</div>
     </div>
   </header>
@@ -131,6 +132,20 @@
   </aside>
 
   <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
+
+  <dialog id="shortcuts" class="shortcuts">
+    <div class="shortcuts-head">
+      <span>Keyboard shortcuts</span>
+      <button id="shortcuts-close" class="icon-btn icon-btn-sm" type="button" title="Close" aria-label="Close">✕</button>
+    </div>
+    <dl class="shortcuts-list">
+      <dt><kbd>⌘</kbd><kbd>Ctrl</kbd><kbd>K</kbd></dt><dd>Focus the message box</dd>
+      <dt><kbd>Enter</kbd></dt><dd>Send message <span class="muted">(<kbd>Shift</kbd><kbd>Enter</kbd> = newline)</span></dd>
+      <dt><kbd>⌘</kbd><kbd>Ctrl</kbd><kbd>B</kbd></dt><dd>Hide / show the chat sidebar</dd>
+      <dt><kbd>?</kbd></dt><dd>Show this help</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Close this dialog</dd>
+    </dl>
+  </dialog>
 
   <script src="app.js"></script>
   <script>
