@@ -180,3 +180,59 @@ def test_copy_buttons_jump_latest_and_mobile_sidebar():
     # Off-canvas sidebar is desktop-inert (only acts within the breakpoint).
     assert "function setSidebar" in js
     assert "body.sidebar-open .sidebar" in css
+
+
+def test_benchmark_builder_wizard():
+    """The guided builder: header CTA + welcome CTA + dialog that composes a brief and sends it.
+    Critically, the builder must NOT decide the spec/harness/workload — it only phrases the request
+    and hands the mapping back to the agent (thin code / thick agent)."""
+    html = _ui("index.html")
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    # Entry points are present and wired.
+    assert 'id="builder-toggle"' in html and 'id="builder"' in html
+    assert 'getElementById("builder-toggle")' in js and 'getElementById("builder")' in js
+    assert "function openBuilder" in js and "function composeBrief" in js and "function submitBuilder" in js
+    # All sections the composer reads exist as data-field chip groups.
+    for field in ("usecase", "scale", "pattern", "input", "output", "hardware"):
+        assert f'data-field="{field}"' in html, f"missing builder field {field}"
+    # SLO numeric targets feed the brief.
+    for slo in ("slo-ttft", "slo-tpot", "slo-tput"):
+        assert f'id="{slo}"' in html and f'"{slo}"' in js
+    # The brief is dispatched through the SAME path a typed message uses…
+    assert "sendUserMessage(text)" in js
+    # …and the closing line hands the actual mapping back to the agent (judgment stays in the agent).
+    assert "recommend the right scenario, harness, and workload" in js
+    # Click-to-open from the welcome card + a Cmd/Ctrl+J shortcut.
+    assert "welcome-build" in js and ".welcome-build" in css
+    assert 'e.key === "j"' in js
+    assert ".builder::backdrop" in css and ".bchip.sel" in css
+
+
+def test_metrics_glossary_and_explainers():
+    """Plain-language definitions come from /api/glossary (knowledge-sourced) and surface as a
+    dialog plus hover '?' explainers on results-card metrics."""
+    html = _ui("index.html")
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    assert 'id="glossary-toggle"' in html and 'id="glossary"' in html
+    assert "function loadGlossary" in js and '"/api/glossary"' in js
+    assert "function openGlossary" in js and "function setGlossary" in js
+    # Inline explainer: a "?" badge carrying the definition, attached to each metric row.
+    assert "function metricHelp" in js and "metricHelp(m.label)" in js
+    # Definitions are NOT duplicated in JS — only the label->term alias is (presentation only).
+    assert "METRIC_GLOSSARY_ALIAS" in js and "glossaryIndex" in js
+    assert ".glossary::backdrop" in css and ".metric-help" in css
+    # Loaded once at boot alongside sessions/history.
+    assert "loadGlossary();" in js
+
+
+def test_builder_and_glossary_in_preview_harness():
+    """The preview harness must exercise the new render paths too (no backend)."""
+    html = _ui("preview.html")
+    js = _ui("app.js")
+    # Builder + glossary entry points are exposed on the preview API…
+    assert "openBuilder, openGlossary, setGlossary" in js
+    # …and the preview seeds the glossary so the dialog + metric explainers render from fixtures.
+    assert "A.setGlossary(" in html
+    assert 'id="builder"' in html and 'id="glossary"' in html

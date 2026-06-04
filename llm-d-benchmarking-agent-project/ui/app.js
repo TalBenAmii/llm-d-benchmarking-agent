@@ -35,6 +35,16 @@ const jumpBtn = document.getElementById("jump-latest");
 const helpToggle = document.getElementById("help-toggle");
 const shortcutsDlg = document.getElementById("shortcuts");
 const shortcutsClose = document.getElementById("shortcuts-close");
+const builderToggle = document.getElementById("builder-toggle");
+const builderDlg = document.getElementById("builder");
+const builderClose = document.getElementById("builder-close");
+const builderCancel = document.getElementById("builder-cancel");
+const builderSend = document.getElementById("builder-send");
+const builderPreview = document.getElementById("builder-preview");
+const glossaryToggle = document.getElementById("glossary-toggle");
+const glossaryDlg = document.getElementById("glossary");
+const glossaryClose = document.getElementById("glossary-close");
+const glossaryListEl = document.getElementById("glossary-list");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -751,6 +761,11 @@ function renderSuggestions(chips) {
     card.appendChild(el("div", "welcome-heading",
       "Hi! I can help you run a benchmark — try one of these, or just describe your use case:"));
   }
+  // Prominent entry to the guided builder, for users who'd rather click through choices than type.
+  const build = el("button", "welcome-build", "✨ Design a benchmark");
+  build.type = "button";
+  build.onclick = openBuilder;
+  card.appendChild(build);
   const wrap = el("div", "welcome-chips");
   for (const chip of chips) {
     if (!chip || !chip.label || !chip.prompt) continue;
@@ -1198,7 +1213,10 @@ function renderResultsCard(card) {
     table.appendChild(head);
     for (const m of metrics) {
       const tr = el("tr");
-      tr.appendChild(el("td", "results-name", m.label || ""));
+      const nameTd = el("td", "results-name", m.label || "");
+      const help = metricHelp(m.label);   // a hover "?" with the plain-language definition (if known)
+      if (help) nameTd.appendChild(help);
+      tr.appendChild(nameTd);
       tr.appendChild(el("td", null, `${fmtNum(m.value)}${m.units ? " " + m.units : ""}`));
       tr.appendChild(el("td", "results-stat", m.stat || ""));
       tr.title = m.direction || "";
@@ -2257,6 +2275,7 @@ if (shortcutsDlg) shortcutsDlg.addEventListener("click", (e) => { if (e.target =
 document.addEventListener("keydown", (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && (e.key === "k" || e.key === "K")) { e.preventDefault(); input.focus(); return; }
+  if (mod && (e.key === "j" || e.key === "J")) { e.preventDefault(); openBuilder(); return; }
   if (mod && (e.key === "b" || e.key === "B")) { e.preventDefault(); document.body.classList.toggle("sidebar-hidden"); return; }
   // Bare "?" toggles help — but only when not typing into a field (so a literal ? still works).
   const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
@@ -2265,6 +2284,184 @@ document.addEventListener("keydown", (e) => {
 
 // Manual collapse of the split view; the next `resource_stats` tick of a still-running run reopens it.
 if (resourceSideClose) resourceSideClose.addEventListener("click", clearResourceStats);
+
+// ---- guided benchmark builder -------------------------------------------
+// A friendly form that lets a non-expert compose a benchmark request from a few choices, previews
+// the plain-language brief it will send, and dispatches it as an ordinary user message. It does NO
+// mapping of its own (which scenario/harness/workload, which flags) — that stays the agent's
+// judgment; the builder only turns chosen options into English, exactly what a user could type.
+let builderTouched = false;   // the user hand-edited the preview → stop auto-rewriting over them
+
+// The selected chip in a group: {value (the data-value sent), noun (data-noun for phrasing)} or null.
+function builderSel(field) {
+  const group = builderDlg && builderDlg.querySelector('.chip-group[data-field="' + field + '"]');
+  const on = group && group.querySelector(".bchip.sel");
+  return on ? { value: on.dataset.value || "", noun: group.dataset.noun || "" } : null;
+}
+
+// A non-negative SLO number from an input, or null when blank/invalid (so it's simply omitted).
+function sloVal(id) {
+  const node = document.getElementById(id);
+  const n = node ? parseFloat(node.value) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+// Compose the plain-language brief from the current selections. Only chosen fields appear; the
+// closing line hands ALL the actual mapping (scenario/harness/workload, flags) back to the agent.
+function composeBrief() {
+  const lines = [];
+  const uc = builderSel("usecase");
+  lines.push(uc ? "I'd like to benchmark " + uc.value + "." : "Help me design a benchmark for my use case.");
+
+  const scaleParts = [];
+  const scale = builderSel("scale"); if (scale) scaleParts.push(scale.value);
+  const pattern = builderSel("pattern"); if (pattern) scaleParts.push(pattern.value);
+  if (scaleParts.length) lines.push("- Load: " + scaleParts.join(", ") + ".");
+
+  const shapeParts = [];
+  const inp = builderSel("input"); if (inp) shapeParts.push(inp.value + " " + inp.noun);
+  const outp = builderSel("output"); if (outp) shapeParts.push(outp.value + " " + outp.noun);
+  if (shapeParts.length) lines.push("- Token shape: " + shapeParts.join(", ") + ".");
+
+  const slo = [];
+  const ttft = sloVal("slo-ttft"); if (ttft != null) slo.push("TTFT ≤ " + ttft + " ms");
+  const tpot = sloVal("slo-tpot"); if (tpot != null) slo.push("TPOT ≤ " + tpot + " ms");
+  const tput = sloVal("slo-tput"); if (tput != null) slo.push("throughput ≥ " + tput + " tokens/s");
+  if (slo.length) lines.push("- SLO targets: " + slo.join("; ") + ".");
+
+  const hw = builderSel("hardware");
+  if (hw) lines.push("- Hardware: " + hw.value + ".");
+
+  lines.push("");
+  lines.push("Please recommend the right scenario, harness, and workload profile, explain the trade-offs, and propose a plan I can approve.");
+  return lines.join("\n");
+}
+
+function refreshBuilderPreview() {
+  if (builderPreview && !builderTouched) builderPreview.value = composeBrief();
+}
+
+function openBuilder() {
+  if (!builderDlg || !builderDlg.showModal || builderDlg.open) return;
+  builderTouched = false;            // a fresh open re-syncs the preview to the current choices
+  refreshBuilderPreview();
+  builderDlg.showModal();
+}
+function closeBuilder() { if (builderDlg && builderDlg.open) builderDlg.close(); }
+
+function submitBuilder() {
+  const text = ((builderPreview && builderPreview.value) || "").trim();
+  closeBuilder();
+  if (!text) return;
+  // If we can't send right now (not connected / a turn in flight), drop the brief into the
+  // composer so the user's work isn't lost rather than silently no-op'ing.
+  if (busy || !ws || ws.readyState !== WebSocket.OPEN) {
+    input.value = text; input.focus();
+    input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px";
+    return;
+  }
+  sendUserMessage(text);
+}
+
+// Chip groups are single-select; a click selects (clearing its siblings), a second click on the
+// same chip clears the choice. Any change re-previews unless the user has hand-edited the text.
+if (builderDlg) {
+  builderDlg.querySelectorAll(".chip-group").forEach((group) => {
+    group.addEventListener("click", (e) => {
+      const btn = e.target.closest(".bchip");
+      if (!btn || !group.contains(btn)) return;
+      const wasSel = btn.classList.contains("sel");
+      group.querySelectorAll(".bchip").forEach((b) => b.classList.remove("sel"));
+      if (!wasSel) btn.classList.add("sel");
+      refreshBuilderPreview();
+    });
+  });
+  builderDlg.querySelectorAll(".slo-input").forEach((i) => i.addEventListener("input", refreshBuilderPreview));
+  if (builderPreview) builderPreview.addEventListener("input", () => { builderTouched = true; });
+  builderDlg.addEventListener("click", (e) => { if (e.target === builderDlg) closeBuilder(); });  // backdrop
+}
+if (builderToggle) builderToggle.addEventListener("click", openBuilder);
+if (builderClose) builderClose.addEventListener("click", closeBuilder);
+if (builderCancel) builderCancel.addEventListener("click", closeBuilder);
+if (builderSend) builderSend.addEventListener("click", submitBuilder);
+
+// ---- metrics glossary (knowledge-sourced explainers) ---------------------
+// Definitions come from /api/glossary (parsed from knowledge/glossary.md) so they stay editable
+// and are never duplicated in JS. We list them in the glossary dialog and index them by term so a
+// results-card metric can carry a hover "?" with its plain-language meaning.
+let glossaryTerms = [];
+const glossaryIndex = {};   // lowercased term -> definition
+
+// Which glossary term names a given results-card metric label. Presentation-only aliasing (the
+// definitions themselves still come from knowledge); an unmapped label simply gets no explainer.
+const METRIC_GLOSSARY_ALIAS = {
+  "time to first token": "ttft",
+  "time per output token": "tpot/itl",
+  "inter-token latency": "tpot/itl",
+  "output token throughput": "throughput",
+  "request throughput": "throughput",
+};
+
+function setGlossary(terms) {
+  glossaryTerms = Array.isArray(terms) ? terms.filter((t) => t && t.term && t.definition) : [];
+  for (const k in glossaryIndex) delete glossaryIndex[k];
+  for (const t of glossaryTerms) glossaryIndex[String(t.term).toLowerCase()] = String(t.definition);
+  renderGlossaryList();
+}
+
+function renderGlossaryList() {
+  if (!glossaryListEl) return;
+  glossaryListEl.textContent = "";
+  if (!glossaryTerms.length) {
+    glossaryListEl.appendChild(el("div", "glossary-empty", "Glossary unavailable right now."));
+    return;
+  }
+  for (const t of glossaryTerms) {
+    glossaryListEl.appendChild(el("dt", null, String(t.term)));
+    glossaryListEl.appendChild(el("dd", null, String(t.definition)));
+  }
+}
+
+async function loadGlossary() {
+  try {
+    const r = await fetch("/api/glossary");
+    if (!r.ok) return;
+    const data = await r.json();
+    setGlossary(data && data.terms);
+  } catch (e) { /* the glossary is a nice-to-have; ignore fetch/parse errors */ }
+}
+
+// The plain-language definition for a metric label (via the alias map; goodput matched by name),
+// or null when we have nothing to show for it.
+function metricGlossary(label) {
+  if (!label) return null;
+  const key = METRIC_GLOSSARY_ALIAS[String(label).trim().toLowerCase()];
+  let def = key ? glossaryIndex[key] : null;
+  if (!def && /goodput/i.test(label)) def = glossaryIndex["goodput"];
+  return def || null;
+}
+
+// A small "?" affordance carrying a metric's definition as a native tooltip. null when unknown
+// (the glossary may not have loaded yet, or the label isn't mapped) so callers can skip it.
+function metricHelp(label) {
+  const def = metricGlossary(label);
+  if (!def) return null;
+  const b = el("span", "metric-help", "?");
+  b.title = def;
+  b.setAttribute("aria-label", def);
+  return b;
+}
+
+function openGlossary() {
+  if (!glossaryDlg || !glossaryDlg.showModal || glossaryDlg.open) return;
+  if (!glossaryTerms.length) loadGlossary();   // lazy retry if the boot fetch hadn't landed yet
+  glossaryDlg.showModal();
+}
+function closeGlossary() { if (glossaryDlg && glossaryDlg.open) glossaryDlg.close(); }
+
+if (glossaryToggle) glossaryToggle.addEventListener("click", openGlossary);
+if (glossaryClose) glossaryClose.addEventListener("click", closeGlossary);
+if (glossaryDlg) glossaryDlg.addEventListener("click", (e) => { if (e.target === glossaryDlg) closeGlossary(); });
 
 // ---- boot ---------------------------------------------------------------
 // ui/preview.html sets window.__LLMD_PREVIEW__ to drive the renderers with fixture data and no
@@ -2277,9 +2474,11 @@ if (window.__LLMD_PREVIEW__) {
     renderResourceStats, renderNextSteps,
     renderEnvStatus, renderCapacityCard, renderReadinessCard,
     renderAcceleratorCard, renderDoeCard, renderOrchestrateCard,
+    openBuilder, openGlossary, setGlossary, composeBrief,
   };
 } else {
   loadSessions();
   loadHistory();
+  loadGlossary();
   bootChat();
 }
