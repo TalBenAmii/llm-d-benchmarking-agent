@@ -32,6 +32,9 @@ const runSteps = document.getElementById("run-steps");
 const sidebarToggle = document.getElementById("sidebar-toggle");
 const sidebarScrim = document.getElementById("sidebar-scrim");
 const jumpBtn = document.getElementById("jump-latest");
+const helpToggle = document.getElementById("help-toggle");
+const shortcutsDlg = document.getElementById("shortcuts");
+const shortcutsClose = document.getElementById("shortcuts-close");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -1138,10 +1141,51 @@ function deltaBar(deltaPct, direction) {
   return wrap;
 }
 
+// Serialize a results card to a markdown summary (paste into a report / Slack / PR). Built from
+// the card DATA, not the DOM, so it stays exact and stable.
+function resultsCardMarkdown(card) {
+  const lines = [`## ${card.kind === "sweep" ? "Sweep results" : "Benchmark results"}`];
+  const meta = [];
+  if (card.model) meta.push(`model: ${card.model}`);
+  if (card.harness) meta.push(`harness: ${card.harness}`);
+  if (card.requests_total != null) meta.push(`requests: ${fmtNum(card.requests_total)}`);
+  if (card.success_rate_pct != null) meta.push(`success: ${fmtNum(card.success_rate_pct)}%`);
+  if (card.duration != null) meta.push(`duration: ${card.duration}`);
+  if (meta.length) lines.push("", meta.join(" · "));
+  const metrics = Array.isArray(card.metrics) ? card.metrics : [];
+  if (metrics.length) {
+    lines.push("", "| metric | value | stat |", "|---|---|---|");
+    for (const m of metrics) lines.push(`| ${m.label} | ${fmtNum(m.value)}${m.units ? " " + m.units : ""} | ${m.stat || ""} |`);
+  }
+  const slo = card.slo;
+  if (slo && Array.isArray(slo.verdicts) && slo.verdicts.length) {
+    lines.push("", `### SLO check${slo.overall_met != null ? (slo.overall_met ? " — all met ✓" : " — not all met ✗") : ""}`,
+      "", "| metric | target | observed | met |", "|---|---|---|---|");
+    for (const v of slo.verdicts) {
+      const u = v.units ? " " + v.units : "";
+      const dir = v.direction === "min" ? "≥ " : v.direction === "max" ? "≤ " : "";
+      lines.push(`| ${v.metric || ""}${v.statistic ? " (" + v.statistic + ")" : ""} | ${v.target != null ? dir + fmtNum(v.target) + u : "—"} | ${v.observed != null ? fmtNum(v.observed) + u : "—"} | ${v.met === true ? "✓" : v.met === false ? "✗" : "n/a"} |`);
+    }
+    if (slo.goodput && slo.goodput.estimate_pct != null) lines.push("", `Estimated goodput: ~${fmtNum(slo.goodput.estimate_pct)}%`);
+  }
+  return lines.join("\n");
+}
+
+// Add a hover-reveal "Copy" button to a card that copies `text` to the clipboard.
+function addCardCopy(root, text) {
+  const btn = el("button", "card-copy", "Copy");
+  btn.type = "button";
+  btn.title = "Copy a markdown summary";
+  btn.setAttribute("aria-label", "Copy a markdown summary");
+  btn.addEventListener("click", () => copyText(text, btn));
+  root.appendChild(btn);
+}
+
 function renderResultsCard(card) {
   if (!card || typeof card !== "object") return;
   removeWelcomeCard();
   const root = el("div", "results-card");
+  addCardCopy(root, resultsCardMarkdown(card));
   root.appendChild(el("div", "results-head", card.kind === "sweep" ? "Sweep results" : "Benchmark results"));
   metaRow(card, root);
 
@@ -2200,6 +2244,24 @@ function setSidebar(open) {
 }
 if (sidebarToggle) sidebarToggle.addEventListener("click", () => setSidebar(!document.body.classList.contains("sidebar-open")));
 if (sidebarScrim) sidebarScrim.addEventListener("click", () => setSidebar(false));
+
+// ---- keyboard shortcuts + help overlay -----------------------------------
+// A native <dialog> lists the shortcuts (Esc-closable for free). The handler is global but
+// modifier-gated, so it never swallows ordinary typing; the bare "?" only fires outside a field.
+function openHelp() { if (shortcutsDlg && shortcutsDlg.showModal && !shortcutsDlg.open) shortcutsDlg.showModal(); }
+function closeHelp() { if (shortcutsDlg && shortcutsDlg.open) shortcutsDlg.close(); }
+function toggleHelp() { if (shortcutsDlg && shortcutsDlg.open) closeHelp(); else openHelp(); }
+if (helpToggle) helpToggle.addEventListener("click", openHelp);
+if (shortcutsClose) shortcutsClose.addEventListener("click", closeHelp);
+if (shortcutsDlg) shortcutsDlg.addEventListener("click", (e) => { if (e.target === shortcutsDlg) closeHelp(); });  // backdrop click
+document.addEventListener("keydown", (e) => {
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && (e.key === "k" || e.key === "K")) { e.preventDefault(); input.focus(); return; }
+  if (mod && (e.key === "b" || e.key === "B")) { e.preventDefault(); document.body.classList.toggle("sidebar-hidden"); return; }
+  // Bare "?" toggles help — but only when not typing into a field (so a literal ? still works).
+  const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if (!mod && !typing && e.key === "?") { e.preventDefault(); toggleHelp(); }
+});
 
 // Manual collapse of the split view; the next `resource_stats` tick of a still-running run reopens it.
 if (resourceSideClose) resourceSideClose.addEventListener("click", clearResourceStats);
