@@ -24,6 +24,7 @@ const workingEl = document.getElementById("working");
 const workWordEl = workingEl.querySelector(".working-word");
 const workStatsEl = workingEl.querySelector(".working-stats");
 const tokenChip = document.getElementById("token-total");
+const stopBtn = document.getElementById("stop-run");
 const resourceSide = document.getElementById("resource-side");
 const resourceSideBody = document.getElementById("resource-side-body");
 const resourceSideClose = document.getElementById("resource-side-close");
@@ -353,6 +354,7 @@ function handle(msg) {
     case "results_card": renderResultsCard(data.card); break;
     case "approval_request": addApprovalCard(data); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // now waiting on the user, not the model
     case "error": addBubble("error", data.message); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
+    case "cancelled": addNote("⏹ " + (data.message || "run cancelled")); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
     case "done": setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
@@ -1450,6 +1452,7 @@ function startWorking(initialWord) {
   workWordEl.textContent = initialWord || WORK_WORDS[0];
   renderWorkStats();
   workingEl.hidden = false;
+  if (stopBtn) stopBtn.disabled = false;
   clearInterval(workTimer); clearInterval(wordTimer);
   workTimer = setInterval(renderWorkStats, 250);
   wordTimer = setInterval(cycleWord, 2200);
@@ -1461,6 +1464,7 @@ function startWorking(initialWord) {
 function resumeWorking(elapsedMs) {
   workStart = Date.now() - (Number(elapsedMs) || 0);
   workingEl.hidden = false;
+  if (stopBtn) stopBtn.disabled = false;
   renderWorkStats();
   clearInterval(workTimer); clearInterval(wordTimer);
   workTimer = setInterval(renderWorkStats, 250);
@@ -1471,6 +1475,18 @@ function stopWorking() {
   workTimer = wordTimer = null;
   workingEl.hidden = true;
   workActivity = null; workWordFixed = false;
+}
+// Stop button: send the `cancel` control frame (backend reaps the in-flight turn/subprocess and
+// answers with `cancelled` + `done`). Optimistically reflect "Stopping…" so the click feels live;
+// the events do the real cleanup. Cancelling targets the chat the socket is attached to.
+function cancelRun() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  try { ws.send(JSON.stringify({ type: "cancel" })); } catch (e) { return; }
+  workWordFixed = true;
+  workWordEl.textContent = "Stopping";
+  workActivity = null;
+  renderWorkStats();
+  if (stopBtn) stopBtn.disabled = true;
 }
 function setWorkTool(name) {       // a tool started — snap to its verb
   workWordFixed = true;
@@ -1520,6 +1536,7 @@ input.addEventListener("keydown", (e) => {
 input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; });
 
 newChatBtn.addEventListener("click", newChat);
+if (stopBtn) stopBtn.addEventListener("click", cancelRun);
 
 // Manual collapse of the split view; the next `resource_stats` tick of a still-running run reopens it.
 if (resourceSideClose) resourceSideClose.addEventListener("click", clearResourceStats);

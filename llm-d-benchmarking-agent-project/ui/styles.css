@@ -678,6 +678,16 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
 .working-word { font-weight: 600; font-family: var(--serif); }
 .working-dots { color: var(--accent); }
 .working-stats { color: var(--muted); font: 12px var(--mono); }
+/* Stop button — sits at the end of the working line; only visible while a run is in flight
+   (the whole working line is hidden otherwise). Sends the `cancel` control frame. */
+.stop-run {
+  margin-left: auto; flex: none; padding: 4px 12px; border-radius: 999px;
+  font: 600 11.5px/1 var(--mono); letter-spacing: .03em;
+  color: var(--red); background: color-mix(in srgb, var(--red) 10%, var(--panel-2));
+  border: 1px solid color-mix(in srgb, var(--red) 50%, var(--border));
+}
+.stop-run:hover { background: color-mix(in srgb, var(--red) 20%, var(--panel-2)); filter: none; }
+.stop-run:disabled { opacity: .5; cursor: default; }
 
 /* Per-turn token footer beneath an assistant turn — subtle, mono, small (matches .working-stats). */
 .turn-tokens {
