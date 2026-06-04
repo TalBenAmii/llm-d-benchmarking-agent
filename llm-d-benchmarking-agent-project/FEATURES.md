@@ -76,6 +76,14 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 | Debug view (`>_`) — show only the commands the agent executed | `ui/index.html` `#debug-toggle` | 🔵 Toggle top-right; filters the transcript to executed commands. |
 | Approval cards persist across chat switches | `ui/app.js` | 🔵 Switch chats with a pending approval; it's still there. |
 | Per-command approval for mutating actions; read-only probes auto-run | `app/agent/loop.py`, `app/security/*` | 🔵 Standup/run/teardown prompt for approval; probes don't. |
+| **Run progress stepper** — phased workflow rail (Pre-flight → Plan → Setup → Configure → Deploy → Benchmark → Analyze) that lights up as the agent works | `ui/index.html` `#run-steps`, `ui/app.js` (`renderRunSteps`/`advancePhase`) | 🔵 Appears once a benchmark starts; the active phase pulses. Per-chat (survives switches). Driven from the `tool_call` stream, no LLM cost. ⚪ `tests/test_ui_frontend.py`. |
+| **Stop button** — cancel an in-flight run from the UI (sends the `cancel` control frame; handles the `cancelled` event) | `ui/app.js` (`cancelRun`), `app/main.py` (Phase-16 cancel) | 🔵 Visible in the working line during a run; click to stop. ⚪ `tests/test_ui_frontend.py`. |
+| **Goodput gauge + binding constraint** in the results card — radial gauge of estimated goodput + the first missed SLO target | `ui/app.js` (`goodputGauge`, `renderResultsCard`) | 🔵 Renders in the SLO section of the results card when goodput is computed. |
+| **Pareto frontier scatter** (sweeps) — 2D objective-space plot with the frontier highlighted + SLO-infeasible points ringed | `ui/app.js` (`renderParetoCard`/`scatterPlot`) | 🔵 After `analyze_results` on a sweep. Renders from the per-run objective coordinates already on the result. |
+| **A/B comparison delta bars** + **cross-harness table** | `ui/app.js` (`renderComparisonCard`/`deltaBar`, `renderHarnessCompareCard`) | 🔵 After `compare_reports` (direction-aware green/red deltas vs baseline) / `compare_harness_runs`. |
+| **Live per-pod CPU/mem trend sparklines** in the resource side-panel | `ui/app.js` (`accumulateResourceHistory`/`renderResourceTrends`) | 🔵 During a run the side-panel shows rolling sparklines under the kubectl-top table. |
+| **Copy buttons** on code/JSON blocks, **jump-to-latest**, **off-canvas mobile sidebar** | `ui/app.js`, `ui/styles.css` | 🔵 Hover a code block for Copy; scroll up for the Latest button; narrow the window for the hamburger. ⚪ `tests/test_ui_frontend.py`. |
+| **UI preview harness** — drive every render path with fixture data, no backend/LLM | `ui/preview.html` | 🔵 Open `/static/preview.html` (or serve `ui/` and open `preview.html`) to see all of the above without a cluster. |
 
 ---
 

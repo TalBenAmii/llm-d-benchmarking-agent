@@ -24,9 +24,14 @@ const workingEl = document.getElementById("working");
 const workWordEl = workingEl.querySelector(".working-word");
 const workStatsEl = workingEl.querySelector(".working-stats");
 const tokenChip = document.getElementById("token-total");
+const stopBtn = document.getElementById("stop-run");
 const resourceSide = document.getElementById("resource-side");
 const resourceSideBody = document.getElementById("resource-side-body");
 const resourceSideClose = document.getElementById("resource-side-close");
+const runSteps = document.getElementById("run-steps");
+const sidebarToggle = document.getElementById("sidebar-toggle");
+const sidebarScrim = document.getElementById("sidebar-scrim");
+const jumpBtn = document.getElementById("jump-latest");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -106,6 +111,13 @@ function makeRecord(sid) {
     turnUsage: null, sessionTokens: 0,
     cmdlogHTML: "", lastSeq: 0, running: false, scrollTop: 0,
     pendingApprovals: {}, order: viewClock,
+    // Run progress stepper: furthest workflow phase this chat has reached + the one currently
+    // running (-1 = none). State lives only on the record; the shared #run-steps rail renders
+    // from the ACTIVE chat's record, so a switch restores each chat's own progress (see activate).
+    phaseReached: -1, phaseActive: -1,
+    // Live resource history: per-pod CPU/mem samples accumulated from resource_stats ticks,
+    // drawn as sparklines in the side panel (the raw kubectl-top table only shows the latest).
+    resourceHistory: {},
   };
 }
 
@@ -140,6 +152,7 @@ function activate(rec) {
   resourceData = rec.resourceData;
   resourceActive = rec.resourceActive;
   renderResourceSide();                 // reflect THIS chat's run in the shared right-hand panel
+  renderRunSteps();                     // reflect THIS chat's workflow progress in the shared rail
   readyNoteTimer = null;
   workStart = rec.workStart; workActivity = rec.workActivity; workWordFixed = rec.workWordFixed;
   turnUsage = rec.turnUsage;
@@ -168,6 +181,8 @@ function clearActivePane() {
   resourceData = null; resourceActive = false;
   if (cur) { cur.resourceData = null; cur.resourceActive = false; }
   renderResourceSide();
+  if (cur) { cur.phaseReached = -1; cur.phaseActive = -1; cur.resourceHistory = {}; }
+  renderRunSteps();
   turnUsage = null; if (cur) cur.turnUsage = null;
   if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }
   if (cur) { cur.pendingApprovals = {}; cur.lastSeq = 0; }
@@ -267,6 +282,7 @@ function switchTo(sid) {
   currentSession = sid || null;
   evictPanes();
   connect(sid || null, cacheHit ? rec.lastSeq : null);
+  setSidebar(false);                                  // close the mobile drawer once a chat is chosen
 }
 
 function newChat() { switchTo(null); }
@@ -335,16 +351,17 @@ function handle(msg) {
       addBubble("assistant", data.text);
       if (!workingEl.hidden) resumeThinking();      // between steps: back to generic cycling
       break;
-    case "tool_call": startTool(data); setWorkTool(data.name); break;
+    case "tool_call": startTool(data); setWorkTool(data.name); advancePhase(data.name, data.input); break;
     case "command": removeWelcomeCard(); onCommand(data); setWorkActivity(data.text || (data.argv || []).join(" ")); break;
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "results_card": renderResultsCard(data.card); break;
-    case "approval_request": addApprovalCard(data); if (cur) cur.running = false; stopWorking(); break;  // now waiting on the user, not the model
-    case "error": addBubble("error", data.message); if (cur) cur.running = false; stopWorking(); break;
+    case "approval_request": addApprovalCard(data); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // now waiting on the user, not the model
+    case "error": addBubble("error", data.message); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
+    case "cancelled": addNote("⏹ " + (data.message || "run cancelled")); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
-    case "done": setEnabled(true); activeConsole = null; if (cur) cur.running = false; appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
+    case "done": setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
     case "pong": break;
   }
   // Advance this chat's resume cursor for every turn event we rendered (live or replayed); the
@@ -667,6 +684,7 @@ function addBubble(role, text) {
     // own `**` is never interpreted and errors show raw).
     const bubble = el("div", "bubble markdown");
     bubble.innerHTML = renderMarkdown(text || "");
+    enhanceCodeBlocks(bubble);
     wrap.appendChild(bubble);
   } else {
     wrap.appendChild(el("div", "bubble", text || ""));
@@ -754,12 +772,89 @@ function removeWelcomeCard() {
 // (resourceData/resourceActive) is re-rendered on switch so the front chat's run is always shown.
 // Zero agent/LLM cost — purely a backend-pushed view.
 
-// A `resource_stats` event for the active chat: stash it and (re)open the split view.
+// A `resource_stats` event for the active chat: stash it, accumulate per-pod history (the raw
+// table only shows the latest tick — we keep a rolling series for the sparklines), reopen split.
 function renderResourceStats(data) {
   resourceData = data;
   resourceActive = true;
   if (cur) { cur.resourceData = data; cur.resourceActive = true; }
+  accumulateResourceHistory(data);
   renderResourceSide();
+}
+
+// kubectl-top values are unit-suffixed strings ("250m", "1"; "45Mi", "1Gi", or plain bytes).
+// Normalize to millicores / MiB so the sparklines plot on a stable scale. null on unparseable.
+function parseCpuMillicores(s) {
+  if (s == null) return null;
+  const m = String(s).trim().match(/^([\d.]+)\s*([a-z]*)$/i);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  if (!isFinite(v)) return null;
+  return m[2].toLowerCase() === "m" ? v : v * 1000;   // bare value = whole cores
+}
+function parseMemMiB(s) {
+  if (s == null) return null;
+  const m = String(s).trim().match(/^([\d.]+)\s*([kmgtp]i?)?b?$/i);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  if (!isFinite(v)) return null;
+  const scale = { "": 1 / (1024 * 1024), ki: 1 / 1024, mi: 1, gi: 1024, ti: 1024 * 1024,
+                  k: 1e3 / (1024 * 1024), m: 1e6 / (1024 * 1024), g: 1e9 / (1024 * 1024), t: 1e12 / (1024 * 1024) };
+  const u = (m[2] || "").toLowerCase();
+  return v * (scale[u] != null ? scale[u] : 1);
+}
+
+// Append the latest tick's per-pod CPU/mem to the active chat's rolling history (cap 60 samples).
+function accumulateResourceHistory(data) {
+  if (!cur || !data || data.available === false || !Array.isArray(data.rows)) return;
+  const hist = cur.resourceHistory || (cur.resourceHistory = {});
+  for (const row of data.rows) {
+    const name = row && row.name;
+    if (!name) continue;
+    const series = hist[name] || (hist[name] = []);
+    series.push({ cpu: parseCpuMillicores(row["cpu(cores)"]), mem: parseMemMiB(row["memory(bytes)"]) });
+    if (series.length > 60) series.shift();
+  }
+}
+
+// A tiny sparkline of one numeric key ("cpu"/"mem") of a pod's sample series.
+function resSpark(series, key) {
+  const W = 92, H = 22, pad = 2;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "res-spark", "aria-hidden": "true" });
+  const vals = series.map((s) => s[key]).filter((v) => typeof v === "number" && isFinite(v));
+  if (vals.length < 2) return svg;
+  const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1, n = vals.length;
+  const x = (i) => pad + (i * (W - 2 * pad)) / (n - 1);
+  const y = (v) => H - pad - ((v - min) / span) * (H - 2 * pad);
+  svg.appendChild(svgEl("polyline", {
+    points: vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" "), class: "res-spark-line" }));
+  return svg;
+}
+
+// Per-pod CPU + mem trend block under the live table (reads the active chat's accumulated history).
+function renderResourceTrends(body) {
+  const hist = cur && cur.resourceHistory;
+  if (!hist) return;
+  const pods = Object.keys(hist).filter((p) => (hist[p] || []).length >= 2);
+  if (!pods.length) return;
+  body.appendChild(el("div", "resource-head resource-trend-head", "trend (per pod)"));
+  for (const pod of pods) {
+    const series = hist[pod];
+    const row = el("div", "resource-trend-row");
+    row.appendChild(el("div", "resource-trend-name", pod));
+    const last = series[series.length - 1] || {};
+    const cpu = el("div", "resource-trend-metric");
+    cpu.appendChild(el("span", "resource-trend-lbl", "cpu"));
+    cpu.appendChild(resSpark(series, "cpu"));
+    cpu.appendChild(el("span", "resource-trend-cur", last.cpu != null ? `${fmtNum(last.cpu)}m` : "—"));
+    row.appendChild(cpu);
+    const mem = el("div", "resource-trend-metric");
+    mem.appendChild(el("span", "resource-trend-lbl", "mem"));
+    mem.appendChild(resSpark(series, "mem"));
+    mem.appendChild(el("span", "resource-trend-cur", last.mem != null ? `${fmtNum(last.mem)}Mi` : "—"));
+    row.appendChild(mem);
+    body.appendChild(row);
+  }
 }
 
 // Render the shared #resource-side panel from the active chat's snapshot and toggle the split layout.
@@ -819,6 +914,7 @@ function renderResourceSide() {
     table.appendChild(tr);
   }
   body.appendChild(table);
+  renderResourceTrends(body);
 }
 
 // On `done` (run finished): collapse the split view back to full width for the active chat.
@@ -826,6 +922,86 @@ function clearResourceStats() {
   resourceActive = false;
   if (cur) cur.resourceActive = false;
   renderResourceSide();
+}
+
+// ---- run progress stepper (workflow phase rail) --------------------------
+// A slim phased rail under the header that makes the agent's long benchmark workflow legible to
+// a non-expert: which phase is it in, what's done, what's still ahead. Driven ENTIRELY from the
+// tool_call stream (no backend/LLM cost) — every one of the agent's tools maps to a phase below.
+// State lives on the per-chat record (phaseReached = furthest phase, phaseActive = the one
+// running now), so switching chats restores each chat's own progress. Monotonic within a chat:
+// a re-run advances `active` but the rail keeps the furthest milestone marked done.
+const RUN_PHASES = [
+  { key: "preflight", label: "Pre-flight" },
+  { key: "plan", label: "Plan" },
+  { key: "setup", label: "Setup" },
+  { key: "configure", label: "Configure" },
+  { key: "deploy", label: "Deploy" },
+  { key: "benchmark", label: "Benchmark" },
+  { key: "analyze", label: "Analyze" },
+];
+// Tool name -> phase index. The 28 tools are a fixed enum, so this mapping is exhaustive and
+// stable. Tools that run alongside any phase (observe_run_metrics, run_command, cancel_run) are
+// intentionally absent → they don't move the rail.
+const TOOL_PHASE = {
+  probe_environment: 0, list_catalog: 0, advise_accelerators: 0, check_capacity: 0,
+  check_endpoint_readiness: 0, read_knowledge: 0, search_knowledge: 0, read_repo_doc: 0, fetch_key_docs: 0,
+  propose_session_plan: 1,
+  ensure_repos: 2, run_setup: 2, provision_hf_secret: 2,
+  write_and_validate_config: 3, convert_guide_to_scenario: 3, generate_doe_experiment: 3,
+  orchestrate_benchmark_run: 5,
+  locate_and_parse_report: 6, analyze_results: 6, compare_reports: 6, compare_harness_runs: 6,
+  aggregate_runs: 6, result_history: 6,
+};
+// execute_llmdbenchmark spans several phases; disambiguate by its `subcommand` argument.
+// teardown (-1) is cleanup — it deliberately doesn't move the rail backward.
+const EXECUTE_SUBCMD_PHASE = { plan: 3, standup: 4, smoketest: 4, run: 5, experiment: 5, results: 6, teardown: -1 };
+
+function phaseForTool(name, input) {
+  if (name === "execute_llmdbenchmark") {
+    const sub = input && input.subcommand;
+    return (sub && sub in EXECUTE_SUBCMD_PHASE) ? EXECUTE_SUBCMD_PHASE[sub] : 4;
+  }
+  return (name in TOOL_PHASE) ? TOOL_PHASE[name] : -1;
+}
+
+// A tool started → mark its phase active (and the furthest reached). No-op for off-rail tools.
+function advancePhase(name, input) {
+  if (!cur) return;
+  const i = phaseForTool(name, input);
+  if (i < 0) return;
+  if (i > cur.phaseReached) cur.phaseReached = i;
+  cur.phaseActive = i;
+  renderRunSteps();
+}
+
+// Turn ended / paused on approval / errored → nothing is actively running; drop the pulse but
+// keep the furthest milestone so the rail still shows how far the chat got.
+function clearPhaseActive() {
+  if (cur) cur.phaseActive = -1;
+  renderRunSteps();
+}
+
+// Render the shared rail from the active chat's record. Hidden until at least one phase reached.
+function renderRunSteps() {
+  if (!runSteps) return;
+  const reached = cur ? cur.phaseReached : -1;
+  const active = cur ? cur.phaseActive : -1;
+  if (reached < 0) { runSteps.hidden = true; runSteps.innerHTML = ""; return; }
+  runSteps.hidden = false;
+  runSteps.innerHTML = "";
+  RUN_PHASES.forEach((ph, i) => {
+    let state = i < reached ? "done" : (i > reached ? "pending" : "done");
+    if (i === active) state = "active";
+    const step = el("div", "run-step " + state);
+    step.setAttribute("role", "listitem");
+    const dot = el("span", "run-step-dot", state === "done" ? "✓" : String(i + 1));
+    step.appendChild(dot);
+    step.appendChild(el("span", "run-step-label", ph.label));
+    step.title = `${ph.label} — ${state}`;
+    runSteps.appendChild(step);
+    if (i < RUN_PHASES.length - 1) runSteps.appendChild(el("span", "run-step-sep", ""));
+  });
 }
 
 // ---- deterministic structured results card (B2) --------------------------
@@ -849,6 +1025,117 @@ function metaRow(card, parent) {
   if (card.duration != null) add("duration", card.duration);
   if (card.simulated) add("note", "SIMULATED");
   if (meta.childNodes.length) parent.appendChild(meta);
+}
+
+// ---- results visualizations (SVG; built from data already on the wire) ---
+// Small dependency-free SVG widgets. Each takes already-validated numbers and returns an
+// <svg>; no layout libs, no network. Shared by the results card (gauge) and the prominent
+// analysis/comparison cards rendered from tool_results (scatter, delta bars).
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svgEl(name, attrs) {
+  const e = document.createElementNS(SVG_NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+// Radial (semicircle) goodput gauge: a colored arc from 0→pct over a muted track, % in the
+// center. Arc drawn as a polyline of points (no arc-flag ambiguity); color steps by threshold.
+function goodputGauge(pct) {
+  pct = Math.max(0, Math.min(100, Number(pct) || 0));
+  const W = 132, H = 78, cx = W / 2, cy = H - 12, r = 52;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "gauge", role: "img",
+    "aria-label": `estimated goodput ${Math.round(pct)} percent` });
+  // 180° (left) → 0° (right) over the top; y = cy - r·sinθ puts the apex up.
+  const arc = (fromDeg, toDeg) => {
+    const steps = 48, pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const d = (fromDeg + (toDeg - fromDeg) * (i / steps)) * Math.PI / 180;
+      pts.push(`${(cx + r * Math.cos(d)).toFixed(1)},${(cy - r * Math.sin(d)).toFixed(1)}`);
+    }
+    return pts.join(" ");
+  };
+  svg.appendChild(svgEl("polyline", { points: arc(180, 0), class: "gauge-track" }));
+  const cls = pct >= 90 ? "good" : pct >= 70 ? "mid" : "low";
+  svg.appendChild(svgEl("polyline", { points: arc(180, 180 - (pct / 100) * 180), class: "gauge-val " + cls }));
+  const t = svgEl("text", { x: cx, y: cy - 6, "text-anchor": "middle", class: "gauge-text" });
+  t.textContent = `${fmtNum(pct)}%`;
+  svg.appendChild(t);
+  return svg;
+}
+
+// An objective's axis caption: name + an arrow toward "better" + units, e.g. "throughput ↑ (tok/s)".
+function objAxisLabel(m) {
+  const arrow = m.direction === "higher" ? " ↑" : m.direction === "lower" ? " ↓" : "";
+  return `${m.name}${arrow}${m.units ? ` (${m.units})` : ""}`;
+}
+
+// 2D Pareto scatter: each config is a point in (objective-x, objective-y) space; frontier points
+// are accent-filled and joined by a line (the trade-off curve), dominated points muted, and
+// SLO-infeasible points ringed. Linear axes auto-scaled with a small margin; foolproof (no libs).
+function scatterPlot(points, xMeta, yMeta) {
+  const W = 460, H = 300, padL = 56, padR = 18, padT = 16, padB = 48;
+  const span = (vals) => {
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (lo === hi) { const d = Math.abs(lo) || 1; return [lo - d * 0.5, hi + d * 0.5]; }
+    const m = (hi - lo) * 0.08; return [lo - m, hi + m];
+  };
+  const [xmin, xmax] = span(points.map((p) => p.x));
+  const [ymin, ymax] = span(points.map((p) => p.y));
+  const sx = (v) => padL + ((v - xmin) / (xmax - xmin)) * (W - padL - padR);
+  const sy = (v) => (H - padB) - ((v - ymin) / (ymax - ymin)) * (H - padT - padB);
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "scatter", role: "img",
+    "aria-label": `Pareto scatter of ${xMeta.name} versus ${yMeta.name}` });
+  svg.appendChild(svgEl("line", { x1: padL, y1: padT, x2: padL, y2: H - padB, class: "scatter-axis" }));
+  svg.appendChild(svgEl("line", { x1: padL, y1: H - padB, x2: W - padR, y2: H - padB, class: "scatter-axis" }));
+  const xlab = svgEl("text", { x: (padL + W - padR) / 2, y: H - 12, "text-anchor": "middle", class: "scatter-axlabel" });
+  xlab.textContent = objAxisLabel(xMeta); svg.appendChild(xlab);
+  const ymid = (padT + H - padB) / 2;
+  const ylab = svgEl("text", { x: 15, y: ymid, "text-anchor": "middle", class: "scatter-axlabel",
+    transform: `rotate(-90 15 ${ymid})` });
+  ylab.textContent = objAxisLabel(yMeta); svg.appendChild(ylab);
+  // Frontier trade-off line (sorted along x).
+  const fr = points.filter((p) => p.frontier).slice().sort((a, b) => a.x - b.x);
+  if (fr.length >= 2) {
+    svg.appendChild(svgEl("polyline", {
+      points: fr.map((p) => `${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" "), class: "scatter-frontier" }));
+  }
+  for (const p of points) {
+    const cls = "scatter-pt" + (p.frontier ? " frontier" : "") + (p.feasible === false ? " infeasible" : "");
+    const c = svgEl("circle", { cx: sx(p.x).toFixed(1), cy: sy(p.y).toFixed(1), r: p.frontier ? 5.5 : 4, class: cls });
+    const title = svgEl("title", {});
+    title.textContent = `${p.label}: ${xMeta.name} ${fmtNum(p.x)}, ${yMeta.name} ${fmtNum(p.y)}`;
+    c.appendChild(title);
+    svg.appendChild(c);
+    const tx = svgEl("text", { x: (sx(p.x) + 7).toFixed(1), y: (sy(p.y) + 3).toFixed(1), class: "scatter-ptlabel" });
+    tx.textContent = p.label;
+    svg.appendChild(tx);
+  }
+  return svg;
+}
+
+// A small legend swatch+label for the scatter.
+function legendItem(cls, label) {
+  const item = el("span", "scatter-legend-item");
+  item.appendChild(el("span", "scatter-legend-dot " + cls));
+  item.appendChild(el("span", null, label));
+  return item;
+}
+
+// A diverging mini-bar for a signed delta% vs a baseline, colored by whether it's an improvement
+// (direction-aware: for a "lower is better" metric a negative delta is good). Fill grows from the
+// center: left for a decrease, right for an increase. Returns [bar, value-label] in a wrapper.
+function deltaBar(deltaPct, direction) {
+  const improved = direction === "lower" ? deltaPct < 0 : direction === "higher" ? deltaPct > 0 : null;
+  const tone = deltaPct === 0 ? "flat" : improved === true ? "good" : improved === false ? "bad" : "neutral";
+  const wrap = el("div", "delta");
+  const bar = el("div", "delta-bar");
+  const fill = el("div", "delta-fill " + (deltaPct < 0 ? "neg " : "pos ") + tone);
+  fill.style.width = (Math.min(100, Math.abs(deltaPct)) / 2).toFixed(1) + "%";
+  bar.appendChild(fill);
+  wrap.appendChild(bar);
+  const sign = deltaPct > 0 ? "+" : "";
+  wrap.appendChild(el("span", "delta-val " + tone, `${sign}${fmtNum(deltaPct)}%`));
+  return wrap;
 }
 
 function renderResultsCard(card) {
@@ -881,6 +1168,21 @@ function renderResultsCard(card) {
   if (slo && Array.isArray(slo.verdicts) && slo.verdicts.length) {
     root.appendChild(el("div", "results-subhead",
       "SLO check" + (slo.overall_met != null ? (slo.overall_met ? " — all targets met ✓" : " — not all targets met ✗") : "")));
+    // Goodput gauge — the proposal's key differentiator. A radial gauge of the estimated
+    // fraction of requests meeting ALL SLOs, beside the binding constraint (first missed target).
+    if (slo.goodput && slo.goodput.estimate_pct != null) {
+      const gp = el("div", "results-goodput");
+      gp.appendChild(goodputGauge(slo.goodput.estimate_pct));
+      const note = el("div", "results-goodput-note");
+      note.appendChild(el("div", "results-goodput-label", "Estimated goodput"));
+      const missed = slo.verdicts.find((v) => v.met === false);
+      if (missed) note.appendChild(el("div", "results-goodput-bind",
+        `Limited by ${missed.metric || "an SLO target"}${missed.statistic ? " (" + missed.statistic + ")" : ""}`));
+      else note.appendChild(el("div", "results-goodput-bind good", "All SLO targets met"));
+      note.appendChild(el("div", "results-goodput-sub", "upper-bound estimate from reported percentiles"));
+      gp.appendChild(note);
+      root.appendChild(gp);
+    }
     const table = el("table", "results-table");
     const head = el("tr");
     for (const h of ["metric", "target", "observed", "verdict"]) head.appendChild(el("th", null, h));
@@ -897,10 +1199,6 @@ function renderResultsCard(card) {
       table.appendChild(tr);
     }
     root.appendChild(table);
-    if (slo.goodput && slo.goodput.estimate_pct != null) {
-      root.appendChild(el("div", "results-note",
-        `Estimated goodput: ~${fmtNum(slo.goodput.estimate_pct)}% (upper-bound estimate from reported percentiles).`));
-    }
   }
 
   // Sweep: per-run rows + the Pareto frontier (facts only — the agent picks the winner).
@@ -925,6 +1223,126 @@ function renderResultsCard(card) {
     }
   }
 
+  activePane.appendChild(root);
+  scroll();
+}
+
+// ---- Pareto frontier scatter (from an analyze_results sweep tool_result) --
+// Renders the sweep's configurations in objective space with the Pareto frontier highlighted —
+// the proposal's "Pareto-optimal configurations" stretch goal, made visual. No-ops unless the
+// result is a sweep with >=2 objectives present in >=2 runs (the analyzer already filters to
+// comparable objectives, so we just take the first two and plot the runs that carry both).
+function renderParetoCard(result) {
+  if (!result || !result.analyzed) return;
+  const pareto = result.pareto;
+  if (!pareto || !Array.isArray(pareto.objectives) || pareto.objectives.length < 2) return;
+  if (!Array.isArray(pareto.runs) || pareto.runs.length < 2) return;
+  const xMeta = pareto.objectives[0], yMeta = pareto.objectives[1];
+  if (!xMeta || !yMeta || !xMeta.name || !yMeta.name) return;
+  // SLO feasibility per run comes from the top-level analyze runs (pareto rows don't carry it).
+  const feasible = {};
+  for (const run of (result.runs || [])) {
+    if (run && run.label != null) feasible[run.label] = (run.slo || {}).overall_met;
+  }
+  const points = [];
+  for (const run of pareto.runs) {
+    const o = run.objectives || {};
+    const x = o[xMeta.name], y = o[yMeta.name];
+    if (typeof x !== "number" || typeof y !== "number") continue;
+    points.push({ label: run.label || "", x, y, frontier: !!run.on_frontier, feasible: feasible[run.label] });
+  }
+  if (points.length < 2) return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  root.appendChild(el("div", "results-head", "Pareto frontier — best trade-offs"));
+  root.appendChild(el("div", "report-sub",
+    `${points.length} configurations · ★ frontier = not dominated on any objective`));
+  root.appendChild(scatterPlot(points, xMeta, yMeta));
+  const legend = el("div", "scatter-legend");
+  legend.appendChild(legendItem("frontier", "on frontier"));
+  legend.appendChild(legendItem("dominated", "dominated"));
+  if (Object.values(feasible).some((v) => v === false)) legend.appendChild(legendItem("infeasible", "misses SLO"));
+  root.appendChild(legend);
+  activePane.appendChild(root);
+  scroll();
+}
+
+// ---- A/B comparison delta bars (from a compare_reports tool_result) -------
+// compare_reports emits no results_card event, so its rich per-metric deltas vs a baseline were
+// only ever visible as raw JSON. Render them as a table of direction-aware diverging bars: green
+// when a run beats the baseline on that metric, red when it regresses.
+function renderComparisonCard(result) {
+  if (!result || !result.compared) return;
+  const cmp = result.comparison;
+  if (!cmp || !Array.isArray(cmp.metrics) || !cmp.metrics.length) return;
+  const labels = Array.isArray(cmp.labels) ? cmp.labels : [];
+  const baseline = cmp.baseline;
+  const others = labels.filter((l) => l !== baseline);
+  if (!others.length) return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  root.appendChild(el("div", "results-head", "A/B comparison"));
+  root.appendChild(el("div", "report-sub", `baseline: ${baseline} · Δ vs baseline — green better, red worse`));
+  const table = el("table", "results-table compare-table");
+  const head = el("tr");
+  head.appendChild(el("th", null, "metric"));
+  head.appendChild(el("th", null, `${baseline} (base)`));
+  for (const o of others) head.appendChild(el("th", null, o));
+  table.appendChild(head);
+  for (const m of cmp.metrics) {
+    const tr = el("tr");
+    const u = m.units ? " " + m.units : "";
+    tr.appendChild(el("td", "results-name", `${m.name}${m.stat && m.stat !== "value" ? " (" + m.stat + ")" : ""}`));
+    tr.appendChild(el("td", null, m.baseline_value != null ? fmtNum(m.baseline_value) + u : "—"));
+    const byLabel = {};
+    for (const pr of (m.per_run || [])) byLabel[pr.label] = pr;
+    for (const o of others) {
+      const pr = byLabel[o];
+      const td = el("td", "compare-cell");
+      if (pr && pr.delta_pct != null) td.appendChild(deltaBar(pr.delta_pct, m.direction));
+      else if (pr && pr.value != null) td.appendChild(document.createTextNode(fmtNum(pr.value) + u));
+      else td.appendChild(document.createTextNode("—"));
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+  root.appendChild(table);
+  if (cmp.headline) root.appendChild(el("div", "results-note", cmp.headline));
+  activePane.appendChild(root);
+  scroll();
+}
+
+// ---- cross-harness comparison table (from compare_harness_runs) -----------
+// Different load generators measure differently, so the analyzer picks NO winner — we lay the
+// shared metrics side by side per harness as facts, with that caveat stated.
+function renderHarnessCompareCard(result) {
+  if (!result || !result.compared) return;
+  const cross = result.cross;
+  if (!cross || !Array.isArray(cross.cross_metrics) || !cross.cross_metrics.length) return;
+  const harnesses = Array.isArray(cross.harness_names) ? cross.harness_names : [];
+  if (harnesses.length < 2) return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  root.appendChild(el("div", "results-head", "Harness comparison"));
+  root.appendChild(el("div", "report-sub",
+    `${harnesses.join(" vs ")} · different load generators — values aren't directly comparable`));
+  const table = el("table", "results-table");
+  const head = el("tr");
+  head.appendChild(el("th", null, "metric"));
+  for (const h of harnesses) head.appendChild(el("th", null, h));
+  table.appendChild(head);
+  for (const m of cross.cross_metrics) {
+    const tr = el("tr");
+    tr.appendChild(el("td", "results-name", m.name || m.key || ""));
+    const byH = {};
+    for (const ph of (m.per_harness || [])) byH[ph.harness] = ph;
+    for (const h of harnesses) {
+      const ph = byH[h];
+      tr.appendChild(el("td", null, ph && ph.value != null ? `${fmtNum(ph.value)}${ph.units ? " " + ph.units : ""}` : "—"));
+    }
+    table.appendChild(tr);
+  }
+  root.appendChild(table);
   activePane.appendChild(root);
   scroll();
 }
@@ -1015,11 +1433,17 @@ function finishTool(data) {
     if (sum) sum.textContent = "done";
     d.open = false;
   }
-  // Special-case the report summary for a friendly view.
-  if (data.name === "locate_and_parse_report" && data.result && data.result.summary) {
-    renderReportSummary(data.result);
-  } else if (d) {
-    d.querySelector(".body").appendChild(prettyJson(data.result));
+  // Prominent, friendly renders for the data-rich analysis tools. The raw JSON still lands in
+  // the (collapsed) tool panel below for the curious; each card renderer no-ops on a shape it
+  // can't draw, so the JSON is always the graceful fallback.
+  const r = data.result;
+  if (data.name === "locate_and_parse_report" && r && r.summary) {
+    renderReportSummary(r);                 // (no JSON dump — the summary IS the friendly view)
+  } else {
+    if (data.name === "analyze_results") renderParetoCard(r);            // sweeps only
+    else if (data.name === "compare_reports") renderComparisonCard(r);   // A/B delta bars
+    else if (data.name === "compare_harness_runs") renderHarnessCompareCard(r);
+    if (d) d.querySelector(".body").appendChild(prettyJson(r));
   }
   activeConsole = null;
 }
@@ -1227,13 +1651,54 @@ function openLightbox(src, title) {
   else dlg.setAttribute("open", "");
 }
 
+// ---- copy-to-clipboard for code / JSON blocks ----------------------------
+// Wrap a <pre> in a hover container with a Copy button. Clipboard API with a textarea fallback
+// for non-secure contexts; the button flashes "Copied" on success. Used for assistant fenced
+// code (post-processed after markdown render) and tool-result JSON dumps.
+function copyText(text, btn) {
+  const flash = () => {
+    const prev = btn.textContent;
+    btn.textContent = "Copied"; btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = prev; btn.classList.remove("copied"); }, 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(flash).catch(() => fallbackCopy(text, flash));
+  } else {
+    fallbackCopy(text, flash);
+  }
+}
+function fallbackCopy(text, onDone) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    document.execCommand("copy"); ta.remove();
+    if (onDone) onDone();
+  } catch (e) { /* clipboard unavailable — silently skip */ }
+}
+function wrapWithCopy(pre) {
+  const parent = pre.parentNode;
+  const wrap = el("div", "code-wrap");
+  const btn = el("button", "copy-btn", "Copy");
+  btn.type = "button"; btn.title = "Copy to clipboard"; btn.setAttribute("aria-label", "Copy to clipboard");
+  btn.addEventListener("click", () => copyText(pre.textContent || "", btn));
+  if (parent) parent.insertBefore(wrap, pre);   // take the pre's place in the DOM…
+  wrap.appendChild(btn);
+  wrap.appendChild(pre);                         // …then re-home the pre inside the wrapper
+  return wrap;
+}
+// Post-process a freshly-rendered markdown bubble: give each fenced code block a Copy button.
+function enhanceCodeBlocks(container) {
+  container.querySelectorAll("pre.md-code").forEach(wrapWithCopy);
+}
+
 function prettyJson(obj) {
   const pre = el("pre", "json");
   let s;
   try { s = JSON.stringify(obj, null, 2); } catch { s = String(obj); }
   if (s && s.length > 4000) s = s.slice(0, 4000) + "\n… (truncated)";
   pre.textContent = s;
-  return pre;
+  return wrapWithCopy(pre);
 }
 
 // Build the body (heading + command/plan detail) shared by the live approval card and the
@@ -1359,6 +1824,7 @@ function startWorking(initialWord) {
   workWordEl.textContent = initialWord || WORK_WORDS[0];
   renderWorkStats();
   workingEl.hidden = false;
+  if (stopBtn) stopBtn.disabled = false;
   clearInterval(workTimer); clearInterval(wordTimer);
   workTimer = setInterval(renderWorkStats, 250);
   wordTimer = setInterval(cycleWord, 2200);
@@ -1370,6 +1836,7 @@ function startWorking(initialWord) {
 function resumeWorking(elapsedMs) {
   workStart = Date.now() - (Number(elapsedMs) || 0);
   workingEl.hidden = false;
+  if (stopBtn) stopBtn.disabled = false;
   renderWorkStats();
   clearInterval(workTimer); clearInterval(wordTimer);
   workTimer = setInterval(renderWorkStats, 250);
@@ -1380,6 +1847,18 @@ function stopWorking() {
   workTimer = wordTimer = null;
   workingEl.hidden = true;
   workActivity = null; workWordFixed = false;
+}
+// Stop button: send the `cancel` control frame (backend reaps the in-flight turn/subprocess and
+// answers with `cancelled` + `done`). Optimistically reflect "Stopping…" so the click feels live;
+// the events do the real cleanup. Cancelling targets the chat the socket is attached to.
+function cancelRun() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  try { ws.send(JSON.stringify({ type: "cancel" })); } catch (e) { return; }
+  workWordFixed = true;
+  workWordEl.textContent = "Stopping";
+  workActivity = null;
+  renderWorkStats();
+  if (stopBtn) stopBtn.disabled = true;
 }
 function setWorkTool(name) {       // a tool started — snap to its verb
   workWordFixed = true;
@@ -1429,11 +1908,46 @@ input.addEventListener("keydown", (e) => {
 input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; });
 
 newChatBtn.addEventListener("click", newChat);
+if (stopBtn) stopBtn.addEventListener("click", cancelRun);
+
+// Jump-to-latest: a floating button that appears once the user scrolls up off the bottom of the
+// transcript, and pins them back to the newest message on click. Complements the sticky
+// auto-scroll (which only follows new content when already near the bottom).
+if (jumpBtn) {
+  transcript.addEventListener("scroll", () => {
+    jumpBtn.hidden = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) < 120;
+  });
+  jumpBtn.addEventListener("click", () => {
+    stickBottom = true; transcript.scrollTop = transcript.scrollHeight; jumpBtn.hidden = true;
+  });
+}
+
+// Mobile sidebar: off-canvas under a media-query breakpoint, toggled by the header hamburger.
+// On desktop the body class is inert (CSS only acts on it within the breakpoint), so toggling is
+// harmless there. Selecting a chat closes the drawer (see switchTo).
+function setSidebar(open) {
+  document.body.classList.toggle("sidebar-open", open);
+  if (sidebarToggle) sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (sidebarScrim) sidebarScrim.hidden = !open;
+}
+if (sidebarToggle) sidebarToggle.addEventListener("click", () => setSidebar(!document.body.classList.contains("sidebar-open")));
+if (sidebarScrim) sidebarScrim.addEventListener("click", () => setSidebar(false));
 
 // Manual collapse of the split view; the next `resource_stats` tick of a still-running run reopens it.
 if (resourceSideClose) resourceSideClose.addEventListener("click", clearResourceStats);
 
 // ---- boot ---------------------------------------------------------------
-loadSessions();
-loadHistory();
-bootChat();
+// ui/preview.html sets window.__LLMD_PREVIEW__ to drive the renderers with fixture data and no
+// backend. In that mode we skip the live boot (sessions/history fetch + WebSocket connect) and
+// expose the render entry points so the preview can exercise the real rendering paths.
+if (window.__LLMD_PREVIEW__) {
+  window.__llmd = {
+    handle, bootChat, startWorking,
+    renderResultsCard, renderParetoCard, renderComparisonCard, renderHarnessCompareCard,
+    renderResourceStats,
+  };
+} else {
+  loadSessions();
+  loadHistory();
+  bootChat();
+}
