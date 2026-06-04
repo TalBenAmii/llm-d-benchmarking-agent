@@ -13,6 +13,18 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 37 (ROADMAP_V4): Harness debug mode (`-d/--debug`, sleep infinity). The agent can
+  now launch a DEBUG harness pod that sleeps (`sleep infinity`) INSTEAD of running the load — so a user
+  can exec into a stuck/misbehaving pod. `build_argv` (`app/tools/execute.py`) emits a bare `-d` off
+  `flags["debug"]`, SUBCOMMAND-GUARDED to `run`/`experiment` ONLY (upstream `-d`=`--debug` there, but on
+  `teardown` `-d`=`--deep`, a destructive full-namespace wipe — an unguarded `-d` would silently
+  deep-teardown). A debug launch creates a REAL pod, so it STAYS MUTATING/approval-gated (deliberately
+  NOT a read-only trigger like `-z`); the interactive in-pod `kubectl/oc exec -it … -- bash` stays a
+  MANUAL user step the agent explains but NEVER drives. `ExecuteInput.flags` (schemas) + `run_benchmark_cli`
+  (registry) document the `debug` key; `security/allowlist.yaml` (DATA) pins `-d`/`--debug` on run/experiment;
+  WHEN-to-debug + the no-drive boundary in `knowledge/harness_debug.md`. 18 hermetic tests
+  (`tests/test_harness_debug.py`). Merged into `feature/roadmap-v4`. Suite **1382 passed / 20 skipped /
+  0 failed**; ruff + mypy clean. — done
 - 2026-06-04 — Phase 32 (ROADMAP_V4): Gateway class / provider selection (`--gateway-class`). The
   agent can now choose the gateway PROVIDER instead of inheriting it from the scenario: `build_argv`
   (`app/tools/execute.py`) emits `flags["gateway_class"]` → `--gateway-class <provider>`

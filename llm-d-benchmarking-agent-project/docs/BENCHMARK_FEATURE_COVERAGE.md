@@ -29,7 +29,7 @@
 
 | Area | Description | ✅ | 🟡 | ⬜ |
 |---|---|---:|---:|---:|
-| A | Lifecycle subcommands, CLI flags & deploy options | 18 | 10 | 6 |
+| A | Lifecycle subcommands, CLI flags & deploy options | 19 | 10 | 5 |
 | B | Configuration system (override chain, schema, vLLM knobs) | 6 | 0 | 0 |
 | C | Workloads, harnesses & the run/harness contract | 2 | 0 | 2 |
 | D | Design of Experiments (factors/levels/treatments lifecycle) | 1 | 0 | 0 |
@@ -37,7 +37,7 @@
 | F | Observability (metrics collection, tracing, dashboards, logging) | 4 | 0 | 1 |
 | H | Utilities & CLI internals (capacity, cluster, pod lifecycle, workspace) | 4 | 1 | 1 |
 | I | Project meta (governance, discovery tool, placeholder docs) | 1 | 0 | 3 |
-| **Total** | | **38** | **14** | **15** |
+| **Total** | | **39** | **14** | **14** |
 
 > **Headline gap — CLOSED (Phase 27, 2026-06-03).** Area F's *Benchmark metrics collection
 > (`--monitoring`)* is now **✅**: the *consumer* shipped in Phase 25 (parses `results.observability`
@@ -74,7 +74,7 @@
 | Workload profile overrides (-o/--overrides) | docs/run.md#profiles; workload/README.md#single-override---overrides | -o/--overrides, comma-separated key=value, dotted.key.path=value | Y | off | ✅ | `build_argv` emits `-o`; allowlisted on run/experiment; `generate_doe_experiment` authors override-key sweeps (`app/tools/doe.py`). |
 | Run-only mode against an endpoint (-U/--endpoint-url) | docs/run.md#use; workload/README.md#run-only-mode | -U/--endpoint-url (skips auto-detect + model verify) | Y | off | ✅ | `build_argv` emits `-U`; `check_endpoint_readiness` corroborates via `run --list-endpoints` (`app/tools/readiness.py`); `OrchestrateBenchmarkInput.require_ready_endpoint`. |
 | Skip execution / collect existing results (-z/--skip) | llmdbenchmark/run/README.md#cli-flags; workload/README.md#skip-mode-result-collection | -z/--skip (collect/analyze only) | Y | off | ✅ | First-class `flags.skip` (Phase 36): `build_argv` emits `-z` on `run`; allowlisted as a `read_only_trigger` (collect-only, auto-runs) on `run` alone; `knowledge/collect_only.md` covers WHEN. Report re-parsing covered independently (`locate_and_parse_report`). |
-| Harness debug mode (-d/--debug, sleep infinity) | llmdbenchmark/run/README.md#debug-mode; workload/README.md#debug-mode | -d/--debug, sleep infinity harness pod, interactive llm-d-benchmark.sh | Y | off | ⬜ | llmdbenchmark/run/README.md#debug-mode: interactive in-pod exec is outside the agent's automated, approval-gated flow. Fix → ROADMAP_V4 Phase 37. |
+| Harness debug mode (-d/--debug, sleep infinity) | llmdbenchmark/run/README.md#debug-mode; workload/README.md#debug-mode | -d/--debug, sleep infinity harness pod, interactive llm-d-benchmark.sh | Y | off | ✅ | First-class `flags.debug` (Phase 37): `build_argv` (`app/tools/execute.py`) emits a bare `-d`, SUBCOMMAND-GUARDED to `run`/`experiment` ONLY (on `teardown`, `-d`=`--deep`, a destructive wipe). Stays MUTATING/approval-gated (NOT a read-only trigger); the interactive in-pod `kubectl/oc exec -it … -- bash` stays a MANUAL user step the agent never drives. Documented in `schemas`/`registry`; `-d`/`--debug` allowlisted on run/experiment; WHEN in `knowledge/harness_debug.md`; `tests/test_harness_debug.py`. Closed → ROADMAP_V4 Phase 37 (Phase 37 ✅). |
 | Parallel harness pods / load parallelism (-j/--parallelism) | docs/run.md#use; docs/doe.md#parallelism-levels | -j/--parallelism, LLMDBENCH_HARNESS_LOAD_PARALLELISM, per-pod results subdir | Y | on | ✅ | `build_argv` emits `-j`; allowlisted; the orchestrator separately caps concurrent sweep Jobs (`app/orchestrator/controller.py`). |
 | Harness wait / data-access / deploy timeouts | docs/run.md#use; llmdbenchmark/run/README.md#cli-flags | -s/--wait, --wait-timeout, --data-access-timeout, --*-deploy-timeout, --pvc-bind-timeout | Y | on | ✅ | Both layers now modeled. Outer host deadline stays at the runner/orchestrator layer (`security/allowlist.yaml` `timeout_s`; `OrchestrateBenchmarkInput.active_deadline_seconds`). The CLI's OWN per-phase flags are emitted by `build_argv` off `_PHASE_TIMEOUT_FLAGS` (standup deploy/bind, run+experiment wait/data-access, teardown fma), allowlisted as `positive_int`, kept BELOW the runner ceiling; judgment in `knowledge/phase_timeouts.md`. ROADMAP_V4 Phase 38 (done). |
 | Run results destination / cloud upload (-r/--output local/gs/s3) | llmdbenchmark/run/README.md#upload-results-to-cloud-storage | -r/--output, local, gs://bucket, s3://bucket | Y | on | ✅ | **Phase 39** (done): `build_argv` emits `-r` against a DEDICATED `results_sink` value constraint that now permits the OPT-IN `gs://bucket/...`/`s3://bucket/...` cloud destinations as well as the `local` default (anchored to the session workspace), without widening the genuine-path `output_dir` shared by `--workspace/--ws/-e/--experiments`; the "do you have a bucket?" judgment lives in `knowledge/cloud_results_sink.md`. The actual upload internals (gcloud/aws helpers) remain the DEFERRED Phase 47 below. |

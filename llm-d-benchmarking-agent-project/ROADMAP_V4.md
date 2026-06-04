@@ -303,7 +303,7 @@ skipped / 0 failed**; ruff + mypy clean.
   New hermetic suite `tests/test_collect_only.py` (+11 tests). Full suite **1042 passed / 20
   skipped / 0 failed**; ruff + mypy clean.
 
-## Phase 37 — Harness debug mode (-d/--debug, sleep infinity) — TODO
+## Phase 37 — Harness debug mode (-d/--debug, sleep infinity) — DONE
 *Catalog ref: Area A/C — "Harness debug mode" (⬜).*
 
 - **GOAL:** support the interactive sleep-infinity debug pod within the approval-gated flow.
@@ -313,6 +313,15 @@ skipped / 0 failed**; ruff + mypy clean.
 - **ACCEPTANCE:** the agent can launch a debug harness pod (approval-gated) and explain how to
   exec into it, without driving the interactive shell itself.
 - **HERMETIC-TEST:** `build_argv` emits `-d`; the debug launch is approval-gated + allowlisted.
+
+> **RESULT (2026-06-04):** Shipped. `build_argv` (`app/tools/execute.py`) emits a bare `-d` off
+> `flags["debug"]`, SUBCOMMAND-GUARDED to `run`/`experiment` ONLY (upstream `-d`=`--debug` there, but
+> on `teardown` `-d`=`--deep`, a destructive wipe — so an unguarded `-d` would silently deep-teardown).
+> The debug launch stays MUTATING/approval-gated (NOT a read-only trigger); the interactive in-pod
+> `kubectl/oc exec -it … -- bash` stays a MANUAL user step the agent never drives. `ExecuteInput.flags`
+> (schemas) + `run_benchmark_cli` (registry) document the `debug` key; `security/allowlist.yaml` pins
+> `-d`/`--debug` on run/experiment; WHEN-to-debug judgment in `knowledge/harness_debug.md`. New
+> hermetic suite `tests/test_harness_debug.py` (+18). Full suite **1382 passed / 20 skipped**.
 
 ## Phase 38 — Model the CLI's per-phase timeouts (--wait/--*-timeout) — DONE
 *Catalog ref: Area A — "Harness wait / data-access / deploy timeouts" (🟡; today governed only at the runner/orchestrator layer).*
