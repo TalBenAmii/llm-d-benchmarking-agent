@@ -79,7 +79,7 @@ phased build-out). It now also includes: a **Kubernetes-native benchmark orchest
 sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
 comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
 **Prometheus/Grafana observability**, and a **hardened image + one-command Helm/Kustomize
-deploy** (`Dockerfile`, `deploy/`) with least-privilege RBAC. The agent exposes **22 tools**
+deploy** (`Dockerfile`, `deploy/`) with least-privilege RBAC. The agent exposes **28 tools**
 (see `app/tools/registry.py` for the authoritative list).
 All of this obeys the same thin-code/thick-agent + determinism-gate rules above.
 

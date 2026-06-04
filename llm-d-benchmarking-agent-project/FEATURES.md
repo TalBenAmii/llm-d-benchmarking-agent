@@ -1,9 +1,9 @@
 # FEATURES — what this project does and how to see / verify each piece
 
 > A single, evidence-backed inventory of **every feature** on `main`
-> (MVP → roadmap v1 phases 0–10 → v2 phases 11–18 → v3 phases 19–26 → token-tracking; Phase 26
-> is the latest landed phase — ROADMAP_V4.md tracks the still-pending Phases 27+), with a
-> concrete way to **see or verify** each one.
+> (MVP → roadmap v1 phases 0–10 → v2 phases 11–18 → v3 phases 19–26 → token-tracking →
+> ROADMAP_V4 phases 27–66 — all active phases merged, 7 explicitly deferred (34/43/44/47/52/57/58)
+> — → todo-batch follow-ups), with a concrete way to **see or verify** each one.
 >
 > **Read this first — why "the app looks unchanged":** most recent work is *backend / ops /
 > trust / quality* plumbing that has **no chat-UI surface by design** (structured logging,
@@ -79,23 +79,24 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 
 ---
 
-## 4. The 22 agent tools (authoritative list — `app/tools/registry.py`)
+## 4. The 28 agent tools (authoritative list — `app/tools/registry.py`)
 
-> Note: the registry defines **22** tools (matches `CLAUDE.md`). Verify by reading
+> Note: the registry defines **28** tools (matches `CLAUDE.md`). Verify by reading
 > `app/tools/registry.py:build_registry`.
 
 **Sensing / grounding (read-only, auto-run):** `probe_environment`, `list_catalog`,
-`read_knowledge`, `read_repo_doc`, `fetch_key_docs`, `check_capacity`,
-`check_endpoint_readiness`, `locate_and_parse_report`, `observe_run_metrics`.
+`read_knowledge`, `search_knowledge`, `read_repo_doc`, `fetch_key_docs`, `check_capacity`,
+`check_endpoint_readiness`, `locate_and_parse_report`, `observe_run_metrics`,
+`discover_stack`, `advise_accelerators`.
 
 **Planning / authoring:** `propose_session_plan`, `write_and_validate_config`,
-`generate_doe_experiment`.
+`generate_doe_experiment`, `convert_guide_to_scenario`.
 
 **Mutating (approval-gated):** `ensure_repos`, `run_setup`, `execute_llmdbenchmark`,
-`run_command`, `orchestrate_benchmark_run`.
+`run_command`, `orchestrate_benchmark_run`, `provision_hf_secret`.
 
 **Analysis / history (read-only):** `compare_reports`, `compare_harness_runs`,
-`analyze_results`, `result_history`, `cancel_run`.
+`analyze_results`, `aggregate_runs`, `result_history`, `cancel_run`.
 
 *How to verify each tool:* every tool has a focused test in `tests/` (e.g.
 `tests/test_new_tools.py`, `tests/test_analyze.py`, `tests/test_capacity.py`,
@@ -130,8 +131,8 @@ result.
 | A/B comparison of 2+ runs (per-metric deltas + per-metric winner) | `app/tools/compare.py` | ⚪ `tests/` (compare). |
 | **Cross-harness** comparison (inference-perf vs guidellm on the same stack) | `app/tools/multiharness.py` | ⚪ `tests/test_multiharness.py`. |
 | Metric extraction incl. **KV-cache hit rate, schedule delay, GPU utilization** (P25) | `report.py`/`analysis.py` + `knowledge/standard_metrics.yaml` | ⚪ tests; `None` when a harness doesn't emit them. |
-| **Cross-session result history** (`store`/`list`/`get`/`delete`) | `app/storage/history.py`, `result_history` tool, `GET /api/history` | 🟢 `GET /api/history` returns `records` + the 8 trendable `metrics`. Store one in chat to populate it. |
-| **Metric trends over time** (`trend`) + sidebar sparkline | `GET /api/history/trend?metric=<m>` | 🟢 Live (see evidence). Valid metrics: `ttft, tpot, itl, request_latency, output_token_rate, total_token_rate, request_rate, success_rate_pct`. |
+| **Cross-session result history** (`store`/`list`/`get`/`delete`) | `app/storage/history.py`, `result_history` tool, `GET /api/history` | 🟢 `GET /api/history` returns `records` + the 11 trendable `metrics`. Store one in chat to populate it. |
+| **Metric trends over time** (`trend`) + sidebar sparkline | `GET /api/history/trend?metric=<m>` | 🟢 Live (see evidence). Valid metrics: `ttft, tpot, itl, request_latency, output_token_rate, total_token_rate, request_rate, success_rate_pct, kv_cache_hit_rate, gpu_utilization, schedule_delay`. |
 
 > ✅ **The harness's own PNG charts are surfaced inline.** `inference-perf` writes
 > `latency_vs_qps.png`, `throughput_vs_latency.png`, `throughput_vs_qps.png` into the session
@@ -146,7 +147,7 @@ result.
 
 | Feature | Where | How to see / verify |
 |---|---|---|
-| Prometheus metrics endpoint (agent's own counters/histograms/gauges) | `app/observability/metrics.py`, `GET /metrics` | 🟢 `curl /metrics` — exposes `llmdbench_agent_commands_total`, `_command_duration_seconds`, `llmdbench_orchestrator_run_attempts_total`, `_run_faults_total`, `_runs_in_flight`, `_runs_submitted_total`. |
+| Prometheus metrics endpoint (agent's own counters/histograms/gauges) | `app/observability/metrics.py`, `GET /metrics` | 🟢 `curl /metrics` — exposes `llmdbench_agent_commands_total`, `_command_duration_seconds`, `llmdbench_orchestrator_run_attempts_total`, `_run_faults_total`, `_runs_in_flight`, `_runs_submitted_total`, `_runs_terminal_total`. |
 | Live cluster resource usage during a run (`kubectl top`) | `app/tools/observe.py`, `observe_run_metrics` tool | 🔵 Call it while a run is in flight (needs metrics-server, present in `cicd/kind`). |
 | Grafana dashboard + Prometheus scrape config + **alert rules** | `deploy/observability/{grafana-dashboard.json,prometheus-scrape.yaml,alerts.rules.yaml}` | ⚪ Files render/import directly. |
 
@@ -156,7 +157,7 @@ result.
 
 | Feature | Where | How to see / verify |
 |---|---|---|
-| **Deny-by-default allowlist**, argv-only (`shell=False`), policy-as-data | `security/allowlist.yaml`, `app/security/allowlist.py` | ⚪ `tests/test_allowlist.py`; `/readyz` reports "9 allowlisted executables". |
+| **Deny-by-default allowlist**, argv-only (`shell=False`), policy-as-data | `security/allowlist.yaml`, `app/security/allowlist.py` | ⚪ `tests/test_allowlist.py`; `/readyz` reports "15 allowlisted executables". |
 | Read-only probes auto-run; mutating commands require UI approval | `app/agent/loop.py`, `app/security/runner.py` | 🔵 Standup prompts; probes don't. |
 | Secrets stay backend-only; child-process env scrubbed | `app/config.py:child_env` | ⚪ Read `child_env`; browser never receives keys. |
 | **Allowlist governance** — per-command timeouts + usage quotas (P13) | `app/security/quota.py`, `security/allowlist.yaml` | ⚪ `tests/test_governance.py`. |
@@ -235,10 +236,11 @@ GET /readyz    → 200 {"ready":true,"self_check":{checks:[workspace_writable, p
                  auth_coherent]}}
 GET /metrics   → Prometheus: llmdbench_agent_commands_total, _command_duration_seconds,
                  llmdbench_orchestrator_run_attempts_total, _run_faults_total, _runs_in_flight,
-                 _runs_submitted_total
+                 _runs_submitted_total, _runs_terminal_total
 GET /api/sessions → persisted chats (id/title/message_count)
 GET /api/history  → {"records":[...], "metrics":[ttft,tpot,itl,request_latency,output_token_rate,
-                    total_token_rate,request_rate,success_rate_pct]}
+                    total_token_rate,request_rate,success_rate_pct,kv_cache_hit_rate,
+                    gpu_utilization,schedule_delay]}
 GET /api/history/trend?metric=<unknown> → graceful 200 error + available_metrics
 GET /api/history/trend?metric=ttft       → {"metric":"ttft","better":"lower","points":[...]}
 startup log → JSON {"message":"startup",...} ; {"message":"retention.gc",...}
@@ -267,3 +269,13 @@ tool-count drift; ambiguous latency units) were all **fixed on 2026-06-02** (com
 merged via `3363496`) — the chart route, auth-exempt probes, baseline-store guidance in
 `knowledge/history.md`, the 22-tool count, and the seconds-not-ns units in
 `knowledge/results_interpretation.md` described above are the resolved state. No open caveats.
+
+**Count refresh (2026-06-04).** A full live re-verification of the running app against the whole
+commit history confirmed every feature is present and valid, and refreshed four counts that had
+drifted as ROADMAP_V4 (phases 27–66) and the todo-batch follow-ups landed after this file was last
+updated at Phase 26: **agent tools 22 → 28** (added `provision_hf_secret`, `aggregate_runs`,
+`convert_guide_to_scenario`, `discover_stack`, `advise_accelerators`, `search_knowledge`),
+**trendable history metrics 8 → 11** (added `kv_cache_hit_rate`, `gpu_utilization`,
+`schedule_delay`), **allowlisted executables 9 → 15**, and **`/metrics` families 6 → 7** (added
+`_runs_terminal_total`). The figures above reflect the verified current state (`pytest`: 1543
+passed / 19 skipped).
