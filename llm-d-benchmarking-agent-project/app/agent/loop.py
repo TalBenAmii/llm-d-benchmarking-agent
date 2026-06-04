@@ -3,7 +3,6 @@ execution -> feed results back, until the model stops calling tools.
 """
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -58,9 +57,12 @@ class AgentLoop:
             session.messages.append({
                 "role": "user",
                 "synthetic": True,
+                # Same budget bound as tool results: a big snapshot (a real cluster's
+                # cluster_info + namespaces) gets a VALID truncation envelope, not a JSON object
+                # sliced mid-structure. Small snapshots serialize byte-identically (fast path).
                 "content": ("[environment pre-probe — read-only snapshot, already gathered for "
                             "you so you don't need to call probe_environment again this turn]\n"
-                            + json.dumps(session.env_snapshot)[:4000]),
+                            + clamp_tool_result_content(session.env_snapshot, 4000)),
             })
             session.prewarmed = True
         # Inject the LIVE catalog ONCE per session as a synthetic conversation message instead of
