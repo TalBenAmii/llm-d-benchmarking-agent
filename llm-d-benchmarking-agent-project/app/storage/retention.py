@@ -179,9 +179,16 @@ def _enumerate(area: ManagedArea, root: Path, active_ids: set[str]) -> list[_Ite
     base = root / area.subpath
     if not base.is_dir():
         return []
+    try:
+        children = list(base.iterdir())
+    except OSError:
+        # The area directory exists but can't be listed (e.g. perms revoked mid-run). Skip it
+        # like a missing area rather than aborting the whole GC pass — one un-listable area
+        # must not disable retention for every other area (GC must not crash).
+        return []
     items: list[_Item] = []
     want_dir = area.item_kind == "dir"
-    for child in base.iterdir():
+    for child in children:
         try:
             is_dir = child.is_dir()
         except OSError:

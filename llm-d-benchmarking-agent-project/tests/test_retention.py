@@ -254,6 +254,40 @@ def test_gc_missing_areas_are_noops(tmp_path):
     assert {a.area for a in res.areas} == {a.name for a in MANAGED_AREAS}
 
 
+def test_gc_unlistable_area_does_not_abort_other_areas(tmp_path):
+    # One area directory exists but can't be listed (perms revoked). GC must skip it like a
+    # missing area and STILL prune the healthy areas — a single bad area must not silently
+    # disable retention everywhere.
+    if os.geteuid() == 0:
+        pytest.skip("running as root bypasses directory permissions")
+    ws = tmp_path / "ws"
+    for i in range(3):
+        _seed_session(ws, f"s{i}", age_days=float(i + 1))  # s1, s2 should be pruned (keep 1)
+    blocked = ws / "runs"
+    blocked.mkdir(parents=True, exist_ok=True)
+    _seed_run(ws, "r0", age_days=1.0)  # a run that would normally be scanned
+    os.chmod(blocked, 0o000)
+    try:
+        # Confirm the perm change actually blocks listing on this filesystem; if not, skip.
+        try:
+            list(blocked.iterdir())
+            pytest.skip("filesystem does not enforce directory read permissions")
+        except OSError:
+            pass
+
+        s = _settings(tmp_path, retention_max_items=1)
+        res = run_gc(s, active_session_ids=set(), now=NOW)  # must NOT raise
+
+        assert res.ran is True
+        # Healthy area still pruned to the cap.
+        assert _names(ws, "sessions") == {"s0"}
+        # The unlistable area is reported as an empty (skipped) scan, not a crash.
+        runs_area = next(a for a in res.areas if a.area == "runs")
+        assert runs_area.scanned == 0
+    finally:
+        os.chmod(blocked, 0o755)  # restore so pytest can clean up tmp_path
+
+
 def test_gc_dry_run_reports_without_deleting(tmp_path):
     ws = tmp_path / "ws"
     for i in range(3):
