@@ -13,6 +13,7 @@ from app.agent.context_mgmt import compact_messages
 from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.results_card import build_results_card
 from app.agent.session import Session
+from app.agent.tool_result_budget import clamp_tool_result_content
 from app.llm.provider import LLMProvider, Usage
 from app.observability.logctx import bind as log_bind
 from app.tools.context import ApprovalRejected, QuotaError, ToolError
@@ -174,7 +175,9 @@ class AgentLoop:
                 tool_result_msgs.append({
                     "tool_call_id": tc.id,
                     "name": tc.name,
-                    "content": json.dumps(result)[:_TOOL_RESULT_BUDGET],
+                    # Bound the result to the feed-back budget WITHOUT slicing mid-JSON: an
+                    # overflow becomes a valid truncation envelope, never malformed JSON.
+                    "content": clamp_tool_result_content(result, _TOOL_RESULT_BUDGET),
                 })
 
             session.messages.append({"role": "tool_results", "results": tool_result_msgs})
