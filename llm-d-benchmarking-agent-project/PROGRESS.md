@@ -13,6 +13,15 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 51 (ROADMAP_V4): Jupyter / standalone plotting scripts surfacing. Shipped the
+  `aggregate_runs` tool (`app/tools/aggregate_runs.py` + `scripts/aggregate_runs.py` wrapper +
+  `AggregateRunsInput`) — the ONE parameterizable analysis script: it imports the benchmark repo's own
+  `docs/analysis/aggregate_runs.py` (never reimplements the math), reads BR v0.2 reports under an EXISTING
+  results dir, and writes `aggregated_summary.{txt,json}` ONLY into a session-workspace subdir (read-only →
+  auto-runs; allowlisted as `aggregate_runs.py`, run via the bench venv). The interactive `analysis.ipynb` +
+  `to_be_incorporated/` plot templates stay POINTER-ONLY (`knowledge/analysis.md`; surface via `read_repo_doc`).
+  Branch `feature/roadmap-v4-p51-jupyter-plots`. Suite **1451 passed / 20 skipped** (+23 via
+  `tests/test_aggregate_runs.py`); ruff + mypy clean. — done
 - 2026-06-04 — Phase 50 (ROADMAP_V4): Results Store (git-like result mgmt: remotes/push/pull). The agent
   can now drive the CLI's OPTIONAL git-like team store via `run_benchmark`'s new `store` field on
   `subcommand='results'`. `build_argv` (`app/tools/execute.py`) gains `_build_results_store_argv` — pure

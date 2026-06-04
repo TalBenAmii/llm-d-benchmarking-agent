@@ -575,8 +575,18 @@ blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 - **HERMETIC-TEST:** `build_argv` emits the store subcommands; push/pull are approval-gated +
   allowlisted.
 
-## Phase 51 — Jupyter / standalone plotting scripts surfacing — TODO
+## Phase 51 — Jupyter / standalone plotting scripts surfacing — DONE
 *Catalog ref: Area E — "Jupyter analysis notebook / standalone plotting scripts" (⬜).*
+
+> **DONE (Phase 51).** Shipped the `aggregate_runs` tool (`app/tools/aggregate_runs.py` +
+> `scripts/aggregate_runs.py` wrapper + `AggregateRunsInput`) — the ONE parameterizable analysis
+> script: it imports the benchmark repo's own `docs/analysis/aggregate_runs.py` (never reimplements
+> the math), reads BR v0.2 reports under an EXISTING results dir, and writes
+> `aggregated_summary.{txt,json}` ONLY into a session-workspace subdir. Read-only → auto-runs
+> (allowlisted as `aggregate_runs.py`, `python_via` the bench venv). The interactive `analysis.ipynb`
+> + `to_be_incorporated/` plot templates stay pointer-only (`knowledge/analysis.md`; surface via
+> `read_repo_doc`). Suite **1451 passed / 20 skipped / 0 failed** (+23 tests via `test_aggregate_runs.py`);
+> ruff + mypy clean.
 
 - **GOAL:** point users at (and optionally drive) the interactive notebook / experimental
   plotting scripts without making them part of the automated flow.
