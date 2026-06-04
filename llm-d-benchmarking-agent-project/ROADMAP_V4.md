@@ -551,8 +551,18 @@ blocks). Suite **1239 passed / 20 skipped / 0 failed**; ruff + mypy clean.
 - **HERMETIC-TEST:** populated `results.observability` fixture surfaces the metrics across
   summary/analysis/history; dominance unaffected.
 
-## Phase 50 — Results Store (git-like result mgmt: remotes/push/pull) — TODO
+## Phase 50 — Results Store (git-like result mgmt: remotes/push/pull) — DONE
 *Catalog ref: Area E — "Results Store (init/remote/status/add/push/ls/pull)" (🟡; the need is met by the agent's own history store).*
+
+> **DONE (2026-06-04):** Shipped the OPTIONAL git-like CLI Results Store, kept SEPARATE from the
+> agent's own local history store. `run_benchmark`'s schema gains a `store` field; `build_argv`
+> grows `_build_results_store_argv` (pure mechanism, branch only on the discrete `command` enum:
+> init/remote/status/add/rm/ls/push/pull) and an early-return on `subcommand=='results'` so the
+> store NEVER leaks namespace/harness/model/run-flags. `security/allowlist.yaml` pins the store
+> positionals — init/status/ls/remote-ls read-only/auto-run; add/rm/push/pull/remote-add/remote-rm
+> mutating/approval-gated. Tool + prompt docstrings and `knowledge/history.md` say WHEN to reach
+> for the team GCS store vs the local one. Full suite **1428 passed / 20 skipped / 0 failed**;
+> ruff + mypy clean.
 
 - **GOAL:** optionally interoperate with the CLI's git-like result store (remotes + push/pull
   to GCS) for teams that share results that way.

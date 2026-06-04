@@ -13,6 +13,19 @@ history for the full per-phase narrative. ROADMAP_V4.md (Phases 27-58) is the fo
 
 ## Completed phases (newest first)
 
+- 2026-06-04 — Phase 50 (ROADMAP_V4): Results Store (git-like result mgmt: remotes/push/pull). The agent
+  can now drive the CLI's OPTIONAL git-like team store via `run_benchmark`'s new `store` field on
+  `subcommand='results'`. `build_argv` (`app/tools/execute.py`) gains `_build_results_store_argv` — pure
+  mechanism, the only branch is on the discrete `command` enum (init/remote/status/add/rm/ls/push/pull) —
+  plus an early-return so a `results` invocation NEVER leaks namespace/harness/model/run-flags.
+  `security/allowlist.yaml` pins the store positionals: init/status/ls/remote-ls read-only/auto-run;
+  add/rm/push/pull/remote-add/remote-rm mutating/approval-gated. Kept DELIBERATELY SEPARATE from the
+  agent's own local history store (`result_history` → `app/storage/history.py`); WHEN to use the team GCS
+  store vs the local one is judgment in `knowledge/history.md`. Merged off a stale base — git's 3-way
+  merge cleanly reconciled `execute.py` (Phase 32 gateway-class + Phase 37 debug both preserved); only a
+  registry docstring needed manual both-sides resolution. Branch `feature/roadmap-v4-p50-results-store`.
+  Suite **1428 passed / 20 skipped**; ruff + mypy clean. — done
+
 - 2026-06-04 — Phase 37 (ROADMAP_V4): Harness debug mode (`-d/--debug`, sleep infinity). The agent can
   now launch a DEBUG harness pod that sleeps (`sleep infinity`) INSTEAD of running the load — so a user
   can exec into a stuck/misbehaving pod. `build_argv` (`app/tools/execute.py`) emits a bare `-d` off
