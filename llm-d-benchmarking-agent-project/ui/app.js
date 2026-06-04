@@ -980,6 +980,81 @@ function goodputGauge(pct) {
   return svg;
 }
 
+// An objective's axis caption: name + an arrow toward "better" + units, e.g. "throughput ↑ (tok/s)".
+function objAxisLabel(m) {
+  const arrow = m.direction === "higher" ? " ↑" : m.direction === "lower" ? " ↓" : "";
+  return `${m.name}${arrow}${m.units ? ` (${m.units})` : ""}`;
+}
+
+// 2D Pareto scatter: each config is a point in (objective-x, objective-y) space; frontier points
+// are accent-filled and joined by a line (the trade-off curve), dominated points muted, and
+// SLO-infeasible points ringed. Linear axes auto-scaled with a small margin; foolproof (no libs).
+function scatterPlot(points, xMeta, yMeta) {
+  const W = 460, H = 300, padL = 56, padR = 18, padT = 16, padB = 48;
+  const span = (vals) => {
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (lo === hi) { const d = Math.abs(lo) || 1; return [lo - d * 0.5, hi + d * 0.5]; }
+    const m = (hi - lo) * 0.08; return [lo - m, hi + m];
+  };
+  const [xmin, xmax] = span(points.map((p) => p.x));
+  const [ymin, ymax] = span(points.map((p) => p.y));
+  const sx = (v) => padL + ((v - xmin) / (xmax - xmin)) * (W - padL - padR);
+  const sy = (v) => (H - padB) - ((v - ymin) / (ymax - ymin)) * (H - padT - padB);
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "scatter", role: "img",
+    "aria-label": `Pareto scatter of ${xMeta.name} versus ${yMeta.name}` });
+  svg.appendChild(svgEl("line", { x1: padL, y1: padT, x2: padL, y2: H - padB, class: "scatter-axis" }));
+  svg.appendChild(svgEl("line", { x1: padL, y1: H - padB, x2: W - padR, y2: H - padB, class: "scatter-axis" }));
+  const xlab = svgEl("text", { x: (padL + W - padR) / 2, y: H - 12, "text-anchor": "middle", class: "scatter-axlabel" });
+  xlab.textContent = objAxisLabel(xMeta); svg.appendChild(xlab);
+  const ymid = (padT + H - padB) / 2;
+  const ylab = svgEl("text", { x: 15, y: ymid, "text-anchor": "middle", class: "scatter-axlabel",
+    transform: `rotate(-90 15 ${ymid})` });
+  ylab.textContent = objAxisLabel(yMeta); svg.appendChild(ylab);
+  // Frontier trade-off line (sorted along x).
+  const fr = points.filter((p) => p.frontier).slice().sort((a, b) => a.x - b.x);
+  if (fr.length >= 2) {
+    svg.appendChild(svgEl("polyline", {
+      points: fr.map((p) => `${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" "), class: "scatter-frontier" }));
+  }
+  for (const p of points) {
+    const cls = "scatter-pt" + (p.frontier ? " frontier" : "") + (p.feasible === false ? " infeasible" : "");
+    const c = svgEl("circle", { cx: sx(p.x).toFixed(1), cy: sy(p.y).toFixed(1), r: p.frontier ? 5.5 : 4, class: cls });
+    const title = svgEl("title", {});
+    title.textContent = `${p.label}: ${xMeta.name} ${fmtNum(p.x)}, ${yMeta.name} ${fmtNum(p.y)}`;
+    c.appendChild(title);
+    svg.appendChild(c);
+    const tx = svgEl("text", { x: (sx(p.x) + 7).toFixed(1), y: (sy(p.y) + 3).toFixed(1), class: "scatter-ptlabel" });
+    tx.textContent = p.label;
+    svg.appendChild(tx);
+  }
+  return svg;
+}
+
+// A small legend swatch+label for the scatter.
+function legendItem(cls, label) {
+  const item = el("span", "scatter-legend-item");
+  item.appendChild(el("span", "scatter-legend-dot " + cls));
+  item.appendChild(el("span", null, label));
+  return item;
+}
+
+// A diverging mini-bar for a signed delta% vs a baseline, colored by whether it's an improvement
+// (direction-aware: for a "lower is better" metric a negative delta is good). Fill grows from the
+// center: left for a decrease, right for an increase. Returns [bar, value-label] in a wrapper.
+function deltaBar(deltaPct, direction) {
+  const improved = direction === "lower" ? deltaPct < 0 : direction === "higher" ? deltaPct > 0 : null;
+  const tone = deltaPct === 0 ? "flat" : improved === true ? "good" : improved === false ? "bad" : "neutral";
+  const wrap = el("div", "delta");
+  const bar = el("div", "delta-bar");
+  const fill = el("div", "delta-fill " + (deltaPct < 0 ? "neg " : "pos ") + tone);
+  fill.style.width = (Math.min(100, Math.abs(deltaPct)) / 2).toFixed(1) + "%";
+  bar.appendChild(fill);
+  wrap.appendChild(bar);
+  const sign = deltaPct > 0 ? "+" : "";
+  wrap.appendChild(el("span", "delta-val " + tone, `${sign}${fmtNum(deltaPct)}%`));
+  return wrap;
+}
+
 function renderResultsCard(card) {
   if (!card || typeof card !== "object") return;
   removeWelcomeCard();
@@ -1065,6 +1140,126 @@ function renderResultsCard(card) {
     }
   }
 
+  activePane.appendChild(root);
+  scroll();
+}
+
+// ---- Pareto frontier scatter (from an analyze_results sweep tool_result) --
+// Renders the sweep's configurations in objective space with the Pareto frontier highlighted —
+// the proposal's "Pareto-optimal configurations" stretch goal, made visual. No-ops unless the
+// result is a sweep with >=2 objectives present in >=2 runs (the analyzer already filters to
+// comparable objectives, so we just take the first two and plot the runs that carry both).
+function renderParetoCard(result) {
+  if (!result || !result.analyzed) return;
+  const pareto = result.pareto;
+  if (!pareto || !Array.isArray(pareto.objectives) || pareto.objectives.length < 2) return;
+  if (!Array.isArray(pareto.runs) || pareto.runs.length < 2) return;
+  const xMeta = pareto.objectives[0], yMeta = pareto.objectives[1];
+  if (!xMeta || !yMeta || !xMeta.name || !yMeta.name) return;
+  // SLO feasibility per run comes from the top-level analyze runs (pareto rows don't carry it).
+  const feasible = {};
+  for (const run of (result.runs || [])) {
+    if (run && run.label != null) feasible[run.label] = (run.slo || {}).overall_met;
+  }
+  const points = [];
+  for (const run of pareto.runs) {
+    const o = run.objectives || {};
+    const x = o[xMeta.name], y = o[yMeta.name];
+    if (typeof x !== "number" || typeof y !== "number") continue;
+    points.push({ label: run.label || "", x, y, frontier: !!run.on_frontier, feasible: feasible[run.label] });
+  }
+  if (points.length < 2) return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  root.appendChild(el("div", "results-head", "Pareto frontier — best trade-offs"));
+  root.appendChild(el("div", "report-sub",
+    `${points.length} configurations · ★ frontier = not dominated on any objective`));
+  root.appendChild(scatterPlot(points, xMeta, yMeta));
+  const legend = el("div", "scatter-legend");
+  legend.appendChild(legendItem("frontier", "on frontier"));
+  legend.appendChild(legendItem("dominated", "dominated"));
+  if (Object.values(feasible).some((v) => v === false)) legend.appendChild(legendItem("infeasible", "misses SLO"));
+  root.appendChild(legend);
+  activePane.appendChild(root);
+  scroll();
+}
+
+// ---- A/B comparison delta bars (from a compare_reports tool_result) -------
+// compare_reports emits no results_card event, so its rich per-metric deltas vs a baseline were
+// only ever visible as raw JSON. Render them as a table of direction-aware diverging bars: green
+// when a run beats the baseline on that metric, red when it regresses.
+function renderComparisonCard(result) {
+  if (!result || !result.compared) return;
+  const cmp = result.comparison;
+  if (!cmp || !Array.isArray(cmp.metrics) || !cmp.metrics.length) return;
+  const labels = Array.isArray(cmp.labels) ? cmp.labels : [];
+  const baseline = cmp.baseline;
+  const others = labels.filter((l) => l !== baseline);
+  if (!others.length) return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  root.appendChild(el("div", "results-head", "A/B comparison"));
+  root.appendChild(el("div", "report-sub", `baseline: ${baseline} · Δ vs baseline — green better, red worse`));
+  const table = el("table", "results-table compare-table");
+  const head = el("tr");
+  head.appendChild(el("th", null, "metric"));
+  head.appendChild(el("th", null, `${baseline} (base)`));
+  for (const o of others) head.appendChild(el("th", null, o));
+  table.appendChild(head);
+  for (const m of cmp.metrics) {
+    const tr = el("tr");
+    const u = m.units ? " " + m.units : "";
+    tr.appendChild(el("td", "results-name", `${m.name}${m.stat && m.stat !== "value" ? " (" + m.stat + ")" : ""}`));
+    tr.appendChild(el("td", null, m.baseline_value != null ? fmtNum(m.baseline_value) + u : "—"));
+    const byLabel = {};
+    for (const pr of (m.per_run || [])) byLabel[pr.label] = pr;
+    for (const o of others) {
+      const pr = byLabel[o];
+      const td = el("td", "compare-cell");
+      if (pr && pr.delta_pct != null) td.appendChild(deltaBar(pr.delta_pct, m.direction));
+      else if (pr && pr.value != null) td.appendChild(document.createTextNode(fmtNum(pr.value) + u));
+      else td.appendChild(document.createTextNode("—"));
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+  root.appendChild(table);
+  if (cmp.headline) root.appendChild(el("div", "results-note", cmp.headline));
+  activePane.appendChild(root);
+  scroll();
+}
+
+// ---- cross-harness comparison table (from compare_harness_runs) -----------
+// Different load generators measure differently, so the analyzer picks NO winner — we lay the
+// shared metrics side by side per harness as facts, with that caveat stated.
+function renderHarnessCompareCard(result) {
+  if (!result || !result.compared) return;
+  const cross = result.cross;
+  if (!cross || !Array.isArray(cross.cross_metrics) || !cross.cross_metrics.length) return;
+  const harnesses = Array.isArray(cross.harness_names) ? cross.harness_names : [];
+  if (harnesses.length < 2) return;
+  removeWelcomeCard();
+  const root = el("div", "results-card");
+  root.appendChild(el("div", "results-head", "Harness comparison"));
+  root.appendChild(el("div", "report-sub",
+    `${harnesses.join(" vs ")} · different load generators — values aren't directly comparable`));
+  const table = el("table", "results-table");
+  const head = el("tr");
+  head.appendChild(el("th", null, "metric"));
+  for (const h of harnesses) head.appendChild(el("th", null, h));
+  table.appendChild(head);
+  for (const m of cross.cross_metrics) {
+    const tr = el("tr");
+    tr.appendChild(el("td", "results-name", m.name || m.key || ""));
+    const byH = {};
+    for (const ph of (m.per_harness || [])) byH[ph.harness] = ph;
+    for (const h of harnesses) {
+      const ph = byH[h];
+      tr.appendChild(el("td", null, ph && ph.value != null ? `${fmtNum(ph.value)}${ph.units ? " " + ph.units : ""}` : "—"));
+    }
+    table.appendChild(tr);
+  }
+  root.appendChild(table);
   activePane.appendChild(root);
   scroll();
 }
@@ -1155,11 +1350,17 @@ function finishTool(data) {
     if (sum) sum.textContent = "done";
     d.open = false;
   }
-  // Special-case the report summary for a friendly view.
-  if (data.name === "locate_and_parse_report" && data.result && data.result.summary) {
-    renderReportSummary(data.result);
-  } else if (d) {
-    d.querySelector(".body").appendChild(prettyJson(data.result));
+  // Prominent, friendly renders for the data-rich analysis tools. The raw JSON still lands in
+  // the (collapsed) tool panel below for the curious; each card renderer no-ops on a shape it
+  // can't draw, so the JSON is always the graceful fallback.
+  const r = data.result;
+  if (data.name === "locate_and_parse_report" && r && r.summary) {
+    renderReportSummary(r);                 // (no JSON dump — the summary IS the friendly view)
+  } else {
+    if (data.name === "analyze_results") renderParetoCard(r);            // sweeps only
+    else if (data.name === "compare_reports") renderComparisonCard(r);   // A/B delta bars
+    else if (data.name === "compare_harness_runs") renderHarnessCompareCard(r);
+    if (d) d.querySelector(".body").appendChild(prettyJson(r));
   }
   activeConsole = null;
 }

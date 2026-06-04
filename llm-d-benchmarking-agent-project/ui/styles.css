@@ -506,6 +506,46 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 .results-goodput-bind.good { color: color-mix(in srgb, var(--green) 50%, var(--text)); }
 .results-goodput-sub { font: 400 11px/1.4 var(--serif); color: var(--muted); margin-top: 3px; }
 
+/* Pareto scatter (sweep analysis). */
+.scatter { width: 100%; max-width: 480px; height: auto; display: block; margin: 8px 0 4px; }
+.scatter-axis { stroke: var(--border-strong); stroke-width: 1; }
+.scatter-axlabel { fill: var(--muted); font: 600 11px var(--mono); }
+.scatter-frontier { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 4 3; opacity: .8; }
+.scatter-pt { fill: var(--muted); opacity: .7; }
+.scatter-pt.frontier { fill: var(--accent); opacity: 1; stroke: var(--accent-strong); stroke-width: 1; }
+.scatter-pt.infeasible { stroke: var(--red); stroke-width: 2; }
+.scatter-ptlabel { fill: var(--muted); font: 10px var(--mono); }
+.scatter-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px; }
+.scatter-legend-item { display: inline-flex; align-items: center; gap: 6px; font: 11px var(--mono); color: var(--muted); }
+.scatter-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.scatter-legend-dot.frontier { background: var(--accent); }
+.scatter-legend-dot.dominated { background: var(--muted); opacity: .7; }
+.scatter-legend-dot.infeasible { background: transparent; border: 2px solid var(--red); }
+
+/* A/B comparison: per-metric diverging delta bars. */
+.compare-table td { vertical-align: middle; }
+.compare-cell { min-width: 120px; }
+.delta { display: flex; align-items: center; gap: 8px; }
+.delta-bar {
+  position: relative; flex: none; width: 72px; height: 7px; border-radius: 999px;
+  background: var(--code-bg); border: 1px solid var(--border);
+}
+.delta-bar::before {  /* center (zero) tick */
+  content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px;
+  background: var(--border-strong); transform: translateX(-.5px);
+}
+.delta-fill { position: absolute; top: 0; height: 100%; border-radius: 999px; }
+.delta-fill.pos { left: 50%; }
+.delta-fill.neg { right: 50%; }
+.delta-fill.good { background: var(--green); }
+.delta-fill.bad { background: var(--red); }
+.delta-fill.neutral { background: var(--muted); }
+.delta-fill.flat { background: transparent; }
+.delta-val { font: 600 11.5px/1 var(--mono); }
+.delta-val.good { color: color-mix(in srgb, var(--green) 55%, var(--text)); }
+.delta-val.bad { color: color-mix(in srgb, var(--red) 55%, var(--text)); }
+.delta-val.flat, .delta-val.neutral { color: var(--muted); }
+
 /* ── Buttons ──────────────────────────────────────────────────────────── */
 button {
   font: 600 14px/1 var(--serif); cursor: pointer; border-radius: 9px;
