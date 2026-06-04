@@ -47,8 +47,14 @@ class AgentLoop:
         # it on later turns. Mechanism only — what to DO with the snapshot is the model's judgment
         # (guided by knowledge/conversation_style.md).
         if session.env_snapshot is not None and not session.prewarmed:
+            # ``synthetic: True`` marks this as agent-only context the *user* never typed: the
+            # provider still sends it (the wire formatters read only role/content and ignore the
+            # flag — see app/llm/*_provider.py), but the UI history renderer and derive_title()
+            # both skip synthetic messages so it never shows as a user bubble or leaks into the
+            # sidebar chat title.
             session.messages.append({
                 "role": "user",
+                "synthetic": True,
                 "content": ("[environment pre-probe — read-only snapshot, already gathered for "
                             "you so you don't need to call probe_environment again this turn]\n"
                             + json.dumps(session.env_snapshot)[:4000]),

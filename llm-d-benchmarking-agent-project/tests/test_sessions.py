@@ -94,6 +94,44 @@ def test_derive_title_defaults_without_user_message():
     assert derive_title([{"role": "assistant", "content": "hi"}]) == "New chat"
 
 
+def test_derive_title_skips_synthetic_pre_probe(tmp_path):
+    # Regression (TODO #6 probe-leak): the injected environment pre-probe snapshot is a
+    # synthetic user message the human never typed. derive_title must skip it and pick the
+    # first REAL user message, so it never leaks into the sidebar chat title.
+    messages = [
+        {"role": "user", "synthetic": True,
+         "content": "[environment pre-probe — read-only snapshot …] {\"tools\": {}}"},
+        {"role": "user", "content": "deploy a tiny model on kind"},
+    ]
+    assert derive_title(messages) == "deploy a tiny model on kind"
+
+
+def test_derive_title_synthetic_only_falls_back(tmp_path):
+    # If the ONLY user message is synthetic (e.g. a chat persisted after pre-probe but before
+    # the human sent anything), the title stays the clean default — never the snapshot.
+    messages = [{"role": "user", "synthetic": True,
+                 "content": "[environment pre-probe …] {\"tools\": {}}"}]
+    assert derive_title(messages) == "New chat"
+
+
+def test_synthetic_pre_probe_never_leaks_into_namespace_folder_title(tmp_path):
+    # End-to-end: a session whose messages start with a synthetic pre-probe must show its real
+    # title (not the snapshot) in the /api/sessions list the sidebar folders render from.
+    manager = make_manager(tmp_path)
+    s = manager.create()
+    s.messages.append({"role": "user", "synthetic": True,
+                       "content": "[environment pre-probe …] {\"kind_clusters\": {}}"})
+    s.messages.append({"role": "user", "content": "run a quick benchmark"})
+    s.persist()
+    manager._sessions.clear()
+    with TestClient(app) as client:
+        client.app.state.sessions = manager
+        listed = client.get("/api/sessions").json()["sessions"]
+        row = next(x for x in listed if x["id"] == s.id)
+        assert row["title"] == "run a quick benchmark"
+        assert "pre-probe" not in row["title"]
+
+
 # ---- REST endpoints that feed the sidebar ------------------------------------
 def test_api_sessions_list_and_delete(tmp_path):
     manager = make_manager(tmp_path)

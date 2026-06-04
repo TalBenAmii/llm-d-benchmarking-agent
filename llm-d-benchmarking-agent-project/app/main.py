@@ -308,6 +308,11 @@ def _history_items(session) -> list[dict[str, Any]]:
     for m in session.messages:
         role = m.get("role")
         if role == "user":
+            # Synthetic user messages (e.g. the injected environment pre-probe snapshot) are
+            # agent-only context the human never typed — skip them so they don't render as a
+            # user bubble on resume (mirrors derive_title()'s skip).
+            if m.get("synthetic"):
+                continue
             items.append({"role": "user", "text": m.get("content") or ""})
         elif role == "assistant":
             if m.get("content"):

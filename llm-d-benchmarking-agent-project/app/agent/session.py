@@ -40,9 +40,12 @@ def _is_valid_id(sid: str | None) -> TypeGuard[str]:
 
 
 def derive_title(messages: list[dict[str, Any]]) -> str:
-    """A short, human title from the first user message (Claude-web style)."""
+    """A short, human title from the first user message the human actually typed (Claude-web
+    style). Synthetic messages (e.g. the environment pre-probe snapshot the agent loop injects
+    as agent-only context — tagged ``synthetic: True``) are skipped so they never leak into the
+    chat title / sidebar folder."""
     for m in messages:
-        if isinstance(m, dict) and m.get("role") == "user":
+        if isinstance(m, dict) and m.get("role") == "user" and not m.get("synthetic"):
             text = " ".join(str(m.get("content") or "").split())
             if text:
                 return text[:_TITLE_MAX] + ("…" if len(text) > _TITLE_MAX else "")
