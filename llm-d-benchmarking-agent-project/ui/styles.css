@@ -203,7 +203,7 @@ body {
 .sidebar-toggle { display: none; }
 .sidebar-scrim { display: none; }
 
-/* Focus mode: ⌘/Ctrl+B collapses the sidebar on desktop to give the chat full width. */
+/* Focus mode: ⌘/Ctrl + B collapses the sidebar on desktop to give the chat full width. */
 .sidebar { transition: width .18s ease; }
 body.sidebar-hidden .sidebar { width: 0; border-right: none; overflow: hidden; }
 

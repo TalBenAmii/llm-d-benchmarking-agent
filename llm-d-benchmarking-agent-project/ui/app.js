@@ -182,6 +182,9 @@ function activate(rec) {
     workingEl.hidden = true;
   }
   transcript.scrollTop = rec.scrollTop || transcript.scrollHeight;
+  updateJumpBtn();   // recompute for THIS chat's scroll — a fresh/short pane has nothing to jump to,
+                     // so the floating "↓ Latest" button from the previous chat must hide here (the
+                     // scroll handler alone won't fire if scrollTop doesn't actually change).
 }
 
 // Full-rebuild reset of the ACTIVE pane (used when the server sends a fresh history rather than
@@ -365,7 +368,10 @@ function handle(msg) {
       if (!workingEl.hidden) resumeThinking();      // between steps: back to generic cycling
       break;
     case "tool_call": startTool(data); setWorkTool(data.name); advancePhase(data.name, data.input); break;
-    case "command": removeWelcomeCard(); onCommand(data); setWorkActivity(data.text || (data.argv || []).join(" ")); break;
+    // Clear the welcome card only when a real turn is running — NOT for the background environment
+    // pre-probe's read-only `command` events (which fire before any user message), so the start-of-
+    // chat welcome/capabilities card stays visible instead of being wiped the moment the probe runs.
+    case "command": if (cur && cur.running) removeWelcomeCard(); onCommand(data); setWorkActivity(data.text || (data.argv || []).join(" ")); break;
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "results_card": renderResultsCard(data.card); break;
@@ -2243,10 +2249,14 @@ if (stopBtn) stopBtn.addEventListener("click", cancelRun);
 // Jump-to-latest: a floating button that appears once the user scrolls up off the bottom of the
 // transcript, and pins them back to the newest message on click. Complements the sticky
 // auto-scroll (which only follows new content when already near the bottom).
+// Show the button only when there's meaningfully more content below the fold. Called on scroll AND
+// on chat switch (from activate) so switching to a fresh/short chat hides a button left over from
+// the chat we came from.
+function updateJumpBtn() {
+  if (jumpBtn) jumpBtn.hidden = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) < 120;
+}
 if (jumpBtn) {
-  transcript.addEventListener("scroll", () => {
-    jumpBtn.hidden = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) < 120;
-  });
+  transcript.addEventListener("scroll", updateJumpBtn);
   jumpBtn.addEventListener("click", () => {
     stickBottom = true; transcript.scrollTop = transcript.scrollHeight; jumpBtn.hidden = true;
   });
