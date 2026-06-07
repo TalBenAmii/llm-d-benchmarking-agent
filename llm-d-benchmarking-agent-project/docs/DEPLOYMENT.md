@@ -163,8 +163,9 @@ then the agent correctly falls back to the local CLI path (`execute_llmdbenchmar
   is on. A ready-made scrape config and Grafana dashboard ship under
   `deploy/observability/` (`prometheus-scrape.yaml`, `grafana-dashboard.json`).
 - **Live run metrics** (CPU/memory of the model server / harness *during* a run) come from
-  the `observe_run_metrics` tool via `kubectl top`, which needs the in-cluster metrics-server
-  (the `cicd/kind` spec enables it).
+  the `observe_run_metrics` tool via `kubectl top`, which needs the in-cluster metrics-server.
+  It is NOT installed by kind or the `cicd/kind` spec — add it to the cluster separately (on
+  kind, with `--kubelet-insecure-tls`).
 
 ## Security posture baked into the deploy
 

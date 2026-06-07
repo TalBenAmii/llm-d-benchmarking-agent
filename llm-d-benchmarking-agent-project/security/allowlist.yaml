@@ -310,8 +310,9 @@ executables:
       version: { mode: read_only, flags: { "--output": { takes_value: true, value: { ref: output_format } }, "--client": {} } }
       # Live resource usage (CPU/memory) for pods/nodes — read_only, observe-only. Powers the
       # observe_run_metrics tool's "live system metrics during a run" view. Requires the
-      # metrics-server in-cluster (kind enables it via the cicd/kind spec); if it's absent the
-      # command fails read-only and the agent relays that — it never mutates anything.
+      # in-cluster metrics-server, which kind and the cicd/kind spec do NOT install — it must be
+      # added to the cluster separately (on kind, with --kubelet-insecure-tls). If it's absent
+      # the command fails read-only and the agent relays that — it never mutates anything.
       top:
         mode: read_only
         positionals: [ { value: { enum: [pod, pods, node, nodes] } } ]

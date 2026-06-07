@@ -52,8 +52,9 @@ is running** to watch resource pressure on the model server / harness pods.
   results.
 - **A node at/over ~100% CPU or memory** explains scheduling failures and evictions. If a run
   was `unschedulable` or `evicted`, check `scope="nodes"` to confirm node pressure.
-- `available: false` means the metrics-server is not installed/ready in the cluster (it is part
-  of the `cicd/kind` spec, but a bare cluster may lack it). Relay that plainly — it is not an
+- `available: false` means the metrics-server is not installed/ready in the cluster. It is NOT
+  installed by kind or the `cicd/kind` spec — add it to the cluster separately (on kind, with
+  `--kubelet-insecure-tls`). Relay that plainly — it is not an
   error you caused, and nothing was changed (the probe is read-only). Fall back to
   `probe_environment` / pod status if you need a coarse health signal.
 
@@ -231,8 +232,8 @@ of the run, two ways:
 - **`observe_run_metrics` (kubectl top)** — live **CPU/memory** of the model-server / harness
   pods **WHILE the run is in flight** (read-only, auto-runs; see §2 for how to read the numbers
   and pre-empt an OOM/throttle). This is the closest thing to a live metric feed: poll it during
-  the run to watch resource pressure in real time. Needs the in-cluster metrics-server (present
-  in the `cicd/kind` spec).
+  the run to watch resource pressure in real time. Needs the in-cluster metrics-server, which is
+  NOT installed by kind or the `cicd/kind` spec — add it to the cluster separately.
 - **Phase-21 real-time pod-log streaming** — when you drive the run via
   `orchestrate_benchmark_run`, the benchmark pod's **log lines are forwarded live to the user as
   `output` events** (the same transport the runner uses for streamed command output). That gives

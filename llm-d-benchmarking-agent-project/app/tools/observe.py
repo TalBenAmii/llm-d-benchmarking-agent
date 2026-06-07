@@ -54,8 +54,9 @@ async def observe_run_metrics(
     ``scope='pods'`` (default) lists pod usage in ``namespace``, optionally narrowed to one
     orchestrated run via ``run_id`` (the orchestrator's run-id label). ``scope='nodes'`` lists
     node usage (cluster-wide). Returns the parsed rows plus the exact command run. Read-only —
-    requires the in-cluster metrics-server (kind enables it for the cicd/kind spec); if it is
-    unavailable the probe fails read-only and that fact is returned."""
+    requires the in-cluster metrics-server, which is NOT installed by kind or the cicd/kind
+    spec; it must be added to the cluster separately (on kind, with --kubelet-insecure-tls). If
+    it is unavailable the probe fails read-only and that fact is returned."""
     if scope not in _VALID_SCOPES:
         raise ToolError(f"scope must be one of {_VALID_SCOPES}, got {scope!r}")
 

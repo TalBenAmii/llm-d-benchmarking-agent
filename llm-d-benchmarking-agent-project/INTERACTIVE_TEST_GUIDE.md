@@ -246,7 +246,8 @@ Stop this instance when done (`Ctrl-C`).
   **cancel it** (or use the cancel control) → `cancel_run` frees the concurrency slot and reaps
   the subprocess/Job. *(§9 run lifecycle)*
 - [ ] **[B]** **`observe_run_metrics`:** ask **"show live cluster resource usage"** during a run
-  → `kubectl top` output (needs metrics-server; present in `cicd/kind`). *(§7)*
+  → `kubectl top` output (needs the in-cluster metrics-server, which kind / `cicd/kind` do NOT
+  install — add it separately). *(§7)*
 - [ ] **[A/B]** **Workspace GC:** the startup `retention.gc` log line proves the pass ran;
   caps are honored and an active session is never pruned. *(§9)*
 

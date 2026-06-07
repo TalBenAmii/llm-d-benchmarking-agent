@@ -397,8 +397,9 @@ _DESCRIPTIONS = {
         "run by run_id, or per-container); scope='nodes' shows node usage. Read-only "
         "(auto-runs). Use it WHILE a benchmark is running to see if the model server / harness "
         "is near its CPU or memory limit (a leading indicator of an OOM/throttle). Requires the "
-        "in-cluster metrics-server (present in the cicd/kind spec); if it is missing the tool "
-        "reports that and changes nothing. Distinct from /metrics, which exposes the agent's "
+        "in-cluster metrics-server, which kind and the cicd/kind spec do NOT install (add it to "
+        "the cluster separately); if it is missing the tool reports that and changes nothing. "
+        "Distinct from /metrics, which exposes the agent's "
         "OWN Prometheus counters. Call read_knowledge('observability') to interpret the numbers."
     ),
     "result_history": (
