@@ -20,9 +20,6 @@ from typing import Any
 
 from app.observability.logctx import LOG_CONTEXT_FIELDS, get_log_context
 
-# The fixed, standard keys every JSON line carries (correlation fields are added when bound).
-_STANDARD_KEYS = ("timestamp", "level", "logger", "message")
-
 # LogRecord attributes that are NOT user "extra" fields — excluded when we fold extras in.
 _RESERVED_RECORD_ATTRS = frozenset(
     {

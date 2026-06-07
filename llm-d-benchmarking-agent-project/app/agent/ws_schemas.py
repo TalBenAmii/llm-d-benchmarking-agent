@@ -30,7 +30,6 @@ __all__ = [
     "InboundMessage",
     "INBOUND_ADAPTER",
     "parse_inbound",
-    "OutboundEvent",
     "outbound",
     "ValidationError",
 ]
@@ -87,19 +86,6 @@ def parse_inbound(raw: Any) -> InboundMessage:
     structured ``error`` and keep the connection alive.
     """
     return INBOUND_ADAPTER.validate_python(raw)
-
-
-class OutboundEvent(BaseModel):
-    """The uniform server -> client envelope: ``{"type": <event>, "data": {...}}``.
-
-    Every event streamed to the UI (see :mod:`app.agent.events`) rides this shape. Typing it
-    here gives one authoritative serializer; the wire bytes are identical to the hand-built
-    ``{"type": ..., "data": ...}`` dict the handler used before, so existing clients are
-    unaffected.
-    """
-
-    type: str
-    data: dict[str, Any] = Field(default_factory=dict)
 
 
 def outbound(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
