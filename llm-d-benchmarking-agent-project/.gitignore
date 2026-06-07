@@ -21,6 +21,8 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+# graphify code-nav output (dev-only scratch/cache)
+graphify-out/
 # Coverage artifacts (Phase 14 quality gates)
 .coverage
 .coverage.*
