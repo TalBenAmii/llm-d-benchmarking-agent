@@ -177,11 +177,12 @@ class AgentLoop:
                         "ok": not (isinstance(result, dict) and ("error" in result or result.get("rejected"))),
                     })
                     await emit(events.TOOL_RESULT, {"id": tc.id, "name": tc.name, "result": result})
-                    # Deterministic structured results card (B2): right after a report/analysis
-                    # tool result that carried a VALIDATED Benchmark Report v0.2 summary, emit a
-                    # consistent card built from that validated summary + the analyzer's exact
-                    # SLO/Pareto verdicts (not free-form prose). Pure mechanism — build_results_card
-                    # returns None for anything not renderable, so non-report tools never emit one.
+                    # Deterministic structured results card (B2): right after an analyze_results
+                    # tool result, emit a consistent card carrying the analyzer's exact SLO/Pareto
+                    # verdicts (not free-form prose). The single-run report's metrics + charts are
+                    # already shown by the frontend report-summary card (driven from the same
+                    # locate_and_parse_report result), so we do NOT build a second card from it.
+                    # Pure mechanism — build_results_card returns None for anything not renderable.
                     card = build_results_card(tc.name, result)
                     if card is not None:
                         await emit(events.RESULTS_CARD, {"id": tc.id, "card": card})
