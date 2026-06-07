@@ -1,4 +1,0 @@
-# Claude Code harness state at the monorepo root.
-# Worktrees are ephemeral working copies created by the EnterWorktree tool;
-# they must never be tracked (doing so records bogus submodule-style gitlinks).
-.claude/worktrees/
