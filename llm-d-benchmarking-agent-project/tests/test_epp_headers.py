@@ -57,7 +57,11 @@ def test_epp_headers_reachable_via_read_knowledge(tool_ctx):
     assert out["topic"] == "epp_headers"
     data = yaml.safe_load(out["content"])
     assert isinstance(data, dict)
-    # The on-demand loader also accepts the full basename.
+    # The on-demand loader also accepts the full basename. (Clear the per-session doc-dedup set
+    # first: this assertion tests basename-spelling acceptance, not the de-dup short-circuit —
+    # the same guide read twice in one session is otherwise collapsed to a back-reference, which
+    # is covered by test_context_mgmt's dedup tests.)
+    tool_ctx.fetched_docs.clear()
     out2 = probe.read_knowledge(tool_ctx, name="epp_headers.yaml")
     assert out2["name"] == "epp_headers.yaml"
 

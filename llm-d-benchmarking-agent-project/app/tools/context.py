@@ -79,6 +79,13 @@ class ToolContext:
     # (a ToolContext is created per session), so per_session counts are naturally scoped.
     quota: QuotaCounter = field(default_factory=QuotaCounter, repr=False)
     _catalog: dict[str, Any] | None = field(default=None, repr=False)
+    # Per-session "already provided this doc" set (Context budget). A repeated fetch of the SAME
+    # doc within a session would re-inject identical full text into the replayed transcript on
+    # every later turn; instead the knowledge-access tools record each doc's identity here on the
+    # FIRST fetch and short-circuit an EXACT repeat to a tiny back-reference (see
+    # app/tools/knowledge_access.py). RUNTIME-ONLY (not persisted) — a resumed chat starts with an
+    # empty set, so the first fetch in the new process always returns full content. Mechanism only.
+    fetched_docs: set[str] = field(default_factory=set, repr=False)
 
     def catalog(self, *, refresh: bool = False) -> dict[str, Any]:
         if self._catalog is None or refresh:

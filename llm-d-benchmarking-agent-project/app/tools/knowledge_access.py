@@ -20,9 +20,44 @@ import yaml
 from app.paths import is_within
 from app.tools.context import ToolContext, ToolError
 
+# --- per-session doc de-duplication (context budget) ----------------------------------------
+# A repeated fetch of the SAME doc within a session re-injects its full text into the replayed
+# transcript on every subsequent turn — pure waste, since the content is identical. The first
+# fetch returns full content AND records the doc's identity on ``ctx.fetched_docs``; an EXACT
+# repeat is short-circuited to a tiny back-reference so the agent knows the content was already
+# provided and where to find it. Only EXACT repeats are short-circuited; a different doc (or the
+# first fetch in a resumed process) always returns full content. Mechanism only — no judgment.
 
-def read_repo_doc(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) -> dict[str, Any]:
-    """Read a file from inside one of the two read-only repos. Path traversal is blocked."""
+# A back-reference is itself bounded; do not bother de-duplicating trivially small docs (the
+# saving would be smaller than the reference, and tiny docs are cheap to re-send verbatim).
+_DEDUP_OVER_CHARS = 600
+
+
+def _doc_seen(ctx: ToolContext, key: str) -> bool:
+    """True if ``key`` was already fetched this session (and recorded). First call records it
+    and returns False; later calls return True. ``ctx.fetched_docs`` is the session-scoped set."""
+    if key in ctx.fetched_docs:
+        return True
+    ctx.fetched_docs.add(key)
+    return False
+
+
+def _already_provided(kind: str, identity: str, *, reload_hint: str) -> dict[str, Any]:
+    """The tiny back-reference returned for an EXACT repeat fetch — it clearly tells the agent the
+    content was already provided earlier this session, so it is never surprised by the omission."""
+    return {
+        "already_provided": True,
+        kind: identity,
+        "note": (f"already provided the {kind} '{identity}' earlier this session — its full "
+                 "content is in the conversation above; not re-sending it to save context. "
+                 f"{reload_hint}"),
+    }
+
+
+def _read_repo_doc_raw(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) -> dict[str, Any]:
+    """Resolve + read a repo doc, returning the full {path, content, truncated} payload. The
+    UNDEDUPED core: callers that need the real content every time (e.g. fetch_key_docs, which
+    runs its own per-doc dedup) use this directly; the deduping read_repo_doc tool wraps it."""
     repos = ctx.settings.repo_paths
     candidate = Path(path)
     resolved: Path | None = None
@@ -57,6 +92,27 @@ def read_repo_doc(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) -> di
     }
 
 
+def read_repo_doc(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) -> dict[str, Any]:
+    """Read a file from inside one of the two read-only repos. Path traversal is blocked.
+
+    Per-session de-dup: the FIRST read of a given resolved doc returns its full content; an EXACT
+    repeat within the session returns a tiny back-reference instead of re-injecting identical text
+    (the agent is told the content is already in the conversation above)."""
+    doc = _read_repo_doc_raw(ctx, path=path, max_bytes=max_bytes)
+    # Key on the RESOLVED path so different spellings of the same file de-dup together. Only
+    # de-dup non-trivial docs that aren't already truncated mid-content (a truncated read may be
+    # re-fetched with a larger max_bytes for the rest).
+    resolved = doc["path"]
+    dedup_eligible = len(doc["content"]) >= _DEDUP_OVER_CHARS and not doc["truncated"]
+    if dedup_eligible and _doc_seen(ctx, f"repo_doc:{resolved}"):
+        return _already_provided(
+            "doc", resolved,
+            reload_hint="Pass a larger max_bytes or a more specific path only if you need a "
+                        "different portion.",
+        )
+    return doc
+
+
 def fetch_key_docs(
     ctx: ToolContext,
     *,
@@ -86,8 +142,20 @@ def fetch_key_docs(
         rel = entry.get("path", "")
         item: dict[str, Any] = {"path": rel, "task": entry.get("task"), "why": entry.get("why")}
         try:
-            doc = read_repo_doc(ctx, path=rel, max_bytes=max_bytes_each)
-            item.update(found=True, resolved=doc["path"], content=doc["content"], truncated=doc["truncated"])
+            # Use the UNDEDUPED core so this tool controls dedup per-doc itself (the dedup wrapper
+            # would return a content-less back-reference that breaks the item shape below).
+            doc = _read_repo_doc_raw(ctx, path=rel, max_bytes=max_bytes_each)
+            resolved = doc["path"]
+            dedup_eligible = len(doc["content"]) >= _DEDUP_OVER_CHARS and not doc["truncated"]
+            if dedup_eligible and _doc_seen(ctx, f"repo_doc:{resolved}"):
+                # Already sent this doc's full text earlier this session — keep the metadata but
+                # omit the body so the same doc isn't re-injected every later turn.
+                item.update(found=True, resolved=resolved, already_provided=True,
+                            note="already provided earlier this session — see the previous fetch "
+                                 "of this doc above; body omitted to save context.")
+            else:
+                item.update(found=True, resolved=resolved, content=doc["content"],
+                            truncated=doc["truncated"])
         except ToolError as exc:
             item.update(found=False, reason=str(exc))
         fetched.append(item)
@@ -150,7 +218,15 @@ def read_knowledge(ctx: ToolContext, *, name: str) -> dict[str, Any]:
     if match is None:
         return {"error": f"unknown knowledge topic {name!r}", "valid_topics": valid}
 
-    return {"name": match.name, "topic": match.stem, "content": match.read_text()}
+    content = match.read_text()
+    # Per-session de-dup: a guide already loaded this session is in the conversation above, so an
+    # EXACT repeat returns a back-reference rather than re-injecting the full guide every turn.
+    if len(content) >= _DEDUP_OVER_CHARS and _doc_seen(ctx, f"knowledge:{match.name}"):
+        return _already_provided(
+            "topic", match.stem,
+            reload_hint="Its full text is unchanged; re-load it only if you truly need it again.",
+        )
+    return {"name": match.name, "topic": match.stem, "content": content}
 
 
 # --- search_knowledge: lexical search over knowledge/ + the curated repo-doc index ---------
