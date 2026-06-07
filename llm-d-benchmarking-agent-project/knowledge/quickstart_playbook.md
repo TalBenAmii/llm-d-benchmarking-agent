@@ -17,7 +17,8 @@ the steps/flags come from the real procedure rather than memory.
 3. **Propose a plan** — `propose_session_plan` with:
    `spec=cicd/kind`, `deploy_path=kind_sim`, `namespace=llmd-quickstart`,
    `harness=inference-perf`, `workload=sanity_random.yaml`,
-   `expected_steps=[install_prereqs?, ensure_repos, run_setup, create_cluster?, standup, smoketest, run, report, teardown?]`.
+   `expected_steps=[install_prereqs?, ensure_repos, run_setup, create_cluster?, install_metrics_server?, standup, smoketest, run, report, teardown?]`
+   (include `install_metrics_server?` when the user wants the live resource-stats panel — see step 5b).
    Wait for approval.
 4. **Prepare** —
    - **Prerequisites** — if `probe_environment` showed `tools.docker == false` and/or
@@ -37,6 +38,16 @@ the steps/flags come from the real procedure rather than memory.
 5. **Stand up** — `execute_llmdbenchmark subcommand=standup spec=cicd/kind
    namespace=llmd-quickstart flags={skip_smoketest:true}`. This can take a few minutes;
    the output streams live.
+5b. **Live resource stats (optional — OFFER it).** kind does NOT ship the in-cluster
+   **metrics-server**, so the live CPU/mem panel during a run will read
+   `live resource stats unavailable (no metrics-server)`. If the user wants that live view,
+   OFFER to install it (approval-gated, idempotent):
+   `run_command argv=["install_metrics_server.sh","--kubelet-insecure-tls"]`
+   — `--kubelet-insecure-tls` is REQUIRED on kind (self-signed kubelet certs). It's a
+   PER-CLUSTER add-on: install once and every run on this cluster gets stats. Best done now
+   (right after the cluster is up) so the first run already shows live stats, but it can be run
+   any time before a run. SKIP if stats are already available (e.g. GKE/OpenShift); the full
+   judgment + SKIP cases are in `read_knowledge('observability')`.
 6. **Smoketest** — `execute_llmdbenchmark subcommand=smoketest spec=cicd/kind
    namespace=llmd-quickstart`. Confirms the endpoint answers.
 7. **Benchmark** — `execute_llmdbenchmark subcommand=run spec=cicd/kind
