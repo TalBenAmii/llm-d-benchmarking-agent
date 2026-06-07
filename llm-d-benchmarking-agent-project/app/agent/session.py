@@ -107,10 +107,16 @@ class Session:
     # one injected on their next turn.
     catalog_injected: bool = False
     # RUNTIME-ONLY (deliberately NOT persisted): the read-only environment snapshot the /ws
-    # handler pre-probes in the background on a brand-new session, and a one-shot flag the loop
-    # flips once it has injected that snapshot as a synthetic turn message. Both are scoped to
-    # the live process — a resumed chat re-probes fresh, so persisting them would be stale.
+    # handler pre-probes in the background on a brand-new session. Scoped to the live process —
+    # a resumed chat re-probes fresh, so persisting it would be stale.
     env_snapshot: dict[str, Any] | None = None
+    # One-shot flag: the environment pre-probe snapshot has been injected as a synthetic turn
+    # message (see app/agent/loop.py). PERSISTED — the injected synthetic message itself lives in
+    # ``messages`` and is reloaded with the transcript, so a resumed chat must NOT inject a second
+    # copy. Critically, were this NOT persisted it would reset to False on resume, and any later
+    # pre-probe (or a stale-but-set env_snapshot) would re-inject the snapshot mid-transcript —
+    # leaking the "[environment pre-probe …]" text into the rendered chat + sidebar title. Defaults
+    # False so pre-feature state.json files (no snapshot injected yet) behave as before.
     prewarmed: bool = False
 
     @property
@@ -168,6 +174,7 @@ class Session:
                         "total_cache_read_tokens": self.total_cache_read_tokens,
                         "total_cache_write_tokens": self.total_cache_write_tokens,
                         "catalog_injected": self.catalog_injected,
+                        "prewarmed": self.prewarmed,
                     },
                     indent=2,
                 )
@@ -253,6 +260,9 @@ class SessionManager:
             # Default False: a pre-feature snapshot has no catalog message, so let the next turn
             # inject one. (Once injected + persisted, a reloaded chat sees True and skips it.)
             catalog_injected=data.get("catalog_injected", False),
+            # Default False so older state files (no key) load — but a session that already
+            # injected the env pre-probe snapshot persists True, so a resume never re-injects it.
+            prewarmed=data.get("prewarmed", False),
         )
         self._sessions[session.id] = session
         return session

@@ -201,6 +201,33 @@ def test_in_flight_approvals_default_empty_on_legacy_state(manager):
     assert loaded is not None and loaded.in_flight_approvals == []
 
 
+def test_prewarmed_survives_persist_load(manager):
+    # Regression (BUG F probe-leak): the one-shot `prewarmed` flag — set once the loop has
+    # injected the environment pre-probe snapshot as a synthetic message — must be PERSISTED.
+    # Were it runtime-only it would reset to False on resume, and a later pre-probe (or a
+    # stale-but-set env_snapshot) would re-inject the "[environment pre-probe …]" snapshot
+    # mid-transcript, leaking it into the rendered chat + sidebar title.
+    s = _seed(manager, "parked after pre-probe")
+    s.prewarmed = True
+    s.persist()
+    manager._sessions.clear()  # force a disk load
+    loaded = manager.load(s.id)
+    assert loaded is not None and loaded.prewarmed is True
+
+
+def test_prewarmed_defaults_false_on_legacy_state(manager):
+    # A state.json persisted before the field existed must load with prewarmed=False (so the
+    # next turn injects the snapshot once, then persists True and never re-injects it).
+    s = _seed(manager, "legacy pre-prewarmed")
+    state = manager._root / s.id / "state.json"
+    data = json.loads(state.read_text())
+    data.pop("prewarmed", None)
+    state.write_text(json.dumps(data))
+    manager._sessions.clear()
+    loaded = manager.load(s.id)
+    assert loaded is not None and loaded.prewarmed is False
+
+
 def test_namespace_survives_persist_load(manager):
     s = _seed(manager, "ns roundtrip")
     s.namespace = "llmd-quickstart"

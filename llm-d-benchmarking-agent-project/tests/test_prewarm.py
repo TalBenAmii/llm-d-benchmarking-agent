@@ -158,6 +158,54 @@ async def test_prewarm_not_reinjected_on_second_turn(tmp_path):
     assert len(_pre_probe_msgs(session.messages)) == 1
 
 
+async def test_prewarm_not_reinjected_after_persist_reload(tmp_path):
+    # Regression (BUG F probe-leak across resume): the prewarmed flag is PERSISTED, so a chat
+    # that already injected the pre-probe snapshot does NOT re-inject it after a disk reload —
+    # even if a fresh env_snapshot gets set (e.g. a later pre-probe). Were prewarmed runtime-only
+    # it would reset to False on load and the loop would re-inject the "[environment pre-probe …]"
+    # snapshot mid-transcript, leaking it into the rendered chat + sidebar title.
+    from app.agent.session import SessionManager
+    from app.config import Settings as _Settings
+    from app.security.allowlist import Allowlist as _Allowlist
+    from app.security.runner import CommandRunner as _Runner
+
+    if not get_settings().bench_repo.is_dir():
+        pytest.skip("repo not present")
+
+    # A SessionManager rooted under tmp so persist() + load() agree on the on-disk location and
+    # we never touch the real workspace (mirrors test_sessions.make_manager).
+    settings = _Settings(workspace_dir=tmp_path)
+    mgr = SessionManager(settings, _Allowlist.from_file(settings.allowlist_path),
+                         _Runner(settings.repo_paths))
+    session = mgr.create()
+
+    provider = FakeProvider()
+
+    async def emit(t, p):
+        pass
+
+    async def approve(kind, payload):
+        return True
+
+    # First turn injects the snapshot once and persists prewarmed=True.
+    session.env_snapshot = {"tools": {"kubectl": True}}
+    await AgentLoop(provider).run_turn(session, "first", emit=emit, request_approval=approve)
+    assert session.prewarmed is True
+    session.persist()
+
+    # Reload from disk as a returning browser would (drops the in-memory copy).
+    mgr._sessions.clear()
+    reloaded = mgr.load(session.id)
+    assert reloaded is not None and reloaded.prewarmed is True
+    # A later pre-probe sets a fresh snapshot — but prewarmed survived, so the loop must NOT
+    # re-inject it as a visible/user message on the resumed turn.
+    reloaded.env_snapshot = {"tools": {"kubectl": True}, "kind_clusters": {"clusters": ["c1"]}}
+    await AgentLoop(provider).run_turn(reloaded, "second", emit=emit, request_approval=approve)
+
+    assert len(_pre_probe_msgs(reloaded.messages)) == 1, \
+        "the pre-probe snapshot must not be re-injected after a persist/reload resume"
+
+
 async def test_no_snapshot_means_no_injection(tmp_path):
     if not get_settings().bench_repo.is_dir():
         pytest.skip("repo not present")
