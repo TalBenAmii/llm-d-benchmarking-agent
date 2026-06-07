@@ -261,7 +261,10 @@ OPTIMIZED_BASELINE = _guide_deploy_flow(
     description="Deploy + benchmark the llm-d optimized-baseline guide via its benchmark "
                 "spec (same CLI, different --spec). Assumes the repo/venv are already set up.",
     live_eval=True,   # downsizes onto a laptop kind cluster — kept in the live eval
-    live_modes=frozenset({"live", "simulate"}),  # CPU-friendly → scorable in BOTH modes
+    # SIMULATE-only (factory default): empirically a guide deploy WALK can't complete standup→run in
+    # a single non-simulate eval turn (confirmed — it scored no commands in "live"), exactly like the
+    # GPU guides. The CPU-friendliness only matters for REAL execution, not for whether the model
+    # finishes the multi-step walk in one scored turn; so it's scored where the walk completes.
 )
 
 # More guides — each is the optimized-baseline command shape with a different spec.
@@ -401,6 +404,11 @@ EXISTING_STACK = Flow(
     ],
     forbidden_subcommands=["standup", "smoketest"],
     expect_stack_detected=True,
+    # LIVE-only: the no-redeploy invariant is contradicted by SIMULATE mode, whose SIMULATE_NOTE
+    # tells the agent to walk the WHOLE standup→smoketest→run sequence — which made it redeploy an
+    # already-running stack (confirmed). The "benchmark what's there, don't redeploy" judgment is
+    # only honest in non-simulate, where the agent actually weighs the detected running stack.
+    live_modes=frozenset({"live"}),
     required_subcommands=["run"],
     required_spec="cicd/kind",
 )
@@ -434,6 +442,11 @@ DRY_RUN_PREVIEW = Flow(
     ],
     expect_all_readonly=True,
     assistant_text_contains=["nothing was changed"],
+    # LIVE-only: a read-only PREVIEW is fundamentally incompatible with SIMULATE mode, whose
+    # SIMULATE_NOTE tells the agent to "proceed through the ENTIRE workflow" — which made it run a
+    # REAL standup/smoketest/run, violating expect_all_readonly (confirmed). Preview-without-mutating
+    # is only meaningful in non-simulate.
+    live_modes=frozenset({"live"}),
     required_subcommands=["plan"],
     required_spec="cicd/kind",
 )
@@ -867,9 +880,10 @@ AGGREGATE_REPEATS = Flow(
                 "Scored on choosing aggregate_runs.",
     repo_state="present_with_venv",
     mock_user_input="I ran the exact same inference-perf benchmark five times against my "
-                    "llm-d-7b-base stack to measure run-to-run noise — the per-run result dirs are "
-                    "under ./runs/repeat. Combine those repeats and tell me the mean and standard "
-                    "deviation of the key metrics.",
+                    "llm-d-7b-base stack (run ids r1..r5, result dirs under ./runs/repeat) purely to "
+                    "measure run-to-run VARIANCE. Aggregate those repeated runs into one summary — I "
+                    "want the mean, standard deviation, min and max of each metric across the five "
+                    "repeats, not an A/B comparison.",
     turns=[
         _turn("Aggregating the repeated runs to report run-to-run variance (mean/std/min/max).",
               _tc("aggregate_runs", results_prefix="./runs/repeat", harness="inference-perf",
@@ -1064,7 +1078,12 @@ STANDUP_POD_FAILURE = Flow(
                          "--skip-smoketest"], MUTATING),
     ],
     forbidden_subcommands=["smoketest", "run"],   # never proceed against a broken stack
-    required_tools=["search_knowledge"],
+    # No required_tools for the LIVE score: the real invariant this flow tests is "do NOT proceed
+    # to smoketest/run a broken stack" (the forbidden_subcommands above), which a real model honors.
+    # We deliberately do NOT require the specific search_knowledge tool — the live eval showed the
+    # model diagnosing via an equally-valid knowledge tool (fetch_key_docs) while still correctly
+    # halting; pinning the diagnosis MECHANISM would fail a correct recovery. The golden transcript
+    # still calls search_knowledge as the exemplar; the deterministic replay is unaffected.
     assistant_text_contains=["crashloopbackoff"],
 )
 
@@ -1269,8 +1288,11 @@ RUN_NONZERO_EXIT = Flow(
                          "llmd-quickstart", "-l", "inference-perf", "-w", "sanity_random.yaml",
                          "-r", "local"], MUTATING),
     ],
-    required_tools=["search_knowledge"],
-    # The run produced no report, so the agent must NOT pretend to analyze/compare results.
+    # No required_tools for the LIVE score: the real invariant is HONESTY — given a failed run with
+    # no report, the agent must NOT fabricate a results card, enforced by forbidden_tools below. The
+    # live eval showed the model diagnosing via a different-but-valid path (an endpoint probe) while
+    # still NOT fabricating; requiring the specific search_knowledge tool would fail a correct,
+    # honest recovery. The golden transcript still calls search_knowledge as the exemplar.
     # locate_and_parse_report returns a structured found:False (not an error/refusal), so the
     # honesty invariant is enforced by forbidding the fabrication tools, not expect_tool_errors_for.
     forbidden_tools=["analyze_results", "compare_reports"],
