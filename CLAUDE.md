@@ -51,7 +51,9 @@ and explains the results — driving the `llmdbenchmark` CLI on their behalf.
 
 ## Layout of this project
 - `app/` — FastAPI backend (mechanism): `main.py`, `config.py`, `llm/`, `agent/`, `tools/`,
-  `security/`, `validation/`, `knowledge/loader.py`
+  `security/`, `validation/`, `storage/`, `orchestrator/` (knowledge is loaded by
+  `app/config.py` + `app/agent/prompt.py` from the root `knowledge/` dir — there is no
+  `app/knowledge/` package)
 - `security/allowlist.yaml` — the deny-by-default policy (data)
 - `knowledge/` — the agent's editable brain (markdown/yaml; no Python)
 - `ui/` — static chat UI (`index.html`, `app.js`, `styles.css`)
