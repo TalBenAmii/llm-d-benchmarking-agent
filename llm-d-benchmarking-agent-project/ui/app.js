@@ -356,7 +356,12 @@ function handle(msg) {
       }
       loadSessions();
       if (data.running) { if (cur) cur.running = true; resumeWorking(data.running_elapsed_ms); }  // re-seed elapsed from the server
-      else if (cur) cur.running = false;
+      // Not running per the SERVER (authoritative). The turn may have FINISHED while this chat was
+      // detached, in which case activate() optimistically restarted the spinner from the now-stale
+      // cached `running` flag — and it would tick on at inflated WALL-CLOCK elapsed (incl. the time
+      // spent in other chats), e.g. "3m" for a turn that actually ran 30s. Stop it: the buffered tail
+      // (incremental) or the history rebuild (full) restores the finished transcript.
+      else { if (cur) cur.running = false; stopWorking(); }
       break;
     }
     case "history": renderHistory(data.items || [], data.commands || []); break;
