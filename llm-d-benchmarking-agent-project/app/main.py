@@ -426,6 +426,13 @@ async def ws(websocket: WebSocket) -> None:
     channel = app.state.channels.get(session.id)
     if channel is None:
         channel = Channel(session)
+        # A fresh Channel starts with an empty `pending` dict, but the session may have been
+        # parked at an approval gate when its previous Channel was evicted (or never had one — a
+        # turn parked in the background after the socket dropped). Restore those still-undecided
+        # gates from the persisted `session.in_flight_approvals` so `reemit_pending` can re-surface
+        # the live approval card AND `resolve` can accept the user's decision — otherwise the card
+        # is silently lost on chat-switch / reconnect.
+        channel.restore_pending(session.in_flight_approvals)
         app.state.channels[session.id] = channel
     channel.ws = websocket  # last connection wins (single active tab, Claude-web style)
 

@@ -211,6 +211,37 @@ class Channel:
         self.session.persist()
         return approved
 
+    def restore_pending(self, in_flight: list[dict[str, Any]]) -> None:
+        """Repopulate ``self.pending`` from a session's persisted in-flight approval gates.
+
+        A freshly-created Channel (e.g. after the previous one was evicted, or on reconnect to a
+        chat whose turn is parked at a gate) starts with an empty ``pending`` dict, so
+        :meth:`reemit_pending` would have nothing to re-surface and :meth:`resolve` could not
+        accept the user's decision — the live approval card would be silently lost. Reconstruct a
+        COMPATIBLE entry (``request_id``/``kind``/``payload``/``tool_call_id`` come from the
+        persisted gate) with a FRESH future so a later approve/reject can resolve it.
+
+        The reconstructed future has no ``request_approval`` coroutine awaiting it (that coroutine
+        belonged to the evicted Channel / the original turn task, which may be gone). So entries
+        restored here are tagged ``restored: True``; :meth:`resolve` recognises that tag and does
+        the bookkeeping ``request_approval`` would otherwise do on resolution (clear the in-flight
+        gate + record the decision + persist), instead of relying on an awaiter that isn't there.
+        Idempotent — a gate already live in ``pending`` (the original Channel was reused) is left
+        untouched so its real awaited future is preserved.
+        """
+        loop = asyncio.get_event_loop()
+        for entry in in_flight or []:
+            rid = entry.get("request_id")
+            if not rid or rid in self.pending:
+                continue
+            self.pending[rid] = {
+                "future": loop.create_future(),
+                "kind": entry.get("kind"),
+                "payload": entry.get("payload"),
+                "tool_call_id": entry.get("tool_call_id"),
+                "restored": True,
+            }
+
     async def reemit_pending(self) -> None:
         """Re-surface every still-undecided approval to the freshly-attached socket."""
         for rid, p in list(self.pending.items()):
@@ -220,8 +251,23 @@ class Channel:
 
     def resolve(self, rid: str | None, approved: bool) -> bool:
         """Fulfil a pending approval from a client ``approval`` message. Idempotent."""
-        p = self.pending.get(rid) if rid else None
-        if p and not p["future"].done():
-            p["future"].set_result(bool(approved))
-            return True
-        return False
+        if not rid:
+            return False
+        p = self.pending.get(rid)
+        if not p or p["future"].done():
+            return False
+        approved = bool(approved)
+        p["future"].set_result(approved)
+        if p.get("restored"):
+            # No ``request_approval`` coroutine is awaiting this future (it was reconstructed on a
+            # fresh Channel after the original turn/Channel was gone), so its resolution bookkeeping
+            # — drop the gate from the in-flight set, record the decision for history replay, and
+            # persist — must happen here instead. Then drop it from pending so it can't re-surface.
+            self.pending.pop(rid, None)
+            self.session.clear_in_flight_approval(rid)
+            self.session.record_approval({
+                "tool_call_id": p.get("tool_call_id"), "request_id": rid,
+                "kind": p.get("kind"), "payload": p.get("payload"), "approved": approved,
+            })
+            self.session.persist()
+        return True

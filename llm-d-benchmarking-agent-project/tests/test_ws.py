@@ -826,3 +826,58 @@ def test_ws_pending_approval_survives_channel_eviction():
             for _ in range(40):
                 if ws3.receive_json()["type"] == "done":
                     break
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_fresh_channel_restores_pending_and_resolves():
+    """BUG G regression: when the in-memory Channel is gone and a brand-new Channel is created
+    for the session (chat switch / reconnect), its `pending` dict is restored from the persisted
+    `session.in_flight_approvals` so the LIVE approval card is re-surfaced by `reemit_pending`
+    (not silently lost), AND a subsequent approval on the fresh channel resolves the gate:
+    it clears the in-flight set and records the decision (persisted for history replay)."""
+    from app.agent.channel import Channel
+    from app.main import app
+
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider(list(_PARK_TURNS))
+        with client.websocket_connect("/ws") as ws1:
+            sid = ws1.receive_json()["data"]["session_id"]
+            rid = _drive_to_parked_gate(ws1)
+
+        # Drop the in-memory Channel entirely (eviction). The persisted in-flight approval is the
+        # only remaining record of the gate; the original future is gone with the old Channel.
+        app.state.channels.pop(sid, None)
+        session = app.state.sessions.get(sid)
+        assert [a["request_id"] for a in session.in_flight_approvals] == [rid]
+
+        # Reopen: a brand-new Channel is constructed and `restore_pending` repopulates `pending`
+        # from session.in_flight_approvals, so `reemit_pending` re-surfaces the live card.
+        with client.websocket_connect(f"/ws?session={sid}") as ws2:
+            fresh = app.state.channels.get(sid)
+            assert isinstance(fresh, Channel)
+            assert rid in fresh.pending, "fresh Channel must restore pending from session state"
+            assert fresh.pending[rid].get("restored") is True
+
+            saw_reapproval = False
+            for _ in range(30):
+                ev = ws2.receive_json()
+                if ev["type"] == "approval_request" and ev["data"]["request_id"] == rid:
+                    saw_reapproval = True
+                    break
+            assert saw_reapproval, "pending approval must be re-emitted live on the fresh Channel"
+
+            # Approve on the fresh channel. Its restored future has no awaiting run_turn coroutine,
+            # so resolve() itself does the bookkeeping: clears the in-flight gate + records the
+            # decision. (No `done` is expected — the original parked turn task is gone.)
+            ws2.send_json({"type": "approval", "request_id": rid, "approved": True})
+            # Round-trip a ping so the handler has provably processed the approval above (messages
+            # are handled serially) before we assert on the resulting state.
+            ws2.send_json({"type": "ping"})
+            for _ in range(10):
+                if ws2.receive_json()["type"] == "pong":
+                    break
+
+        # The gate is no longer pending and the decision was recorded for history replay.
+        session = app.state.sessions.get(sid)
+        assert session.in_flight_approvals == []
+        assert any(a["request_id"] == rid and a["approved"] is True for a in session.approvals)
