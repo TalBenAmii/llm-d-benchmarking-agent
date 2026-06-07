@@ -216,6 +216,7 @@ value_constraints:
   cluster_name:    { regex: "^[a-z0-9]([-a-z0-9]{0,40}[a-z0-9])?$" }   # kind cluster name
   duration:        { regex: "^[0-9]+(s|m|h)?$" }                       # e.g. 120s, 5m
   kind_version:    { regex: "^v[0-9]+\\.[0-9]+\\.[0-9]+$" }            # e.g. v0.31.0
+  metrics_server_version: { regex: "^v[0-9]+\\.[0-9]+\\.[0-9]+$" }     # e.g. v0.7.2
   # ---- orchestrator (Phase 3): K8s Job lifecycle via kubectl ----
   manifest_path:   { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.ya?ml$" }  # a .yaml/.yml file; no '..' traversal
   resource_name:   { regex: "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$" }  # RFC1123 object name
@@ -528,6 +529,26 @@ executables:
       "--kubectl": {}
       "--all": {}
       "--kind-version": { takes_value: true, value: { ref: kind_version } }
+      "-h": {}
+      "--help": {}
+
+  # Vetted, project-local metrics-server installer. NO spec or guide installs the in-cluster
+  # metrics-server (the Kubernetes Metrics API that `kubectl top` / observe_run_metrics / the
+  # live resource sparklines read) — it is a PER-CLUSTER add-on. This script installs it on the
+  # CURRENT kube-context's cluster and nothing else. The agent invokes it via run_command
+  # (mutating → approval). The *only* commands it can run are the pinned `kubectl` calls baked
+  # into the audited script — the allowlist grants NO raw kubectl apply/patch. Resolved against
+  # the agent project root by the runner's `project-script` invoke type. WHEN to offer it (live
+  # stats requested + observe_run_metrics reports available:false + the cluster lacks it) is
+  # JUDGMENT in knowledge/observability.md, never here. On kind, pass --kubelet-insecure-tls.
+  install_metrics_server.sh:
+    flat: true
+    mode: mutating
+    timeout_s: 300
+    runner: { invoke: "project-script", script: "scripts/install_metrics_server.sh" }
+    flags:
+      "--kubelet-insecure-tls": {}
+      "--version": { takes_value: true, value: { ref: metrics_server_version } }
       "-h": {}
       "--help": {}
 

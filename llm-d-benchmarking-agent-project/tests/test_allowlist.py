@@ -168,6 +168,23 @@ def test_install_prereqs_kind_version_allowed(allowlist):
     assert d.allowed and d.mode == MUTATING
 
 
+def test_install_metrics_server_allowed_and_mutating(allowlist):
+    # The per-cluster metrics-server installer is mutating (touches kube-system) → approval-gated.
+    d = allowlist.validate(["install_metrics_server.sh", "--kubelet-insecure-tls"])
+    assert d.allowed and d.mode == MUTATING and d.requires_approval
+
+
+def test_install_metrics_server_version_allowed(allowlist):
+    d = allowlist.validate(["install_metrics_server.sh", "--version", "v0.7.2"])
+    assert d.allowed and d.mode == MUTATING
+
+
+def test_install_metrics_server_has_governance_timeout(allowlist):
+    # The mutating installer declares a per-command deadline (DATA, not Python).
+    d = allowlist.validate(["install_metrics_server.sh"])
+    assert d.timeout_s == 300
+
+
 def test_install_deps_allowed_and_mutating(allowlist):
     # UPSTREAM llm-d guide client-prereq installer (helm/helmfile/kustomize/yq/kubectl).
     d = allowlist.validate(["install-deps.sh"])
@@ -304,6 +321,11 @@ def test_install_prereqs_unknown_flag_now_allowed(allowlist):
 def test_install_prereqs_bad_kind_version_denied(allowlist):
     # kind_version must look like vX.Y.Z
     assert not allowlist.validate(["install_prereqs.sh", "--kind", "--kind-version", "latest; rm -rf /"]).allowed
+
+
+def test_install_metrics_server_bad_version_denied(allowlist):
+    # metrics_server_version must look like vX.Y.Z — no shell injection through --version.
+    assert not allowlist.validate(["install_metrics_server.sh", "--version", "latest; rm -rf /"]).allowed
 
 
 def test_install_deps_metachar_arg_denied(allowlist):

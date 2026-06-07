@@ -1,6 +1,7 @@
 """Tests for the generic run_command tool, the fetch_key_docs context tool, the vetted
-install_prereqs.sh prerequisite installer, and the UPSTREAM llm-d guide client-prereq
-installer install-deps.sh (allowlist + runner wiring)."""
+install_prereqs.sh prerequisite installer, the UPSTREAM llm-d guide client-prereq installer
+install-deps.sh, and the per-cluster install_metrics_server.sh installer (allowlist + runner
+wiring)."""
 from __future__ import annotations
 
 import os
@@ -55,6 +56,16 @@ async def test_run_command_install_deps_requires_approval(tool_ctx):
         await command.run_command(tool_ctx, argv=["install-deps.sh"])
 
 
+async def test_run_command_install_metrics_server_requires_approval(tool_ctx):
+    # The per-cluster metrics-server installer is mutating — it must route through approval too.
+    async def reject(kind, payload):
+        return False
+
+    tool_ctx.request_approval = reject
+    with pytest.raises(ApprovalRejected):
+        await command.run_command(tool_ctx, argv=["install_metrics_server.sh", "--kubelet-insecure-tls"])
+
+
 async def test_run_command_schema_requires_argv(tool_ctx):
     result = await dispatch(tool_ctx, "run_command", {})
     assert result.get("error") == "invalid arguments"
@@ -69,6 +80,19 @@ def test_install_prereqs_resolves_to_executable_project_script(tool_ctx):
     assert script.name == "install_prereqs.sh"
     assert script.is_file() and os.access(script, os.X_OK)
     assert real[1:] == ["--all"]
+
+
+def test_install_metrics_server_resolves_to_executable_project_script(tool_ctx):
+    # The metrics-server installer is also a vetted `project-script`: it must resolve to the
+    # real, executable file shipped with the agent project, flags passed through verbatim.
+    entry = tool_ctx.allowlist.executable("install_metrics_server.sh")
+    real, cwd = tool_ctx.runner.resolve(
+        ["install_metrics_server.sh", "--kubelet-insecure-tls"], entry
+    )
+    script = Path(real[0])
+    assert script.name == "install_metrics_server.sh"
+    assert script.is_file() and os.access(script, os.X_OK)
+    assert real[1:] == ["--kubelet-insecure-tls"]
 
 
 def test_install_deps_resolves_to_upstream_guide_script(tool_ctx):

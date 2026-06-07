@@ -163,6 +163,7 @@ result.
 |---|---|---|
 | Prometheus metrics endpoint (agent's own counters/histograms/gauges) | `app/observability/metrics.py`, `GET /metrics` | 🟢 `curl /metrics` — exposes `llmdbench_agent_commands_total`, `_command_duration_seconds`, `llmdbench_orchestrator_run_attempts_total`, `_run_faults_total`, `_runs_in_flight`, `_runs_submitted_total`, `_runs_terminal_total`. |
 | Live cluster resource usage during a run (`kubectl top`) | `app/tools/observe.py`, `observe_run_metrics` tool | 🔵 Call it while a run is in flight (needs the in-cluster metrics-server, which kind / the `cicd/kind` spec do NOT install — add it separately). |
+| Per-cluster metrics-server installer (enables the live stats above) | `scripts/install_metrics_server.sh`, `install_metrics_server.sh` allowlist exec | 🔵 When `observe_run_metrics` reports `available:false`, the agent offers `run_command(["install_metrics_server.sh","--kubelet-insecure-tls"])` (mutating → approval); judgment in `knowledge/observability.md`. |
 | Grafana dashboard + Prometheus scrape config + **alert rules** | `deploy/observability/{grafana-dashboard.json,prometheus-scrape.yaml,alerts.rules.yaml}` | ⚪ Files render/import directly. |
 
 ---

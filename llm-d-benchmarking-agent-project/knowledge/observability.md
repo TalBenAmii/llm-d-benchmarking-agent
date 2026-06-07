@@ -61,6 +61,36 @@ is running** to watch resource pressure on the model server / harness pods.
 Do not invent or estimate utilization numbers. If `observe_run_metrics` returns no rows, say
 so; never fabricate a percentage.
 
+### Making live stats work — installing metrics-server (per-cluster, approval-gated)
+
+The metrics-server is a **per-cluster** add-on, not a per-spec/per-guide one: install it ONCE
+on a given cluster and *every* run on that cluster gets live stats (the `cicd/kind` quickstart,
+`guides/optimized-baseline`, anything). It is NOT bundled with kind, the `cicd/kind` spec, or
+any llm-d guide, so on a fresh kind cluster live stats are unavailable until you add it.
+
+When `observe_run_metrics` (or the live sparklines) reports `available: false` AND the user
+wants live resource stats, OFFER to install it — don't do it silently (it is mutating and
+approval-gated). The vetted installer is a project script run via `run_command`:
+
+- **kind / any self-signed-kubelet cluster** (the quickstart path):
+  `run_command(argv=["install_metrics_server.sh", "--kubelet-insecure-tls"])`
+  The `--kubelet-insecure-tls` flag is REQUIRED on kind — without it the metrics-server pod
+  fails its TLS handshake to the kubelet and never becomes Ready.
+- **a normal cluster with proper kubelet certs**:
+  `run_command(argv=["install_metrics_server.sh"])` (pin a release with `--version vX.Y.Z`).
+
+The script applies the pinned metrics-server manifest into `kube-system`, waits for the rollout,
+and verifies `kubectl top` responds. It is idempotent (safe to re-run). Best timing: right after
+the cluster is created / at standup, so the first run already has live stats — but it can be run
+any time, including mid-session before a run.
+
+**When to SKIP installing it (judgment, probe first):** some clusters already serve the Metrics
+API — managed Kubernetes like **GKE** ships metrics-server by default, and **OpenShift** has its
+own monitoring stack (`oc adm top` / cluster monitoring) rather than the upstream metrics-server.
+Probe with `observe_run_metrics` first: if it already returns `available: true`, do nothing. Only
+offer the install when it is genuinely absent and the user actually wants the live view. (See
+`knowledge/infra_providers` for per-provider differences.)
+
 ## 3. Benchmark monitoring — activating `results.observability` (DEFAULT ON)
 
 The Benchmark Report v0.2 carries a `results.observability` block (KV-cache hit rate, schedule
