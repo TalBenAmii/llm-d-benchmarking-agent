@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(//home/tal/kind-quickstart-guide/llm-d-benchmark/**)",
+      "Edit(//home/tal/kind-quickstart-guide/llm-d/**)",
+      "Write(//home/tal/kind-quickstart-guide/llm-d-benchmark/**)",
+      "Write(//home/tal/kind-quickstart-guide/llm-d/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/tal/kind-quickstart-guide/llm-d-benchmarking-agent-project/.claude/hooks/ruff_autofix.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "clear|logout|other",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/tal/kind-quickstart-guide/llm-d-benchmarking-agent-project/.claude/hooks/reflect_session_end.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
