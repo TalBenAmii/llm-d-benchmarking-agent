@@ -101,8 +101,8 @@ bespoke integration test.
 
 ## How to add a phase
 
-The build-out is organized into phases (see `ROADMAP.md` / `PROGRESS.md`, owned by the
-integrator). When implementing one:
+The build-out is organized into phases (per-phase history lives in git; remaining/deferred
+phases are tracked in `ROADMAP_V4.md`, owned by the integrator). When implementing one:
 
 1. Work on a dedicated branch/worktree off the integration branch — **never `main`**.
 2. Keep changes scoped to the phase. Obey both laws above.

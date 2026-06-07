@@ -1,7 +1,7 @@
 # API & Tool Reference
 
 Two interfaces: the **HTTP/WebSocket API** the browser (or any client) speaks to the
-backend, and the **agent tool surface** — the 22 schema-validated tools that are the LLM's
+backend, and the **agent tool surface** — the 28 schema-validated tools that are the LLM's
 *entire* set of actions. The tool input schemas are defined in
 [`app/tools/schemas.py`](../app/tools/schemas.py) (the single source of truth, emitted to
 the LLM as JSON Schema); the registry + descriptions live in
@@ -92,6 +92,9 @@ Every tool call is validated against its Pydantic input model before the handler
 | `read_knowledge` | `name` | Load the full text of one of the agent's on-demand `knowledge/` guides by topic (e.g. `read_knowledge('capacity')`). The system prompt inlines the core guides and indexes the rest; this pulls one in before interpreting that kind of result or decision. Unknown name → returns the valid topics. |
 | `read_repo_doc` | `path`, `max_bytes` | Read one doc/spec file from inside a read-only repo (path must resolve inside a repo; `..` blocked). |
 | `fetch_key_docs` | `task`, `max_bytes_each` | Fetch the **live** content of the authoritative docs pinned in `knowledge/key_docs.yaml`, filtered by task. Called to ground the agent in the real procedure before planning a deploy. |
+| `search_knowledge` | `query`, `limit`, `include_repo_docs` | Keyword/topic search across the agent's `knowledge/` guides + the curated upstream repo-doc index when you don't know the exact basename — deterministic lexical ranking (no model call), returning the best guides + a snippet and a ready `read_knowledge(...)`/`read_repo_doc(...)` load hint. Reach for it at a troubleshooting / "how do I…" moment. |
+| `advise_accelerators` | `namespace` | Accelerator / CPU-inferencing pre-flight ("can my hardware run this?"): reads each node's advertised resources via `kubectl get nodes -o json` and reports which accelerator key it advertises (`nvidia.com/gpu` / amd / gaudi / tpu / Intel XPU) vs CPU-only, plus per-node cpu/memory. Facts only, no verdict; complements `check_capacity`. |
+| `discover_stack` | `endpoint_url`, `kubeconfig`, `context`, `filter_type` | Optional richer environment capture: trace the live llm-d stack behind an OpenAI-compatible endpoint via `llm-d-discover` (its own read-only RBAC + secret redaction), write a BR-v0.2 `{scenario:{stack:[…]}}` capture into the session workspace, and return structured stack facts (component/model/role counts, parallelism). |
 
 ### Plan & pre-flight
 
@@ -101,6 +104,7 @@ Every tool call is validated against its Pydantic input model before the handler
 | `check_capacity` | read-only | `spec`, `overrides`, `enforce` | Capacity pre-flight ("will this fit?") via the benchmark repo's own planner. `enforce=True` tags shortfalls as deployment-halting errors. Interpreted with `knowledge/capacity.md`. |
 | `check_endpoint_readiness` | read-only | `namespace`, `spec`, `probe_cli_endpoints` | Endpoint-readiness pre-flight before benchmarking: reads `kubectl get endpoints` for a *ready backing endpoint* (corroborated by the CLI's read-only `run --list-endpoints`). The orchestrator gates on this so it never benchmarks an unready stack. Interpreted with `knowledge/orchestrator.md`. |
 | `generate_doe_experiment` | read-only | `name`, `run_factors`, `setup_factors`, `run_constants`, `setup_constants`, `harness`, `profile`, `target_filename` | Author a DoE experiment YAML: cross-products agent-chosen *factors × levels* into the full treatments matrix, writes it into the session workspace (never the read-only repos), and validates it structurally against the repo's experiment-example format. *Which* factors/levels to sweep is the LLM's judgment, grounded in `knowledge/sweep_playbook.md`. |
+| `convert_guide_to_scenario` | read-only | `name`, `env`, `sources`, `scenario`, `harness`, `profile`, `source_ref` | Author a benchmark scenario from an arbitrary llm-d deployment guide — **workspace-only** (unlike upstream's `convert-guide`, never writes into the read-only repos). Resolve the guide's Helm/kustomize config to the `LLMDBENCH_*` env map, grounded in `knowledge/convert_guide`. |
 
 ### Prepare (mutating)
 
@@ -109,6 +113,7 @@ Every tool call is validated against its Pydantic input model before the handler
 | `ensure_repos` | approve | `repos`, `ref` | Clone `llm-d-benchmark`/`llm-d` if missing (URL-allowlisted; idempotent; never overwrites). |
 | `run_setup` | approve | `use_uv`, `force` | Run `install.sh` in the benchmark repo to build its venv + verify tools. Required before any `llmdbenchmark` command. |
 | `write_and_validate_config` | approve | `artifact_type`, `target_filename`, `content` | Write a generated workload/run config into the session workspace and validate it. (MVP uses stock profiles; rarely needed.) |
+| `provision_hf_secret` | approve | `namespace`, `name` | Create/update the cluster's HuggingFace token Secret (default `llm-d-hf-token`) so a gated-model standup can pull weights — the follow-on to `check_capacity`'s gated-access pre-flight. The HF token stays backend-only (read from the backend `HF_TOKEN` env by the vetted script; never an input, never in argv or logs). |
 
 ### Execute & orchestrate
 
@@ -127,6 +132,7 @@ Every tool call is validated against its Pydantic input model before the handler
 | `compare_reports` | `sources` / `experiment_dir`, `labels`, `baseline_index` | Compare 2+ reports of the **same** harness side by side (an A/B, or a whole DoE sweep): per-metric deltas vs a baseline + the winner per metric. |
 | `compare_harness_runs` | `sources` (2+), `labels` | Cross-harness comparison: contrast reports from **different** harnesses (e.g. inference-perf SLO vs guidellm throughput) against the same stack. Reports which metrics ≥2 harnesses both measured (cross-validate) with **no** cross-harness winner. Interpreted with `knowledge/multi_harness.md`. |
 | `analyze_results` | `slo`, `sources` / `experiment_dir`, `labels` | SLO-aware filtering + goodput estimate + Pareto/DoE frontier. Pass the `SLOTargets` from the approved plan. Returns per-run SLO verdict + goodput estimate; for a sweep, the Pareto-optimal configs + SLO-feasible frontier. |
+| `aggregate_runs` | `results_prefix`, `harness`, `stack`, `run_ids` (≥2), `output_name` | Cross-run aggregation for repeated runs of the **same** benchmark: runs the benchmark repo's own `docs/analysis/aggregate_runs.py` over an existing results dir and writes `aggregated_summary.{txt,json}` into the session workspace, returning per-metric mean/std/min/max (run-to-run variance). |
 
 ### History (read-only — never touches the cluster)
 
