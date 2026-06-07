@@ -2,11 +2,12 @@
 
 Pure-DATA phase: the rejected-vs-evicted-vs-broken judgment lives ENTIRELY in
 knowledge/epp_headers.yaml, never in a Python if/elif. These tests assert the data catalog
-loads, is reachable via read_knowledge("epp_headers"), is inlined into every system prompt
-(listed in CORE_KNOWLEDGE), documents the x-llm-d-request-dropped-reason enum (both
-rejected-saturated and evicted-priority) and the four SLO/objective/fairness header names, the
-deprecated aliases, and frames drops as capacity/eviction (not breakage) with a remedy. The
-results-interpretation guide routes the agent here on a non-100% success / 429 / drop header.
+loads, is reachable via read_knowledge("epp_headers"), is ON-DEMAND (de-inlined: NOT in
+CORE_KNOWLEDGE / not baked into every system prompt, but listed in the on-demand knowledge
+index so the agent knows to load it — results_interpretation.md routes here on a drop/429),
+documents the x-llm-d-request-dropped-reason enum (both rejected-saturated and
+evicted-priority) and the four SLO/objective/fairness header names, the deprecated aliases,
+and frames drops as capacity/eviction (not breakage) with a remedy.
 
 No GPU, no live cluster, no network, no real benchmark run.
 """
@@ -61,20 +62,21 @@ def test_epp_headers_reachable_via_read_knowledge(tool_ctx):
     assert out2["name"] == "epp_headers.yaml"
 
 
-# ---- (2) listed in CORE_KNOWLEDGE -> inlined into every system prompt -------
+# ---- (2) de-inlined: on-demand only (NOT in CORE), but listed in the index ----
 
-def test_epp_headers_listed_in_core_knowledge():
-    assert "epp_headers.yaml" in CORE_KNOWLEDGE
+def test_epp_headers_not_in_core_knowledge():
+    # De-inlined to save ~2.5k tokens off the always-on prefix: this is a late-phase
+    # failure-decoder, not interview/plan/deploy material. It loads on demand instead.
+    assert "epp_headers.yaml" not in CORE_KNOWLEDGE
 
 
-def test_epp_headers_inlined_into_system_prompt(tool_ctx):
+def test_epp_headers_indexed_for_on_demand_in_system_prompt(tool_ctx):
     prompt = build_system_prompt(tool_ctx)
-    # Inlined verbatim as a core knowledge section (not merely indexed for on-demand load).
-    assert "# Knowledge: epp_headers.yaml" in prompt
-    # The decode-critical literals reach the prompt so the agent can map without another tool call.
-    assert "x-llm-d-request-dropped-reason" in prompt
-    for reason in REQUIRED_DROPPED_REASONS:
-        assert reason in prompt
+    # NOT inlined verbatim as a core section anymore...
+    assert "# Knowledge: epp_headers.yaml" not in prompt
+    # ...but listed in the on-demand knowledge index so the agent knows to read_knowledge() it
+    # (results_interpretation.md routes here when a run shows drops/429s).
+    assert "epp_headers (epp_headers.yaml)" in prompt
 
 
 # ---- (3) documents the dropped-reason enum (rejected/evicted/broken JUDGMENT) ----

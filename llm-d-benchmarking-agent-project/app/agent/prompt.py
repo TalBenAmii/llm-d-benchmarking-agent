@@ -92,12 +92,14 @@ returns synthetic success and nothing is deployed or benchmarked. Therefore:
 # mechanism only — the "what to load when" lives in the index text and the tool
 # descriptions (the agent's reasoning), not in any decision branch here.
 #
-# De-inlined (now on-demand only, NOT in CORE): welllit_path_advisor.yaml and
-# results_interpretation.md — the two LARGEST knowledge files AND the latest-phase ones. The
-# well-lit-path advisor is consulted at PLANNING time (propose_session_plan cues it); results
-# interpretation only AFTER a Benchmark Report exists (locate_and_parse_report cues it). Both
-# have an explicit tool cue so the model loads them on demand exactly when needed. Together
-# this trims ~14.8k chars (~4.2k tokens) off EVERY LLM call.
+# De-inlined (now on-demand only, NOT in CORE): welllit_path_advisor.yaml,
+# results_interpretation.md, and epp_headers.yaml — large, latest-phase guides that each have
+# an explicit cue so the model loads them on demand exactly when needed. The well-lit-path
+# advisor is consulted at PLANNING time (propose_session_plan cues it); results interpretation
+# only AFTER a Benchmark Report exists (locate_and_parse_report cues it); the EPP drop-reason
+# decoder only when a run shows drops/429s (results_interpretation.md routes there via
+# read_knowledge("epp_headers")). Keeping these three out of CORE trims ~24k chars
+# (~6.6k tokens) off EVERY LLM call; they stay reachable via the on-demand index + read_knowledge.
 CORE_KNOWLEDGE = (
     "glossary.md",
     "preconditions.md",
@@ -105,7 +107,6 @@ CORE_KNOWLEDGE = (
     "usecase_to_profile.yaml",
     "quickstart_playbook.md",
     "key_docs.yaml",
-    "epp_headers.yaml",
     "conversation_style.md",
 )
 
