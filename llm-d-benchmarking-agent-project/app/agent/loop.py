@@ -74,6 +74,17 @@ class AgentLoop:
             session.catalog_injected = True
         session.messages.append({"role": "user", "content": user_text})
 
+        # Surface a brand-new chat in the sidebar NOW. The chat only becomes "real" (has a user
+        # message → passes SessionManager.list()'s no-messages filter) at this line, but list()
+        # reads state.json from disk and the turn's own persist() is the FINAL line below — so
+        # without this early write the chat first appears in the sidebar only at end-of-turn
+        # `done`, tens of seconds later for a long benchmark turn. Persist once here and ping the
+        # UI to refetch its sidebar; the end-of-turn persist() still records the full transcript.
+        # SESSION_SAVED is a NON_TURN_EVENT (not buffered/seq-stamped — a mid-turn reconnect
+        # already finds the chat on disk), so it is cheap and never pollutes the replay buffer.
+        session.persist()
+        await emit(events.SESSION_SAVED, {})
+
         # Context management: compact OLD, superseded tool-result blobs in place once the
         # replayed transcript grows past the threshold (mechanism in app/agent/context_mgmt.py).
         # Never breaks tool-call/result pairing and never touches the recent window.

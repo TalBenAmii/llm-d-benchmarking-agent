@@ -362,6 +362,10 @@ function handle(msg) {
     case "history": renderHistory(data.items || [], data.commands || []); break;
     case "welcome": renderWelcome(data); break;
     case "suggestions": renderSuggestions(data.chips || []); break;
+    // The backend persisted this chat at the START of the turn — refresh the sidebar NOW so a
+    // brand-new chat (e.g. one started by clicking an option chip) appears immediately instead of
+    // only when the turn finishes (`done`, which also calls loadSessions, possibly tens of seconds later).
+    case "session_saved": loadSessions(); break;
     case "assistant_text":
       removeWelcomeCard();                          // the conversation has started — clear the chips
       addBubble("assistant", data.text);

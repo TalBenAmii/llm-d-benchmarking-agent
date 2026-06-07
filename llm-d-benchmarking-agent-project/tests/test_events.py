@@ -11,6 +11,9 @@ from app.agent.channel import Channel
 def test_new_events_are_non_turn():
     assert events.SUGGESTIONS in events.NON_TURN_EVENTS
     assert events.RESOURCE_STATS in events.NON_TURN_EVENTS
+    # session_saved is a one-shot "refresh your sidebar" ping at turn start; a mid-turn reconnect
+    # already finds the chat via /api/sessions, so it must not be buffered/replayed either.
+    assert events.SESSION_SAVED in events.NON_TURN_EVENTS
 
 
 class _FakeSession:
@@ -25,9 +28,11 @@ async def test_channel_does_not_buffer_resource_stats():
     ch.begin_turn()
     await ch.emit(events.RESOURCE_STATS, {"available": True, "rows": []})
     await ch.emit(events.SUGGESTIONS, {"chips": []})
-    # A real turn event IS buffered, proving the buffer works and the two above were excluded.
+    await ch.emit(events.SESSION_SAVED, {})
+    # A real turn event IS buffered, proving the buffer works and the ones above were excluded.
     await ch.emit(events.ASSISTANT_TEXT, {"text": "hi"})
     types = [f["type"] for f in ch.buffered_events]
     assert events.RESOURCE_STATS not in types
     assert events.SUGGESTIONS not in types
+    assert events.SESSION_SAVED not in types
     assert events.ASSISTANT_TEXT in types

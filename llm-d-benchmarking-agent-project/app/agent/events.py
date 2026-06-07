@@ -32,6 +32,12 @@ Server -> client:
   suggestions      {chips:[{label,prompt}]}— start-of-chat suggestion chips, emitted ONCE on a
                                             brand-new connection (never on resume) right after
                                             `welcome`. A connection-lifecycle frame, not a turn event.
+  session_saved    {}                       — the session was just persisted at the START of a turn
+                                            (right after the user message is recorded), so a
+                                            brand-new chat lands on disk and the client can refresh
+                                            its recent-chats sidebar IMMEDIATELY instead of waiting
+                                            for end-of-turn `done`. A NON_TURN_EVENT (not buffered):
+                                            a mid-turn reconnect already finds the chat via /api/sessions.
   results_card     {model, harness, ...}    — DETERMINISTIC structured results summary, emitted by
                                             the backend right after a locate_and_parse_report /
                                             analyze_results tool result that carried a validated
@@ -69,6 +75,7 @@ CANCELLED = "cancelled"
 USAGE = "usage"
 SUGGESTIONS = "suggestions"
 WELCOME = "welcome"
+SESSION_SAVED = "session_saved"
 RESULTS_CARD = "results_card"
 RESOURCE_STATS = "resource_stats"
 DONE = "done"
@@ -89,9 +96,12 @@ PONG = "pong"
 #     They are frequent and disposable; buffering them would evict the REAL turn events (tool
 #     calls, command lines, assistant text) from the bounded ring, so a mid-turn reconnect would
 #     replay a wall of stat samples instead of the progress it actually missed.
+#   * session_saved — a one-shot "the chat is now on disk; refresh your sidebar" ping emitted at
+#     the start of a turn. A mid-turn reconnect already finds the chat via /api/sessions, so
+#     buffering/replaying it would be pure noise.
 # results_card is DELIBERATELY NOT here: it is a TURN event (emitted during the turn, right after
 # the report/analysis tool result), so it must be buffered + seq-stamped + replayed like a
 # tool_call/tool_result so a mid-turn reconnect still catches it.
 # The buffer therefore holds only the in-flight TURN's meaningful events, exactly as replay_live
 # promises.
-NON_TURN_EVENTS = frozenset({READY, HISTORY, PONG, WELCOME, SUGGESTIONS, RESOURCE_STATS})
+NON_TURN_EVENTS = frozenset({READY, HISTORY, PONG, WELCOME, SUGGESTIONS, SESSION_SAVED, RESOURCE_STATS})
