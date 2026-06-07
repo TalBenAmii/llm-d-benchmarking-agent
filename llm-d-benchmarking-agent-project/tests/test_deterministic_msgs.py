@@ -74,67 +74,28 @@ def test_welcome_is_a_non_turn_lifecycle_event():
 
 # ---- structured results card -----------------------------------------------
 
-def _report_result(**over):
-    """A locate_and_parse_report-shaped result with a validated summary."""
+def test_results_card_not_built_for_report_tool():
+    """A locate_and_parse_report result yields NO results_card: the single-run report's
+    metrics + charts are rendered by the frontend report-summary card (renderReportSummary),
+    driven from this same validated result. Building a second, chart-less table card here only
+    duplicated those numbers, so build_results_card deliberately returns None for this tool —
+    regardless of whether the report was found/valid/simulated or carried charts."""
     summary = {
         "model": "facebook/opt-125m", "harness": "inference-perf", "run_uid": "uid-1",
         "duration": 30, "requests_total": 500, "requests_failures": 0,
         "success_rate_pct": 100.0,
-        "latency": {
-            "ttft": {"units": "ms", "mean": 120.0, "p99": 210.0},
-            "request_latency": {"units": "ms", "mean": 900.0, "p99": 1500.0},
-        },
+        "latency": {"ttft": {"units": "ms", "mean": 120.0, "p99": 210.0}},
         "throughput": {"output_token_rate": {"units": "tokens/s", "mean": 4200.0}},
     }
-    result = {"found": True, "valid": True, "report_path": "/x/benchmark_report_v0.2.yaml",
-              "summary": summary}
-    result.update(over)
-    return result
-
-
-def test_results_card_from_report_single_run():
-    card = build_results_card("locate_and_parse_report", _report_result())
-    assert card is not None
-    assert card["kind"] == "run"
-    assert card["model"] == "facebook/opt-125m"
-    assert card["harness"] == "inference-perf"
-    assert card["success_rate_pct"] == 100.0
-    labels = {m["label"]: m for m in card["metrics"]}
-    assert "Time to first token" in labels
-    assert labels["Time to first token"]["value"] == 120.0  # prefers mean
-    assert labels["Time to first token"]["units"] == "ms"
-    assert "Output token throughput" in labels
-
-
-def test_results_card_only_includes_present_metrics():
-    """A report carrying only throughput yields no latency rows (never fabricated)."""
-    r = _report_result()
-    r["summary"]["latency"] = {}
-    card = build_results_card("locate_and_parse_report", r)
-    assert card is not None
-    labels = [m["label"] for m in card["metrics"]]
-    assert "Time to first token" not in labels
-    assert "End-to-end request latency" not in labels
-    assert "Output token throughput" in labels
-
-
-def test_results_card_report_not_found_or_invalid_returns_none():
+    valid = {"found": True, "valid": True, "report_path": "/x/benchmark_report_v0.2.yaml",
+             "summary": summary}
+    assert build_results_card("locate_and_parse_report", valid) is None
+    assert build_results_card("locate_and_parse_report",
+                              {**valid, "simulated": True}) is None
+    assert build_results_card("locate_and_parse_report",
+                              {**valid, "charts": [{"path": "analysis/x.png", "title": "x"}]}) is None
     assert build_results_card("locate_and_parse_report", {"found": False}) is None
     assert build_results_card("locate_and_parse_report", {"found": True, "valid": False}) is None
-
-
-def test_results_card_simulated_flag_passthrough():
-    card = build_results_card("locate_and_parse_report",
-                              _report_result(simulated=True))
-    assert card is not None and card.get("simulated") is True
-
-
-def test_results_card_charts_passthrough():
-    card = build_results_card(
-        "locate_and_parse_report",
-        _report_result(charts=[{"path": "analysis/x.png", "title": "x"}]),
-    )
-    assert card is not None and card["charts"]
 
 
 def test_results_card_from_analysis_single_run_slo():
@@ -181,25 +142,41 @@ def test_results_card_from_analysis_sweep():
 
 
 def test_results_card_ignores_other_tools():
-    """Only the report/analysis tools produce a card; everything else returns None."""
+    """Only analyze_results produces a card; every other tool (including the report tool, whose
+    structured view is the frontend report-summary card) returns None."""
     assert build_results_card("probe_environment", {"found": True, "summary": {}}) is None
     assert build_results_card("list_catalog", {"specs": []}) is None
     assert build_results_card("analyze_results", {"analyzed": False, "reason": "x"}) is None
 
 
+def _analysis_result():
+    return {
+        "analyzed": True, "n": 1,
+        "slo_targets": {"ttft_ms": 200.0, "percentile": "p99"},
+        "runs": [{
+            "label": "run1", "model": "m", "run_uid": "u",
+            "slo": {"overall_met": True, "checked_count": 1, "success_rate_pct": 100.0,
+                    "verdicts": [{"metric": "ttft", "statistic": "p99", "direction": "max",
+                                  "target": 200.0, "observed": 150.0, "units": "ms", "met": True}]},
+        }],
+        "skipped": [],
+    }
+
+
 def test_results_card_is_deterministic():
-    r = _report_result()
-    assert build_results_card("locate_and_parse_report", r) == \
-        build_results_card("locate_and_parse_report", r)
+    r = _analysis_result()
+    assert build_results_card("analyze_results", r) == \
+        build_results_card("analyze_results", r)
 
 
 # ---- loop wiring: the results card rides the turn --------------------------
 
-async def test_loop_emits_results_card_after_report_tool(tmp_path):
-    """When the agent calls locate_and_parse_report and it returns a renderable summary, the
-    loop emits a deterministic `results_card` event right after the `tool_result` — driven by
-    code, not the LLM. Hermetic: simulate mode so the report tool synthesizes a labelled summary
-    with no cluster/report on disk."""
+async def test_loop_does_not_emit_results_card_for_report_tool(tmp_path):
+    """The single-run report's structured view is the frontend report-summary card (rendered
+    from the `tool_result`), so the loop must NOT also emit a `results_card` after
+    locate_and_parse_report — doing so produced a duplicate, chart-less table card. The
+    tool_result itself still rides the turn. Hermetic: simulate mode so the report tool
+    synthesizes a labelled summary with no cluster/report on disk."""
     from app.agent.loop import AgentLoop
     from app.agent.session import Session
     from app.config import Settings
@@ -237,12 +214,7 @@ async def test_loop_emits_results_card_after_report_tool(tmp_path):
     await loop.run_turn(session, "how did the run do?", emit=emit, request_approval=request_approval)
 
     types = [t for t, _ in emitted]
-    assert "results_card" in types, types
-    # The card rides this turn and carries an id tying it to the tool call + a structured card.
-    card_payload = next(p for t, p in emitted if t == "results_card")
-    assert card_payload["id"] == "c1"
-    assert card_payload["card"]["kind"] == "run"
-    # It is emitted AFTER the tool_result for that call (not before).
-    tr_idx = types.index("tool_result")
-    rc_idx = types.index("results_card")
-    assert rc_idx == tr_idx + 1
+    # The report tool's result rides the turn (the frontend renders its rich card from it)...
+    assert "tool_result" in types, types
+    # ...but NO deterministic results_card is emitted for it (that would duplicate the report card).
+    assert "results_card" not in types, types
