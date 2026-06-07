@@ -30,7 +30,7 @@ Thin-code / thick-agent split (the whole point of this module):
      YAML+spec is its gate-able twin.
 
 Hard rule: every output path is confined to ``ctx.workspace`` exactly like
-``config_artifact._author_scenario`` (workspace mkdir, bare-filename screen rejecting ``/``,
+``config_artifact.author_scenario`` (workspace mkdir, bare-filename screen rejecting ``/``,
 ``..``, enforcing the ``ai.<name>.sh`` / ``ai.<name>.yaml`` names). No allowlist change is
 needed — file writes are not commands; the agent previews the authored YAML via the EXISTING,
 already-allowlisted ``execute_llmdbenchmark(subcommand="plan", spec=<spec_path>,
@@ -42,7 +42,7 @@ import re
 import shlex
 from typing import Any
 
-from app.tools.config_artifact import _author_scenario
+from app.tools.config_artifact import author_scenario
 from app.tools.context import ToolContext, ToolError
 
 # A scenario/guide name token: letters/digits and the three separators upstream's ``ai.`` file
@@ -129,7 +129,7 @@ def _scenario_twin_content(
     name: str, scenario: dict[str, Any] | None
 ) -> dict[str, Any]:
     """Build the ``content`` for the VALIDATABLE companion YAML scenario twin, in the exact
-    shape ``config_artifact._author_scenario`` expects (a ``name`` + >=1 dotted-path knob).
+    shape ``config_artifact.author_scenario`` expects (a ``name`` + >=1 dotted-path knob).
 
     When the agent supplies an explicit ``scenario`` override map, it is used verbatim (with
     the scenario item ``name`` forced to this guide's name). Otherwise we derive a MINIMAL,
@@ -184,7 +184,7 @@ async def convert_guide_to_scenario(
         name=token, env=sh_env, sources=sources, source_ref=source_ref
     )
 
-    # Confine every write to the workspace — same discipline as config_artifact._author_scenario.
+    # Confine every write to the workspace — same discipline as config_artifact.author_scenario.
     ctx.workspace.mkdir(parents=True, exist_ok=True)
     sh_name = f"ai.{token}.sh"
     sh_dest = ctx.workspace / sh_name
@@ -195,10 +195,10 @@ async def convert_guide_to_scenario(
     sh_dest.write_text(sh_text)
 
     # Author the VALIDATABLE twin (ai.<name>.yaml) + its companion spec by REUSING the Phase-45
-    # mechanism. _author_scenario writes ONLY into ctx.workspace and SHAPE-validates against the
+    # mechanism. author_scenario writes ONLY into ctx.workspace and SHAPE-validates against the
     # repo's live scenario examples; it returns the workspace-confined spec_path for the gate.
     yaml_name = f"ai.{token}.yaml"
-    twin = _author_scenario(
+    twin = author_scenario(
         ctx,
         target_filename=yaml_name,
         content=_scenario_twin_content(token, scenario),

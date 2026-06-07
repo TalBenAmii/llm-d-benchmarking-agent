@@ -90,7 +90,7 @@ def _scenario_reference(bench_repo: Path) -> dict[str, Any]:
     The repo's scenario examples are STATIC between runs, but the underlying rglob+parse runs on
     every authored scenario, so we memoize on the scenarios-dir path string. Both fields are sorted
     lists; the two callers treat the result READ-ONLY (validate_scenario_structure copies knob_keys
-    into a fresh set; _author_scenario only reads examples), so sharing one cached dict is safe."""
+    into a fresh set; author_scenario only reads examples), so sharing one cached dict is safe."""
     return _scenario_reference_cached(str(bench_repo.joinpath(*_SCENARIOS_SUBDIR)))
 
 
@@ -233,7 +233,7 @@ def _build_spec_document(bench_repo: Path, scenario_path: Path) -> dict[str, Any
     }
 
 
-def _author_scenario(
+def author_scenario(
     ctx: ToolContext, *, target_filename: str, content: dict[str, Any]
 ) -> dict[str, Any]:
     """Author a per-knob scenario override file into the session workspace and validate its
@@ -315,7 +315,7 @@ async def write_and_validate_config(
         raise ToolError("target_filename must be a bare *.yaml name (no path separators)")
 
     if artifact_type == "scenario":
-        return _author_scenario(ctx, target_filename=target_filename, content=content)
+        return author_scenario(ctx, target_filename=target_filename, content=content)
 
     ctx.workspace.mkdir(parents=True, exist_ok=True)
     dest = ctx.workspace / target_filename
