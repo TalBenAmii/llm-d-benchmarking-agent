@@ -14,6 +14,7 @@ from app.agent.context_mgmt import (
     _ELIDED_PREFIX,
     _RECENT_MESSAGES_KEPT,
     compact_messages,
+    estimate_context_size,
 )
 from app.agent.loop import AgentLoop
 from app.agent.prompt import build_system_prompt, catalog_brief_message
@@ -205,6 +206,178 @@ def test_compaction_is_idempotent():
     assert second == 0, "re-compacting an already-compacted transcript must be a no-op"
 
 
+# ---- (3b) extended compaction: OLD large SYNTHETIC injected user messages ------------------
+
+def _long_transcript_with_synthetic_head() -> list[dict]:
+    """A long transcript (over the threshold) led by the two machine-injected synthetic user
+    messages (env pre-probe snapshot + live-catalog snapshot), then enough padding + a recent
+    real message that the synthetic head sits well behind the recency window."""
+    msgs: list[dict] = [
+        {"role": "user", "synthetic": True,
+         "content": "[environment pre-probe — read-only snapshot]\n" + _big(8_000)},
+        {"role": "user",
+         "content": "[live catalog snapshot — names]\n" + _big(4_000)},
+    ]
+    # Padding turns (real user + assistant) to push past the threshold AND the recency window.
+    for _ in range(_RECENT_MESSAGES_KEPT + 2):
+        msgs.append({"role": "user", "content": _big(_COMPACT_THRESHOLD_CHARS // 6)})
+        msgs.append({"role": "assistant", "content": "ok"})
+    return msgs
+
+
+def test_compaction_elides_old_synthetic_env_and_catalog():
+    """The env pre-probe snapshot (flagged synthetic) AND the live-catalog snapshot (recognised
+    by its bracket-tag) are both elided to a short stub once OLD — they were never elided before
+    and rode along in every replay forever."""
+    msgs = _long_transcript_with_synthetic_head()
+    env_before = msgs[0]["content"]
+    cat_before = msgs[1]["content"]
+
+    reclaimed = compact_messages(msgs)
+    assert reclaimed > 0
+
+    env_after = msgs[0]["content"]
+    cat_after = msgs[1]["content"]
+    # Both are now short stubs that name how to re-derive the context.
+    assert env_after.startswith(_ELIDED_PREFIX) and "probe_environment" in env_after
+    assert cat_after.startswith(_ELIDED_PREFIX) and "list_catalog" in cat_after
+    assert len(env_after) < len(env_before) and len(cat_after) < len(cat_before)
+    # The synthetic flag is PRESERVED so title/history rendering still skips the message.
+    assert msgs[0].get("synthetic") is True
+    # The catalog stub still starts with '[' so main.py's history-render skip still applies.
+    assert cat_after.startswith("[")
+
+
+def test_compaction_never_touches_real_user_or_assistant_messages():
+    """CRITICAL SAFETY: a real (typed) user message and ALL assistant messages are NEVER elided,
+    even when large and old — only machine-injected synthetic user messages are eligible."""
+    msgs: list[dict] = [
+        # An OLD, LARGE, REAL user message (no synthetic flag, not a known injected tag) and an
+        # OLD large assistant message — both must survive verbatim.
+        {"role": "user", "content": _big(_ELIDE_OVER_CHARS + 5_000)},
+        {"role": "assistant", "content": _big(_ELIDE_OVER_CHARS + 5_000)},
+    ]
+    real_user_before = msgs[0]["content"]
+    assistant_before = msgs[1]["content"]
+    # Pad past the threshold + window with synthetic + filler so compaction definitely runs.
+    msgs.insert(0, {"role": "user", "synthetic": True,
+                    "content": "[environment pre-probe — snapshot]\n" + _big(_COMPACT_THRESHOLD_CHARS)})
+    for _ in range(_RECENT_MESSAGES_KEPT + 2):
+        msgs.append({"role": "user", "content": "recent"})
+
+    compact_messages(msgs)
+
+    # The real user + assistant messages are untouched (the synthetic head was elided instead).
+    assert msgs[1]["content"] == real_user_before, "a REAL user message must never be elided"
+    assert msgs[2]["content"] == assistant_before, "an assistant message must never be elided"
+    assert msgs[0]["content"].startswith(_ELIDED_PREFIX), "the synthetic head should be elided"
+
+
+def test_compaction_keeps_recent_synthetic_message():
+    """A synthetic message INSIDE the recency window is kept verbatim (the agent may still be
+    acting on the just-injected snapshot)."""
+    msgs: list[dict] = [{"role": "user", "content": _big(_COMPACT_THRESHOLD_CHARS + 1_000)}]
+    msgs.append({"role": "user", "synthetic": True,
+                 "content": "[environment pre-probe — snapshot]\n" + _big(_ELIDE_OVER_CHARS + 2_000)})
+    recent = msgs[-1]["content"]
+    compact_messages(msgs)
+    assert msgs[-1]["content"] == recent, "a recent synthetic message must be kept verbatim"
+
+
+def test_compaction_synthetic_elision_is_idempotent():
+    msgs = _long_transcript_with_synthetic_head()
+    first = compact_messages(msgs)
+    assert first > 0
+    second = compact_messages(msgs)
+    assert second == 0, "re-compacting elided synthetic messages must be a no-op"
+
+
+def test_compaction_stays_under_a_bound_after_many_turns():
+    """After many turns of big OLD synthetic + tool-result blobs, compaction keeps the elidable
+    OLD content bounded — every old synthetic message + old large tool result becomes a stub.
+    (REAL user/assistant messages are intentionally NOT counted here; they are never elided and
+    are kept SMALL in this fixture so the bound isolates the elidable blobs.)"""
+    # Build the head from big SYNTHETIC blobs + small real padding (so the only large OLD content
+    # is elidable: the synthetic head and the spliced tool results).
+    msgs: list[dict] = [
+        {"role": "user", "synthetic": True,
+         "content": "[environment pre-probe — read-only snapshot]\n" + _big(_ELIDE_OVER_CHARS + 8_000)},
+        {"role": "user",
+         "content": "[live catalog snapshot — names]\n" + _big(_ELIDE_OVER_CHARS + 4_000)},
+    ]
+    for i in range(6):
+        msgs.append({"role": "assistant", "content": "x",
+                     "tool_calls": [{"id": f"o{i}", "name": "fetch_key_docs", "input": {}}]})
+        msgs.append({"role": "tool_results",
+                     "results": [{"tool_call_id": f"o{i}", "name": "fetch_key_docs",
+                                  "content": _big(_ELIDE_OVER_CHARS + 6_000)}]})
+    # Small real padding to push past the threshold + the recency window (kept SMALL so it isn't
+    # part of the bound under test — only elidable blobs are).
+    for _ in range(_RECENT_MESSAGES_KEPT + 2):
+        msgs.append({"role": "user", "content": "recent"})
+
+    total_before = sum(
+        (sum(len(r.get("content") or "") for r in m.get("results", []))
+         if m.get("role") == "tool_results"
+         else len(m.get("content") or "")) for m in msgs
+    )
+    assert total_before > _COMPACT_THRESHOLD_CHARS  # compaction will run
+    compact_messages(msgs)
+
+    # Sum the OLD (pre-window) ELIDABLE content: synthetic user messages + tool results. After
+    # compaction each is a small stub, so their total collapses far under one un-elided blob.
+    keep_from = max(0, len(msgs) - _RECENT_MESSAGES_KEPT)
+    elidable_old = 0
+    for m in msgs[:keep_from]:
+        if m.get("role") == "tool_results":
+            elidable_old += sum(len(r.get("content") or "") for r in m.get("results", []))
+        elif m.get("synthetic") or str(m.get("content") or "").startswith(_ELIDED_PREFIX):
+            elidable_old += len(m.get("content") or "")
+    assert elidable_old < 4_000, f"elidable old region not bounded after compaction: {elidable_old}"
+
+
+# ---- (3c) context-size estimate (debugging token usage) ------------------------------------
+
+def test_estimate_context_size_breakdown_and_totals():
+    system = "S" * 4_000
+    messages = [
+        {"role": "user", "content": "u" * 400},
+        {"role": "assistant", "content": "a" * 200},
+        {"role": "tool_results", "results": [{"tool_call_id": "x", "name": "t", "content": "r" * 1_200}]},
+    ]
+    est = estimate_context_size(system, messages)
+    # char/4 estimate, exact arithmetic.
+    assert est["system_chars"] == 4_000 and est["system_tokens_est"] == 1_000
+    history = 400 + 200 + 1_200
+    assert est["history_chars"] == history
+    assert est["total_chars"] == 4_000 + history
+    assert est["total_tokens_est"] == (4_000 + history) // 4
+    # The last tool result is surfaced as the per-turn spike.
+    assert est["last_tool_result_chars"] == 1_200
+
+
+async def test_loop_usage_event_carries_context_estimate(tmp_path):
+    """The per-call USAGE event includes a context_est breakdown (system/history/last-tool-result)
+    so the UI can show context growth — a non-zero, internally-consistent estimate."""
+    session = _session(tmp_path)
+    captured: list[tuple[str, dict]] = []
+
+    async def emit(t, p):
+        captured.append((t, p))
+
+    async def request_approval(kind, payload):
+        return True
+
+    await AgentLoop(_ScriptedProvider([AssistantTurn(text="hi", tool_calls=[])])).run_turn(
+        session, "hello", emit=emit, request_approval=request_approval)
+
+    ue = [p for (t, p) in captured if t == events.USAGE][-1]
+    ctx_est = ue["context_est"]
+    assert ctx_est["system_chars"] > 0, "the cached system prompt should dominate a tiny turn"
+    assert ctx_est["total_chars"] == ctx_est["system_chars"] + ctx_est["history_chars"]
+    assert ctx_est["total_tokens_est"] == ctx_est["total_chars"] // 4
+
+
 # ---- (4) usage-total accounting guard (recon flagged loop.py ~95) --------------------------
 
 async def test_loop_usage_total_equals_all_billed_tokens(tmp_path):
@@ -230,6 +403,62 @@ async def test_loop_usage_total_equals_all_billed_tokens(tmp_path):
     # And the components reported separately add up to the same total.
     t = ue["turn"]
     assert t["input"] + t["output"] + t["cache_read"] + t["cache_write"] == t["total"]
+
+
+# ---- (5) per-session doc de-duplication (knowledge_access) ---------------------------------
+
+def test_read_knowledge_dedups_exact_repeat_within_session(tmp_path):
+    """The FIRST read of a guide returns full content; an EXACT repeat in the SAME session returns
+    a short 'already_provided' back-reference (not the full text again)."""
+    from app.tools import knowledge_access
+
+    ctx = _ctx(tmp_path)
+    first = knowledge_access.read_knowledge(ctx, name="glossary")
+    assert "content" in first and len(first["content"]) > 0
+    second = knowledge_access.read_knowledge(ctx, name="glossary")
+    assert second.get("already_provided") is True
+    assert "content" not in second
+    assert "glossary" in second.get("topic", "") or "glossary" in str(second.get("note", ""))
+
+
+def test_read_knowledge_dedup_is_per_session(tmp_path):
+    """De-dup is scoped to one session: a DIFFERENT ctx (a new/resumed session) gets full content
+    on its first read."""
+    from app.tools import knowledge_access
+
+    ctx_a = _ctx(tmp_path / "a")
+    ctx_b = _ctx(tmp_path / "b")
+    knowledge_access.read_knowledge(ctx_a, name="glossary")  # prime A
+    # A different session must still get the full text on its first read.
+    out_b = knowledge_access.read_knowledge(ctx_b, name="glossary")
+    assert "content" in out_b and len(out_b["content"]) > 0
+
+
+def test_different_docs_are_not_deduped(tmp_path):
+    """Only EXACT repeats are short-circuited — two different guides each return full content."""
+    from app.tools import knowledge_access
+
+    ctx = _ctx(tmp_path)
+    a = knowledge_access.read_knowledge(ctx, name="glossary")
+    b = knowledge_access.read_knowledge(ctx, name="preconditions")
+    assert "content" in a and "content" in b
+
+
+def test_fetch_key_docs_dedups_repeat_doc_body(tmp_path):
+    """fetch_key_docs returns each doc's full body on the first fetch and omits the body (keeping
+    the metadata + an already_provided marker) on an EXACT repeat in the same session."""
+    from app.tools import knowledge_access
+
+    ctx = _ctx(tmp_path)
+    first = knowledge_access.fetch_key_docs(ctx, task="quickstart")
+    # Re-fetch the same task: any doc whose body was already sent should now be marked, not re-sent.
+    second = knowledge_access.fetch_key_docs(ctx, task="quickstart")
+    found_first = [d for d in first.get("docs", []) if d.get("found") and "content" in d]
+    if found_first:  # only meaningful when the quickstart doc actually resolved on disk
+        # At least one doc that had content on the first fetch is now an already_provided marker.
+        provided = [d for d in second.get("docs", []) if d.get("already_provided")]
+        assert provided, "a repeated key-doc fetch should mark already-provided docs"
+        assert all("content" not in d for d in provided)
 
 
 # ---- scripted provider ---------------------------------------------------------------------

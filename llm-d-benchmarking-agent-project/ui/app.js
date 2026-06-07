@@ -24,6 +24,7 @@ const workingEl = document.getElementById("working");
 const workWordEl = workingEl.querySelector(".working-word");
 const workStatsEl = workingEl.querySelector(".working-stats");
 const tokenChip = document.getElementById("token-total");
+const contextChip = document.getElementById("context-window");
 const stopBtn = document.getElementById("stop-run");
 const resourceSide = document.getElementById("resource-side");
 const resourceSideBody = document.getElementById("resource-side-body");
@@ -242,10 +243,26 @@ function setSessionTokens(total) {
   tokenChip.textContent = "Σ " + fmtTokens(sessionTokens) + " tokens";
 }
 
+// The estimated current context-window chip (debugging token usage): shows the ~size of the
+// assembled context just sent to the model + a hover breakdown of what dominates it (system vs
+// replayed history vs the last tool result). All values are char/4 ESTIMATES (not a tokenizer).
+function setContextEstimate(est) {
+  if (!contextChip) return;
+  if (!est || !est.total_tokens_est) { contextChip.hidden = true; return; }
+  contextChip.hidden = false;
+  contextChip.textContent = "⛶ ~" + fmtTokens(est.total_tokens_est) + " ctx";
+  contextChip.title =
+    "Estimated current context window (≈ chars/4): " +
+    "system ~" + fmtTokens(est.system_tokens_est) + " · " +
+    "history ~" + fmtTokens(est.history_tokens_est) + " · " +
+    "last tool result ~" + fmtTokens(est.last_tool_result_tokens_est) + " (estimate)";
+}
+
 // A `usage` event (per LLM call): refresh the running turn tally (live line) + the header chip.
 function onUsage(data) {
   turnUsage = data.turn || null;
   if (data.session) setSessionTokens(data.session.total);
+  if (data.context_est) setContextEstimate(data.context_est);
   renderWorkStats();
 }
 

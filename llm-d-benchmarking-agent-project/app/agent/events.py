@@ -17,11 +17,19 @@ Server -> client:
   cancelled        {message}               — the in-flight run/turn was cancelled (Phase 16);
                                             its concurrency slot is freed and subprocess reaped
   usage            {turn:{input,output,cache_read,cache_write,calls,total},
-                    session:{input,output,cache_read,total}}
+                    session:{input,output,cache_read,total},
+                    context_est:{total_chars,total_tokens_est,system_*,history_*,
+                                 last_tool_result_*}}
                                            — REAL token usage from the provider API. A PER-TURN
                                             event emitted on every LLM call (the live UI line
                                             ticks up): turn.* are the RUNNING totals for the
                                             in-progress turn, session.* the running session totals.
+                                            context_est is a cheap (char/4) ESTIMATE of the CURRENT
+                                            assembled-context window size + a breakdown (system vs
+                                            replayed history vs the last tool result) so the user
+                                            can see context GROWTH and what dominates it — NOT a
+                                            tokenizer count (see app/agent/context_mgmt.py
+                                            estimate_context_size).
   welcome          {heading, bullets:[str], nudge}
                                            — DETERMINISTIC start-of-chat greeting, emitted by the
                                             backend (NOT the LLM, no token cost) on a brand-new

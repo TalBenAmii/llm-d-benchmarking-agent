@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.agent import events
-from app.agent.context_mgmt import compact_messages
+from app.agent.context_mgmt import compact_messages, estimate_context_size
 from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.results_card import build_results_card
 from app.agent.session import Session
@@ -136,6 +136,11 @@ class AgentLoop:
                     "cache_read": session.total_cache_read_tokens,
                     "total": session.session_total,
                 },
+                # DEBUGGING TOKEN USAGE: a cheap (char/4) ESTIMATE of the CURRENT assembled-context
+                # window size + a breakdown (system vs replayed history vs the last tool result),
+                # so the user can SEE context growth and what dominates it — not just cumulative
+                # billed usage. Estimated from the exact system + messages just sent this call.
+                "context_est": estimate_context_size(system, session.messages),
             })
 
             session.messages.append({
