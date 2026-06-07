@@ -1451,6 +1451,7 @@ const NEXT_STEP_LABELS = {
   trend_metric: "Trend a metric",
   run_again: "Try a different config",
   run_sweep: "Run a sweep",
+  analyze_with_plots: "Analyze with plots",
 };
 function renderNextSteps(r) {
   if (!r || !Array.isArray(r.next_steps) || !r.next_steps.length) return;

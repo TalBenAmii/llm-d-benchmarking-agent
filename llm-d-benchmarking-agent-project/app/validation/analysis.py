@@ -573,7 +573,14 @@ def recommend_next_steps(
         add("run_sweep", "generate_doe_experiment",
             "sweep concurrency/config to find the best operating point for this model")
 
-    # 4) Teardown is always available but lowest priority (don't lead with it).
+    # 4) Dig into the latency tail with the CLI's matplotlib analysis plots. Re-running the
+    #    benchmark with `--analyze` writes the extra per-request distribution / session-lifecycle
+    #    / Prometheus time-series charts (allowlisted `run` flag), beyond the analyzer math we
+    #    already returned. Always available, above teardown — a richer "what next" than stopping.
+    add("analyze_with_plots", "execute_llmdbenchmark",
+        "re-run with --analyze to write the latency-distribution / session / time-series plots")
+
+    # 5) Teardown is always available but lowest priority (don't lead with it).
     add("teardown", "run_command", "tear down the stack when you're done to free resources")
 
     return steps

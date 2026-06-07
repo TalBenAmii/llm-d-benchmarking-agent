@@ -464,6 +464,22 @@ def test_next_steps_sweep_nudges_save_each_treatment_not_recompare():
     assert "compare_to_baseline" not in acts and "run_again" not in acts
 
 
+def test_next_steps_offers_analyze_with_plots_above_teardown():
+    # The richer menu (J2): the analysis-plots step is always available, ranked above teardown
+    # (never first), so "what next" is more than "save / run again / tear down".
+    for kw in (
+        dict(n_runs=1, has_slo=False, any_slo_met=None, on_sweep=False, history=HistoryContext()),
+        dict(n_runs=3, has_slo=False, any_slo_met=None, on_sweep=True, history=HistoryContext()),
+    ):
+        steps = recommend_next_steps(**kw)
+        acts = _actions(steps)
+        assert "analyze_with_plots" in acts
+        assert acts.index("analyze_with_plots") < acts.index("teardown")
+        assert acts[0] != "analyze_with_plots"          # never leads
+        assert acts[-1] == "teardown"                   # teardown still last
+        assert steps[acts.index("analyze_with_plots")]["tool"] == "execute_llmdbenchmark"
+
+
 # ---- next_steps surfaced through the analyze_results tool ------------------
 
 async def test_analyze_results_emits_next_steps_save_first(tool_ctx, br_example, tmp_path):
