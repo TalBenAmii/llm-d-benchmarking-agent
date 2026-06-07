@@ -63,12 +63,40 @@ class ScriptedProvider(LLMProvider):
 
 # ---- capturing runner --------------------------------------------------------
 
+@dataclass
+class CannedResult:
+    """A canned command OUTCOME for a matching argv — the FAILING-command primitive.
+
+    The plain ``canned={needle: "stdout"}`` form (a ``str`` value) is the happy path: synthetic
+    stdout with ``exit_code=0`` (unchanged, fully backward-compatible). When a flow needs to
+    simulate a command that *fails* — a standup that hits a CrashLoopBackOff, a benchmark ``run``
+    that exits non-zero, a Job that won't progress — give that needle a ``CannedResult`` instead:
+    an explicit ``exit_code`` (non-zero) plus the error ``output`` the CLI would print. The agent
+    sees the same structured result it would in production (``execute_llmdbenchmark`` RETURNS the
+    exit_code rather than raising), so the golden transcript can assert it recovers correctly
+    instead of blindly proceeding. ``timed_out`` covers the hung/timeout case."""
+
+    output: str = ""
+    exit_code: int = 0
+    timed_out: bool = False
+
+
+# A canned value is either raw stdout (exit 0) or a full CannedResult (non-zero / timed-out).
+CannedValue = str | CannedResult
+
+
 class CaptureRunner(CommandRunner):
     """Records logical argv; never spawns a process. Simulates the *side effect* of a
     ``git clone`` (materializes a minimal repo skeleton) so downstream tools that check
-    the filesystem (``run_setup`` looking for install.sh) behave realistically."""
+    the filesystem (``run_setup`` looking for install.sh) behave realistically.
 
-    def __init__(self, repo_paths, *, canned: dict[str, str] | None = None):
+    ``canned`` maps an argv substring (the needle) to the command's simulated outcome. A plain
+    ``str`` value is synthetic stdout with ``exit_code=0`` (the happy path). A :class:`CannedResult`
+    value lets a flow simulate a FAILING command (non-zero exit / timeout + error output) so
+    error-path flows can be exercised hermetically — see ``CannedResult``. The FIRST needle that
+    is a substring of the joined argv wins, so order more-specific needles before generic ones."""
+
+    def __init__(self, repo_paths, *, canned: dict[str, CannedValue] | None = None):
         super().__init__(repo_paths)
         self.calls: list[dict[str, Any]] = []
         self._canned = dict(canned or {})
@@ -85,21 +113,27 @@ class CaptureRunner(CommandRunner):
         self._maybe_simulate_clone(argv, cwd)
 
         output = ""
+        exit_code = 0
+        timed_out = False
         joined = " ".join(argv)
-        for needle, text in self._canned.items():
+        for needle, value in self._canned.items():
             if needle in joined:
-                output = text
+                if isinstance(value, CannedResult):
+                    output, exit_code, timed_out = value.output, value.exit_code, value.timed_out
+                else:
+                    output = value
                 break
         if on_line and output:
             for line in output.splitlines():
                 await on_line(line)
         return RunResult(
-            exit_code=0,
+            exit_code=exit_code,
             duration_s=0.0,
             real_argv=argv,
             cwd=str(cwd) if cwd else None,
             output=output,
             lines=output.splitlines(),
+            timed_out=timed_out,
         )
 
     @staticmethod
