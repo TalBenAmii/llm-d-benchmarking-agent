@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from app.tools.json_tail import find_last_json
+from app.tools.json_tail import find_last_json, parse_bridge_dict
 
 
 def _naive_find_last_json(text, opener):
@@ -102,3 +102,59 @@ def test_large_nested_blob_after_noise_is_handled():
     payload = {"runs": [{"id": i, "meta": {"k": {"deep": i}}} for i in range(2_000)]}
     text = "INFO starting\nWARN retry\n" + json.dumps(payload)
     assert find_last_json(text, "{") == payload
+
+
+# ---- parse_bridge_dict: the shared bridge-stdout wrapper ----------------------
+# This is the helper capacity._parse_bridge_output and aggregate_runs._parse_bridge_output
+# both delegate to. It locks the unified empty/no-json/malformed error policy + label text.
+
+
+def test_parse_bridge_dict_clean_object():
+    out = json.dumps({"ok": True, "diagnostics": ["a", "b"]})
+    assert parse_bridge_dict(out, "capacity") == {"ok": True, "diagnostics": ["a", "b"]}
+
+
+def test_parse_bridge_dict_tolerates_noise_before_and_after():
+    # Log chatter on both sides of the single JSON object — the object must still come back.
+    out = 'WARNING: hub chatter\n{"ok": true, "n": 1}\n'
+    assert parse_bridge_dict(out, "aggregation") == {"ok": True, "n": 1}
+
+
+def test_parse_bridge_dict_empty_is_not_ok_and_labels_the_bridge():
+    res = parse_bridge_dict("", "capacity")
+    assert res["ok"] is False
+    assert res["error"] == "capacity bridge produced no output"
+    # whitespace-only is treated the same as empty
+    assert parse_bridge_dict("   \n  ", "aggregation")["error"] == (
+        "aggregation bridge produced no output"
+    )
+
+
+def test_parse_bridge_dict_no_json_is_not_ok():
+    res = parse_bridge_dict("just logs, nothing parseable here", "capacity")
+    assert res["ok"] is False
+    assert res["error"].startswith("capacity bridge output was not JSON:")
+
+
+def test_parse_bridge_dict_malformed_json_is_not_ok():
+    # A dangling/partial object never parses -> the safe not-ok dict, not a raise.
+    res = parse_bridge_dict('{"ok": true, "partial":', "aggregation")
+    assert res["ok"] is False
+    assert res["error"].startswith("aggregation bridge output was not JSON:")
+
+
+def test_parse_bridge_dict_truncates_long_noise_in_error():
+    # The error echoes only the trailing 500 chars of the offending stream.
+    res = parse_bridge_dict("x" * 2000, "capacity")
+    assert res["ok"] is False
+    assert res["error"] == "capacity bridge output was not JSON: " + "x" * 500
+
+
+def test_parse_bridge_dict_non_object_tail_is_not_ok():
+    # Reconciliation: a bare JSON LIST is NOT a valid bridge result (callers expect a dict with
+    # ok/error). Requiring a dict turns "would-be AttributeError on .get()" into the safe
+    # not-ok path. (find_last_json itself would have returned the list.)
+    assert find_last_json("[1, 2, 3]", "[") == [1, 2, 3]
+    res = parse_bridge_dict("[1, 2, 3]", "capacity")
+    assert res["ok"] is False
+    assert res["error"].startswith("capacity bridge output was not JSON:")

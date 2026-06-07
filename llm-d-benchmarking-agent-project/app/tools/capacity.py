@@ -38,7 +38,7 @@ from app.capacity.planner import (
     plan_config_for_spec,
 )
 from app.tools.context import ToolContext, ToolError
-from app.tools.json_tail import find_last_json
+from app.tools.json_tail import parse_bridge_dict
 
 _REQUEST_FILENAME = "capacity_request.json"
 
@@ -136,12 +136,7 @@ _GATED_NOTE = (
 
 
 def _parse_bridge_output(output: str) -> dict[str, Any]:
-    """The bridge prints exactly one JSON object on stdout. Be tolerant of leading log
-    noise by taking the last JSON object on the captured stream."""
-    text = (output or "").strip()
-    if not text:
-        return {"ok": False, "error": "capacity bridge produced no output"}
-    result = find_last_json(text, "{")
-    if result is not None:
-        return result
-    return {"ok": False, "error": f"capacity bridge output was not JSON: {text[-500:]}"}
+    """Parse the capacity bridge's single stdout JSON object (tolerant of leading log noise).
+
+    Thin wrapper over the shared ``json_tail.parse_bridge_dict`` (shared with aggregate_runs)."""
+    return parse_bridge_dict(output, "capacity")

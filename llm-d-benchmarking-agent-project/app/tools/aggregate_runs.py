@@ -31,7 +31,7 @@ from typing import Any
 
 from app.paths import is_within
 from app.tools.context import ToolContext, ToolError
-from app.tools.json_tail import find_last_json
+from app.tools.json_tail import parse_bridge_dict
 
 _REQUEST_FILENAME = "aggregate_request.json"
 _OUTPUT_DIRNAME = "aggregated"
@@ -132,12 +132,7 @@ async def aggregate_runs(
 
 
 def _parse_bridge_output(output: str) -> dict[str, Any]:
-    """The wrapper prints exactly one JSON object on stdout. Be tolerant of leading noise by
-    taking the last balanced JSON object on the captured stream (see ``json_tail``)."""
-    text = (output or "").strip()
-    if not text:
-        return {"ok": False, "error": "aggregation bridge produced no output"}
-    result = find_last_json(text, "{")
-    if result is not None:
-        return result
-    return {"ok": False, "error": f"aggregation bridge output was not JSON: {text[-500:]}"}
+    """Parse the aggregation wrapper's single stdout JSON object (tolerant of leading noise).
+
+    Thin wrapper over the shared ``json_tail.parse_bridge_dict`` (shared with capacity)."""
+    return parse_bridge_dict(output, "aggregation")

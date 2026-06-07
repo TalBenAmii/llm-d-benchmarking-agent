@@ -45,3 +45,26 @@ def find_last_json(text: str, opener: str) -> Any | None:
             return obj
         start = text.rfind(opener, 0, start)
     return None
+
+
+def parse_bridge_dict(output: str, label: str) -> dict[str, Any]:
+    """Parse the single JSON OBJECT a bridge subprocess prints on stdout into a result dict.
+
+    The capacity and aggregation bridges share this contract: print exactly one JSON object,
+    possibly after some leading log noise. This wrapper applies the shared, never-raise error
+    policy used by both tools — on empty output or no parseable trailing object it returns a
+    ``{"ok": False, "error": ...}`` dict (rather than raising) so the calling tool can fold the
+    failure into its own structured result. ``label`` names the bridge in the error text
+    (e.g. ``"capacity"`` -> ``"capacity bridge produced no output"``).
+
+    Note: a non-object JSON tail (e.g. a bare list) is treated as "not JSON" here — the
+    contract is a single object, and that is the safer behavior for a result expected to carry
+    ``ok``/``error`` keys. (Use ``find_last_json`` directly when a list is the expected shape.)
+    """
+    text = (output or "").strip()
+    if not text:
+        return {"ok": False, "error": f"{label} bridge produced no output"}
+    result = find_last_json(text, "{")
+    if isinstance(result, dict):
+        return result
+    return {"ok": False, "error": f"{label} bridge output was not JSON: {text[-500:]}"}
