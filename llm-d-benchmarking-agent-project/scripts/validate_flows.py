@@ -77,7 +77,10 @@ async def main_async(args) -> int:
             return 2
         flows = [FLOWS_BY_NAME[args.flow]]
     if args.live:
-        flows = [f for f in flows if f.live_eval]
+        # This front-end drives flows in NON-simulate ("live") mode, so it scores only flows whose
+        # live_modes include "live" (tool-choice / error-recovery / safety). Multi-step GPU-guide
+        # deploys are "simulate"-only — run them via the simulate pytest path (see test_flows_live.py).
+        flows = [f for f in flows if f.live_eval and "live" in f.live_modes]
 
     mode = "LIVE (real LLM)" if args.live else "deterministic (golden transcripts)"
     print(f"\n{_c('Flow validation', BOLD)} — {mode}\n")

@@ -112,6 +112,48 @@ def test_every_flow_is_uniquely_named():
     assert len(FLOWS_BY_NAME) == len(ALL_FLOWS), "duplicate flow name(s)"
 
 
+def test_live_modes_are_well_formed():
+    """Every live-eval flow must declare at least one VALID live mode — a typo'd/empty live_modes
+    would silently drop the flow from BOTH the live and simulate runs, so it would never be scored
+    (and the gap would go unnoticed). Non-live flows may carry any value; it's simply ignored."""
+    valid = {"live", "simulate"}
+    for flow in ALL_FLOWS:
+        bad = set(flow.live_modes) - valid
+        assert not bad, f"[{flow.name}] live_modes has unknown mode(s) {bad} (allowed: {valid})"
+        if flow.live_eval:
+            assert flow.live_modes, f"[{flow.name}] is live_eval but declares no live_modes — it would never run"
+
+
+def test_every_feature_tool_has_live_coverage():
+    """Coverage guard: every USER-FACING agent tool must be asserted by at least one LIVE-eval flow
+    (via required_tools, or — for execute_llmdbenchmark — required_subcommands). This is the
+    test-enforced contract behind "live eval covers all project features": adding a new feature tool
+    without a live flow that exercises it fails here. Pure-plumbing tools the agent uses incidentally
+    (probe/catalog/knowledge-fetch/session-plan/repos/setup/report/run_command) are exempted — they
+    aren't a user's standalone ask and are exercised across many flows already."""
+    from app.tools.registry import REGISTRY
+
+    # Mechanism/plumbing the agent uses to ACCOMPLISH a feature, not a feature a user asks for by
+    # name. These are exercised incidentally by the deploy/analysis flows; forcing a live model to
+    # pick one from natural language would be a brittle, low-signal assertion.
+    plumbing = {
+        "probe_environment", "list_catalog", "propose_session_plan", "ensure_repos", "run_setup",
+        "locate_and_parse_report", "run_command",
+        "read_knowledge", "search_knowledge", "read_repo_doc", "fetch_key_docs",
+    }
+    live_required_tools = {t for f in ALL_FLOWS if f.live_eval for t in f.required_tools}
+    # execute_llmdbenchmark is asserted via required_subcommands (standup/run/teardown/plan), not
+    # required_tools — treat any live flow that requires a subcommand as covering it.
+    if any(f.live_eval and f.required_subcommands for f in ALL_FLOWS):
+        live_required_tools.add("execute_llmdbenchmark")
+
+    uncovered = [t for t in REGISTRY if t not in plumbing and t not in live_required_tools]
+    assert not uncovered, (
+        f"these feature tools have NO live-eval flow asserting the agent picks them: {sorted(uncovered)} "
+        "— add a flow (required_tools=[...]) or, if it's plumbing, add it to the exemption set above"
+    )
+
+
 def test_required_and_forbidden_tools_are_real():
     """Every tool a flow scores the live model on must be a real registered tool — a typo'd
     name would silently never match (and so never fail the live eval), defeating the check."""

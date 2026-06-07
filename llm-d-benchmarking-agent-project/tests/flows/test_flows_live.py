@@ -36,7 +36,16 @@ from .harness import run_flow, score_flow
 
 _LIVE = os.getenv("LLM_EVAL_LIVE") == "1"
 _SIMULATE = os.getenv("LLM_EVAL_SIMULATE") == "1"
-_LIVE_FLOWS = [f for f in ALL_FLOWS if f.live_eval]
+_MODE = "simulate" if _SIMULATE else "live"
+# A flow is live-scored in THIS run only if it opts into the live eval AND its ``live_modes`` contains
+# the active mode. This is what lets coverage span every feature without false failures: error-recovery
+# / safety flows are scored only in "live" (the SIMULATE_NOTE would tell the agent to barrel past the
+# failure/refusal they test), and multi-step GPU-guide deploys are scored only in "simulate" (they
+# can't reach standup/run in real "live" mode — a careful agent refuses a GPU guide on a GPU-less host).
+# Read-only / single-decision tool-choice flows declare both. Run BOTH modes to exercise everything:
+#   LLM_EVAL_LIVE=1 pytest tests/flows/test_flows_live.py                    # the "live" set
+#   LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 pytest tests/flows/test_flows_live.py # the "simulate" set
+_LIVE_FLOWS = [f for f in ALL_FLOWS if f.live_eval and _MODE in f.live_modes]
 
 pytestmark = pytest.mark.skipif(
     not _LIVE,
