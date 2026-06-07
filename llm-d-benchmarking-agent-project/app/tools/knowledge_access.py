@@ -106,12 +106,22 @@ def fetch_key_docs(
     }
 
 
+# Files that physically live in knowledge/ but are NOT agent knowledge — they are
+# editor-facing meta docs (e.g. CLAUDE.md guidance for whoever edits the knowledge files).
+# They must never be inlined into the system prompt, indexed on-demand, or returned by
+# read_knowledge, or they leak into the runtime agent's brain. app/agent/prompt.py imports
+# and applies this same set when building the prompt.
+EXCLUDED_KNOWLEDGE_FILES = frozenset({"CLAUDE.md", "README.md"})
+
+
 def _knowledge_files(ctx: ToolContext) -> list[Path]:
-    """Every knowledge file (basename order), or empty if the dir is missing."""
+    """Every knowledge file (basename order), or empty if the dir is missing. Editor-facing
+    meta docs (EXCLUDED_KNOWLEDGE_FILES) are dropped — they are not agent knowledge."""
     kdir = ctx.settings.knowledge_dir
     if not kdir.is_dir():
         return []
     files = list(kdir.glob("*.md")) + list(kdir.glob("*.yaml")) + list(kdir.glob("*.yml"))
+    files = [f for f in files if f.name not in EXCLUDED_KNOWLEDGE_FILES]
     return sorted(files, key=lambda p: p.name)
 
 

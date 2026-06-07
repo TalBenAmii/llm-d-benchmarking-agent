@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.tools.context import ToolContext
+from app.tools.knowledge_access import EXCLUDED_KNOWLEDGE_FILES
 
 ROLE = """\
 You are the llm-d Benchmarking Assistant. You help people who do NOT know the
@@ -157,6 +158,9 @@ def _knowledge_sections(ctx: ToolContext) -> list[str]:
     if not kdir.is_dir():
         return []
     all_files = sorted(kdir.glob("*.md")) + sorted(kdir.glob("*.yaml")) + sorted(kdir.glob("*.yml"))
+    # Drop editor-facing meta docs (e.g. knowledge/CLAUDE.md) — they are not agent knowledge
+    # and must never be inlined or indexed into the prompt. Same set used by knowledge_access.
+    all_files = [f for f in all_files if f.name not in EXCLUDED_KNOWLEDGE_FILES]
     core_set = set(CORE_KNOWLEDGE)
 
     sections: list[str] = []
