@@ -7,7 +7,7 @@ agent + Kubernetes-native benchmark orchestrator + results analyzer for
 | Doc | For | Covers |
 |---|---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | engineers / reviewers | System design: layers, components, the four determinism gates, request flow, trust boundaries, concurrency & resilience. |
-| [API.md](API.md) | integrators / contributors | The HTTP/WebSocket API and the 22-tool agent surface (inputs, classification, result shapes) + the `SessionPlan`. |
+| [API.md](API.md) | integrators / contributors | The HTTP/WebSocket API and the 28-tool agent surface (inputs, classification, result shapes) + the `SessionPlan`. |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | operators | Running locally and in-cluster (Helm/Kustomize), configuration, secrets, least-privilege RBAC, observability. |
 | [USER_GUIDE.md](USER_GUIDE.md) | end users | Using the agent end-to-end with no `llm-d-benchmark` expertise. |
 | [VALIDATION.md](VALIDATION.md) | contributors | The flow-validation harness — proving the agent runs the *right* commands. |
@@ -20,9 +20,9 @@ Ops assets live under [`deploy/observability/`](../deploy/observability/): a Pro
 config, alert rules (`alerts.rules.yaml`), and a Grafana dashboard.
 
 Project root: [`README.md`](../README.md) (overview), [`CLAUDE.md`](../CLAUDE.md) (working
-rules), [`plan.md`](../plan.md) (design + status), [`ROADMAP.md`](../ROADMAP.md) +
-[`PROGRESS.md`](../PROGRESS.md) (the phased build-out). The agent's *judgment* lives in
-[`knowledge/`](../knowledge/).
+rules), [`FEATURES.md`](../FEATURES.md) (live, evidence-backed feature inventory),
+[`plan.md`](../plan.md) (design + status), and [`ROADMAP_V4.md`](../ROADMAP_V4.md)
+(remaining/deferred work). The agent's *judgment* lives in [`knowledge/`](../knowledge/).
 
 ## Design in one line
 
@@ -51,5 +51,5 @@ upstream as a module in `llm-d-benchmark` (proposal §5.3 / §10). What's in pla
 - **One-command deploy:** a hardened image + Helm chart / Kustomize base with
   least-privilege RBAC ([DEPLOYMENT.md](DEPLOYMENT.md)).
 
-Open items before a formal upstream PR are tracked in [`ROADMAP.md`](../ROADMAP.md) and
+Open items before a formal upstream PR are tracked in [`ROADMAP_V4.md`](../ROADMAP_V4.md) and
 [`plan.md`](../plan.md) ("Deferred / next").

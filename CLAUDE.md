@@ -73,8 +73,9 @@ kind binary) via the vetted `scripts/install_prereqs.sh`, creates/deletes the ki
 loop is `app/agent/loop.py`; the policy is `security/allowlist.yaml`.
 
 ## Beyond the MVP — current feature set
-The project has grown well past the quickstart MVP (see `ROADMAP.md` / `PROGRESS.md` for the
-phased build-out). It now also includes: a **Kubernetes-native benchmark orchestrator**
+The project has grown well past the quickstart MVP (see `FEATURES.md` for the full,
+evidence-backed feature inventory and `ROADMAP_V4.md` for remaining/deferred work). It now
+also includes: a **Kubernetes-native benchmark orchestrator**
 (`app/orchestrator/` — Job lifecycle, fault classification, retry/dead-letter, parallel
 sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
 comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
@@ -89,9 +90,29 @@ a no-op returning synthetic success, per-command approvals are skipped (the upfr
 SessionPlan approval is kept), and a synthetic report is produced. Watch a guide end-to-end
 without touching a cluster. Default `0` (real execution).
 
-**Documentation:** the technical documentation suite lives under `docs/` — `ARCHITECTURE.md`,
-`API.md` (HTTP/WS + tool reference), `DEPLOYMENT.md`, `USER_GUIDE.md`, and `VALIDATION.md`
-(the flow-validation harness). See `plan.md` → "Implementation status" for the MVP record.
+## Key documentation map (read these for context)
+Paths are relative to `llm-d-benchmarking-agent-project/`.
+
+**Start here / project-level**
+- `README.md` — overview, safety model, how to run.
+- `FEATURES.md` — **authoritative, evidence-backed inventory of every feature** + how to see/verify each. Read this first to understand what the agent actually does.
+- `llm-d-benchmarking-agent-proposal.md` — the original project proposal / requirements (the "north star").
+- `plan.md` — original design doc + MVP "Implementation status" record (design rationale, locked decisions, edge cases).
+- `ROADMAP_V4.md` — forward-looking gap roadmap; the only remaining work is the 7 DEFERRED phases (everything else is merged).
+
+**Technical docs (`docs/`)**
+- `docs/README.md` — the docs index.
+- `docs/ARCHITECTURE.md` — layers, components, the four determinism gates, trust boundaries.
+- `docs/API.md` — HTTP/WebSocket API + the 28-tool agent surface + `SessionPlan`.
+- `docs/DEPLOYMENT.md` — running locally and in-cluster (Helm/Kustomize), config, secrets, RBAC, observability.
+- `docs/USER_GUIDE.md` — using the agent end-to-end with no `llm-d-benchmark` expertise.
+- `docs/VALIDATION.md` — the flow-validation harness (does the agent run the *right* commands?).
+- `docs/SECURITY.md` · `docs/TROUBLESHOOTING.md` · `docs/CONTRIBUTING.md` · `docs/CHANGELOG.md` — ops/trust, symptom→fix, how to add a tool/flow, release history.
+- `docs/BENCHMARK_FEATURE_COVERAGE.md` — benchmark-CLI feature-coverage catalog (✅/🟡/⬜).
+- `docs/USEFUL_REPO_DOCS.md` — curated index of which upstream `llm-d` / `llm-d-benchmark` docs matter and why.
+- `INTERACTIVE_TEST_GUIDE.md` — follow-along runbook to drive every feature by hand with a real LLM.
+
+**Agent brain** — `knowledge/*.md|*.yaml` hold all *judgment* (loaded at runtime; not docs to edit casually).
 
 ## Run locally
 ```bash

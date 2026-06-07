@@ -3,7 +3,8 @@
 All notable changes to the **llm-d Benchmarking Agent** are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Versions correspond to the
-phased build-out tracked in [`ROADMAP.md`](../ROADMAP.md) and [`PROGRESS.md`](../PROGRESS.md).
+phased build-out, now summarized in [`FEATURES.md`](../FEATURES.md) (the live feature
+inventory), with remaining/deferred work in [`ROADMAP_V4.md`](../ROADMAP_V4.md).
 
 ## [Unreleased] — v3: proposal-completion features + token-tracking (Phases 19-26)
 
