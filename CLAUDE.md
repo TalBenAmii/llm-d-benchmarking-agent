@@ -124,3 +124,31 @@ uvicorn app.main:app --reload
 # open http://127.0.0.1:8000
 pytest tests/
 ```
+
+## Working in a worktree + running the suite (recurring setup — DON'T re-derive each task)
+Established facts; reuse them instead of re-investigating every session:
+- **Git root = this monorepo** (`/home/tal/kind-quickstart-guide`); `llm-d-benchmarking-agent-project/`
+  is a subdir; `llm-d/` + `llm-d-benchmark/` are **nested untracked repos that are EMPTY in any
+  worktree** → catalog/report tests break there unless pointed back at the primary copy via `REPOS_DIR`.
+- **Branch worktrees off LOCAL `main` HEAD, not origin** (main is many commits ahead of origin and
+  other sessions commit to it). Verify `merge-base == main HEAD` before merging; re-check SHA ancestry
+  AFTER merging (concurrent-session hazard). Never `git add -A` at the monorepo root (grabs
+  `.claude/worktrees/*` gitlinks) — add specific paths.
+- **Run the suite from a worktree like this** (exercises *your* worktree code against the *populated*
+  primary sibling repos — the primary `.venv` is an editable install pointing at the primary tree, so
+  `PYTHONPATH` is required; `conftest.py` resolves the bench repo via `get_settings().bench_repo`,
+  honoring `REPOS_DIR`):
+  ```bash
+  cd <worktree>/llm-d-benchmarking-agent-project
+  PYTHONPATH=<worktree>/llm-d-benchmarking-agent-project \
+  REPOS_DIR=/home/tal/kind-quickstart-guide \
+  /home/tal/kind-quickstart-guide/llm-d-benchmarking-agent-project/.venv/bin/python -m pytest tests/
+  ```
+- **Healthy baseline ≈ 1598 passed / 20 skipped in ~15–20s.** Establish green BEFORE changing anything.
+- Don't auto-run live-LLM eval (`LLM_EVAL_LIVE=1`, `test_flows_live.py`, `make validate-live`) — spends
+  Max-plan quota; only on explicit user request. Plain `pytest` is safe.
+
+## Capturing recurring conclusions (standing instruction to future-me)
+When you derive a conclusion you'd otherwise re-investigate on a later task (env/test/build setup, repo
+gotchas, locked design decisions), append a **1–2 line** summary to the relevant section above —
+**consolidate, don't duplicate, keep it tight** (this file loads into context every session).
