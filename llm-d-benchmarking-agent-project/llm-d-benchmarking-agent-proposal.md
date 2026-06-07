@@ -6,6 +6,12 @@ _An Intelligent, Kubernetes-Native Workload Design and Execution Service for the
 
 **Proposed by** Maroon Ayoub, IBM Research **Affiliation** llm-d Open-Source Project **Date** February 2026 **Team Size** TBD 
 
+> **Historical document — the original project proposal (the "north star").** It records the
+> initial requirements/scope and is kept for reference; it is **not** a description of the current
+> system. For what the agent actually does today see [`FEATURES.md`](FEATURES.md) (the live,
+> evidence-backed feature inventory); for design rationale and the implemented-status record see
+> [`plan.md`](plan.md).
+
 ## **1. Executive Summary** 
 
 Large Language Model (LLM) inference is rapidly becoming one of the most resource-intensive workloads in modern data centers. Evaluating distributed inference systems requires carefully designed benchmarks that reflect real-world usage patterns—yet crafting such benchmarks today is a specialized skill. Users must reason about request distributions, token lengths, concurrency levels, prefix-sharing ratios, and scheduling policies, then translate these into specific benchmark tool configurations, select the right load generator, and interpret multidimensional results. 
