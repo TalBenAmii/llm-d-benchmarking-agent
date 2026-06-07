@@ -54,7 +54,9 @@ it prints. Know the THREE distinct install steps and pick the right one — do N
 Before standing up anything, decide using `stack` (pass the target `namespace`):
 - `stack.detected == true` (ready pods exist) → a stack is ALREADY running. Do **not**
   redeploy. Tell the user what's running and offer to:
-  (a) benchmark the existing stack (go straight to `run`), or
+  (a) benchmark the existing stack (go straight to `run` — still pass `spec=cicd/kind`;
+      `--spec` is a REQUIRED global flag on every benchmark subcommand, `run` included, so a
+      `run` WITHOUT it errors out — skipping standup does **not** mean skipping the spec), or
   (b) tear it down and redeploy fresh (requires approval).
 - `stack.exists == true` but `ready_count == 0` (pods Pending/CrashLoop/Error) → the stack
   is **stale**. Surface the pod states, and offer a gated `teardown` then a fresh standup.

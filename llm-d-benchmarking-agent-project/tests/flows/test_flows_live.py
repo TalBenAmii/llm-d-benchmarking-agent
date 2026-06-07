@@ -47,10 +47,18 @@ _MODE = "simulate" if _SIMULATE else "live"
 #   LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 pytest tests/flows/test_flows_live.py # the "simulate" set
 _LIVE_FLOWS = [f for f in ALL_FLOWS if f.live_eval and _MODE in f.live_modes]
 
-pytestmark = pytest.mark.skipif(
-    not _LIVE,
-    reason="live LLM eval is opt-in — set LLM_EVAL_LIVE=1 (and configure an API key in .env)",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not _LIVE,
+        reason="live LLM eval is opt-in — set LLM_EVAL_LIVE=1 (and configure an API key in .env)",
+    ),
+    # A multi-turn REAL-LLM session legitimately runs longer than the 60s hermetic per-test backstop
+    # in pyproject.toml (that cap targets fast unit tests / the approval-gate deadlock). Pin a generous
+    # live ceiling here so a slow-but-healthy session isn't misreported as a failure — this matches the
+    # documented ``--timeout=300`` invocation in this module's header, but no longer depends on the
+    # caller remembering the flag.
+    pytest.mark.timeout(300),
+]
 
 
 def _has_auth() -> bool:
