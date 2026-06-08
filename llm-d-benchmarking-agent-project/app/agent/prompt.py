@@ -76,6 +76,15 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   `sanity_random.yaml` is THE quickstart workload (the upstream default) — use it every time
   and do NOT ask the user to choose a workload on the quickstart. Only deviate if the user
   explicitly names a different workload.
+- Live resource stats (the CPU/memory panel) need the in-cluster metrics-server, which kind and
+  the `cicd/kind` spec do NOT install. probe_environment reports it as `metrics_server`
+  (`available`/`installed`/`ready_replicas`). On a local kind cluster, BEFORE the first benchmark
+  `run`, if `metrics_server.available` is false make a SINGLE one-line offer to install it with
+  run_command(["install_metrics_server.sh","--kubelet-insecure-tls"]) and let the user approve it
+  BEFORE you run — it is a per-cluster add-on, so one install covers every later run. SKIP the
+  offer if it is already available, the user already declined, or it is a managed cluster that
+  ships metrics (GKE/OpenShift). Do NOT defer this to a mid-run action. See
+  read_knowledge('observability').
 """
 
 

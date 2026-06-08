@@ -35,6 +35,7 @@ _ALL_CHECKS = [
     "container_runtime", "repos", "tools", "venv",
     "kind_clusters", "kube_context", "cluster_info", "namespaces", "stack",
     "prometheus_crds",
+    "metrics_server",
     "node_capacity",
     "cluster_preconditions",
     "provider_detection",
@@ -117,6 +118,8 @@ async def probe_environment(
         out["stack"] = await _probe_stack(ctx, namespace)
     if "prometheus_crds" in wanted:
         out["prometheus_crds"] = await _probe_prometheus_crds(ctx)
+    if "metrics_server" in wanted:
+        out["metrics_server"] = await _probe_metrics_server(ctx)
     # node_capacity + provider_detection BOTH parse `kubectl get nodes -o json`; fetch it ONCE
     # here and hand the SAME RunResult to both probes so a single probe_environment call runs the
     # node list query just once. The probes still accept the pre-fetched result OPTIONALLY (None =>
@@ -248,6 +251,45 @@ async def _probe_prometheus_crds(ctx: ToolContext) -> dict[str, Any]:
         "podmonitors_crd": per_crd["podmonitors.monitoring.coreos.com"],
         "servicemonitors_crd": per_crd["servicemonitors.monitoring.coreos.com"],
         "present": all(per_crd.values()),
+    }
+
+
+async def _probe_metrics_server(ctx: ToolContext) -> dict[str, Any]:
+    """Detect whether the in-cluster **metrics-server** is present and serving — the add-on that
+    powers the live CPU/memory panel (``kubectl top``). kind and the ``cicd/kind`` spec do NOT
+    install it, so on a fresh kind cluster live stats are unavailable until it is added (on kind,
+    with ``--kubelet-insecure-tls``).
+
+    PURE MECHANISM — facts only, never a verdict and never the install decision:
+      - ``available``       ``kubectl top nodes`` exits 0 (metrics actually flowing — the SAME
+                            signal the live resource poller uses during a run).
+      - ``installed``       the metrics-server Deployment exists in kube-system (queried by LABEL,
+                            since ``kubectl get`` permits a single positional — ``get deployment
+                            metrics-server`` would be two positionals and the allowlist rejects it).
+      - ``ready_replicas``  the Deployment's ``status.availableReplicas`` (0 == installed-but-
+                            NotReady, the kind missing-``--kubelet-insecure-tls`` case), else None.
+
+    WHETHER/when to OFFER the install (and the ``--kubelet-insecure-tls`` / GKE-OpenShift SKIP
+    judgment) is the agent's, grounded in knowledge/observability.md — there is NO install branch
+    here. Mirrors ``_probe_prometheus_crds``: never raises, the cluster is only read, and it
+    degrades to all-absent when kubectl is missing / no cluster is reachable."""
+    if not shutil.which("kubectl"):
+        return {"available": False, "installed": False, "ready_replicas": None}
+    top = await ctx.run_readonly(["kubectl", "top", "nodes"], timeout=12.0)
+    dep = await ctx.run_readonly(
+        ["kubectl", "get", "deployment", "-n", "kube-system",
+         "-l", "k8s-app=metrics-server", "-o", "json"], timeout=12.0)
+    installed = False
+    ready_replicas: int | None = None
+    if dep.exit_code == 0:
+        items = _items_from_json(dep.output)
+        if items:
+            installed = True
+            ready_replicas = items[0].get("status", {}).get("availableReplicas", 0) or 0
+    return {
+        "available": top.exit_code == 0,
+        "installed": installed,
+        "ready_replicas": ready_replicas,
     }
 
 
@@ -429,6 +471,16 @@ def _names_from_json(text: str) -> list[str]:
     except json.JSONDecodeError:
         return []
     return [item.get("metadata", {}).get("name", "") for item in data.get("items", [])]
+
+
+def _items_from_json(text: str) -> list[dict[str, Any]]:
+    """``.items`` from a ``kubectl get … -o json`` list, defensively (returns [] on bad JSON)."""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    items = data.get("items", []) if isinstance(data, dict) else []
+    return [it for it in items if isinstance(it, dict)]
 
 
 def _parse_cpu_quantity(value: Any) -> float | None:

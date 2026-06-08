@@ -679,6 +679,7 @@ async def ws(websocket: WebSocket) -> None:
             s.env_snapshot = await probe_environment(s.ctx, checks=[
                 "container_runtime", "repos", "tools", "venv",
                 "kind_clusters", "kube_context", "cluster_info", "namespaces",
+                "metrics_server",
             ])
         except Exception:  # noqa: BLE001 — pre-probe is best-effort; never break connect
             pass

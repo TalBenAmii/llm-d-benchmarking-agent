@@ -42,16 +42,18 @@ the steps/flags come from the real procedure rather than memory.
 5. **Stand up** — `execute_llmdbenchmark subcommand=standup spec=cicd/kind
    namespace=llmd-quickstart flags={skip_smoketest:true}`. This can take a few minutes;
    the output streams live.
-5b. **Live resource stats — PROACTIVELY OFFER it (don't wait to be asked).** kind does NOT ship
-   the in-cluster **metrics-server**, so the live CPU/mem panel during a run will read
-   `live resource stats unavailable (no metrics-server)`. The user won't know to ask for it, so
-   on a fresh kind cluster make a single one-line offer to install it (approval-gated, idempotent):
+5b. **Live resource stats — OFFER the metrics-server install BEFORE the run (don't wait to be
+   asked, don't defer to mid-run).** kind does NOT ship the in-cluster **metrics-server**, so the
+   live CPU/mem panel during a run reads `live resource stats unavailable (no metrics-server)`.
+   `probe_environment` reports this up front as `metrics_server.available`. On a fresh kind
+   cluster where `metrics_server.available == false`, make a single one-line offer to install it
+   (approval-gated, idempotent) BEFORE you start the benchmark `run`:
    `run_command argv=["install_metrics_server.sh","--kubelet-insecure-tls"]`
    — `--kubelet-insecure-tls` is REQUIRED on kind (self-signed kubelet certs). It's a
-   PER-CLUSTER add-on: install once and every run on this cluster gets stats. Best done now
-   (right after the cluster is up) so the first run already shows live stats, but it can be run
-   any time before a run. SKIP if stats are already available (e.g. GKE/OpenShift); the full
-   judgment + SKIP cases are in `read_knowledge('observability')`.
+   PER-CLUSTER add-on: install once and every run on this cluster gets stats. Best right after the
+   cluster is up; at the latest, before the first run. SKIP if `metrics_server.available` is
+   already true (e.g. GKE/OpenShift); the full judgment + SKIP cases are in
+   `read_knowledge('observability')`.
 6. **Smoketest** — `execute_llmdbenchmark subcommand=smoketest spec=cicd/kind
    namespace=llmd-quickstart`. Confirms the endpoint answers.
 7. **Benchmark** — `execute_llmdbenchmark subcommand=run spec=cicd/kind
