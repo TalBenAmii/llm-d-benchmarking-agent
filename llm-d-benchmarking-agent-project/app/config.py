@@ -105,6 +105,23 @@ class Settings(BaseSettings):
         unset — the signal to NOT install the CORS middleware at all (today's default)."""
         return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
 
+    # Public base URL for share links. Empty (default) -> the share API returns a relative
+    # ``/share/<token>`` path and the browser prepends its own origin (already the public host
+    # when the app is opened via a public URL/tunnel). Set this to a public origin
+    # (e.g. ``https://abc.trycloudflare.com`` or a deployed domain) to mint ABSOLUTE links that
+    # are shareable off-host — e.g. when you run the app at localhost but reach it via a tunnel.
+    # NOTE: exposing the app publicly so friends can open share links also exposes the whole
+    # agent unless you enable AUTH_TOKEN — share GETs bypass auth by design, so turning auth on
+    # locks the agent while keeping share links open. The "when" judgment lives in
+    # knowledge/api_trust.md; this is pure mechanism.
+    share_base_url: str = ""
+
+    @property
+    def share_link_base(self) -> str:
+        """The configured public base for share links, trailing slash stripped, or "" when
+        unset (the signal to return a relative path that the browser resolves against origin)."""
+        return self.share_base_url.strip().rstrip("/")
+
     # Structured logging (Phase 11). LOG_LEVEL is a stdlib level name (DEBUG/INFO/WARNING/...).
     # LOG_FORMAT is "json" (one JSON object per line — the default, for log aggregation) or
     # "text" (a compact human line, for local dev). Set via LOG_LEVEL / LOG_FORMAT in the env.

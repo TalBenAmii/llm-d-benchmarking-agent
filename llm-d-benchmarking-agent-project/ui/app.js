@@ -48,7 +48,6 @@ const shareUrlInput = document.getElementById("share-url");
 const shareCopyBtn = document.getElementById("share-copy");
 const shareOpenLink = document.getElementById("share-open");
 const shareRevokeBtn = document.getElementById("share-revoke");
-const shareBanner = document.getElementById("share-banner");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -2833,7 +2832,10 @@ async function shareChat() {
     }
     if (!r.ok) throw new Error("share failed: " + r.status);
     const j = await r.json();
-    const url = location.origin + j.url;
+    // The backend returns an ABSOLUTE url when SHARE_BASE_URL is configured (so links carry a
+    // public domain a friend can open); otherwise it's a relative /share/<token> path and we
+    // prepend this browser's origin — already the public host when the app is opened via one.
+    const url = /^https?:\/\//i.test(j.url) ? j.url : location.origin + j.url;
     shareToken = j.token;
     if (shareUrlInput) { shareUrlInput.value = url; shareUrlInput.focus(); shareUrlInput.select(); }
     if (shareOpenLink) { shareOpenLink.href = url; shareOpenLink.classList.remove("disabled"); }
@@ -2868,10 +2870,11 @@ if (shareRevokeBtn) shareRevokeBtn.addEventListener("click", revokeShare);
 if (shareDlg) shareDlg.addEventListener("click", (e) => { if (e.target === shareDlg) closeShareDialog(); });  // backdrop
 
 // The public read-only viewer (/share/<token>). Reuses every transcript renderer; no WebSocket,
-// no composer, no sidebar — body.share-view hides them via CSS and shows the read-only banner.
+// no composer, no sidebar — body.share-view hides them via CSS. The "Read-only snapshot" meta
+// line (below) is the only read-only cue; the stripped-down, composer-less page makes the rest
+// self-evident, so there's deliberately no banner.
 async function bootShareView(token) {
   document.body.classList.add("share-view");
-  if (shareBanner) shareBanner.hidden = false;
   activate(makeRecord(null));   // set up activePane so renderHistory has somewhere to append
   try {
     const r = await fetch(`/api/share/${encodeURIComponent(token)}`);

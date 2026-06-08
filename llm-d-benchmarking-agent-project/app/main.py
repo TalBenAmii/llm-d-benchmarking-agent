@@ -507,7 +507,11 @@ async def create_share(sid: str) -> JSONResponse:
             "total": session.session_total,
         },
     )
-    return JSONResponse({"token": token, "url": f"/share/{token}"})
+    # Absolute public URL when SHARE_BASE_URL is set (shareable off-host); otherwise a relative
+    # path the browser resolves against its own origin (see app.config.Settings.share_base_url).
+    base = get_settings().share_link_base
+    url = f"{base}/share/{token}" if base else f"/share/{token}"
+    return JSONResponse({"token": token, "url": url})
 
 
 @app.get("/api/share/{token}", dependencies=[Depends(rate_limit)])

@@ -114,7 +114,24 @@ def test_create_then_public_read_then_revoke(client_with_share):
     body = r.json()
     token = body["token"]
     assert _is_valid_token(token)
+    # Default (SHARE_BASE_URL unset): a relative path — the browser prepends its own origin.
     assert body["url"] == f"/share/{token}"
+
+
+def test_share_base_url_mints_absolute_public_link(tmp_path, monkeypatch):
+    """With SHARE_BASE_URL configured, the mint route returns an ABSOLUTE link carrying the
+    public host (a friend can open it off-host); the trailing slash is normalized."""
+    settings = get_settings().model_copy(
+        update={"workspace_dir": tmp_path / "ws", "share_base_url": "https://demo.example.com/"}
+    )
+    monkeypatch.setattr(main_mod, "get_settings", lambda: settings)
+    with TestClient(main_mod.app) as client:
+        s = _seed_chat(client)
+        body = client.post(f"/api/sessions/{s.id}/share").json()
+        token = body["token"]
+        assert body["url"] == f"https://demo.example.com/share/{token}"   # absolute, slash trimmed
+        # The public read route still works regardless of how the link was formatted.
+        assert client.get(f"/api/share/{token}").status_code == 200
 
     # The PUBLIC transcript route returns the rendered snapshot + metadata, and withholds the
     # owning session id.

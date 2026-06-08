@@ -353,9 +353,11 @@ def test_share_a_chat_via_link():
     # The 🔗 header button + the modal dialog and its controls exist and are wired in JS.
     assert 'id="share-chat"' in html
     for el_id in ("share-chat", "share-dialog", "share-close", "share-done",
-                  "share-status", "share-url", "share-copy", "share-open", "share-revoke", "share-banner"):
+                  "share-status", "share-url", "share-copy", "share-open", "share-revoke"):
         assert f'id="{el_id}"' in html, f"missing #{el_id} in index.html"
         assert f'getElementById("{el_id}")' in js, f"#{el_id} not wired in app.js"
+    # There is deliberately NO read-only banner — the stripped-down viewer makes that obvious.
+    assert 'id="share-banner"' not in html and "share-banner" not in css
     # Create / revoke hit the real owner-only routes; the link is copied with the shared helper.
     assert "function shareChat" in js and "function revokeShare" in js
     assert "/api/sessions/${encodeURIComponent(currentSession)}/share" in js
@@ -369,9 +371,11 @@ def test_share_a_chat_via_link():
     assert "/api/share/${encodeURIComponent(token)}" in js     # fetches the public transcript
     assert "renderHistory(data.items" in js                    # reuses the live transcript renderer
     assert 'document.body.classList.add("share-view")' in js
-    # Read-only mode strips every interactive affordance and shows the banner.
-    assert ".share-banner" in css and "body.share-view #composer" not in css  # composer lives in <footer>
+    # Read-only mode strips every interactive affordance; a "Read-only snapshot" meta line is
+    # the only cue (no banner — see above). The composer lives in <footer>, hidden via that.
+    assert 'el("div", "share-meta")' in js and "Read-only snapshot" in js
     assert "body.share-view footer" in css and "body.share-view #sidebar" in css
+    assert "body.share-view #composer" not in css  # composer is hidden via <footer>, not directly
     assert ".share-dialog::backdrop" in css
 
 
