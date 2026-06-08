@@ -18,7 +18,7 @@ turn. `tests/test_context_mgmt.py` enforces byte-stability + "catalog body never
 prefix" + "catalog injected exactly once".
 
 ## Other local invariants
-- **CORE_KNOWLEDGE inlining** (`prompt.py:` the `CORE_KNOWLEDGE` tuple): only the 7 early-phase
+- **CORE_KNOWLEDGE inlining** (`prompt.py:` the `CORE_KNOWLEDGE` tuple): only the 6 early-phase
   guides are inlined verbatim; everything else is indexed and pulled on demand via
   `read_knowledge("<topic>")`. Adding a file to CORE inflates **every** call — see
   `knowledge/CLAUDE.md` for the cost rule. Don't add to CORE casually.
