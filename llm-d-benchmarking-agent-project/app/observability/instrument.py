@@ -33,13 +33,14 @@ run_attempts_total: Counter
 runs_terminal_total: Counter          # labelled outcome=succeeded|dead_lettered
 run_faults_total: Counter             # labelled kind=oom|timeout|evicted|...
 runs_in_flight: Gauge                 # currently-watched runs (a live gauge during runs)
+faults_injected_total: Counter        # chaos drill: faults injected, labelled kind=...
 
 
 def _define(registry: MetricsRegistry) -> None:
     """(Re)create every metric handle against ``registry`` and publish them at module scope."""
     global commands_total, command_duration_seconds
     global runs_submitted_total, run_attempts_total, runs_terminal_total
-    global run_faults_total, runs_in_flight
+    global run_faults_total, runs_in_flight, faults_injected_total
 
     commands_total = registry.counter(
         "llmdbench_agent_commands_total",
@@ -72,6 +73,11 @@ def _define(registry: MetricsRegistry) -> None:
     runs_in_flight = registry.gauge(
         "llmdbench_orchestrator_runs_in_flight",
         "Benchmark runs currently being watched to completion by the orchestrator.",
+    )
+    faults_injected_total = registry.counter(
+        "llmdbench_orchestrator_faults_injected_total",
+        "Faults injected by the opt-in chaos/resilience drill, by kind (oom|timeout|"
+        "unschedulable|evicted|image_error|run_error|unknown). Off in production.",
     )
 
 
@@ -121,3 +127,10 @@ def record_run_outcome(*, succeeded: bool, dead_lettered: bool, fault_kind: str 
         runs_terminal_total.inc(labels={"outcome": "dead_lettered"})
     if not succeeded and fault_kind and fault_kind != "none":
         run_faults_total.inc(labels={"kind": fault_kind})
+
+
+def record_fault_injected(kind: str) -> None:
+    """A chaos drill injected one fault (recorded as-is by kind). Mechanism only — what the
+    numbers mean is the agent's judgment (knowledge/resilience.md)."""
+    if kind and kind != "none":
+        faults_injected_total.inc(labels={"kind": kind})

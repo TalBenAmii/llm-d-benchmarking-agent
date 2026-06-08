@@ -95,6 +95,9 @@ class Flow:
     # hermetic environment knobs
     repo_state: str = "present_with_venv"          # absent | present_no_venv | present_with_venv
     tools_present: list[str] = field(default_factory=list)
+    # Backend CHAOS_ENABLED for this flow's run — the opt-in gate the resilience drill requires.
+    # Default OFF (production), so only the explicit resilience-drill flow turns it on.
+    chaos_enabled: bool = False
     # needle (argv substring) -> canned command outcome. A `str` value is synthetic stdout with
     # exit 0 (the happy path); a `CannedResult` simulates a FAILING command (non-zero exit / timeout
     # + error output) so error-path flows can be exercised hermetically (see harness.CannedResult).
@@ -891,6 +894,49 @@ CANCEL_STUCK_RUN = Flow(
     required_tools=["cancel_run"],
 )
 
+RESILIENCE_DRILL = Flow(
+    name="resilience-drill",
+    title="chaos / resilience drill (opt-in fault injection + restart durability)",
+    description="The resilience feature: the agent runs run_resilience_drill to PROVE the "
+                "orchestrator classifies + recovers from injected faults (evicted retries to a "
+                "fresh Job; oom dead-letters by design) AND survives its own restart mid-run "
+                "(fresh orchestrator resumes a partial sweep from the cluster checkpoint with 0 "
+                "duplicate Jobs). DOUBLE-gated: it runs only because CHAOS_ENABLED is set for this "
+                "flow AND the named tool is invoked — never from orchestrate_benchmark_run. It "
+                "runs against an in-process cluster (no real cluster touched). Scored on choosing "
+                "the drill tool and reading the resilience guide; the deterministic replay actually "
+                "runs the drill and returns a resilience report.",
+    repo_state="present_with_venv",
+    tools_present=["docker", "kind", "kubectl"],
+    chaos_enabled=True,
+    mock_user_input="Run a chaos drill on the cicd/kind benchmark in the llmd-quickstart "
+                    "namespace — inject an eviction and an OOM, prove the orchestrator recovers "
+                    "and survives a restart, and show me the resilience report.",
+    turns=[
+        _turn("Reading the resilience guide to choose which faults to inject and how to read the "
+              "verdict.", _tc("read_knowledge", name="resilience")),
+        _turn("Running the resilience drill: an eviction (transient → should retry to a fresh "
+              "Job) and an OOM (deterministic → should dead-letter), plus the restart proof.",
+              _tc("run_resilience_drill", namespace="llmd-quickstart", spec="cicd/kind",
+                  harness="inference-perf", workload="sanity_random.yaml",
+                  chaos_plan={"seed": 7, "injections": [
+                      {"kind": "evicted", "at_attempt": 1},
+                      {"kind": "oom", "at_attempt": 2}]},
+                  max_attempts=2, prove_restart=True)),
+        _turn("The drill proved it: the eviction was classified correctly and retried to a fresh "
+              "Job; the OOM was classified correctly and dead-lettered by design (retrying would "
+              "OOM again); and a fresh orchestrator resumed the partial sweep from the cluster "
+              "checkpoint with no duplicate Jobs. Resilience confirmed."),
+    ],
+    # No significant CLI command runs — the drill is entirely in-process (no kubectl/llmdbenchmark).
+    expect_no_significant=True,
+    # Error/safety/proof flows are scored in NON-simulate "live" only (SIMULATE_NOTE would distort
+    # the agent's genuine tool choice). The deterministic replay covers both the loop and gating.
+    live_eval=True,
+    live_modes=frozenset({"live"}),
+    required_tools=["run_resilience_drill", "read_knowledge"],
+)
+
 
 # Live-eval-only coverage of the tool surfaces beyond the deploy/benchmark vertical
 # (DOE/sweep, analysis/history, orchestrator, capacity/readiness/observe/cancel). Each is
@@ -901,6 +947,7 @@ TOOL_CHOICE_FLOWS = [
     EXPORT_PROVENANCE_BUNDLE, REPRODUCE_RUN_FLOW,
     CAPACITY_PREFLIGHT,
     ORCHESTRATE_K8S_JOB, ENDPOINT_READINESS_GATE, OBSERVE_LIVE_USAGE, CANCEL_STUCK_RUN,
+    RESILIENCE_DRILL,
 ]
 
 

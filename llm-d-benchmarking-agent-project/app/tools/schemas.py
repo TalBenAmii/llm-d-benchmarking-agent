@@ -420,6 +420,44 @@ class OrchestrateBenchmarkInput(BaseModel):
     )
 
 
+class RunResilienceDrillInput(BaseModel):
+    namespace: str = Field(..., description="Kubernetes namespace label for the drill (the drill "
+                                            "runs against an in-process/fake cluster — nothing is "
+                                            "mutated on a real cluster).")
+    spec: str | None = Field(default=None, description="llm-d spec from the catalog (annotation only), e.g. 'cicd/kind'")
+    harness: str | None = Field(default=None, description="Harness name from the catalog (annotation only)")
+    workload: str | None = Field(default=None, description="Workload profile from the catalog (annotation only)")
+    image: str | None = Field(default=None, description="Container image annotation for the drill's synthetic Job spec")
+    chaos_plan: dict[str, Any] | None = Field(
+        default=None,
+        description="The fault-injection plan (the agent's judgment — see "
+                    "read_knowledge('resilience') for WHICH faults to inject). Shape: "
+                    "{seed: int, injections: [ {kind, at_attempt, point, probability, "
+                    "exit_code?, message?}, ... ]}. `kind` is one of evicted/oom/unschedulable/"
+                    "image_error/run_error/timeout/unknown (evicted+unknown are TRANSIENT → the "
+                    "orchestrator retries them; the rest dead-letter). `at_attempt` (>=1) targets "
+                    "that attempt's Job — inject `evicted` at attempt 1 to prove a retry succeeds. "
+                    "`point` is 'before-watch' (default) or 'mid-watch'. `probability` in [0,1] "
+                    "(default 1.0). A bad shape returns an error you can self-correct.",
+    )
+    max_attempts: int = Field(
+        default=3, ge=1, le=5,
+        description="Retry budget for the drilled run. Each attempt is a fresh, distinct Job — "
+                    "so a transient fault at attempt 1 can be retried and succeed at attempt 2.",
+    )
+    prove_restart: bool = Field(
+        default=True,
+        description="Also prove orchestrator-restart durability: a FRESH orchestrator (no local "
+                    "state) reconstructs the run / resumes a sweep from the cluster checkpoint with "
+                    "0 duplicate Jobs.",
+    )
+    slo_budget_s: float = Field(
+        default=600.0, ge=0,
+        description="Wall-clock SLO budget (seconds) for the drill; the report states whether the "
+                    "drill completed within it.",
+    )
+
+
 class DiscoverStackInput(BaseModel):
     endpoint_url: str = Field(
         ...,

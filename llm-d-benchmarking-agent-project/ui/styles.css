@@ -566,6 +566,10 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 .slo-fail { color: color-mix(in srgb, var(--red) 55%, var(--text)); font-weight: 600; }
 .slo-na { color: var(--muted); }
 
+/* Resilience / chaos drill card — a thin accent rail so the proof artifact stands apart from
+   a normal results card. Reuses the results-table / slo-pass / slo-fail visuals otherwise. */
+.results-card.resilience { border-left: 3px solid color-mix(in srgb, var(--accent) 60%, var(--border)); }
+
 /* Goodput gauge (radial) + binding-constraint note, beside the SLO table. */
 .results-goodput {
   display: flex; align-items: center; gap: 16px; margin: 4px 0 10px;

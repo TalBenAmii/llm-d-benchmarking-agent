@@ -39,6 +39,7 @@ from app.tools import (
     report_locate,
     repos,
     reproducibility,
+    resilience,
 )
 from app.tools.context import ToolContext
 from app.tools.schemas import (
@@ -68,6 +69,7 @@ from app.tools.schemas import (
     ReproduceRunInput,
     ResultHistoryInput,
     RunCommandInput,
+    RunResilienceDrillInput,
     RunSetupInput,
     SearchKnowledgeInput,
     WriteConfigInput,
@@ -477,6 +479,21 @@ _DESCRIPTIONS = {
         "cpu/memory baseline. Call read_knowledge('orchestrator') to choose between this and "
         "execute_llmdbenchmark and to interpret a failure classification."
     ),
+    "run_resilience_drill": (
+        "RESILIENCE / CHAOS DRILL: prove the orchestrator correctly classifies + recovers from "
+        "injected faults AND survives its own restart mid-run. OPT-IN and DOUBLE-gated — it "
+        "refuses unless the backend CHAOS_ENABLED flag is set, and it is NEVER reachable from "
+        "orchestrate_benchmark_run. It runs hermetically against an in-process cluster (it does "
+        "NOT touch or break a real cluster). You supply a `chaos_plan` (the faults to inject: "
+        "evicted/oom/unschedulable/image_error/run_error/timeout/unknown, each at_attempt N) — "
+        "those flow through the UNMODIFIED classify→retry/dead-letter→reconstruct path, so the "
+        "returned resilience report is a genuine proof: per-fault injected vs classified vs "
+        "recovery (evicted/unknown retry to a fresh Job; the rest dead-letter by design), a "
+        "restart-durability proof (a fresh orchestrator resumes a partial sweep from the cluster "
+        "checkpoint with 0 duplicate Jobs), and SLO met/missed. WHICH faults to inject for a "
+        "scenario, and how to read the verdict, is YOUR judgment — call "
+        "read_knowledge('resilience') first (it cross-links read_knowledge('orchestrator'))."
+    ),
 }
 
 
@@ -512,6 +529,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
         ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
         ToolSpec("cancel_run", _DESCRIPTIONS["cancel_run"], CancelRunInput, cancel.cancel_run),
+        ToolSpec("run_resilience_drill", _DESCRIPTIONS["run_resilience_drill"], RunResilienceDrillInput, resilience.run_resilience_drill),
     ]
     return {s.name: s for s in specs}
 

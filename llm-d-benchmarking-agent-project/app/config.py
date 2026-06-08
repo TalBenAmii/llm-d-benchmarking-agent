@@ -127,6 +127,15 @@ class Settings(BaseSettings):
     # SA. Set via ORCHESTRATOR_SERVICE_ACCOUNT in the backend env / the deploy manifest.
     orchestrator_service_account: str = ""
 
+    # ---- Chaos / resilience drill (opt-in fault injection) ----------------
+    # Gate for the dedicated `run_resilience_drill` tool. OFF in production: the chaos
+    # fault-injection seam (app/orchestrator/chaos.py) is a KubeClient decorator that rewrites
+    # cluster READ responses, so it must never be reachable on the normal orchestrate path. The
+    # drill is DOUBLE-gated — this flag AND invoking the named tool — and the drill runs against
+    # an in-process/fake client (it never deliberately breaks a real cluster). Set
+    # CHAOS_ENABLED=true to allow a resilience drill.
+    chaos_enabled: bool = False
+
     # ---- Workspace lifecycle (Phase 18): retention/GC caps + startup self-check ----------
     # Bound the unbounded growth of per-session/run scratch and the history store. These are
     # DATA (the caps); the GC walk + counter in app/storage/retention.py is the MECHANISM —

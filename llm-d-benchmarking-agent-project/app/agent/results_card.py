@@ -42,6 +42,8 @@ def build_results_card(tool_name: str, result: Any) -> dict[str, Any] | None:
         return None
     if tool_name == "analyze_results":
         return _card_from_analysis(result)
+    if tool_name == "run_resilience_drill":
+        return _card_from_resilience(result)
     return None
 
 
@@ -110,4 +112,38 @@ def _single_run_analysis_card(run: dict[str, Any]) -> dict[str, Any]:
         card["standard_metrics"] = run["standard_metrics"]
     if run.get("session_performance"):
         card["session_performance"] = run["session_performance"]
+    return {k: v for k, v in card.items() if v is not None}
+
+
+def _card_from_resilience(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Flat render model for a run_resilience_drill result. Mechanism only — it reshapes the
+    facts the drill already computed (injected ⋈ classified ⋈ recovery, the restart proof, the
+    SLO budget, the verdict counts) into the card the UI's resilience branch renders. The
+    resilience NARRATIVE ('is this resilient enough?') stays the agent's prose,
+    knowledge/resilience.md. Returns None for a non-resilience shape (e.g. a guard refusal)."""
+    if result.get("kind") != "resilience":
+        return None
+    card: dict[str, Any] = {
+        "kind": "resilience",
+        "run_id": result.get("run_id"),
+        "succeeded": result.get("succeeded"),
+        "dead_lettered": result.get("dead_lettered"),
+        "injected": [
+            {
+                "injected_kind": r.get("injected_kind"),
+                "attempt": r.get("attempt"),
+                "point": r.get("point"),
+                "classified_kind": r.get("classified_kind"),
+                "recovery_action": r.get("recovery_action"),
+                "classified_correctly": r.get("classified_correctly"),
+                "recovered_as_designed": r.get("recovered_as_designed"),
+            }
+            for r in (result.get("injected") or [])
+        ],
+        "slo": result.get("slo") or {},
+        "verdict_counts": result.get("verdict_counts") or {},
+    }
+    restart = result.get("restart")
+    if isinstance(restart, dict):
+        card["restart"] = restart
     return {k: v for k, v in card.items() if v is not None}
