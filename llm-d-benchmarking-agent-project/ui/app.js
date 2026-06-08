@@ -19,6 +19,8 @@ const historyList = document.getElementById("history-list");
 const historyRefresh = document.getElementById("history-refresh");
 const trendMetric = document.getElementById("trend-metric");
 const trendView = document.getElementById("trend-view");
+const sidebarEl = document.getElementById("sidebar");
+const resultsToggle = document.getElementById("results-toggle");
 const workingEl = document.getElementById("working");
 const workWordEl = workingEl.querySelector(".working-word");
 const workStatsEl = workingEl.querySelector(".working-stats");
@@ -703,6 +705,24 @@ function sparkline(points, better) {
 
 if (trendMetric) trendMetric.addEventListener("change", () => loadTrend(trendMetric.value));
 if (historyRefresh) historyRefresh.addEventListener("click", loadHistory);
+
+// Results-trends collapse: the panel is collapsed by default and expands UPWARD above the
+// always-visible "Results" bar pinned at the bottom of the sidebar. State persists across
+// reloads like theme/debug (mirrors that localStorage try/catch).
+function setResultsOpen(open) {
+  if (sidebarEl) sidebarEl.classList.toggle("results-open", open);
+  if (resultsToggle) resultsToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  try { localStorage.setItem("llmd-results-open", open ? "on" : "off"); } catch (e) {}
+}
+(function initResultsOpen() {
+  let open = false;
+  try { open = localStorage.getItem("llmd-results-open") === "on"; } catch (e) {}   // default: collapsed
+  setResultsOpen(open);
+})();
+if (resultsToggle) {
+  resultsToggle.addEventListener("click", () =>
+    setResultsOpen(!(sidebarEl && sidebarEl.classList.contains("results-open"))));
+}
 
 // ---- rendering ----------------------------------------------------------
 

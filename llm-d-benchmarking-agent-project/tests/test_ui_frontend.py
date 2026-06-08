@@ -256,6 +256,30 @@ def test_copy_buttons_jump_latest_and_mobile_sidebar():
     assert "body.sidebar-open .sidebar" in css
 
 
+def test_results_trends_collapsible():
+    """The sidebar Results/trends panel collapses by default and expands UPWARD above an
+    always-visible toggle bar pinned at the bottom of the sidebar; state persists like theme/debug."""
+    html = _ui("index.html")
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    # The trend content is wrapped in a collapsible body; the toggle bar (with the refresh button)
+    # comes AFTER it in source so it renders at the bottom and the body expands above it.
+    assert 'id="history-body"' in html
+    assert 'id="results-toggle"' in html and 'aria-controls="history-body"' in html
+    body_at = html.index('id="history-body"')
+    bar_at = html.index('id="results-toggle"')
+    assert body_at < bar_at, "toggle bar must follow the collapsible body (pinned at the bottom)"
+    # CSS: collapsed is the DEFAULT; `.results-open` (a class on the sidebar) reveals the body.
+    assert ".history-body {" in css and "display: none" in css.split(".history-body {")[1]
+    assert ".sidebar.results-open .history-body { display: flex; }" in css
+    # Caret points up when collapsed (expand) and down when open (collapse).
+    assert ".sidebar.results-open .results-caret" in css
+    # JS: single source of truth + persistence, defaulting to collapsed.
+    assert "function setResultsOpen" in js
+    assert '"llmd-results-open"' in js
+    assert 'classList.toggle("results-open"' in js
+
+
 def test_benchmark_builder_wizard():
     """The guided builder: header CTA + welcome CTA + dialog that composes a brief and sends it.
     Critically, the builder must NOT decide the spec/harness/workload — it only phrases the request

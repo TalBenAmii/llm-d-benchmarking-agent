@@ -36,19 +36,26 @@
     <nav id="conv-list" class="conv-list" aria-label="Recent conversations"></nav>
 
     <section id="history" class="history" aria-label="Stored benchmark results">
-      <div class="sidebar-label history-head">
-        <span>Results</span>
+      <!-- Collapsible body: trends + stored-results list. Hidden when collapsed; the toggle
+           bar below stays pinned at the bottom of the sidebar and expands this panel upward. -->
+      <div id="history-body" class="history-body">
+        <div class="history-controls">
+          <label class="sr-only" for="trend-metric">Trend metric</label>
+          <select id="trend-metric" class="trend-metric" title="Show the trend of this metric across stored results">
+            <option value="">Trend: pick a metric…</option>
+          </select>
+        </div>
+        <div id="trend-view" class="trend-view" aria-live="polite"></div>
+        <div id="history-list" class="history-list" aria-live="polite">
+          <div class="history-empty">No stored results yet.</div>
+        </div>
+      </div>
+      <div class="sidebar-label history-head results-bar">
+        <button id="results-toggle" class="results-toggle" type="button" aria-expanded="false" aria-controls="history-body" title="Show / hide results trends">
+          <span class="results-caret" aria-hidden="true">▾</span>
+          <span>Results</span>
+        </button>
         <button id="history-refresh" class="icon-btn icon-btn-sm" type="button" title="Refresh stored results" aria-label="Refresh stored results">⟳</button>
-      </div>
-      <div class="history-controls">
-        <label class="sr-only" for="trend-metric">Trend metric</label>
-        <select id="trend-metric" class="trend-metric" title="Show the trend of this metric across stored results">
-          <option value="">Trend: pick a metric…</option>
-        </select>
-      </div>
-      <div id="trend-view" class="trend-view" aria-live="polite"></div>
-      <div id="history-list" class="history-list" aria-live="polite">
-        <div class="history-empty">No stored results yet.</div>
       </div>
     </section>
   </aside>
