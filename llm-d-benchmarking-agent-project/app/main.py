@@ -381,7 +381,25 @@ async def session_artifact(sid: str, path: str) -> FileResponse:
     return FileResponse(candidate, media_type=_ARTIFACT_MEDIA[suffix])
 
 
-app.mount("/static", StaticFiles(directory=str(get_settings().ui_dir)), name="static")
+class _RevalidateStaticFiles(StaticFiles):
+    """Serve the UI assets with ``Cache-Control: no-cache`` so a browser reload ALWAYS picks up the
+    latest ``app.js`` / ``styles.css``.
+
+    The UI is a single-page app: it fetches ``/static/app.js`` once and never re-fetches it on
+    in-app navigation (new chat, new run). With the default static headers a browser will happily
+    keep serving a cached copy, so a shipped UI change stays invisible until a manual hard-refresh —
+    a real, repeated source of "I can't see the new button" confusion. ``no-cache`` does not disable
+    caching; it forces the browser to REVALIDATE every load (a cheap conditional request that still
+    returns 304 when nothing changed), so the first reload after a deploy gets the new bytes."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        # Only tag real file responses (200/206/304); leave 404s etc. alone.
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
+app.mount("/static", _RevalidateStaticFiles(directory=str(get_settings().ui_dir)), name="static")
 
 
 def _first_validation_message(exc: ValidationError) -> str:

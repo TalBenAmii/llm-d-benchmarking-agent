@@ -1,0 +1,31 @@
+"""The UI static assets must be served with revalidation headers.
+
+The chat UI is a single-page app that fetches ``/static/app.js`` once and never re-fetches it on
+in-app navigation. Without ``Cache-Control: no-cache`` a browser keeps serving the cached JS, so a
+shipped UI change (e.g. the metrics-server install button) stays invisible until a manual
+hard-refresh. These hermetic TestClient checks lock the revalidation header in place so future UI
+changes are picked up on a normal reload.
+"""
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+from app import main
+
+
+def test_static_assets_send_no_cache_revalidation():
+    with TestClient(main.app) as client:
+        for asset in ("app.js", "styles.css", "index.html"):
+            r = client.get(f"/static/{asset}")
+            assert r.status_code == 200, f"/static/{asset} not served"
+            cc = r.headers.get("cache-control", "")
+            assert "no-cache" in cc, f"/static/{asset} missing no-cache (got {cc!r})"
+
+
+def test_served_app_js_carries_the_metrics_server_button():
+    # Guards that the asset actually on the wire is the current one — the button users were not
+    # seeing was a stale-cache artifact, not a missing-from-disk one.
+    with TestClient(main.app) as client:
+        body = client.get("/static/app.js").text
+    assert "resource-fix-btn" in body
+    assert "Install metrics-server for live stats" in body
