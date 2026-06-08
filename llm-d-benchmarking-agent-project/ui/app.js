@@ -591,6 +591,11 @@ function renderHistory_(records) {
       for (const t of rec.tags) tagWrap.appendChild(el("span", "history-tag", t));
       row.appendChild(tagWrap);
     }
+    // Reproducibility affordances: a stored record with a provenance bundle gets the same
+    // Reproduce + Export report-card actions as the live report card (wired to its OWN session).
+    if (rec.bundle_id && rec.session_id) {
+      row.appendChild(reportActions(rec.bundle_id, rec.session_id));
+    }
     historyList.appendChild(row);
   }
 }
@@ -1912,6 +1917,7 @@ function finishTool(data) {
     else if (data.name === "advise_accelerators") renderAcceleratorCard(r);
     else if (data.name === "generate_doe_experiment") renderDoeCard(r);  // sweep matrix
     else if (data.name === "orchestrate_benchmark_run") renderOrchestrateCard(r);
+    else if (data.name === "export_run_bundle") renderReproducibilityCard(r);  // provenance bundle
     if (d) d.querySelector(".body").appendChild(prettyJson(r));
   }
   activeConsole = null;
@@ -2019,6 +2025,78 @@ function renderReportSummary(result) {
 
   renderPercentileTable(bubble, L, T);
   renderReportCharts(bubble, result.charts);
+
+  // Reproducibility footer: a one-click ask to capture a provenance bundle (repo SHAs + exact
+  // config) so this run can be regenerated/shared. If the result already carries a bundle_id
+  // (e.g. the agent already exported one), show the live Reproduce + Export affordances instead.
+  bubble.appendChild(reportActions(result.bundle_id, currentSession));
+
+  wrap.appendChild(bubble);
+  activePane.appendChild(wrap);
+}
+
+// Build the .report-actions footer row. With a bundle_id present we offer Reproduce (sends a
+// canned user message that prompts the agent to call reproduce_run — NOT a direct mutation) plus
+// Export report card (opens the self-contained HTML download). Without one, a single "Save
+// provenance bundle" ask that prompts the agent to export one. Reused by the report card and the
+// results sidebar.
+function reportActions(bundleId, sessionId) {
+  const row = el("div", "report-actions");
+  if (bundleId && sessionId) {
+    const rep = el("button", "report-action", "↻ Reproduce this run");
+    rep.type = "button";
+    rep.addEventListener("click", () =>
+      sendUserMessage(`Reproduce this run from its provenance bundle ${bundleId}`));
+    row.appendChild(rep);
+    const exp = el("button", "report-action", "⬇ Export report card");
+    exp.type = "button";
+    exp.addEventListener("click", () =>
+      window.open(`/api/sessions/${encodeURIComponent(sessionId)}/bundle/${encodeURIComponent(bundleId)}/report-card.html`, "_blank"));
+    row.appendChild(exp);
+  } else {
+    const save = el("button", "report-action", "🔖 Save provenance bundle");
+    save.type = "button";
+    save.addEventListener("click", () =>
+      sendUserMessage("Capture a reproducibility provenance bundle for this run so it can be regenerated and shared."));
+    row.appendChild(save);
+  }
+  return row;
+}
+
+// The export_run_bundle tool result card: the bundle id, a loud dirty banner when a repo was
+// dirty, the copy-paste regenerate command (with a Copy button), and the Reproduce + Export
+// affordances wired to the new backend routes.
+function renderReproducibilityCard(r) {
+  if (!r || !r.exported || !r.bundle_id) return;
+  const wrap = el("div", "msg assistant");
+  wrap.appendChild(el("div", "who", "provenance"));
+  const bubble = el("div", "bubble");
+  bubble.appendChild(el("strong", null, "Provenance bundle captured"));
+  bubble.appendChild(el("div", "report-sub", `bundle ${r.bundle_id}`));
+
+  if (r.dirty) {
+    bubble.appendChild(el("div", "prov-dirty-banner",
+      "⚠ A repo had uncommitted changes when this run was captured — an exact re-run needs the same working tree."));
+  }
+  // Repo SHAs (+ unavailable flags) as compact chips.
+  if (r.repos) {
+    const chips = el("div", "prov-repos");
+    for (const [name, st] of Object.entries(r.repos)) {
+      const sha = (st && st.unavailable) ? "(unavailable)" : ((st && st.sha) || "?");
+      const c = el("span", "prov-chip" + (st && (st.dirty || st.unavailable) ? " prov-dirty" : ""),
+        `${name} @ ${sha}${st && st.dirty ? " · dirty" : ""}`);
+      chips.appendChild(c);
+    }
+    bubble.appendChild(chips);
+  }
+  // The copy-paste regenerate command.
+  if (r.regenerate_command) {
+    const pre = el("pre", "prov-cmd");
+    pre.textContent = r.regenerate_command;
+    bubble.appendChild(pre);
+    wrapWithCopy(pre);
+  }
+  bubble.appendChild(reportActions(r.bundle_id, currentSession));
   wrap.appendChild(bubble);
   activePane.appendChild(wrap);
 }

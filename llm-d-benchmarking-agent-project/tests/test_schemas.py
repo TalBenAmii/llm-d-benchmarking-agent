@@ -20,7 +20,7 @@ def test_tool_definitions_complete():
         "generate_doe_experiment", "execute_llmdbenchmark",
         "run_command", "locate_and_parse_report", "compare_reports", "compare_harness_runs",
         "analyze_results", "orchestrate_benchmark_run", "observe_run_metrics",
-        "result_history", "cancel_run",
+        "result_history", "export_run_bundle", "reproduce_run", "cancel_run",
     }
     assert names == expected
     for d in defs:

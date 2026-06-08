@@ -699,6 +699,54 @@ RESULT_HISTORY_BASELINE = Flow(
     required_tools=["result_history"],
 )
 
+EXPORT_PROVENANCE_BUNDLE = Flow(
+    name="export-provenance-bundle",
+    title="capture a reproducibility provenance bundle",
+    description="Reproducibility: after a validated run the agent captures a provenance bundle "
+                "(both repo SHAs + dirty flags, the resolved config, env snapshot, knowledge hash, "
+                "the validated report digest) with export_run_bundle. Read-only (git reads + a "
+                "workspace write); scored on choosing export_run_bundle.",
+    repo_state="present_with_venv",
+    mock_user_input="That run looks good — capture a reproducibility bundle for the report in "
+                    "./runs/baseline (namespace llm-d) so I can regenerate or share it later, "
+                    "recording the exact repo versions and resolved config.",
+    turns=[
+        _turn("Reading the reproducibility guide before capturing the bundle.",
+              _tc("read_knowledge", name="reproducibility")),
+        _turn("Capturing the provenance bundle (repo SHAs + resolved config + validated report).",
+              _tc("export_run_bundle", source="./runs/baseline", namespace="llm-d",
+                  label="baseline")),
+        _turn("Captured the bundle; I'll surface the bundle id, the regenerate command, and call "
+              "out plainly if either repo was dirty when it was captured."),
+    ],
+    canned={"git rev-parse": "abc1234\n", "git status": ""},
+    expect_all_readonly=True,
+    required_tools=["export_run_bundle"],
+    live_modes=frozenset({"live"}),
+)
+
+REPRODUCE_RUN_FLOW = Flow(
+    name="reproduce-from-bundle",
+    title="reproduce a run from its provenance bundle",
+    description="Reproducibility: the user asks to reproduce a captured run. The agent reads the "
+                "bundle with reproduce_run (which mutates nothing) and then drives the rerun back "
+                "through the existing gates (propose_session_plan -> --dry-run -> approved -c "
+                "replay). Scored on choosing reproduce_run (not a direct subprocess).",
+    repo_state="present_with_venv",
+    mock_user_input="Reproduce my earlier run from its provenance bundle "
+                    "deadbeefdeadbeef — go back through the normal approval and dry-run gates.",
+    turns=[
+        _turn("Reading the reproducibility guide for the gated reproduce sequence.",
+              _tc("read_knowledge", name="reproducibility")),
+        _turn("Reading the bundle to derive the rerun proposal (this mutates nothing).",
+              _tc("reproduce_run", bundle_id="deadbeefdeadbeef")),
+        _turn("Got the proposal; next I'll propose a SessionPlan for approval, then dry-run the "
+              "replay before any approved -c rerun — warning you if the current repo SHAs differ."),
+    ],
+    required_tools=["reproduce_run"],
+    live_modes=frozenset({"live"}),
+)
+
 MULTI_HARNESS_COMPARE = Flow(
     name="multi-harness-compare",
     title="cross-harness comparison (inference-perf vs guidellm)",
@@ -850,6 +898,7 @@ CANCEL_STUCK_RUN = Flow(
 TOOL_CHOICE_FLOWS = [
     DOE_RUN_SWEEP, DOE_FULL_EXPERIMENT,
     ANALYZE_SLO_PARETO, COMPARE_AB_RUNS, RESULT_HISTORY_BASELINE, MULTI_HARNESS_COMPARE,
+    EXPORT_PROVENANCE_BUNDLE, REPRODUCE_RUN_FLOW,
     CAPACITY_PREFLIGHT,
     ORCHESTRATE_K8S_JOB, ENDPOINT_READINESS_GATE, OBSERVE_LIVE_USAGE, CANCEL_STUCK_RUN,
 ]

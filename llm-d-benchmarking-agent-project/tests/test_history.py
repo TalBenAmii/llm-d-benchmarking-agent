@@ -128,6 +128,44 @@ def test_store_rejects_unsafe_id(tmp_path):
     assert store.delete("a/b") is False
 
 
+def test_store_record_carries_bundle_id_and_provenance(tmp_path):
+    # Reproducibility: a record can carry an optional bundle_id + provenance dict; both round-trip.
+    store = HistoryStore(tmp_path)
+    prov = {"bundle_id": "b16", "repos": {"llm-d": {"sha": "abc"}}, "dirty": False,
+            "regenerate_command": "llmdbenchmark run -c x.yaml -p ns"}
+    rec, created = store.add(_summary(ttft_ms=120), report_path="/runs/a",
+                            bundle_id="b16", provenance=prov)
+    assert created is True and rec.bundle_id == "b16" and rec.provenance == prov
+    # A fresh store over the same root reloads them.
+    got = HistoryStore(tmp_path).get(rec.id)
+    assert got is not None and got.bundle_id == "b16"
+    assert got.provenance["regenerate_command"].startswith("llmdbenchmark run -c")
+
+
+def test_old_records_without_bundle_fields_still_load(tmp_path):
+    # A record written BEFORE the bundle_id/provenance fields existed must still load (additive).
+    store = HistoryStore(tmp_path)
+    store.dir.mkdir(parents=True, exist_ok=True)
+    legacy = {
+        "id": "legacy01", "stored_at": 1.0, "label": "old", "tags": [],
+        "session_id": None, "report_path": "/r", "model": "m", "run_uid": "u",
+        "spec": None, "harness": None, "workload": None, "namespace": None,
+        "summary": {"model": "m"},
+        # NOTE: no bundle_id / provenance keys at all.
+    }
+    (store.dir / "legacy01.json").write_text(json.dumps(legacy))
+    got = store.get("legacy01")
+    assert got is not None and got.label == "old"
+    assert got.bundle_id is None and got.provenance is None
+
+
+def test_store_add_defaults_bundle_fields_to_none(tmp_path):
+    # A normal add (no bundle args) leaves the new fields None — unchanged behavior for callers.
+    store = HistoryStore(tmp_path)
+    rec, _ = store.add(_summary(ttft_ms=10), report_path="/a")
+    assert rec.bundle_id is None and rec.provenance is None
+
+
 def test_store_skips_corrupt_record_files(tmp_path):
     store = HistoryStore(tmp_path)
     store.add(_summary(ttft_ms=10), report_path="/a")

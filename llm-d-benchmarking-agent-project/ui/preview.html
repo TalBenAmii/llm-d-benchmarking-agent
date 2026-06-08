@@ -265,6 +265,24 @@
       "| **Real GPU benchmark** | `guides/optimized-baseline` | Actual GPU | Real numbers, needs a GPU cluster + HF token |\n\n" +
       "Below are the structured results once the run finishes." } });
 
+    // 2b) A deliberately WIDE SessionPlan table (mirrors the real bug: long right-hand cells).
+    //     Width-containment check — this must scroll inside the bubble, NOT push the chat column
+    //     past the viewport. If the page grows a horizontal scrollbar, the fix has regressed.
+    A.handle({ type: "assistant_text", data: { text:
+      "Let me propose a **SessionPlan** for your approval:\n\n" +
+      "| Field | Value |\n" +
+      "|-------|-------|\n" +
+      "| Use case | Local sanity benchmark on CPU-simulated engine (no GPU needed) |\n" +
+      "| Spec | `cicd/kind` (local kind cluster, simulated inference) |\n" +
+      "| Namespace | `llmd-quickstart` (already exists) |\n" +
+      "| Harness | `inference-perf` (latency-focused load generator) |\n" +
+      "| Workload | `sanity_random.yaml` (small validation profile) |\n" +
+      "| Model | `facebook/opt-125m` (built into the scenario, no HF token needed) |\n" +
+      "| Expected steps | 1. Stand up the sim stack; 2. Smoketest (endpoint check); 3. Run benchmark; 4. Parse & summarize results; 5. (Optional) tear down |\n" +
+      "| Duration | ~5–10 minutes total |\n" +
+      "| Reversible | Yes — teardown removes the stack but keeps the cluster |\n\n" +
+      "Click **Approve** and I'll start the deployment." } });
+
     // 3) Single-run results card with the goodput gauge + binding constraint.
     A.renderResultsCard({
       kind: "run", model: "facebook/opt-125m", harness: "inference-perf",

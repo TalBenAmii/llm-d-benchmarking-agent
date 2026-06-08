@@ -106,7 +106,8 @@ class ToolContext:
         return catalog_for_allowlist(self.catalog())
 
     async def run_readonly(
-        self, argv: list[str], *, timeout: float | None = 20.0, quiet: bool = False
+        self, argv: list[str], *, timeout: float | None = 20.0, quiet: bool = False,
+        cwd: str | Path | None = None,
     ) -> RunResult:
         """Validate + run a command that MUST be read-only. Raises if the allowlist
         would not classify it read-only (these are trusted probes, but we still gate).
@@ -118,10 +119,14 @@ class ToolContext:
         the live resource poller so its 5s ``kubectl top`` polls don't flood the persisted,
         500-capped command trail with hundreds of identical rows.
 
+        ``cwd`` narrows where a read-only probe runs (e.g. a ``git rev-parse`` against a specific
+        read-only repo for provenance capture). It cannot widen capability — the allowlist /
+        read-only / quota gates still apply and an entry's own pinned ``cwd_must_be`` wins.
+
         Mechanism lives in app/tools/command_exec.py (CommandExecutor); this thin delegator keeps
         the execution engine separable from this dependency-injection container."""
         from app.tools.command_exec import CommandExecutor
-        return await CommandExecutor(self).run_readonly(argv, timeout=timeout, quiet=quiet)
+        return await CommandExecutor(self).run_readonly(argv, timeout=timeout, quiet=quiet, cwd=cwd)
 
     async def run_command(
         self,
