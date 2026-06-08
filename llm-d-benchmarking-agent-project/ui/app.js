@@ -1983,7 +1983,13 @@ function renderHistory(items) {
   for (const it of items) {
     if (it.role === "user") addBubble("user", it.text);
     else if (it.role === "assistant") addBubble("assistant", it.text);
-    else if (it.role === "tool_call") addHistoryTool(it);
+    // Rebuild the run-progress stepper from the replayed tool calls, exactly as the live
+    // tool_call stream does (advancePhase). Without this, a full-history restore — pane evicted,
+    // page reload, or the resume cursor fell past the live buffer — leaves the rail blank even
+    // though the chat clearly reached a phase: clearActivePane() reset phaseReached to -1 just
+    // before this replay, and only advancePhase re-derives it. (Cache-hit switches keep the rail
+    // because the record's phaseReached survives; this is the missing other half.)
+    else if (it.role === "tool_call") { addHistoryTool(it); advancePhase(it.name, it.input); }
     // Executed commands are interleaved into `items` by the server in their original transcript
     // position (right after the tool call that ran them), so they restore inline in the chat —
     // hidden until debug view is on, exactly like a live run (see addInlineCommand).
@@ -1995,6 +2001,11 @@ function renderHistory(items) {
     // so it survives a chat switch / pane eviction without double-rendering.
     else if (it.role === "approval_request") addApprovalCard(it);
   }
+  // The replay above re-lit the furthest phase AND left "active" on the last tool's phase. This is
+  // a restore of PAST events, so drop the pulse unless the server says this chat is still running
+  // (then the live tail re-lights the current phase) — mirrors done/error/approval, which clear the
+  // active pulse but keep the furthest milestone marked done.
+  if (!cur || !cur.running) clearPhaseActive();
   scroll();
 }
 

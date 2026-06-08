@@ -50,6 +50,11 @@ def test_run_progress_stepper():
     # Phase state is per-chat (survives switches) and resets on a full transcript rebuild.
     assert "phaseReached" in js and "phaseActive" in js
     assert ".run-step.active" in css and ".run-step.done" in css
+    # A full-history restore (pane evicted / page reload / resume cursor past the live buffer)
+    # must rebuild the rail from the replayed tool calls — otherwise switching away and back wipes
+    # the stepper. renderHistory re-derives each phase exactly as the live tool_call stream does.
+    assert "advancePhase(it.name, it.input)" in js, \
+        "renderHistory must rebuild the run stepper from replayed tool calls"
 
 
 def test_stop_button_and_cancelled_event():
