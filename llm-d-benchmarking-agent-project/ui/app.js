@@ -194,6 +194,7 @@ function activate(rec) {
 // an incremental patch — e.g. first open of a chat, or the resume cursor fell off the buffer).
 function clearActivePane() {
   if (activePane) activePane.innerHTML = "";
+  resetStreamBubble();          // the live streaming bubble (if any) was just wiped with the pane
   toolEls = cur ? (cur.toolEls = {}) : {};
   activeConsole = null; if (cur) cur.activeConsole = null;
   welcomeCard = null; if (cur) cur.welcomeCard = null;
@@ -385,8 +386,18 @@ function handle(msg) {
     case "session_saved": loadSessions(); break;
     case "assistant_text":
       removeWelcomeCard();                          // the conversation has started — clear the chips
-      addBubble("assistant", data.text);
+      // If this step streamed deltas, finalize that live bubble with the authoritative text
+      // (re-render markdown + code blocks). Otherwise (non-streaming provider) add a fresh bubble.
+      if (!finalizeStreamBubble(data.text)) addBubble("assistant", data.text);
       if (!workingEl.hidden) resumeThinking();      // between steps: back to generic cycling
+      break;
+    // A token-by-token fragment of the agent's reply, streamed live as it generates. Append it to
+    // the live assistant bubble (created on the first delta); the step's `assistant_text` above
+    // finalizes it. NON_TURN_EVENT (no seq) — purely a perceived-latency win, never buffered.
+    case "assistant_delta":
+      removeWelcomeCard();
+      appendStreamDelta(data.text || "");
+      if (!workingEl.hidden) resumeThinking();
       break;
     case "tool_call": startTool(data); setWorkTool(data.name); advancePhase(data.name, data.input); break;
     // Clear the welcome card only when a real turn is running — NOT for the background environment
@@ -397,11 +408,11 @@ function handle(msg) {
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "results_card": renderResultsCard(data.card); break;
     case "approval_request": addApprovalCard(data); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // now waiting on the user, not the model
-    case "error": addBubble("error", data.message); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
-    case "cancelled": addNote("⏹ " + (data.message || "run cancelled")); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
+    case "error": resetStreamBubble(); addBubble("error", data.message); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
+    case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
-    case "done": setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
+    case "done": resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
     case "pong": break;
   }
   // Advance this chat's resume cursor for every turn event we rendered (live or replayed); the
@@ -574,6 +585,11 @@ function renderHistory_(records) {
       const tagWrap = el("div", "history-tags");
       for (const t of rec.tags) tagWrap.appendChild(el("span", "history-tag", t));
       row.appendChild(tagWrap);
+    }
+    // Reproducibility affordances: a stored record with a provenance bundle gets the same
+    // Reproduce + Export report-card actions as the live report card (wired to its OWN session).
+    if (rec.bundle_id && rec.session_id) {
+      row.appendChild(reportActions(rec.bundle_id, rec.session_id));
     }
     historyList.appendChild(row);
   }
@@ -778,6 +794,45 @@ function addBubble(role, text) {
 }
 
 function addNote(text) { addBubble("assistant", text); }
+
+// ---- live streaming assistant bubble -------------------------------------
+// The agent streams its reply token-by-token via `assistant_delta` events (see app/agent/events.py
+// + app/llm/agent_sdk_provider.py). We render those into ONE live bubble as they arrive; the step's
+// final `assistant_text` then finalizes it (authoritative re-render). `streamBubble` is the live
+// <div.bubble> or null between steps; `streamText` accumulates the raw markdown so each delta
+// re-renders the whole block (markdown isn't append-safe — a half-open `**` or table needs the
+// full source). Deltas are unbuffered/seqless, so a mid-turn reconnect just rebuilds from history.
+let streamBubble = null;
+let streamText = "";
+
+function appendStreamDelta(text) {
+  if (!streamBubble) {
+    const wrap = el("div", "msg assistant");
+    wrap.appendChild(el("div", "who", "assistant"));
+    streamBubble = el("div", "bubble markdown");
+    wrap.appendChild(streamBubble);
+    activePane.appendChild(wrap);
+    streamText = "";
+  }
+  streamText += text;
+  streamBubble.innerHTML = renderMarkdown(streamText);
+}
+
+// Finalize the live streaming bubble with the authoritative full text from `assistant_text`
+// (re-render markdown + wire up code-block copy buttons). Returns true if a live bubble was open
+// (and finalized), false if there was nothing to finalize — so the caller adds a normal bubble.
+function finalizeStreamBubble(text) {
+  if (!streamBubble) return false;
+  streamBubble.innerHTML = renderMarkdown(text || streamText || "");
+  enhanceCodeBlocks(streamBubble);
+  streamBubble = null;
+  streamText = "";
+  return true;
+}
+
+// Drop the live-bubble reference (leaving any DOM in place) so the NEXT delta starts a fresh
+// bubble. Called when the pane is cleared/rebuilt or a turn ends — never appends to a stale node.
+function resetStreamBubble() { streamBubble = null; streamText = ""; }
 
 // ---- start-of-chat welcome card + suggestion chips -----------------------
 // On a brand-new chat the server emits a DETERMINISTIC `welcome` event (heading + capability
@@ -1859,6 +1914,7 @@ function finishTool(data) {
     else if (data.name === "advise_accelerators") renderAcceleratorCard(r);
     else if (data.name === "generate_doe_experiment") renderDoeCard(r);  // sweep matrix
     else if (data.name === "orchestrate_benchmark_run") renderOrchestrateCard(r);
+    else if (data.name === "export_run_bundle") renderReproducibilityCard(r);  // provenance bundle
     if (d) d.querySelector(".body").appendChild(prettyJson(r));
   }
   activeConsole = null;
@@ -1966,6 +2022,78 @@ function renderReportSummary(result) {
 
   renderPercentileTable(bubble, L, T);
   renderReportCharts(bubble, result.charts);
+
+  // Reproducibility footer: a one-click ask to capture a provenance bundle (repo SHAs + exact
+  // config) so this run can be regenerated/shared. If the result already carries a bundle_id
+  // (e.g. the agent already exported one), show the live Reproduce + Export affordances instead.
+  bubble.appendChild(reportActions(result.bundle_id, currentSession));
+
+  wrap.appendChild(bubble);
+  activePane.appendChild(wrap);
+}
+
+// Build the .report-actions footer row. With a bundle_id present we offer Reproduce (sends a
+// canned user message that prompts the agent to call reproduce_run — NOT a direct mutation) plus
+// Export report card (opens the self-contained HTML download). Without one, a single "Save
+// provenance bundle" ask that prompts the agent to export one. Reused by the report card and the
+// results sidebar.
+function reportActions(bundleId, sessionId) {
+  const row = el("div", "report-actions");
+  if (bundleId && sessionId) {
+    const rep = el("button", "report-action", "↻ Reproduce this run");
+    rep.type = "button";
+    rep.addEventListener("click", () =>
+      sendUserMessage(`Reproduce this run from its provenance bundle ${bundleId}`));
+    row.appendChild(rep);
+    const exp = el("button", "report-action", "⬇ Export report card");
+    exp.type = "button";
+    exp.addEventListener("click", () =>
+      window.open(`/api/sessions/${encodeURIComponent(sessionId)}/bundle/${encodeURIComponent(bundleId)}/report-card.html`, "_blank"));
+    row.appendChild(exp);
+  } else {
+    const save = el("button", "report-action", "🔖 Save provenance bundle");
+    save.type = "button";
+    save.addEventListener("click", () =>
+      sendUserMessage("Capture a reproducibility provenance bundle for this run so it can be regenerated and shared."));
+    row.appendChild(save);
+  }
+  return row;
+}
+
+// The export_run_bundle tool result card: the bundle id, a loud dirty banner when a repo was
+// dirty, the copy-paste regenerate command (with a Copy button), and the Reproduce + Export
+// affordances wired to the new backend routes.
+function renderReproducibilityCard(r) {
+  if (!r || !r.exported || !r.bundle_id) return;
+  const wrap = el("div", "msg assistant");
+  wrap.appendChild(el("div", "who", "provenance"));
+  const bubble = el("div", "bubble");
+  bubble.appendChild(el("strong", null, "Provenance bundle captured"));
+  bubble.appendChild(el("div", "report-sub", `bundle ${r.bundle_id}`));
+
+  if (r.dirty) {
+    bubble.appendChild(el("div", "prov-dirty-banner",
+      "⚠ A repo had uncommitted changes when this run was captured — an exact re-run needs the same working tree."));
+  }
+  // Repo SHAs (+ unavailable flags) as compact chips.
+  if (r.repos) {
+    const chips = el("div", "prov-repos");
+    for (const [name, st] of Object.entries(r.repos)) {
+      const sha = (st && st.unavailable) ? "(unavailable)" : ((st && st.sha) || "?");
+      const c = el("span", "prov-chip" + (st && (st.dirty || st.unavailable) ? " prov-dirty" : ""),
+        `${name} @ ${sha}${st && st.dirty ? " · dirty" : ""}`);
+      chips.appendChild(c);
+    }
+    bubble.appendChild(chips);
+  }
+  // The copy-paste regenerate command.
+  if (r.regenerate_command) {
+    const pre = el("pre", "prov-cmd");
+    pre.textContent = r.regenerate_command;
+    bubble.appendChild(pre);
+    wrapWithCopy(pre);
+  }
+  bubble.appendChild(reportActions(r.bundle_id, currentSession));
   wrap.appendChild(bubble);
   activePane.appendChild(wrap);
 }

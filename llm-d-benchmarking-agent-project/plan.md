@@ -7,7 +7,7 @@
 > sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
 > comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
 > **Prometheus/Grafana observability**, and a **hardened image + one-command Helm/Kustomize
-> deploy** with least-privilege RBAC. The agent now exposes **28 tools**, and the full
+> deploy** with least-privilege RBAC. The agent now exposes **30 tools**, and the full
 > technical documentation suite lives under [`docs/`](docs/) (architecture, API reference,
 > deployment guide, user guide). See **[Implementation status](#implementation-status)** for
 > the MVP record; the sections after it are the original design reference (kept as written).
@@ -24,7 +24,7 @@
 
 **Built:** the full MVP vertical — chat UI → agent loop → schema-validated, approval-gated
 tools → real `llmdbenchmark` execution → validated Benchmark Report summary. The project
-has since grown to **28 tools**; see [`FEATURES.md`](FEATURES.md) for the authoritative,
+has since grown to **30 tools**; see [`FEATURES.md`](FEATURES.md) for the authoritative,
 current feature inventory and [`ROADMAP_V4.md`](ROADMAP_V4.md) for remaining/deferred work.
 The MVP step record below is preserved for tracking; the design sections after it are the
 original design

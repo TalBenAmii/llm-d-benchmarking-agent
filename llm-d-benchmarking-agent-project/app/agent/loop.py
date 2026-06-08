@@ -13,7 +13,7 @@ from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.results_card import build_results_card
 from app.agent.session import Session
 from app.agent.tool_result_budget import clamp_tool_result_content
-from app.llm.provider import LLMProvider, Usage
+from app.llm.provider import LLMProvider, Usage, open_provider_turn
 from app.observability.logctx import bind as log_bind
 from app.tools.context import ApprovalRejected, QuotaError, ToolError
 from app.tools.registry import dispatch, tool_definitions
@@ -103,106 +103,119 @@ class AgentLoop:
         turn_usage = Usage()
         calls = 0
 
-        for _ in range(MAX_STEPS):
-            try:
-                turn = await self._provider.chat(
-                    system=system, messages=session.messages, tools=tools, cache_key=session.id,
-                )
-            except Exception as exc:  # provider/network error
-                await emit(events.ERROR, {"message": f"LLM call failed: {exc}"})
-                break
+        # Stream the model's text to the UI as it generates (perceived-latency win): the provider
+        # calls this with each delta; the UI appends it to the live assistant bubble, then the
+        # per-step ASSISTANT_TEXT below finalizes that bubble with the authoritative text. Emitted
+        # as a NON_TURN_EVENT (unbuffered) — see events.py. Providers that don't stream never call
+        # it, so only the final ASSISTANT_TEXT shows (unchanged behavior).
+        async def on_text(delta: str) -> None:
+            await emit(events.ASSISTANT_DELTA, {"text": delta})
 
-            # Accumulate REAL usage: into the running turn total and the persisted session tally.
-            # (calls counts only SUCCESSFUL chats — the error path above breaks before here, so
-            # it is NOT the loop index; keep the explicit counter.)
-            turn_usage += turn.usage
-            calls += 1  # noqa: SIM113
-            session.total_input_tokens += turn.usage.input_tokens
-            session.total_output_tokens += turn.usage.output_tokens
-            session.total_cache_read_tokens += turn.usage.cache_read_tokens
-            session.total_cache_write_tokens += turn.usage.cache_write_tokens
-            await emit(events.USAGE, {
-                "turn": {
-                    "input": turn_usage.input_tokens,
-                    "output": turn_usage.output_tokens,
-                    "cache_read": turn_usage.cache_read_tokens,
-                    "cache_write": turn_usage.cache_write_tokens,
-                    "calls": calls,
-                    "total": turn_usage.total_input + turn_usage.output_tokens,
-                },
-                "session": {
-                    "input": session.total_input_tokens,
-                    "output": session.total_output_tokens,
-                    "cache_read": session.total_cache_read_tokens,
-                    "total": session.session_total,
-                },
-                # DEBUGGING TOKEN USAGE: a cheap (char/4) ESTIMATE of the CURRENT assembled-context
-                # window size + a breakdown (system vs replayed history vs the last tool result),
-                # so the user can SEE context growth and what dominates it — not just cumulative
-                # billed usage. Estimated from the exact system + messages just sent this call.
-                "context_est": estimate_context_size(system, session.messages),
-            })
+        # One provider "turn" spans all of this user turn's steps. For the Claude Agent SDK this
+        # keeps ONE warm CLI subprocess for the whole turn instead of spawning a fresh one per step
+        # (~3s init each) — see app/llm/agent_sdk_provider.py. Other providers (and the test fakes)
+        # transparently get a stateless per-step chat() with identical behavior.
+        async with open_provider_turn(
+            self._provider, system=system, tools=tools, cache_key=session.id
+        ) as agent_turn:
+            for _ in range(MAX_STEPS):
+                try:
+                    turn = await agent_turn.chat(session.messages, on_text=on_text)
+                except Exception as exc:  # provider/network error
+                    await emit(events.ERROR, {"message": f"LLM call failed: {exc}"})
+                    break
 
-            session.messages.append({
-                "role": "assistant",
-                "content": turn.text or "",
-                "tool_calls": [{"id": tc.id, "name": tc.name, "input": tc.input} for tc in turn.tool_calls],
-            })
-            if turn.text:
-                await emit(events.ASSISTANT_TEXT, {"text": turn.text})
-
-            if not turn.tool_calls:
-                break  # the model is done for this turn
-
-            tool_result_msgs = []
-            for tc in turn.tool_calls:
-                tool_calls_made += 1
-                # Bind the tool name into the log context so every record emitted while this
-                # tool runs (incl. the command runner's exec line) carries `tool` alongside
-                # the turn's corr_id + session_id.
-                with log_bind(tool=tc.name):
-                    log.info("tool.call.start", extra={"tool_call_id": tc.id})
-                    await emit(events.TOOL_CALL, {"id": tc.id, "name": tc.name, "input": tc.input})
-                    # Tie any approval gate raised inside this dispatch back to its tool call.
-                    ctx.current_tool_call_id = tc.id
-                    result = await self._invoke(ctx, tc.name, tc.input)
-                    ctx.current_tool_call_id = None
-
-                    if tc.name == "propose_session_plan" and isinstance(result, dict) and result.get("approved"):
-                        plan = result.get("plan")
-                        session.approved_plan = plan
-                        # The approved plan defines this chat's namespace (its sidebar folder). Fill
-                        # it only if still unset, so a session pre-stamped with a namespace (e.g. the
-                        # test suite's "test") is never overwritten.
-                        if plan and not session.namespace:
-                            session.namespace = plan.get("namespace")
-
-                    log.info("tool.call.result", extra={
-                        "tool_call_id": tc.id,
-                        "ok": not (isinstance(result, dict) and ("error" in result or result.get("rejected"))),
-                    })
-                    await emit(events.TOOL_RESULT, {"id": tc.id, "name": tc.name, "result": result})
-                    # Deterministic structured results card (B2): right after an analyze_results
-                    # tool result, emit a consistent card carrying the analyzer's exact SLO/Pareto
-                    # verdicts (not free-form prose). The single-run report's metrics + charts are
-                    # already shown by the frontend report-summary card (driven from the same
-                    # locate_and_parse_report result), so we do NOT build a second card from it.
-                    # Pure mechanism — build_results_card returns None for anything not renderable.
-                    card = build_results_card(tc.name, result)
-                    if card is not None:
-                        await emit(events.RESULTS_CARD, {"id": tc.id, "card": card})
-                tool_result_msgs.append({
-                    "tool_call_id": tc.id,
-                    "name": tc.name,
-                    # Bound the result to the feed-back budget WITHOUT slicing mid-JSON: an
-                    # overflow becomes a valid truncation envelope, never malformed JSON.
-                    "content": clamp_tool_result_content(result, _TOOL_RESULT_BUDGET),
+                # Accumulate REAL usage: into the running turn total and the persisted session tally.
+                # (calls counts only SUCCESSFUL chats — the error path above breaks before here, so
+                # it is NOT the loop index; keep the explicit counter.)
+                turn_usage += turn.usage
+                calls += 1  # noqa: SIM113
+                session.total_input_tokens += turn.usage.input_tokens
+                session.total_output_tokens += turn.usage.output_tokens
+                session.total_cache_read_tokens += turn.usage.cache_read_tokens
+                session.total_cache_write_tokens += turn.usage.cache_write_tokens
+                await emit(events.USAGE, {
+                    "turn": {
+                        "input": turn_usage.input_tokens,
+                        "output": turn_usage.output_tokens,
+                        "cache_read": turn_usage.cache_read_tokens,
+                        "cache_write": turn_usage.cache_write_tokens,
+                        "calls": calls,
+                        "total": turn_usage.total_input + turn_usage.output_tokens,
+                    },
+                    "session": {
+                        "input": session.total_input_tokens,
+                        "output": session.total_output_tokens,
+                        "cache_read": session.total_cache_read_tokens,
+                        "total": session.session_total,
+                    },
+                    # DEBUGGING TOKEN USAGE: a cheap (char/4) ESTIMATE of the CURRENT assembled-context
+                    # window size + a breakdown (system vs replayed history vs the last tool result),
+                    # so the user can SEE context growth and what dominates it — not just cumulative
+                    # billed usage. Estimated from the exact system + messages just sent this call.
+                    "context_est": estimate_context_size(system, session.messages),
                 })
 
-            session.messages.append({"role": "tool_results", "results": tool_result_msgs})
-        else:
-            await emit(events.ERROR, {"message": f"reached the step limit ({MAX_STEPS}); pausing."})
-            log.warning("turn.step_limit", extra={"max_steps": MAX_STEPS})
+                session.messages.append({
+                    "role": "assistant",
+                    "content": turn.text or "",
+                    "tool_calls": [{"id": tc.id, "name": tc.name, "input": tc.input} for tc in turn.tool_calls],
+                })
+                if turn.text:
+                    await emit(events.ASSISTANT_TEXT, {"text": turn.text})
+
+                if not turn.tool_calls:
+                    break  # the model is done for this turn
+
+                tool_result_msgs = []
+                for tc in turn.tool_calls:
+                    tool_calls_made += 1
+                    # Bind the tool name into the log context so every record emitted while this
+                    # tool runs (incl. the command runner's exec line) carries `tool` alongside
+                    # the turn's corr_id + session_id.
+                    with log_bind(tool=tc.name):
+                        log.info("tool.call.start", extra={"tool_call_id": tc.id})
+                        await emit(events.TOOL_CALL, {"id": tc.id, "name": tc.name, "input": tc.input})
+                        # Tie any approval gate raised inside this dispatch back to its tool call.
+                        ctx.current_tool_call_id = tc.id
+                        result = await self._invoke(ctx, tc.name, tc.input)
+                        ctx.current_tool_call_id = None
+
+                        if tc.name == "propose_session_plan" and isinstance(result, dict) and result.get("approved"):
+                            plan = result.get("plan")
+                            session.approved_plan = plan
+                            # The approved plan defines this chat's namespace (its sidebar folder). Fill
+                            # it only if still unset, so a session pre-stamped with a namespace (e.g. the
+                            # test suite's "test") is never overwritten.
+                            if plan and not session.namespace:
+                                session.namespace = plan.get("namespace")
+
+                        log.info("tool.call.result", extra={
+                            "tool_call_id": tc.id,
+                            "ok": not (isinstance(result, dict) and ("error" in result or result.get("rejected"))),
+                        })
+                        await emit(events.TOOL_RESULT, {"id": tc.id, "name": tc.name, "result": result})
+                        # Deterministic structured results card (B2): right after an analyze_results
+                        # tool result, emit a consistent card carrying the analyzer's exact SLO/Pareto
+                        # verdicts (not free-form prose). The single-run report's metrics + charts are
+                        # already shown by the frontend report-summary card (driven from the same
+                        # locate_and_parse_report result), so we do NOT build a second card from it.
+                        # Pure mechanism — build_results_card returns None for anything not renderable.
+                        card = build_results_card(tc.name, result)
+                        if card is not None:
+                            await emit(events.RESULTS_CARD, {"id": tc.id, "card": card})
+                    tool_result_msgs.append({
+                        "tool_call_id": tc.id,
+                        "name": tc.name,
+                        # Bound the result to the feed-back budget WITHOUT slicing mid-JSON: an
+                        # overflow becomes a valid truncation envelope, never malformed JSON.
+                        "content": clamp_tool_result_content(result, _TOOL_RESULT_BUDGET),
+                    })
+
+                session.messages.append({"role": "tool_results", "results": tool_result_msgs})
+            else:
+                await emit(events.ERROR, {"message": f"reached the step limit ({MAX_STEPS}); pausing."})
+                log.warning("turn.step_limit", extra={"max_steps": MAX_STEPS})
 
         log.info("turn.end", extra={"session_id": session.id, "tool_calls": tool_calls_made})
         session.persist()

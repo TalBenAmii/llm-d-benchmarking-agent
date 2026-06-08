@@ -7,6 +7,7 @@ monkeypatching ``app.main.get_settings`` — the same pattern the WS auth tests 
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -155,3 +156,80 @@ def test_artifact_route_404_for_unknown_session(client_with_workspace):
         params={"path": "a/b.png"},
     )
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Reproducibility — the provenance-bundle JSON + report-card.html routes.
+# Same tmp-workspace TestClient pattern; the bundle JSON is planted under
+# <sessions>/<sid>/bundles/<bundle_id>.json (where BundleStore writes it).
+# ---------------------------------------------------------------------------
+
+
+def _plant_bundle(sessions_root: Path, sid: str, bundle_id: str = "bundle0123abcd") -> dict:
+    bundles = sessions_root / sid / "bundles"
+    bundles.mkdir(parents=True, exist_ok=True)
+    bundle = {
+        "bundle_id": bundle_id,
+        "created_at": 1_700_000_000.0,
+        "model": "meta-llama/Llama-3.1-8B",
+        "agent_version": "0.1.0",
+        "harness": "inference-perf",
+        "spec": "cicd/kind",
+        "repos": {
+            "llm-d": {"sha": "abcd123", "dirty": False, "ref": "main"},
+            "llm-d-benchmark": {"sha": "ef99887", "dirty": False, "ref": "main"},
+        },
+        "resolved_config": {"found": True, "path": "/ws/run-config.yaml", "body": "spec: cicd/kind\n"},
+        "report_summary": {"model": "meta-llama/Llama-3.1-8B", "harness": "inference-perf"},
+        "report_digest": "deadbeef", "knowledge_version": "cafef00d",
+        "regenerate_command": "llmdbenchmark run -c /ws/run-config.yaml -p ns1",
+        "dirty": False,
+    }
+    (bundles / f"{bundle_id}.json").write_text(json.dumps(bundle))
+    return bundle
+
+
+def test_bundle_json_route_returns_metadata(client_with_workspace):
+    client, sessions_root = client_with_workspace
+    _plant_bundle(sessions_root, "sessZ")
+    r = client.get("/api/sessions/sessZ/bundle/bundle0123abcd")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["bundle_id"] == "bundle0123abcd"
+    assert body["regenerate_command"].startswith("llmdbenchmark run -c")
+
+
+def test_bundle_report_card_is_html_attachment(client_with_workspace):
+    client, sessions_root = client_with_workspace
+    _plant_bundle(sessions_root, "sessZ")
+    r = client.get("/api/sessions/sessZ/bundle/bundle0123abcd/report-card.html")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "attachment" in r.headers.get("content-disposition", "")
+    assert "abcd123" in r.text and "meta-llama/Llama-3.1-8B" in r.text
+    # Self-contained — no external asset links.
+    assert "http://" not in r.text and "https://" not in r.text
+
+
+def test_bundle_route_404_for_unknown_bundle(client_with_workspace):
+    client, sessions_root = client_with_workspace
+    _plant_bundle(sessions_root, "sessZ")
+    assert client.get("/api/sessions/sessZ/bundle/doesnotexist").status_code == 404
+    assert client.get("/api/sessions/sessZ/bundle/doesnotexist/report-card.html").status_code == 404
+
+
+def test_bundle_route_404_for_unknown_session(client_with_workspace):
+    client, _ = client_with_workspace
+    assert client.get("/api/sessions/ghost/bundle/bundle0123abcd").status_code == 404
+
+
+def test_bundle_route_blocks_traversal_in_sid_and_bundle_id(client_with_workspace, tmp_path):
+    client, sessions_root = client_with_workspace
+    _plant_bundle(sessions_root, "sessZ")
+    # Plant a secret bundle OUTSIDE the session dir; traversal must not reach it.
+    secret_dir = tmp_path / "ws" / "bundles"
+    secret_dir.mkdir(parents=True, exist_ok=True)
+    (secret_dir / "secret.json").write_text('{"bundle_id": "secret"}')
+    # Traversal in the bundle_id (rejected by _safe_id) and the sid (rejected by base.parent check).
+    assert client.get("/api/sessions/sessZ/bundle/..%2f..%2fsecret").status_code in (404, 400)
+    assert client.get("/api/sessions/..%2f..%2fsecret/bundle/bundle0123abcd").status_code in (404, 400)

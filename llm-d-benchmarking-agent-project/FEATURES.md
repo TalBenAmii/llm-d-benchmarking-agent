@@ -93,9 +93,9 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 
 ---
 
-## 4. The 28 agent tools (authoritative list — `app/tools/registry.py`)
+## 4. The 30 agent tools (authoritative list — `app/tools/registry.py`)
 
-> Note: the registry defines **28** tools (matches `CLAUDE.md`). Verify by reading
+> Note: the registry defines **30** tools (matches `CLAUDE.md`). Verify by reading
 > `app/tools/registry.py:build_registry`.
 
 **Sensing / grounding (read-only, auto-run):** `probe_environment`, `list_catalog`,
@@ -111,6 +111,10 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 
 **Analysis / history (read-only):** `compare_reports`, `compare_harness_runs`,
 `analyze_results`, `aggregate_runs`, `result_history`, `cancel_run`.
+
+**Reproducibility (read-only):** `export_run_bundle` (capture a provenance bundle — repo
+SHAs + resolved config + validated report digest), `reproduce_run` (re-derive a rerun
+proposal that goes back through the SessionPlan-approval + `--dry-run` gates).
 
 *How to verify each tool:* every tool has a focused test in `tests/` (e.g.
 `tests/test_new_tools.py`, `tests/test_analyze.py`, `tests/test_capacity.py`,

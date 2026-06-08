@@ -648,6 +648,57 @@ class ResultHistoryInput(BaseModel):
     )
 
 
+class ExportRunBundleInput(BaseModel):
+    """Capture a reproducibility PROVENANCE BUNDLE for a validated run (read-only: git reads +
+    a workspace write). See read_knowledge('reproducibility')."""
+
+    source: str = Field(
+        ...,
+        description="A Benchmark Report file OR a run directory (its newest report is used). The "
+                    "report is schema-validated FIRST — an unvalidated report is refused (a bundle "
+                    "only ever certifies a schema-valid run).",
+        min_length=1,
+    )
+    namespace: str | None = Field(
+        default=None,
+        description="The namespace the run targeted (from the approved SessionPlan). Used to "
+                    "build the copy-paste regenerate command (llmdbenchmark run -c <cfg> -p <ns>).",
+    )
+    spec: str | None = Field(default=None, description="spec used (provenance / re-derive a rerun plan).")
+    harness: str | None = Field(default=None, description="harness used (provenance); falls back to the report's own.")
+    workload: str | None = Field(default=None, description="workload used (provenance).")
+    model: str | None = Field(default=None, description="model served (provenance); falls back to the report's own.")
+    slo: dict[str, Any] | None = Field(
+        default=None,
+        description="The approved SessionPlan's SLO block, if any, so a reproduce can re-derive "
+                    "the SLO verdicts.",
+    )
+    label: str | None = Field(default=None, description="A short human label for this bundle, e.g. '8B baseline'.")
+    attach_to_history: bool = Field(
+        default=False,
+        description="Also attach this bundle's id + provenance to the matching stored history "
+                    "record (if one exists). The result is stored separately via result_history; "
+                    "this just links them.",
+    )
+    session_id: str | None = Field(default=None, description="Originating chat id (provenance).")
+
+
+class ReproduceRunInput(BaseModel):
+    """Read a saved provenance bundle and return a structured rerun PROPOSAL — it mutates
+    NOTHING. The agent then drives propose_session_plan -> dry-run -> approved -c replay. See
+    read_knowledge('reproducibility')."""
+
+    bundle_id: str = Field(
+        ...,
+        description="The id of a previously exported provenance bundle (from export_run_bundle or "
+                    "a history record). reproduce_run returns the captured spec/harness/workload/"
+                    "namespace/slo + run-config path + the dry-run-FIRST sequence; it emits NO "
+                    "mutating command. Replay still goes through SessionPlan approval + the CLI "
+                    "--dry-run gate, never around them.",
+        min_length=1,
+    )
+
+
 class CompareReportsInput(BaseModel):
     sources: list[str] | None = Field(
         default=None,

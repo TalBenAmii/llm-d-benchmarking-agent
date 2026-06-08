@@ -120,10 +120,16 @@ class CommandExecutor:
         return fallback
 
     async def run_readonly(
-        self, argv: list[str], *, timeout: float | None = 20.0, quiet: bool = False
+        self, argv: list[str], *, timeout: float | None = 20.0, quiet: bool = False,
+        cwd: str | Path | None = None,
     ) -> RunResult:
         """Validate + run a command that MUST be read-only (see ToolContext.run_readonly for
-        the public contract). Raises if the allowlist would not classify it read-only."""
+        the public contract). Raises if the allowlist would not classify it read-only.
+
+        ``cwd`` overrides the resolved working directory for the read-only probe (e.g. a
+        ``git rev-parse`` against a specific repo for provenance capture). It can ONLY narrow
+        where the probe reads — every gate (allowlist, read-only classification, quota) still
+        applies — and an allowlist entry's own pinned ``cwd_must_be`` still takes precedence."""
         ctx = self._ctx
         decision = ctx.allowlist.validate(argv, catalog=ctx.catalog_for_allowlist())
         if not decision.allowed:
@@ -134,8 +140,10 @@ class CommandExecutor:
         entry = ctx.allowlist.executable(argv[0])
         if not quiet:
             await self._emit_command(decision, auto_run=True)
+        # An entry that pins its own cwd (cwd_must_be) wins; otherwise honor the caller's cwd.
+        cwd_arg = None if (entry and entry.get("cwd_must_be")) else cwd
         result = await ctx.runner.execute(
-            argv, entry, timeout=self._effective_timeout(decision, timeout)
+            argv, entry, timeout=self._effective_timeout(decision, timeout), cwd=cwd_arg
         )
         if decision.quota_key is not None:
             ctx.quota.record(decision.quota_key)

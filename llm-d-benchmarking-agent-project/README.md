@@ -17,7 +17,7 @@ security sandbox, asking for your approval before anything that changes your sys
 > filtering, Pareto/DoE), **multi-harness comparison**, a **capacity pre-flight**,
 > **cross-session result history + trends**, **Prometheus/Grafana observability**, and a
 > **hardened image + one-command Helm/Kustomize deploy** with least-privilege RBAC. The
-> agent exposes **28 tools**. The headline supported path remains the `llm-d-benchmark`
+> agent exposes **30 tools**. The headline supported path remains the `llm-d-benchmark`
 > *quickstart* (local [kind](https://kind.sigs.k8s.io/) cluster, CPU-only simulated engine),
 > which the agent can bootstrap end-to-end — install the prerequisites `install.sh` doesn't
 > (Docker + the kind binary, via a vetted installer), create/delete the kind cluster, then
@@ -143,7 +143,7 @@ The full technical documentation suite lives under [`docs/`](docs/):
 | Doc | For |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design: layers, components, the four determinism gates, trust boundaries |
-| [docs/API.md](docs/API.md) | The HTTP/WebSocket API + the 28-tool agent surface + the `SessionPlan` |
+| [docs/API.md](docs/API.md) | The HTTP/WebSocket API + the 30-tool agent surface + the `SessionPlan` |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Running locally and in-cluster (Helm/Kustomize), config, secrets, RBAC, observability |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Using the agent end-to-end with no `llm-d-benchmark` expertise |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | The flow-validation harness — does the agent run the *right* commands? |

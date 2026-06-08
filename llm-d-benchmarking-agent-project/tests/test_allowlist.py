@@ -138,6 +138,26 @@ def test_git_clone_llmd_allowed(allowlist):
     assert d.allowed and d.mode == MUTATING
 
 
+def test_git_rev_parse_short_head_allowed_read_only(allowlist):
+    # Reproducibility provenance capture: a SHORT commit SHA. Read-only (inspects git state),
+    # auto-runs — it must NOT widen any mutating capability.
+    d = allowlist.validate(["git", "rev-parse", "--short", "HEAD"])
+    assert d.allowed and d.mode == READ_ONLY and not d.requires_approval
+    # Plain rev-parse HEAD + status --porcelain (dirty detection) stay read-only too.
+    assert allowlist.validate(["git", "rev-parse", "HEAD"]).mode == READ_ONLY
+    assert allowlist.validate(["git", "status", "--porcelain"]).mode == READ_ONLY
+
+
+def test_git_run_config_replay_stays_mutating_and_approval_gated(allowlist, catalog):
+    # The reproduce path's -c replay is the EXISTING mutating, approval-gated run — reproduction
+    # adds no new mutation capability (the only allowlist change is the read-only --short flag).
+    d = allowlist.validate(
+        ["llmdbenchmark", "--spec", "cicd/kind", "run", "-c", "run-config.yaml", "-p", "test"],
+        catalog=catalog,
+    )
+    assert d.allowed and d.mode == MUTATING and d.requires_approval
+
+
 def test_install_sh_uv_allowed(allowlist):
     d = allowlist.validate(["install.sh", "--uv"])
     assert d.allowed and d.mode == MUTATING

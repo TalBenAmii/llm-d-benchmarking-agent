@@ -30,11 +30,12 @@ override the subscription and force per-token API billing, so we blank it for th
 """
 from __future__ import annotations
 
+import contextlib
 import json
 from typing import Any
 
 from app.config import Settings
-from app.llm.provider import AssistantTurn, LLMProvider, ProviderError, ToolCall, Usage
+from app.llm.provider import AssistantTurn, LLMProvider, OnText, ProviderError, ToolCall, Usage
 
 # Single in-process MCP server that carries the app's tools. The model sees each tool as
 # ``mcp__{_SERVER_NAME}__{tool_name}``; we strip that prefix on the way back out.
@@ -48,6 +49,16 @@ _OK_RESULT_SUBTYPES = frozenset({"success", "error_max_turns"})
 # is treated as "unset" by the CLI (it falls back to the logged-in subscription); we cannot
 # DELETE an inherited var via options.env, only override it.
 _NEUTRALIZE_ENV = {"ANTHROPIC_API_KEY": "", "ANTHROPIC_AUTH_TOKEN": ""}
+
+# Shown to the model (via can_use_tool deny) when it calls a tool. The HOST app runs every tool
+# under its own allowlist/approval gating, so the SDK must never execute one. On the persistent
+# per-turn client (_AgentSdkTurn) this denial stays in the CLI's conversation state and is
+# replayed to the model on the next step, so it must clearly tell the model that the REAL result
+# arrives as the following user message — otherwise the model could read "denied" as a failure.
+_DENY_MESSAGE = (
+    "Tool execution is handled by the host application; the tool's result will be delivered to "
+    "you in the FOLLOWING user message. Treat that user message as the tool's output."
+)
 
 
 def _strip_prefix(name: str) -> str:
@@ -171,7 +182,7 @@ class AgentSdkProvider(LLMProvider):
         async def _deny(tool_name: str, input_data: dict[str, Any], context: Any) -> Any:
             # Deny EVERY tool: the host app executes tools itself. We read the tool_use blocks
             # off the assistant message, so nothing is lost by refusing execution here.
-            return PermissionResultDeny(message="suppressed: the host app executes tools", interrupt=False)
+            return PermissionResultDeny(message=_DENY_MESSAGE, interrupt=False)
 
         options = ClaudeAgentOptions(
             model=self._model,
@@ -227,3 +238,167 @@ class AgentSdkProvider(LLMProvider):
             stop_reason="tool_use" if tool_calls else "end_turn",
             usage=usage,
         )
+
+    def open_turn(self, *, system, tools, cache_key=None) -> _AgentSdkTurn:
+        """Open a turn-scoped handle that keeps ONE warm ``claude`` CLI subprocess alive across
+        every step of a single user turn, instead of spawning a fresh one per ``chat()`` (the
+        one-shot ``query()`` path above pays ~3s of subprocess + CLI init on EVERY call). See
+        :class:`_AgentSdkTurn`."""
+        return _AgentSdkTurn(self, system=system, tools=tools, cache_key=cache_key)
+
+
+async def _consume(stream: Any, on_text: OnText | None) -> tuple[str, list[ToolCall], Usage]:
+    """Read an SDK message stream into ``(text, tool_calls, usage)``, forwarding text deltas to
+    ``on_text`` as they arrive when partial-message streaming is enabled. Mirrors the parsing in
+    :meth:`AgentSdkProvider.chat`; used by the persistent per-turn path (:class:`_AgentSdkTurn`),
+    whose ``receive_response()`` iterator terminates cleanly on the ``ResultMessage`` (it does
+    NOT raise ``error_max_turns`` the way the one-shot ``query()`` iterator does)."""
+    from claude_agent_sdk import (
+        AssistantMessage,
+        ResultMessage,
+        StreamEvent,
+        TextBlock,
+        ToolUseBlock,
+    )
+
+    text_parts: list[str] = []
+    tool_calls: list[ToolCall] = []
+    usage = Usage()
+    assistant_error: str | None = None
+    fatal: str | None = None
+    async for msg in stream:
+        if isinstance(msg, StreamEvent):
+            # include_partial_messages=True surfaces the raw Anthropic SSE events. Forward only
+            # text deltas to the UI; the authoritative full text is taken from the AssistantMessage
+            # TextBlock(s) below, so a dropped/duplicated delta never corrupts the recorded turn.
+            ev = msg.event or {}
+            if ev.get("type") == "content_block_delta" and on_text is not None:
+                delta = ev.get("delta") or {}
+                if delta.get("type") == "text_delta":
+                    chunk = delta.get("text") or ""
+                    if chunk:
+                        await on_text(chunk)
+        elif isinstance(msg, AssistantMessage):
+            if msg.error:
+                assistant_error = str(msg.error)
+            for block in msg.content:
+                if isinstance(block, TextBlock):
+                    text_parts.append(block.text)
+                elif isinstance(block, ToolUseBlock):
+                    tool_calls.append(
+                        ToolCall(id=block.id, name=_strip_prefix(block.name), input=dict(block.input))
+                    )
+        elif isinstance(msg, ResultMessage):
+            usage = _usage_from(msg.usage)
+            if msg.api_error_status:
+                fatal = f"HTTP {msg.api_error_status} (subtype={msg.subtype})"
+            elif msg.is_error and msg.subtype not in _OK_RESULT_SUBTYPES:
+                fatal = f"result error: {msg.subtype}"
+    if assistant_error:
+        raise ProviderError(f"Agent SDK error: {assistant_error}")
+    if fatal:
+        raise ProviderError(f"Agent SDK {fatal}")
+    return "".join(text_parts), tool_calls, usage
+
+
+class _AgentSdkTurn:
+    """One connected :class:`ClaudeSDKClient` reused across a single user turn's steps (#1a).
+
+    The one-shot ``query()`` path spawns + initializes a fresh ``claude`` CLI subprocess on
+    EVERY step (~3s of fixed overhead per call). A user turn runs several steps (one per round of
+    tool calls), so that cost is paid 4-8x. Here we ``connect()`` ONE persistent client at the
+    start of the turn (paying init once, ~0.8s) and send each step over it (~1.5s warm).
+
+    The client is STATEFUL — it remembers prior messages on the same connection — so within a
+    turn we send INCREMENTALLY: the first ``chat()`` seeds the full prior history + new user
+    message; each later ``chat()`` sends ONLY the messages appended since (the tool results) and
+    never re-sends the assistant turns the CLI itself produced. This reconstructs the exact
+    conversation the one-shot path would replay, without re-sending it or re-initializing.
+
+    State lives for ONE turn only: a fresh connection is opened per turn and seeded from
+    ``session.messages`` (still the source of truth), so there is no cross-turn drift and the
+    app's compaction / resume / persistence are unaffected.
+
+    Graceful degradation: if the persistent client can't connect, the turn transparently falls
+    back to the provider's one-shot ``chat()`` per step (current behavior), so reliability never
+    regresses — only the latency win is forgone.
+    """
+
+    def __init__(self, provider: AgentSdkProvider, *, system, tools, cache_key=None):
+        self._provider = provider
+        self._system = system
+        self._tools = tools
+        self._cache_key = cache_key
+        self._client: Any = None
+        self._sent = 0          # number of session.messages already streamed to the live client
+        self._degraded = False  # True => connect failed; fall back to one-shot chat() per step
+
+    async def __aenter__(self) -> _AgentSdkTurn:
+        try:
+            from claude_agent_sdk import (
+                ClaudeAgentOptions,
+                ClaudeSDKClient,
+                PermissionResultDeny,
+            )
+
+            async def _deny(tool_name: str, input_data: dict[str, Any], context: Any) -> Any:
+                return PermissionResultDeny(message=_DENY_MESSAGE, interrupt=False)
+
+            options = ClaudeAgentOptions(
+                model=self._provider._model,
+                system_prompt=self._system,
+                mcp_servers={_SERVER_NAME: self._provider._server(self._tools)},
+                tools=[],
+                allowed_tools=[],
+                setting_sources=[],
+                permission_mode="default",
+                can_use_tool=_deny,
+                max_turns=1,
+                include_partial_messages=True,   # stream text deltas to the UI (see _consume)
+                env=dict(_NEUTRALIZE_ENV),
+                cli_path=self._provider._cli_path,
+            )
+            self._client = ClaudeSDKClient(options=options)
+            await self._client.connect()
+        except Exception:  # noqa: BLE001 — any connect failure degrades to one-shot, never fatal
+            self._client = None
+            self._degraded = True
+        return self
+
+    async def chat(self, messages: list[dict[str, Any]], *, on_text: OnText | None = None) -> AssistantTurn:
+        # Seed the full history on the first step; afterwards send only the newly-appended
+        # NON-assistant messages (tool results). The CLI already holds the assistant turns it
+        # generated this connection, so re-sending them would duplicate them in its state.
+        if self._sent == 0:
+            to_send: list[dict[str, Any]] = list(messages)
+        else:
+            to_send = [m for m in messages[self._sent:] if m.get("role") != "assistant"]
+        self._sent = len(messages)
+
+        # Degraded, or (defensively) nothing new to send incrementally: one-shot full replay.
+        if self._degraded or self._client is None or not to_send:
+            return await self._provider.chat(
+                system=self._system, messages=messages, tools=self._tools, cache_key=self._cache_key
+            )
+
+        try:
+            await self._client.query(_astream(_to_sdk_messages(to_send)))
+            text, tool_calls, usage = await _consume(self._client.receive_response(), on_text)
+        except ProviderError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise ProviderError(f"Agent SDK turn query failed: {exc}") from exc
+
+        return AssistantTurn(
+            text=text or None,
+            tool_calls=tool_calls,
+            stop_reason="tool_use" if tool_calls else "end_turn",
+            usage=usage,
+        )
+
+    async def __aexit__(self, *exc: Any) -> bool:
+        if self._client is not None:
+            with contextlib.suppress(Exception):
+                await self._client.disconnect()
+            self._client = None
+        return False

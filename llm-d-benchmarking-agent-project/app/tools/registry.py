@@ -38,6 +38,7 @@ from app.tools import (
     readiness,
     report_locate,
     repos,
+    reproducibility,
 )
 from app.tools.context import ToolContext
 from app.tools.schemas import (
@@ -53,6 +54,7 @@ from app.tools.schemas import (
     DiscoverStackInput,
     EnsureReposInput,
     ExecuteInput,
+    ExportRunBundleInput,
     FetchKeyDocsInput,
     GenerateDoeInput,
     ListCatalogInput,
@@ -63,6 +65,7 @@ from app.tools.schemas import (
     ProvisionHfSecretInput,
     ReadKnowledgeInput,
     ReadRepoDocInput,
+    ReproduceRunInput,
     ResultHistoryInput,
     RunCommandInput,
     RunSetupInput,
@@ -418,6 +421,37 @@ _DESCRIPTIONS = {
         "answer 'has performance regressed over time?'. The tool returns facts (values + "
         "direction); call read_knowledge('history') to interpret trends and give the verdict."
     ),
+    "export_run_bundle": (
+        "Capture a one-click REPRODUCIBILITY PROVENANCE BUNDLE for a VALIDATED run: both "
+        "read-only repo SHAs (+ dirty flags), the exact resolved run-config the CLI wrote, an "
+        "environment snapshot, the knowledge hash, the agent version, and the schema-validated "
+        "Benchmark Report digest + summary. Read-only; auto-runs (git reads + a workspace write; "
+        "it mutates no cluster/repo). Pass `source` (a report file or run dir) plus the "
+        "namespace/spec/harness/workload/model/slo from the approved SessionPlan for an accurate "
+        "regenerate command + a re-derivable rerun. It REFUSES an unvalidated report (a bundle "
+        "only certifies a schema-valid run) and NEVER fabricates a SHA — an empty/absent sibling "
+        "repo is recorded as `unavailable` and the bundle is flagged non-reproducible-as-captured. "
+        "Returns `bundle_id` + `regenerate_command` + a `dirty` flag. If no CLI run-config was "
+        "generated this session, run execute_llmdbenchmark(subcommand='run', "
+        "flags={'generate_config': True}) FIRST so the replay is byte-identical. Offer this AFTER "
+        "you've parsed/analyzed a run the user wants to keep or share. Call "
+        "read_knowledge('reproducibility') for WHEN to offer it and how to explain a dirty repo "
+        "to a non-expert; this is only the mechanism."
+    ),
+    "reproduce_run": (
+        "REPRODUCE a previously captured run from its provenance bundle. Reads the bundle and "
+        "returns a STRUCTURED RERUN PROPOSAL (spec/harness/workload/namespace/slo + the captured "
+        "run-config path + the dry-run-FIRST sequence + any dirty/unavailable-SHA caveat). It "
+        "EMITS NO MUTATING COMMAND — auto-runs, proposes, mutates nothing. Then DRIVE the existing "
+        "gates IN ORDER: propose_session_plan (catalog-validated, approval-gated — gate 1) -> "
+        "execute_llmdbenchmark(subcommand='run', flags={'run_config': <path>, 'dry_run': True}) "
+        "to PREVIEW (the CLI --dry-run gate) -> only on a clean dry-run, the approval-gated "
+        "execute_llmdbenchmark(subcommand='run', flags={'run_config': <path>}) -c replay (run-only; "
+        "needs a live stack serving the captured model). Reproduce reuses these gates — never a "
+        "direct subprocess. Warn the user if the current repo SHAs differ from the captured ones. "
+        "Call read_knowledge('reproducibility') for the sequence + env-drift judgment "
+        "(and read_knowledge('runconfig_roundtrip') for the -c run-only boundary)."
+    ),
     "cancel_run": (
         "Cancel a still-running background run/turn in ANOTHER chat by its session id (from "
         "/api/sessions or a `ready` event). Use this to free a concurrency slot held by an "
@@ -473,6 +507,8 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("compare_harness_runs", _DESCRIPTIONS["compare_harness_runs"], CompareHarnessRunsInput, multiharness.compare_harness_runs),
         ToolSpec("analyze_results", _DESCRIPTIONS["analyze_results"], AnalyzeResultsInput, analyze.analyze_results),
         ToolSpec("result_history", _DESCRIPTIONS["result_history"], ResultHistoryInput, history.result_history),
+        ToolSpec("export_run_bundle", _DESCRIPTIONS["export_run_bundle"], ExportRunBundleInput, reproducibility.export_run_bundle),
+        ToolSpec("reproduce_run", _DESCRIPTIONS["reproduce_run"], ReproduceRunInput, reproducibility.reproduce_run),
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
         ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
         ToolSpec("cancel_run", _DESCRIPTIONS["cancel_run"], CancelRunInput, cancel.cancel_run),

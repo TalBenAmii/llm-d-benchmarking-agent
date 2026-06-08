@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.agent import events as ws_events
@@ -41,10 +41,12 @@ from app.observability.logctx import bind as log_bind
 from app.observability.logctx import new_corr_id
 from app.observability.logging import setup_logging
 from app.observability.metrics import render_prometheus
+from app.packaging.report_card import render_report_card
 from app.security.allowlist import Allowlist
 from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocket_authorized
 from app.security.runner import CommandRunner, SimRunner
 from app.storage.history import HistoryStore, available_metrics, trend
+from app.storage.provenance import BundleStore
 from app.storage.retention import readiness, run_gc, self_check
 from app.tools.probe import probe_environment
 
@@ -272,6 +274,10 @@ def _history_record_view(rec) -> dict[str, Any]:
         "id": rec.id, "stored_at": rec.stored_at, "label": rec.label, "tags": rec.tags,
         "model": rec.model, "run_uid": rec.run_uid, "spec": rec.spec,
         "harness": rec.harness, "workload": rec.workload, "namespace": rec.namespace,
+        # Reproducibility: when this record has a provenance bundle, surface its id (+ the
+        # owning session id) so the sidebar can offer Reproduce / Export report-card.
+        "bundle_id": getattr(rec, "bundle_id", None),
+        "session_id": getattr(rec, "session_id", None),
     }
 
 
@@ -430,6 +436,44 @@ class _RevalidateStaticFiles(StaticFiles):
         # Only tag real file responses (200/206/304); leave 404s etc. alone.
         response.headers["Cache-Control"] = "no-cache, must-revalidate"
         return response
+
+
+def _resolve_bundle(sid: str, bundle_id: str) -> dict[str, Any]:
+    """Locate one provenance bundle JSON under a session's ``bundles/`` dir, reusing the SAME
+    path-traversal hardening as ``session_artifact`` (``base.parent == sessions_root``,
+    ``is_relative_to``) PLUS the BundleStore's own ``_safe_id`` guard on the bundle id. A 404 for
+    a bad ``sid`` / ``bundle_id`` / missing bundle (never an info leak)."""
+    sessions_root = (get_settings().resolved_workspace_dir / "sessions").resolve()
+    base = (sessions_root / sid).resolve()
+    if base.parent != sessions_root or not base.is_dir():
+        raise HTTPException(status_code=404, detail="bundle not found")
+    bundle = BundleStore(base).read(bundle_id)  # _safe_id inside rejects ../ and a/b ids
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="bundle not found")
+    # Defense in depth: the resolved file must stay inside the session's bundles dir.
+    candidate = (base / "bundles" / f"{bundle_id}.json").resolve()
+    if not candidate.is_relative_to(base):
+        raise HTTPException(status_code=404, detail="bundle not found")
+    return bundle
+
+
+@app.get("/api/sessions/{sid}/bundle/{bundle_id}", dependencies=[Depends(rate_limit)])
+async def session_bundle(sid: str, bundle_id: str) -> JSONResponse:
+    """One provenance bundle's JSON (for the UI's Reproduce / Export affordances)."""
+    return JSONResponse(_resolve_bundle(sid, bundle_id))
+
+
+@app.get("/api/sessions/{sid}/bundle/{bundle_id}/report-card.html", dependencies=[Depends(rate_limit)])
+async def session_bundle_report_card(sid: str, bundle_id: str) -> Response:
+    """Download a self-contained, shareable HTML report card for a provenance bundle (no
+    external assets). Same path-traversal hardening as the artifact route."""
+    bundle = _resolve_bundle(sid, bundle_id)
+    html_doc = render_report_card(bundle)
+    return Response(
+        content=html_doc,
+        media_type="text/html",
+        headers={"Content-Disposition": f'attachment; filename="report-card-{bundle_id}.html"'},
+    )
 
 
 app.mount("/static", _RevalidateStaticFiles(directory=str(get_settings().ui_dir)), name="static")

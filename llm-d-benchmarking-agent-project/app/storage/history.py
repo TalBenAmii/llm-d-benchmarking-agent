@@ -75,6 +75,12 @@ class HistoryRecord:
     workload: str | None = None
     namespace: str | None = None
     summary: dict[str, Any] = field(default_factory=dict)  # summarize_report() output
+    # Reproducibility (provenance bundle): the id of the bundle capturing the EXACT inputs that
+    # produced this result, plus a compact provenance dict (repo SHAs + dirty + regenerate
+    # command). Both ADDITIVE + optional — old records (written before this field existed) still
+    # load, because _read reconstructs only known fields and tolerates their absence.
+    bundle_id: str | None = None
+    provenance: dict[str, Any] | None = None
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -151,9 +157,15 @@ class HistoryStore:
         harness: str | None = None,
         workload: str | None = None,
         namespace: str | None = None,
+        bundle_id: str | None = None,
+        provenance: dict[str, Any] | None = None,
     ) -> tuple[HistoryRecord, bool]:
         """Persist ``summary`` as a record. Returns ``(record, created)`` where
-        ``created`` is False when an identical record already existed (idempotent)."""
+        ``created`` is False when an identical record already existed (idempotent).
+
+        ``bundle_id``/``provenance`` (optional) attach a reproducibility provenance bundle's id
+        + compact provenance dict to the record — additive, so callers that don't set them keep
+        the prior behavior exactly."""
         rid = compute_record_id(summary, report_path)
         path = self._dir / f"{rid}.json"
         existing = self._read(path)
@@ -173,6 +185,8 @@ class HistoryStore:
             workload=workload,
             namespace=namespace,
             summary=summary,
+            bundle_id=bundle_id,
+            provenance=provenance,
         )
         self._dir.mkdir(parents=True, exist_ok=True)
         # Write atomically-ish: temp then replace, so a list() never sees a half file.

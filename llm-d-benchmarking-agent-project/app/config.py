@@ -199,6 +199,20 @@ class Settings(BaseSettings):
         )
 
     @property
+    def agent_version(self) -> str:
+        """This agent's installed package version, for provenance capture (reproducibility
+        bundles). Read from the installed distribution metadata (pyproject ``version``); when
+        the package isn't installed as a distribution (e.g. a bare source checkout / a worktree
+        run via PYTHONPATH), fall back to a stable, honest sentinel rather than crashing. NEVER
+        fabricates a real-looking version."""
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            return version("llm-d-benchmarking-agent")
+        except PackageNotFoundError:
+            return "0.0.0+unknown"
+
+    @property
     def extra_subprocess_env(self) -> dict[str, str]:
         """Non-secret-by-policy env passed to child processes. HF token included only
         if explicitly configured (needed for gated real-model deploys, not the sim)."""
