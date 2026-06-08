@@ -413,12 +413,12 @@ def test_read_knowledge_dedups_exact_repeat_within_session(tmp_path):
     from app.tools import knowledge_access
 
     ctx = _ctx(tmp_path)
-    first = knowledge_access.read_knowledge(ctx, name="glossary")
+    first = knowledge_access.read_knowledge(ctx, name="analysis")
     assert "content" in first and len(first["content"]) > 0
-    second = knowledge_access.read_knowledge(ctx, name="glossary")
+    second = knowledge_access.read_knowledge(ctx, name="analysis")
     assert second.get("already_provided") is True
     assert "content" not in second
-    assert "glossary" in second.get("topic", "") or "glossary" in str(second.get("note", ""))
+    assert "analysis" in second.get("topic", "") or "analysis" in str(second.get("note", ""))
 
 
 def test_read_knowledge_dedup_is_per_session(tmp_path):
@@ -428,9 +428,9 @@ def test_read_knowledge_dedup_is_per_session(tmp_path):
 
     ctx_a = _ctx(tmp_path / "a")
     ctx_b = _ctx(tmp_path / "b")
-    knowledge_access.read_knowledge(ctx_a, name="glossary")  # prime A
+    knowledge_access.read_knowledge(ctx_a, name="analysis")  # prime A
     # A different session must still get the full text on its first read.
-    out_b = knowledge_access.read_knowledge(ctx_b, name="glossary")
+    out_b = knowledge_access.read_knowledge(ctx_b, name="analysis")
     assert "content" in out_b and len(out_b["content"]) > 0
 
 
@@ -439,7 +439,7 @@ def test_different_docs_are_not_deduped(tmp_path):
     from app.tools import knowledge_access
 
     ctx = _ctx(tmp_path)
-    a = knowledge_access.read_knowledge(ctx, name="glossary")
+    a = knowledge_access.read_knowledge(ctx, name="analysis")
     b = knowledge_access.read_knowledge(ctx, name="preconditions")
     assert "content" in a and "content" in b
 

@@ -7,7 +7,7 @@ for *you* editing these files; it is deliberately excluded from the runtime know
 
 ## CORE vs on-demand — the cost rule
 - **CORE** files are inlined **verbatim into every system prompt** (the `CORE_KNOWLEDGE` tuple in
-  `app/agent/prompt.py`): `glossary.md`, `preconditions.md`, `deploy_path_playbook.md`,
+  `app/agent/prompt.py`): `preconditions.md`, `deploy_path_playbook.md`,
   `usecase_to_profile.yaml`, `quickstart_playbook.md`, `key_docs.yaml`, `conversation_style.md`.
   They cover the phases reached BEFORE the agent would know to ask for a specific guide.
 - **On-demand** files (everything else) are auto-discovered by a `*.md`/`*.yaml`/`*.yml` glob and
@@ -23,8 +23,7 @@ for *you* editing these files; it is deliberately excluded from the runtime know
 - **Test-pinned content** — keep these or hermetic tests fail:
   `epp_headers.yaml` (`dropped_reason_enum` incl. `rejected-saturated`, `evicted-priority`, each with
   `cause`/`remedy`/`capacity_not_breakage`), `welllit_path_advisor.yaml` (6 archetypes + required fields),
-  `glossary.md` (metric terms `ttft`/`tpot`/`throughput`/`goodput`/`harness`; parsed by `app/agent/glossary.py`
-  as `**term** — definition`), `readiness_probes.md` (startup-judgment phrases).
+  `readiness_probes.md` (startup-judgment phrases).
 - **`CLAUDE.md` / `README.md` here are NOT knowledge** — they're filtered out of the glob in
   `app/agent/prompt.py::_knowledge_sections` and `app/tools/knowledge_access.py::_knowledge_files`
   (and `read_knowledge` won't return them). Locked by `tests/test_knowledge_meta_excluded.py`. If you add
@@ -32,6 +31,6 @@ for *you* editing these files; it is deliberately excluded from the runtime know
 
 ## Scoped checks (run after editing knowledge files)
 ```bash
-pytest tests/test_glossary.py tests/test_epp_headers.py tests/test_welllit_advisor.py \
+pytest tests/test_epp_headers.py tests/test_welllit_advisor.py \
        tests/test_serving_readiness.py tests/test_new_tools.py tests/test_knowledge_meta_excluded.py
 ```

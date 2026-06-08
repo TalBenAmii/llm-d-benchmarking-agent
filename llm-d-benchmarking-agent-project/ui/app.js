@@ -32,19 +32,12 @@ const runSteps = document.getElementById("run-steps");
 const sidebarToggle = document.getElementById("sidebar-toggle");
 const sidebarScrim = document.getElementById("sidebar-scrim");
 const jumpBtn = document.getElementById("jump-latest");
-const helpToggle = document.getElementById("help-toggle");
-const shortcutsDlg = document.getElementById("shortcuts");
-const shortcutsClose = document.getElementById("shortcuts-close");
 const builderToggle = document.getElementById("builder-toggle");
 const builderDlg = document.getElementById("builder");
 const builderClose = document.getElementById("builder-close");
 const builderCancel = document.getElementById("builder-cancel");
 const builderSend = document.getElementById("builder-send");
 const builderPreview = document.getElementById("builder-preview");
-const glossaryToggle = document.getElementById("glossary-toggle");
-const glossaryDlg = document.getElementById("glossary");
-const glossaryClose = document.getElementById("glossary-close");
-const glossaryListEl = document.getElementById("glossary-list");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -1354,8 +1347,6 @@ function renderResultsCard(card) {
     for (const m of metrics) {
       const tr = el("tr");
       const nameTd = el("td", "results-name", m.label || "");
-      const help = metricHelp(m.label);   // a hover "?" with the plain-language definition (if known)
-      if (help) nameTd.appendChild(help);
       tr.appendChild(nameTd);
       tr.appendChild(el("td", null, `${fmtNum(m.value)}${m.units ? " " + m.units : ""}`));
       tr.appendChild(el("td", "results-stat", m.stat || ""));
@@ -2547,25 +2538,6 @@ function setSidebar(open) {
 if (sidebarToggle) sidebarToggle.addEventListener("click", () => setSidebar(!document.body.classList.contains("sidebar-open")));
 if (sidebarScrim) sidebarScrim.addEventListener("click", () => setSidebar(false));
 
-// ---- keyboard shortcuts + help overlay -----------------------------------
-// A native <dialog> lists the shortcuts (Esc-closable for free). The handler is global but
-// modifier-gated, so it never swallows ordinary typing; the bare "?" only fires outside a field.
-function openHelp() { if (shortcutsDlg && shortcutsDlg.showModal && !shortcutsDlg.open) shortcutsDlg.showModal(); }
-function closeHelp() { if (shortcutsDlg && shortcutsDlg.open) shortcutsDlg.close(); }
-function toggleHelp() { if (shortcutsDlg && shortcutsDlg.open) closeHelp(); else openHelp(); }
-if (helpToggle) helpToggle.addEventListener("click", openHelp);
-if (shortcutsClose) shortcutsClose.addEventListener("click", closeHelp);
-if (shortcutsDlg) shortcutsDlg.addEventListener("click", (e) => { if (e.target === shortcutsDlg) closeHelp(); });  // backdrop click
-document.addEventListener("keydown", (e) => {
-  const mod = e.metaKey || e.ctrlKey;
-  if (mod && (e.key === "k" || e.key === "K")) { e.preventDefault(); input.focus(); return; }
-  if (mod && (e.key === "j" || e.key === "J")) { e.preventDefault(); openBuilder(); return; }
-  if (mod && (e.key === "b" || e.key === "B")) { e.preventDefault(); document.body.classList.toggle("sidebar-hidden"); return; }
-  // Bare "?" toggles help — but only when not typing into a field (so a literal ? still works).
-  const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
-  if (!mod && !typing && e.key === "?") { e.preventDefault(); toggleHelp(); }
-});
-
 // Manual collapse of the split view; the next `resource_stats` tick of a still-running run reopens it.
 if (resourceSideClose) resourceSideClose.addEventListener("click", clearResourceStats);
 
@@ -2669,84 +2641,6 @@ if (builderClose) builderClose.addEventListener("click", closeBuilder);
 if (builderCancel) builderCancel.addEventListener("click", closeBuilder);
 if (builderSend) builderSend.addEventListener("click", submitBuilder);
 
-// ---- metrics glossary (knowledge-sourced explainers) ---------------------
-// Definitions come from /api/glossary (parsed from knowledge/glossary.md) so they stay editable
-// and are never duplicated in JS. We list them in the glossary dialog and index them by term so a
-// results-card metric can carry a hover "?" with its plain-language meaning.
-let glossaryTerms = [];
-const glossaryIndex = {};   // lowercased term -> definition
-
-// Which glossary term names a given results-card metric label. Presentation-only aliasing (the
-// definitions themselves still come from knowledge); an unmapped label simply gets no explainer.
-const METRIC_GLOSSARY_ALIAS = {
-  "time to first token": "ttft",
-  "time per output token": "tpot/itl",
-  "inter-token latency": "tpot/itl",
-  "output token throughput": "throughput",
-  "request throughput": "throughput",
-};
-
-function setGlossary(terms) {
-  glossaryTerms = Array.isArray(terms) ? terms.filter((t) => t && t.term && t.definition) : [];
-  for (const k in glossaryIndex) delete glossaryIndex[k];
-  for (const t of glossaryTerms) glossaryIndex[String(t.term).toLowerCase()] = String(t.definition);
-  renderGlossaryList();
-}
-
-function renderGlossaryList() {
-  if (!glossaryListEl) return;
-  glossaryListEl.textContent = "";
-  if (!glossaryTerms.length) {
-    glossaryListEl.appendChild(el("div", "glossary-empty", "Glossary unavailable right now."));
-    return;
-  }
-  for (const t of glossaryTerms) {
-    glossaryListEl.appendChild(el("dt", null, String(t.term)));
-    glossaryListEl.appendChild(el("dd", null, String(t.definition)));
-  }
-}
-
-async function loadGlossary() {
-  try {
-    const r = await fetch("/api/glossary");
-    if (!r.ok) return;
-    const data = await r.json();
-    setGlossary(data && data.terms);
-  } catch (e) { /* the glossary is a nice-to-have; ignore fetch/parse errors */ }
-}
-
-// The plain-language definition for a metric label (via the alias map; goodput matched by name),
-// or null when we have nothing to show for it.
-function metricGlossary(label) {
-  if (!label) return null;
-  const key = METRIC_GLOSSARY_ALIAS[String(label).trim().toLowerCase()];
-  let def = key ? glossaryIndex[key] : null;
-  if (!def && /goodput/i.test(label)) def = glossaryIndex["goodput"];
-  return def || null;
-}
-
-// A small "?" affordance carrying a metric's definition as a native tooltip. null when unknown
-// (the glossary may not have loaded yet, or the label isn't mapped) so callers can skip it.
-function metricHelp(label) {
-  const def = metricGlossary(label);
-  if (!def) return null;
-  const b = el("span", "metric-help", "?");
-  b.title = def;
-  b.setAttribute("aria-label", def);
-  return b;
-}
-
-function openGlossary() {
-  if (!glossaryDlg || !glossaryDlg.showModal || glossaryDlg.open) return;
-  if (!glossaryTerms.length) loadGlossary();   // lazy retry if the boot fetch hadn't landed yet
-  glossaryDlg.showModal();
-}
-function closeGlossary() { if (glossaryDlg && glossaryDlg.open) glossaryDlg.close(); }
-
-if (glossaryToggle) glossaryToggle.addEventListener("click", openGlossary);
-if (glossaryClose) glossaryClose.addEventListener("click", closeGlossary);
-if (glossaryDlg) glossaryDlg.addEventListener("click", (e) => { if (e.target === glossaryDlg) closeGlossary(); });
-
 // ---- boot ---------------------------------------------------------------
 // ui/preview.html sets window.__LLMD_PREVIEW__ to drive the renderers with fixture data and no
 // backend. In that mode we skip the live boot (sessions/history fetch + WebSocket connect) and
@@ -2758,11 +2652,10 @@ if (window.__LLMD_PREVIEW__) {
     renderResourceStats, renderNextSteps,
     renderEnvStatus, renderCapacityCard, renderReadinessCard,
     renderAcceleratorCard, renderDoeCard, renderOrchestrateCard, renderResilienceCard,
-    openBuilder, openGlossary, setGlossary, composeBrief,
+    openBuilder, composeBrief,
   };
 } else {
   loadSessions();
   loadHistory();
-  loadGlossary();
   bootChat();
 }

@@ -84,12 +84,10 @@
       </div>
     </div>
     <div class="header-actions">
-      <button id="builder-toggle" type="button" class="builder-btn" title="Design a benchmark — guided builder (⌘/Ctrl + J)" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span> Design</button>
+      <button id="builder-toggle" type="button" class="builder-btn" title="Design a benchmark — guided builder" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span> Design</button>
       <div id="token-total" class="token-chip" title="Total tokens used this session" hidden>Σ 0 tokens</div>
       <button id="debug-toggle" type="button" class="icon-btn" title="Debug view — show the commands the agent ran inline in the chat" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
-      <button id="glossary-toggle" type="button" class="icon-btn" title="Glossary — what the metrics mean" aria-label="Open the metrics glossary">📖</button>
       <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
-      <button id="help-toggle" type="button" class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
       <div id="status" class="status" title="connection status">preview</div>
     </div>
   </header>
@@ -132,20 +130,6 @@
 
   <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
 
-  <dialog id="shortcuts" class="shortcuts">
-    <div class="shortcuts-head">
-      <span>Keyboard shortcuts</span>
-      <button id="shortcuts-close" class="icon-btn icon-btn-sm" type="button" title="Close" aria-label="Close">✕</button>
-    </div>
-    <dl class="shortcuts-list">
-      <dt><kbd>⌘/Ctrl</kbd> + <kbd>K</kbd></dt><dd>Focus the message box</dd>
-      <dt><kbd>⌘/Ctrl</kbd> + <kbd>J</kbd></dt><dd>Open the benchmark builder</dd>
-      <dt><kbd>Enter</kbd></dt><dd>Send message <span class="muted">(<kbd>Shift</kbd> + <kbd>Enter</kbd> = newline)</span></dd>
-      <dt><kbd>⌘/Ctrl</kbd> + <kbd>B</kbd></dt><dd>Hide / show the chat sidebar</dd>
-      <dt><kbd>?</kbd></dt><dd>Show this help</dd>
-      <dt><kbd>Esc</kbd></dt><dd>Close this dialog</dd>
-    </dl>
-  </dialog>
 
   <dialog id="builder" class="builder">
     <div class="builder-head">
@@ -221,29 +205,11 @@
     </div>
   </dialog>
 
-  <dialog id="glossary" class="glossary">
-    <div class="glossary-head">
-      <span><span aria-hidden="true">📖</span> Glossary — what the words mean</span>
-      <button id="glossary-close" class="icon-btn icon-btn-sm" type="button" title="Close" aria-label="Close">✕</button>
-    </div>
-    <dl id="glossary-list" class="glossary-list" aria-live="polite"></dl>
-  </dialog>
-
   <script src="app.js"></script>
   <script>
     // ---- fixtures: representative shapes of what the backend streams to the client ----
     const A = window.__llmd;
     A.bootChat();   // sets up the active chat pane the renderers append into
-
-    // 0) Glossary — normally fetched from /api/glossary (parsed from knowledge/glossary.md). Seeding
-    //    it here populates the 📖 dialog and the hover "?" explainers on the results-card metrics.
-    A.setGlossary([
-      { term: "TTFT", definition: "time to first token — how long until the first output token arrives." },
-      { term: "TPOT/ITL", definition: "per-output-token / inter-token latency — the steady-state pace of generation." },
-      { term: "throughput", definition: "tokens or requests served per second." },
-      { term: "goodput", definition: "the fraction of requests that met ALL the SLO targets." },
-      { term: "harness", definition: "the load generator: inference-perf, guidellm, vllm-benchmark, …" },
-    ]);
 
     // 1) Run progress stepper — drive a sequence of tool_calls through the real handler.
     [["probe_environment", {}], ["propose_session_plan", {}], ["ensure_repos", {}],

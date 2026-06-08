@@ -43,7 +43,7 @@ uvicorn app.main:app --reload   # then open http://127.0.0.1:8000
 ```
 
 The browser chat is where the **user-facing** features live. The HTTP endpoints
-(`/healthz`, `/readyz`, `/metrics`, `/api/sessions`, `/api/history`, `/api/glossary`) are where the
+(`/healthz`, `/readyz`, `/metrics`, `/api/sessions`, `/api/history`) are where the
 **operability** features live and are the easiest to verify with `curl`.
 
 ---
@@ -85,10 +85,8 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 | **Copy buttons** on code/JSON blocks, **jump-to-latest**, **off-canvas mobile sidebar** | `ui/app.js`, `ui/styles.css` | 🔵 Hover a code block for Copy; scroll up for the Latest button; narrow the window for the hamburger. ⚪ `tests/test_ui_frontend.py`. |
 | **Pre-flight / status cards** — the read-only diagnostic tools render as friendly status cards instead of raw JSON: `probe_environment` → environment status grid; `check_capacity` → feasibility + diagnostics; `check_endpoint_readiness` → services/gateway/serving grid; `advise_accelerators` → CPU-only/accelerated + node table; `generate_doe_experiment` → treatment matrix; `orchestrate_benchmark_run` → outcome + per-attempt fault timeline | `ui/app.js` (`renderEnvStatus`/`renderCapacityCard`/`renderReadinessCard`/`renderAcceleratorCard`/`renderDoeCard`/`renderOrchestrateCard`) | 🔵 Each renders after its tool runs. ⚪ `tests/test_ui_frontend.py`. |
 | **Actionable "next steps" chips** — the analyzer's ranked `next_steps` render as clickable chips; a tap sends the step so the agent carries it out (save baseline, compare, sweep…) | `ui/app.js` (`renderNextSteps`) | 🔵 Appear under an `analyze_results` card. ⚪ `tests/test_ui_frontend.py`. |
-| **Keyboard shortcuts + help overlay** — ⌘/Ctrl+K focus composer, ⌘/Ctrl+B sidebar focus-mode, `?` opens a shortcuts dialog | `ui/index.html` `#shortcuts`/`#help-toggle`, `ui/app.js` | 🔵 Press `?` (or the header `?`); ⌘/Ctrl+K / ⌘/Ctrl+B. ⚪ `tests/test_ui_frontend.py`. |
 | **Copy-summary on results cards** — hover-reveal button copies a markdown summary (metrics + SLO table) to paste into a report/PR | `ui/app.js` (`resultsCardMarkdown`/`addCardCopy`) | 🔵 Hover a benchmark results card; click Copy. ⚪ `tests/test_ui_frontend.py`. |
-| **Guided Benchmark Builder** — a "✨ Design" wizard (header + welcome CTA + ⌘/Ctrl+J) where a non-expert picks use-case / scale / token-shape / SLO targets / hardware via chips & inputs, sees a live plain-language preview, and sends it as a normal message. The agent does ALL `<scenario, harness, workload>` mapping — the form only phrases the request (thin code / thick agent) | `ui/index.html` `#builder`, `ui/app.js` (`composeBrief`/`openBuilder`/`submitBuilder`) | 🔵 Click "✨ Design" (or ⌘/Ctrl+J), choose options, Send. ⚪ `tests/test_ui_frontend.py`. |
-| **Metrics glossary + inline explainers** — plain-language definitions (TTFT/TPOT/throughput/goodput/harness…) served from `knowledge/glossary.md`, surfaced as a 📖 header dialog AND a hover "?" on each results-card metric so a non-expert can read the numbers | `GET /api/glossary`, `app/agent/glossary.py`, `ui/app.js` (`loadGlossary`/`metricHelp`) | 🟢 `GET /api/glossary` returns the parsed `terms`. 🔵 Click 📖; hover a metric's "?". ⚪ `tests/test_glossary.py`, `tests/test_ui_frontend.py`. |
+| **Guided Benchmark Builder** — a "✨ Design" wizard (header + welcome CTA) where a non-expert picks use-case / scale / token-shape / SLO targets / hardware via chips & inputs, sees a live plain-language preview, and sends it as a normal message. The agent does ALL `<scenario, harness, workload>` mapping — the form only phrases the request (thin code / thick agent) | `ui/index.html` `#builder`, `ui/app.js` (`composeBrief`/`openBuilder`/`submitBuilder`) | 🔵 Click "✨ Design", choose options, Send. ⚪ `tests/test_ui_frontend.py`. |
 | **UI preview harness** — drive every render path with fixture data, no backend/LLM | `ui/preview.html` | 🔵 Open `/static/preview.html` (or serve `ui/` and open `preview.html`) to see all of the above without a cluster. |
 
 ---

@@ -71,13 +71,11 @@
       </div>
     </div>
     <div class="header-actions">
-      <button id="builder-toggle" type="button" class="builder-btn" title="Design a benchmark — guided builder (⌘/Ctrl + J)" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span> Design</button>
+      <button id="builder-toggle" type="button" class="builder-btn" title="Design a benchmark — guided builder" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span> Design</button>
       <div id="token-total" class="token-chip" title="Total tokens used this session (input + output + cached)" hidden>Σ 0 tokens</div>
       <div id="context-window" class="token-chip" title="Estimated current context-window size sent to the model (≈ chars/4) — what dominates it" hidden>⛶ 0 ctx</div>
       <button id="debug-toggle" type="button" class="icon-btn" title="Debug view — show the commands the agent ran inline in the chat" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
-      <button id="glossary-toggle" type="button" class="icon-btn" title="Glossary — what the metrics mean" aria-label="Open the metrics glossary">📖</button>
       <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
-      <button id="help-toggle" type="button" class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
       <div id="status" class="status" title="connection status">connecting…</div>
     </div>
   </header>
@@ -119,21 +117,6 @@
   <!-- Backdrop for the off-canvas sidebar on narrow screens (tap to close). -->
   <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
 
-  <!-- Keyboard shortcuts help (native <dialog>: Esc-closable, focus-trapped). -->
-  <dialog id="shortcuts" class="shortcuts">
-    <div class="shortcuts-head">
-      <span>Keyboard shortcuts</span>
-      <button id="shortcuts-close" class="icon-btn icon-btn-sm" type="button" title="Close" aria-label="Close">✕</button>
-    </div>
-    <dl class="shortcuts-list">
-      <dt><kbd>⌘/Ctrl</kbd> + <kbd>K</kbd></dt><dd>Focus the message box</dd>
-      <dt><kbd>⌘/Ctrl</kbd> + <kbd>J</kbd></dt><dd>Open the benchmark builder</dd>
-      <dt><kbd>Enter</kbd></dt><dd>Send message <span class="muted">(<kbd>Shift</kbd> + <kbd>Enter</kbd> = newline)</span></dd>
-      <dt><kbd>⌘/Ctrl</kbd> + <kbd>B</kbd></dt><dd>Hide / show the chat sidebar</dd>
-      <dt><kbd>?</kbd></dt><dd>Show this help</dd>
-      <dt><kbd>Esc</kbd></dt><dd>Close this dialog</dd>
-    </dl>
-  </dialog>
 
   <!-- Guided benchmark builder: a non-expert answers a few friendly prompts (use case, scale,
        token shape, SLO targets, hardware); the form composes a plain-language brief and sends it
@@ -211,17 +194,6 @@
       <button type="button" id="builder-cancel" class="ghost-btn">Cancel</button>
       <button type="button" id="builder-send" class="primary-btn">Send to assistant →</button>
     </div>
-  </dialog>
-
-  <!-- Metrics glossary: plain-language definitions fetched from /api/glossary (parsed from
-       knowledge/glossary.md). Helps a non-expert read TTFT / TPOT / goodput etc. The list is
-       populated by app.js once fetched; empty until then. -->
-  <dialog id="glossary" class="glossary">
-    <div class="glossary-head">
-      <span><span aria-hidden="true">📖</span> Glossary — what the words mean</span>
-      <button id="glossary-close" class="icon-btn icon-btn-sm" type="button" title="Close" aria-label="Close">✕</button>
-    </div>
-    <dl id="glossary-list" class="glossary-list" aria-live="polite"></dl>
   </dialog>
 
   <!-- Split view: the live resource view slides in on the right while a run is active (chat-adjacent,

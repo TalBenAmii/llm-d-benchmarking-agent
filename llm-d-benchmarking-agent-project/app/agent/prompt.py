@@ -102,7 +102,6 @@ returns synthetic success and nothing is deployed or benchmarked. Therefore:
 # read_knowledge("epp_headers")). Keeping these three out of CORE trims ~24k chars
 # (~6.6k tokens) off EVERY LLM call; they stay reachable via the on-demand index + read_knowledge.
 CORE_KNOWLEDGE = (
-    "glossary.md",
     "preconditions.md",
     "deploy_path_playbook.md",
     "usecase_to_profile.yaml",

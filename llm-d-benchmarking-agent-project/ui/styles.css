@@ -203,10 +203,6 @@ body {
 .sidebar-toggle { display: none; }
 .sidebar-scrim { display: none; }
 
-/* Focus mode: ⌘/Ctrl + B collapses the sidebar on desktop to give the chat full width. */
-.sidebar { transition: width .18s ease; }
-body.sidebar-hidden .sidebar { width: 0; border-right: none; overflow: hidden; }
-
 @media (max-width: 760px) {
   /* Off-canvas sidebar: it slides over the chat (which now spans full width) and a tap-scrim
      dismisses it. The header hamburger toggles body.sidebar-open. */
@@ -816,31 +812,6 @@ input[type="range"].slider:focus { box-shadow: 0 0 0 3px rgba(165, 64, 165, .18)
 .pctl-table tr th:first-child { text-align: left; color: var(--muted); font-weight: 600; }
 .pctl-table td { color: var(--accent); }
 
-/* Keyboard-shortcuts help — modal <dialog>. */
-.shortcuts {
-  border: 1px solid var(--border-strong); border-radius: var(--radius);
-  background: var(--panel); color: var(--text); box-shadow: var(--shadow);
-  padding: 0; max-width: 92vw; width: 380px;
-}
-.shortcuts::backdrop { background: rgba(0, 0, 0, .55); }
-.shortcuts-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px; border-bottom: 1px solid var(--border);
-  font: 700 14px/1.2 var(--serif);
-}
-.shortcuts-list {
-  display: grid; grid-template-columns: auto 1fr; gap: 10px 16px;
-  margin: 0; padding: 16px 18px;
-}
-.shortcuts-list dt { margin: 0; display: flex; gap: 4px; align-items: center; }
-.shortcuts-list dd { margin: 0; font-size: 13px; color: var(--text); align-self: center; }
-.shortcuts-list dd .muted { color: var(--muted); font-size: 12px; }
-kbd {
-  font: 600 11px/1 var(--mono); color: var(--text);
-  background: var(--panel-2); border: 1px solid var(--border-strong);
-  border-bottom-width: 2px; border-radius: 6px; padding: 3px 6px; white-space: nowrap;
-}
-
 /* Chart lightbox — full-size plot in a modal <dialog>. */
 .lightbox {
   border: 1px solid var(--border-strong); border-radius: var(--radius);
@@ -1009,31 +980,3 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
 }
 .welcome-build:hover { background: color-mix(in srgb, var(--accent) 26%, var(--panel-2)); }
 .welcome-build:active { transform: scale(.98); }
-
-/* ── Metrics glossary ──────────────────────────────────────────────────────
-   The header dialog of plain-language definitions, plus the inline "?" badge a
-   results-card metric carries (hover shows the definition via the native title). */
-.glossary {
-  border: 1px solid var(--border-strong); border-radius: var(--radius);
-  background: var(--panel); color: var(--text); box-shadow: var(--shadow);
-  padding: 0; max-width: 94vw; width: 480px; max-height: 86vh; overflow: auto;
-}
-.glossary::backdrop { background: rgba(0, 0, 0, .55); }
-.glossary-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 18px; border-bottom: 1px solid var(--border);
-  font: 700 15px/1.2 var(--serif);
-  position: sticky; top: 0; background: var(--panel);
-}
-.glossary-list { margin: 0; padding: 14px 18px; }
-.glossary-list dt { font: 700 13px/1.3 var(--serif); color: var(--accent); margin-top: 12px; }
-.glossary-list dt:first-child { margin-top: 0; }
-.glossary-list dd { margin: 3px 0 0; font: 400 13px/1.5 var(--serif); color: var(--text); }
-.glossary-empty { font: 400 13px/1.5 var(--serif); color: var(--muted); }
-.metric-help {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 15px; height: 15px; margin-left: 6px; vertical-align: middle;
-  font: 700 10px/1 var(--mono); border-radius: 50%; cursor: help;
-  color: var(--muted); border: 1px solid var(--border-strong); background: var(--panel-2);
-}
-.metric-help:hover { color: var(--on-accent); background: var(--accent-strong); border-color: var(--accent-strong); }

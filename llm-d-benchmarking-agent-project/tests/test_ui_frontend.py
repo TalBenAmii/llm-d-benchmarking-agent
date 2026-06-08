@@ -169,18 +169,6 @@ def test_resilience_drill_card():
     assert "renderResilienceCard," in js
 
 
-def test_keyboard_shortcuts_and_help_overlay():
-    html = _ui("index.html")
-    js = _ui("app.js")
-    css = _ui("styles.css")
-    assert 'id="shortcuts"' in html and 'id="help-toggle"' in html
-    assert "function toggleHelp" in js and "showModal" in js
-    # Modifier-gated shortcuts that never swallow typing.
-    assert 'e.key === "k"' in js and "input.focus()" in js          # Cmd/Ctrl+K
-    assert "sidebar-hidden" in js and "body.sidebar-hidden .sidebar" in css  # Cmd/Ctrl+B focus mode
-    assert ".shortcuts::backdrop" in css and "kbd" in css
-
-
 def test_results_card_copy_summary():
     js = _ui("app.js")
     css = _ui("styles.css")
@@ -240,39 +228,18 @@ def test_benchmark_builder_wizard():
     assert "sendUserMessage(text)" in js
     # …and the closing line hands the actual mapping back to the agent (judgment stays in the agent).
     assert "recommend the right scenario, harness, and workload" in js
-    # Click-to-open from the welcome card + a Cmd/Ctrl+J shortcut.
+    # Click-to-open from the welcome card.
     assert "welcome-build" in js and ".welcome-build" in css
-    assert 'e.key === "j"' in js
     assert ".builder::backdrop" in css and ".bchip.sel" in css
 
 
-def test_metrics_glossary_and_explainers():
-    """Plain-language definitions come from /api/glossary (knowledge-sourced) and surface as a
-    dialog plus hover '?' explainers on results-card metrics."""
-    html = _ui("index.html")
-    js = _ui("app.js")
-    css = _ui("styles.css")
-    assert 'id="glossary-toggle"' in html and 'id="glossary"' in html
-    assert "function loadGlossary" in js and '"/api/glossary"' in js
-    assert "function openGlossary" in js and "function setGlossary" in js
-    # Inline explainer: a "?" badge carrying the definition, attached to each metric row.
-    assert "function metricHelp" in js and "metricHelp(m.label)" in js
-    # Definitions are NOT duplicated in JS — only the label->term alias is (presentation only).
-    assert "METRIC_GLOSSARY_ALIAS" in js and "glossaryIndex" in js
-    assert ".glossary::backdrop" in css and ".metric-help" in css
-    # Loaded once at boot alongside sessions/history.
-    assert "loadGlossary();" in js
-
-
-def test_builder_and_glossary_in_preview_harness():
-    """The preview harness must exercise the new render paths too (no backend)."""
+def test_builder_in_preview_harness():
+    """The preview harness must exercise the builder render path too (no backend)."""
     html = _ui("preview.html")
     js = _ui("app.js")
-    # Builder + glossary entry points are exposed on the preview API…
-    assert "openBuilder, openGlossary, setGlossary" in js
-    # …and the preview seeds the glossary so the dialog + metric explainers render from fixtures.
-    assert "A.setGlossary(" in html
-    assert 'id="builder"' in html and 'id="glossary"' in html
+    # The builder entry point is exposed on the preview API and present in the markup.
+    assert "openBuilder," in js
+    assert 'id="builder"' in html
 
 
 def test_debug_view_renders_commands_inline_in_chat():

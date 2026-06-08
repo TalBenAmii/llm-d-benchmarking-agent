@@ -34,7 +34,7 @@ prefix" + "catalog injected exactly once".
 - `prompt.py` — byte-stable cached prefix + per-turn catalog/env synthetic messages.
 - `context_mgmt.py` — compaction of old tool results.
 - `session.py` — per-session state, persistence, one-shot flags, title derivation.
-- `glossary.py` · `welcome.py` · `results_card.py` — deterministic, knowledge-sourced cards (mechanism only).
+- `welcome.py` · `results_card.py` — deterministic, knowledge-sourced cards (mechanism only).
 
 ## Scoped tests
 ```bash
