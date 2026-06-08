@@ -366,6 +366,24 @@ h5.md-h { font-size: 13.5px; }
   border: none; background: none; padding: 0; white-space: pre;
   font: 12.5px/1.5 var(--mono); color: var(--code-text);
 }
+/* GFM tables. `display:block` + overflow lets a wide table scroll inside the bubble
+   instead of stretching it; the zebra/header fills reuse the code surface so they read
+   as a quiet panel rather than a heavy grid. */
+.bubble.markdown table.md-table {
+  display: block; width: max-content; max-width: 100%; overflow-x: auto;
+  border-collapse: collapse; margin: 9px 0; font-size: 13px; line-height: 1.45;
+}
+.bubble.markdown .md-table th,
+.bubble.markdown .md-table td {
+  border: 1px solid var(--border); padding: 5px 11px; text-align: left; vertical-align: top;
+}
+.bubble.markdown .md-table thead th {
+  background: var(--code-bg); font-weight: 600; white-space: nowrap; color: var(--text);
+}
+.bubble.markdown .md-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--code-bg) 45%, transparent);
+}
+.bubble.markdown .md-table code { white-space: nowrap; }
 
 /* ── Copy-to-clipboard button on code / JSON blocks ───────────────────── */
 .code-wrap { position: relative; margin: 8px 0; }

@@ -236,3 +236,22 @@ def test_builder_and_glossary_in_preview_harness():
     # …and the preview seeds the glossary so the dialog + metric explainers render from fixtures.
     assert "A.setGlossary(" in html
     assert 'id="builder"' in html and 'id="glossary"' in html
+
+
+def test_markdown_table_rendering_is_wired():
+    """The assistant bubble's markdown renderer must turn GFM pipe-tables into real <table>
+    markup (was: raw `| … |` text). Wiring-level guard; the rendered table is eyeballed via
+    ui/preview.html (which seeds an assistant bubble containing a pipe-table)."""
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    # The renderer branch + its helpers exist and emit the styled table class…
+    assert "function splitTableRow" in js
+    assert "function isTableDelim" in js and "function isTableStart" in js
+    assert "function tableCellAlign" in js
+    assert "isTableStart(lines, i)" in js          # dispatched from the main block loop
+    assert '<table class="md-table">' in js
+    assert "<thead>" in js and "<tbody>" in js
+    # …and a paragraph stops when a table begins (so the header row isn't swallowed as prose).
+    assert "!isTableStart(lines, i)) { para.push" in js
+    # …with matching styles (scrollable, zebra header).
+    assert "table.md-table" in css and ".md-table th" in css

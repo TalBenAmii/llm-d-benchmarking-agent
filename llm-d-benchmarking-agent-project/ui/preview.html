@@ -254,10 +254,15 @@
      ["execute_llmdbenchmark", { subcommand: "run" }]
     ].forEach((t, i) => A.handle({ type: "tool_call", data: { id: "t" + i, name: t[0], input: t[1] } }));
 
-    // 2) Assistant message with a fenced code block (copy button) + markdown.
+    // 2) Assistant message with a fenced code block (copy button) + markdown + a GFM table.
     A.handle({ type: "assistant_text", data: { text:
       "I'll stand up a small CPU-only stack, then run **inference-perf** against it:\n\n" +
       "```bash\nkind create cluster --name llmd-quickstart\nllmdbenchmark standup --spec cicd/kind\n```\n\n" +
+      "Here's where we diverge based on your actual GPU availability:\n\n" +
+      "| Path | Spec | Hardware | Trade-off |\n" +
+      "|------|------|---------:|-----------|\n" +
+      "| **Quick local sanity** | `cicd/kind` | CPU-only sim | Fast, no real GPU, not representative |\n" +
+      "| **Real GPU benchmark** | `guides/optimized-baseline` | Actual GPU | Real numbers, needs a GPU cluster + HF token |\n\n" +
       "Below are the structured results once the run finishes." } });
 
     // 3) Single-run results card with the goodput gauge + binding constraint.

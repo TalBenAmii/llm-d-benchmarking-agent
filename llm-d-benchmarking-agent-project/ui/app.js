@@ -681,6 +681,39 @@ function mdInline(s) {
   return s.replace(/\uE000(\d+)\uE000/g, (_, i) => `<code>${codes[+i]}</code>`);
 }
 
+// ---- GFM tables ----------------------------------------------------------
+// A table is a header row of `|`-separated cells, a delimiter row (cells of only
+// `-`/`:`/spaces, with at least one `|`), then zero+ body rows. We run on the
+// already-escaped string, so cell text is safe; `|`/`\|` aren't escaped, so we
+// split on UNescaped pipes (respecting inline-code spans and `\|` escapes).
+function splitTableRow(row) {
+  row = row.trim().replace(/^\|/, "").replace(/\|$/, "");
+  const cells = []; let cur = "", inCode = false;
+  for (let k = 0; k < row.length; k++) {
+    const ch = row[k];
+    if (ch === "\\" && row[k + 1] === "|") { cur += "|"; k++; }
+    else if (ch === "`") { inCode = !inCode; cur += ch; }
+    else if (ch === "|" && !inCode) { cells.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  cells.push(cur);
+  return cells.map((c) => c.trim());
+}
+function isTableDelim(line) {
+  if (!line || !line.includes("|")) return false;            // require a pipe (rules out a `---` rule)
+  const cells = splitTableRow(line);
+  return cells.length >= 1 && cells.every((c) => /^:?-+:?$/.test(c));
+}
+// A table starts where line i is a header (has a pipe, not a fence) and line i+1 is a delimiter.
+function isTableStart(lines, i) {
+  return i + 1 < lines.length && lines[i].includes("|") &&
+         !/^```/.test(lines[i]) && isTableDelim(lines[i + 1]);
+}
+function tableCellAlign(delim) {                              // ":-" left \u00B7 "-:" right \u00B7 ":-:" center
+  const l = delim.startsWith(":"), r = delim.endsWith(":");
+  return l && r ? ' style="text-align:center"' : r ? ' style="text-align:right"' : "";
+}
+
 const _MD_SPECIAL = [/^```/, /^(#{1,3})\s+/, /^\s*[-*]\s+/, /^\s*\d+\.\s+/, /^\s*$/];
 
 function renderMarkdown(text) {
@@ -710,10 +743,22 @@ function renderMarkdown(text) {
       html += `<li>${mdInline(m[2])}</li>`; i++;
     } else if (/^\s*$/.test(line)) {                          // blank -> block break
       closeList(); i++;
+    } else if (isTableStart(lines, i)) {                      // GFM table
+      closeList();
+      const heads = splitTableRow(lines[i]);
+      const aligns = splitTableRow(lines[i + 1]).map(tableCellAlign);
+      i += 2;
+      let body = "";
+      while (i < lines.length && lines[i].includes("|") && !/^\s*$/.test(lines[i]) && !isTableStart(lines, i)) {
+        const cells = splitTableRow(lines[i]); i++;
+        body += "<tr>" + heads.map((_, c) => `<td${aligns[c] || ""}>${mdInline(cells[c] || "")}</td>`).join("") + "</tr>";
+      }
+      const head = "<tr>" + heads.map((h, c) => `<th${aligns[c] || ""}>${mdInline(h)}</th>`).join("") + "</tr>";
+      html += `<table class="md-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
     } else {                                                  // paragraph (joins soft-wrapped lines)
       closeList();
       const para = [line]; i++;
-      while (i < lines.length && !_MD_SPECIAL.some((re) => re.test(lines[i]))) { para.push(lines[i]); i++; }
+      while (i < lines.length && !_MD_SPECIAL.some((re) => re.test(lines[i])) && !isTableStart(lines, i)) { para.push(lines[i]); i++; }
       html += `<p>${mdInline(para.join("<br>"))}</p>`;
     }
   }
