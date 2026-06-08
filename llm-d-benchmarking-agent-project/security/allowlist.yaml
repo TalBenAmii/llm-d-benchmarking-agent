@@ -473,6 +473,11 @@ executables:
         flags:
           "--is-inside-work-tree": {}
           "--show-toplevel": {}
+          # Read-only provenance capture (reproducibility bundle): a SHORT commit SHA.
+          # `git rev-parse --short HEAD` stays READ-ONLY (it only inspects git state) — it
+          # does NOT widen any mutating capability; the regenerate path still goes through the
+          # approval-gated `-c` replay. The positional stays pinned to the git_ref regex.
+          "--short": {}
 
   # ---- bootstrap --------------------------------------------------------
   install.sh:

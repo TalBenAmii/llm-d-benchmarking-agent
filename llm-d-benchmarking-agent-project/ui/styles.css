@@ -781,6 +781,25 @@ input[type="range"].slider:focus { box-shadow: 0 0 0 3px rgba(165, 64, 165, .18)
 /* Context subline (harness · load · duration) under the benchmark title. */
 .report-sub { margin-top: 4px; font: 12px var(--mono); color: var(--muted); }
 
+/* Reproducibility — provenance bundle affordances (report card + results sidebar). */
+.report-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.report-action {
+  font: 12px var(--sans); cursor: pointer; border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text); border-radius: 8px; padding: 5px 11px;
+}
+.report-action:hover { border-color: var(--accent); color: var(--accent); }
+.prov-dirty-banner {
+  margin-top: 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px;
+  background: rgba(176, 64, 64, .15); border: 1px solid #b04040; color: #ffb4b4;
+}
+.prov-repos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.prov-chip {
+  font: 11px var(--mono); padding: 3px 10px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+}
+.prov-chip.prov-dirty { color: #ffb4b4; border-color: #7a2a2a; }
+.prov-cmd { margin-top: 10px; }
+
 /* "All percentiles" drill-down — reuses the tool-card collapsible caret. */
 .pctl { margin-top: 12px; }
 .pctl > summary {

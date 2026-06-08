@@ -22,8 +22,10 @@ the LLM as JSON Schema); the registry + descriptions live in
 | `DELETE` | `/api/sessions/{id}` | Delete a saved chat; `404` if unknown. |
 | `DELETE` | `/api/namespaces/{namespace}` | Delete a whole sidebar folder — every chat in one namespace at once (the `no_namespace` sentinel removes chats with no namespace). Returns `{deleted, count}`; `404` if the folder is empty. |
 | `GET` | `/api/sessions/{id}/artifact?path=` | Serve one image artifact (e.g. a run's latency/throughput PNG) from a session's gitignored workspace dir. Read-only, image suffixes only, path hardened against `..` traversal. |
-| `GET` | `/api/history?tag=&model=` | Stored historical results (summaries, newest first) + the list of trendable metrics. |
+| `GET` | `/api/history?tag=&model=` | Stored historical results (summaries, newest first) + the list of trendable metrics. Each record with a provenance bundle also carries its `bundle_id` + `session_id`. |
 | `GET` | `/api/history/trend?metric=&tag=&model=` | Time-series of one metric across stored results (values + the metric's better-direction; no verdict). |
+| `GET` | `/api/sessions/{id}/bundle/{bundle_id}` | One reproducibility provenance bundle's JSON (for the UI's Reproduce / Export affordances). Path hardened against `..` traversal in either id. |
+| `GET` | `/api/sessions/{id}/bundle/{bundle_id}/report-card.html` | Download a **self-contained** HTML report card for a provenance bundle (results + full provenance + copy-paste command; zero external assets). `Content-Disposition: attachment`. |
 
 ## WebSocket `/ws`
 
@@ -139,6 +141,13 @@ Every tool call is validated against its Pydantic input model before the handler
 | Tool | Key inputs | What it does |
 |---|---|---|
 | `result_history` | `action` (`store`/`list`/`get`/`trend`/`delete`), `source`, `label`, `tags`, `spec`/`harness`/`workload`/`namespace`/`session_id`, `record_id`, `metric`, `filter_tag`/`filter_model` | Persist a validated report's summary across sessions and read trends. `store` validates first and is idempotent; `trend` returns one metric's time-series. Interpreted with `knowledge/history.md`. |
+
+### Reproducibility (read-only — git reads + a workspace write; no cluster mutation)
+
+| Tool | Key inputs | What it does |
+|---|---|---|
+| `export_run_bundle` | `source`, `namespace`, `spec`/`harness`/`workload`/`model`/`slo`, `label`, `attach_to_history` | Capture a **provenance bundle** for a *validated* run: both read-only repo SHAs (+ dirty flags), the exact resolved run-config, an env snapshot, the knowledge hash, the agent version, and the schema-validated report digest + summary. Refuses an unvalidated report; never fabricates a SHA (an empty repo → `unavailable`). Returns `bundle_id` + a copy-paste `regenerate_command` + a `dirty` flag. Interpreted with `knowledge/reproducibility.md`. |
+| `reproduce_run` | `bundle_id` | Read a saved bundle and return a **rerun proposal** (spec/harness/workload/namespace/slo + run-config path + the dry-run-first sequence + dirty/unavailable caveat). Emits **no** mutating command — the agent then drives `propose_session_plan` → `--dry-run` → the approval-gated `-c` replay. Reuses the existing gates; adds no new mutation path. |
 
 ### Run lifecycle (read-only — stops work, starts none)
 
