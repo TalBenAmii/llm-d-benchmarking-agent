@@ -47,6 +47,7 @@ from app.security.runner import CommandRunner, SimRunner
 from app.storage.history import HistoryStore, available_metrics, trend
 from app.storage.provenance import BundleStore
 from app.storage.retention import readiness, run_gc, self_check
+from app.storage.share import ShareStore
 from app.tools.probe import probe_environment
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
@@ -464,6 +465,84 @@ async def session_bundle_report_card(sid: str, bundle_id: str) -> Response:
         media_type="text/html",
         headers={"Content-Disposition": f'attachment; filename="report-card-{bundle_id}.html"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Share a chat via a read-only public link (ChatGPT-style).
+#
+# Minting/revoking a share is owner-only (the auth-gated POST/DELETE below); VIEWING a share is
+# public — the GET routes are exempted from Bearer auth in app.security.auth (the unguessable
+# token is the credential). A share is an IMMUTABLE snapshot of the chat's transcript taken at
+# share time (see app.storage.share.ShareStore), so continuing or deleting the chat never changes
+# or breaks the link.
+# ---------------------------------------------------------------------------
+def _share_store() -> ShareStore:
+    """The conversation-share store, rooted at the same shared workspace as sessions/history."""
+    return ShareStore(get_settings().resolved_workspace_dir)
+
+
+@app.post("/api/sessions/{sid}/share", dependencies=[Depends(rate_limit)])
+async def create_share(sid: str) -> JSONResponse:
+    """Mint a read-only public link for a chat — an immutable snapshot of its transcript NOW.
+
+    Owner-only (auth-gated). Snapshots the same render-friendly transcript the UI replays on
+    resume, but drops any still-PENDING approval gate (that is live, clickable session state, not
+    transcript — a public snapshot must never carry an actionable gate). 404 for an unknown chat;
+    400 when there is nothing to share yet (a brand-new, empty chat)."""
+    session = app.state.sessions.get_or_load(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    items = [it for it in _history_items(session) if it.get("role") != "approval_request"]
+    if not items:
+        raise HTTPException(status_code=400, detail="nothing to share yet")
+    token = _share_store().create(
+        items=items,
+        title=session.title or "Shared conversation",
+        created_at=session.created_at,
+        source_session_id=session.id,
+        usage={
+            "input": session.total_input_tokens,
+            "output": session.total_output_tokens,
+            "cache_read": session.total_cache_read_tokens,
+            "total": session.session_total,
+        },
+    )
+    return JSONResponse({"token": token, "url": f"/share/{token}"})
+
+
+@app.get("/api/share/{token}", dependencies=[Depends(rate_limit)])
+async def read_share(token: str) -> JSONResponse:
+    """PUBLIC read-only transcript of a shared conversation (no auth — the token is the
+    credential). 404 for a malformed/unknown/revoked token. Returns only the snapshot fields the
+    viewer needs — the owning session id is deliberately withheld."""
+    data = _share_store().read(token)
+    if data is None:
+        raise HTTPException(status_code=404, detail="shared conversation not found")
+    return JSONResponse({
+        "title": data.get("title"),
+        "created_at": data.get("created_at"),
+        "shared_at": data.get("shared_at"),
+        "items": data.get("items", []),
+        "usage": data.get("usage"),
+    })
+
+
+@app.delete("/api/share/{token}", dependencies=[Depends(rate_limit)])
+async def revoke_share(token: str) -> JSONResponse:
+    """Revoke a share link (delete its snapshot). Owner-only (auth-gated). 404 if already gone."""
+    if not _share_store().delete(token):
+        raise HTTPException(status_code=404, detail="shared conversation not found")
+    return JSONResponse({"deleted": True, "token": token})
+
+
+@app.get("/share/{token}")
+async def share_page(token: str) -> FileResponse:
+    """PUBLIC read-only viewer PAGE for a shared conversation. Serves the SPA shell exactly like
+    ``/`` — the client (app.js) detects the ``/share/<token>`` path, fetches ``/api/share/<token>``,
+    and renders the snapshot read-only (no WebSocket, no composer, no sidebar). We don't 404 here
+    on an unknown token: the page itself shows a friendly "link not found / revoked" state from the
+    JSON route, which keeps the SPA the single source of that messaging."""
+    return FileResponse(get_settings().ui_dir / "index.html")
 
 
 app.mount("/static", _RevalidateStaticFiles(directory=str(get_settings().ui_dir)), name="static")

@@ -38,6 +38,15 @@ _BEARER_PREFIX = "bearer "  # case-insensitive scheme per RFC 6750
 # expose only up/ready facts — no session data, no secrets — so exempting them leaks nothing.
 _UNAUTHENTICATED_PATHS = frozenset({"/healthz", "/readyz"})
 
+# Public read-only share links ("share a chat via link"): a GET to the share viewer page
+# (``/share/<token>``) or its transcript JSON (``/api/share/<token>``) is reachable WITHOUT a
+# Bearer token even when auth is on — the unguessable 128-bit token IS the bearer credential, so
+# requiring the app token too would defeat the feature (the recipient of a link is, by design,
+# not an authenticated app user). Scoped tightly: GET only (minting + revoking a share stay on
+# the auth-gated POST/DELETE routes), and these paths expose only the snapshot the owner chose to
+# share — never the session list, never a live session, never secrets.
+_PUBLIC_GET_PREFIXES = ("/share/", "/api/share/")
+
 
 def extract_bearer(authorization: str | None) -> str | None:
     """Pull the raw token out of an ``Authorization: Bearer <token>`` header value.
@@ -83,13 +92,17 @@ def check_http_auth(conn: HTTPConnection, settings: Settings = Depends(get_setti
 
     When ``auth_enabled`` is False (default) this is a no-op and every route stays open exactly
     as today. When enabled, an HTTP request needs a valid Bearer token or it raises 401 —
-    EXCEPT the liveness/readiness probes (see ``_UNAUTHENTICATED_PATHS``), which stay open so
-    K8s probes (which can't carry a token) aren't locked out."""
+    EXCEPT the liveness/readiness probes (see ``_UNAUTHENTICATED_PATHS``) and the public
+    read-only share links (a GET under ``_PUBLIC_GET_PREFIXES``, where the share token is itself
+    the credential), which stay open so probes and link recipients aren't locked out."""
     if not settings.auth_enabled:
         return
     if conn.scope.get("type") != "http":  # WebSocket handshake -> guarded in the /ws handler
         return
     if conn.url.path in _UNAUTHENTICATED_PATHS:  # liveness/readiness probes are always reachable
+        return
+    # Public share-link reads (GET only): the unguessable token in the path is the credential.
+    if conn.scope.get("method") == "GET" and conn.url.path.startswith(_PUBLIC_GET_PREFIXES):
         return
     presented = extract_bearer(conn.headers.get("authorization"))
     if not token_matches(presented, settings.auth_token):

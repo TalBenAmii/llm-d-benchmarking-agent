@@ -38,6 +38,17 @@ const builderClose = document.getElementById("builder-close");
 const builderCancel = document.getElementById("builder-cancel");
 const builderSend = document.getElementById("builder-send");
 const builderPreview = document.getElementById("builder-preview");
+// Share-a-chat-via-link controls (the 🔗 header button + its modal dialog).
+const shareBtn = document.getElementById("share-chat");
+const shareDlg = document.getElementById("share-dialog");
+const shareClose = document.getElementById("share-close");
+const shareDone = document.getElementById("share-done");
+const shareStatus = document.getElementById("share-status");
+const shareUrlInput = document.getElementById("share-url");
+const shareCopyBtn = document.getElementById("share-copy");
+const shareOpenLink = document.getElementById("share-open");
+const shareRevokeBtn = document.getElementById("share-revoke");
+const shareBanner = document.getElementById("share-banner");
 
 // ---- theme (dark default, light optional; persisted) --------------------
 function applyTheme(theme) {
@@ -2768,6 +2779,107 @@ if (builderClose) builderClose.addEventListener("click", closeBuilder);
 if (builderCancel) builderCancel.addEventListener("click", closeBuilder);
 if (builderSend) builderSend.addEventListener("click", submitBuilder);
 
+// ---- share a chat via a read-only link ----------------------------------
+// Two halves: (1) the OWNER mints/manages a link from the 🔗 header dialog (create + copy +
+// revoke); (2) a RECIPIENT opens /share/<token>, which serves this same SPA — bootShareView()
+// detects the path, renders the frozen snapshot read-only, and never opens a WebSocket. The
+// transcript renderers (renderHistory + friends) are reused verbatim, so a shared chat looks
+// exactly like the live one, just without the composer/sidebar/agent.
+let shareToken = null;   // the token of the link currently shown in the dialog (for revoke)
+
+// The /share/<token> path of the public viewer page, or null when this is the normal app.
+function shareTokenFromPath() {
+  const m = location.pathname.match(/^\/share\/([0-9a-f]{32})$/);
+  return m ? m[1] : null;
+}
+
+function openShareDialog() {
+  if (!shareDlg || !shareDlg.showModal || shareDlg.open) return;
+  // Reset to the "creating" state on every open (a previous link's token must not linger).
+  shareToken = null;
+  if (shareUrlInput) shareUrlInput.value = "";
+  if (shareOpenLink) { shareOpenLink.removeAttribute("href"); shareOpenLink.classList.add("disabled"); }
+  if (shareCopyBtn) shareCopyBtn.disabled = true;
+  if (shareRevokeBtn) shareRevokeBtn.disabled = true;
+  if (shareStatus) shareStatus.textContent = "Creating link…";
+  shareDlg.showModal();
+}
+function closeShareDialog() { if (shareDlg && shareDlg.open) shareDlg.close(); }
+
+// Mint (or surface) a read-only public link for the CURRENT conversation. The backend snapshots
+// the transcript as it is right now; sending more messages later won't change the shared copy.
+async function shareChat() {
+  openShareDialog();
+  if (!currentSession) {
+    if (shareStatus) shareStatus.textContent = "Start the conversation first — there's nothing to share yet.";
+    return;
+  }
+  try {
+    const r = await fetch(`/api/sessions/${encodeURIComponent(currentSession)}/share`, { method: "POST" });
+    if (r.status === 400) {
+      if (shareStatus) shareStatus.textContent = "Start the conversation first — there's nothing to share yet.";
+      return;
+    }
+    if (!r.ok) throw new Error("share failed: " + r.status);
+    const j = await r.json();
+    const url = location.origin + j.url;
+    shareToken = j.token;
+    if (shareUrlInput) { shareUrlInput.value = url; shareUrlInput.focus(); shareUrlInput.select(); }
+    if (shareOpenLink) { shareOpenLink.href = url; shareOpenLink.classList.remove("disabled"); }
+    if (shareCopyBtn) shareCopyBtn.disabled = false;
+    if (shareRevokeBtn) shareRevokeBtn.disabled = false;
+    if (shareStatus) shareStatus.textContent = "Link ready — anyone with it can view this conversation (read-only).";
+  } catch (e) {
+    if (shareStatus) shareStatus.textContent = "Couldn't create a share link. Please try again.";
+  }
+}
+
+// Revoke the link currently shown — its snapshot is deleted server-side and the URL stops working.
+async function revokeShare() {
+  if (!shareToken) return;
+  if (!confirm("Delete this share link? Anyone who has it will no longer be able to view the conversation.")) return;
+  try {
+    await fetch(`/api/share/${encodeURIComponent(shareToken)}`, { method: "DELETE" });
+  } catch (e) { /* best-effort; reflect deletion regardless */ }
+  shareToken = null;
+  if (shareUrlInput) shareUrlInput.value = "";
+  if (shareOpenLink) { shareOpenLink.removeAttribute("href"); shareOpenLink.classList.add("disabled"); }
+  if (shareCopyBtn) shareCopyBtn.disabled = true;
+  if (shareRevokeBtn) shareRevokeBtn.disabled = true;
+  if (shareStatus) shareStatus.textContent = "Link deleted — it no longer works.";
+}
+
+if (shareBtn) shareBtn.addEventListener("click", shareChat);
+if (shareClose) shareClose.addEventListener("click", closeShareDialog);
+if (shareDone) shareDone.addEventListener("click", closeShareDialog);
+if (shareCopyBtn) shareCopyBtn.addEventListener("click", () => copyText(shareUrlInput ? shareUrlInput.value : "", shareCopyBtn));
+if (shareRevokeBtn) shareRevokeBtn.addEventListener("click", revokeShare);
+if (shareDlg) shareDlg.addEventListener("click", (e) => { if (e.target === shareDlg) closeShareDialog(); });  // backdrop
+
+// The public read-only viewer (/share/<token>). Reuses every transcript renderer; no WebSocket,
+// no composer, no sidebar — body.share-view hides them via CSS and shows the read-only banner.
+async function bootShareView(token) {
+  document.body.classList.add("share-view");
+  if (shareBanner) shareBanner.hidden = false;
+  activate(makeRecord(null));   // set up activePane so renderHistory has somewhere to append
+  try {
+    const r = await fetch(`/api/share/${encodeURIComponent(token)}`);
+    if (!r.ok) throw new Error("not found: " + r.status);
+    const data = await r.json();
+    document.title = (data.title ? data.title + " · " : "") + "Shared conversation";
+    // A small header line: the conversation title + when it was shared.
+    const meta = el("div", "share-meta");
+    meta.appendChild(el("div", "share-meta-title", data.title || "Shared conversation"));
+    const when = data.shared_at ? relTime(data.shared_at) : "";
+    meta.appendChild(el("div", "share-meta-sub", "Read-only snapshot" + (when ? " · shared " + when : "")));
+    activePane.appendChild(meta);
+    renderHistory(data.items || []);
+    if (!(data.items || []).length) addBubble("assistant", "_This conversation is empty._");
+  } catch (e) {
+    addBubble("error", "This shared link is no longer available — it may have been deleted by its owner, or the link is incorrect.");
+  }
+}
+
 // ---- boot ---------------------------------------------------------------
 // ui/preview.html sets window.__LLMD_PREVIEW__ to drive the renderers with fixture data and no
 // backend. In that mode we skip the live boot (sessions/history fetch + WebSocket connect) and
@@ -2781,7 +2893,11 @@ if (window.__LLMD_PREVIEW__) {
     renderAcceleratorCard, renderDoeCard, renderOrchestrateCard, renderResilienceCard,
     renderAutotuneCard,
     openBuilder, composeBrief,
+    bootShareView,
   };
+} else if (shareTokenFromPath()) {
+  // Public read-only viewer page: render the shared snapshot, no live boot / WebSocket.
+  bootShareView(shareTokenFromPath());
 } else {
   loadSessions();
   loadHistory();

@@ -337,3 +337,39 @@ def test_markdown_table_rendering_is_wired():
     # The fix only works because the bubble flex item is allowed to shrink below its content
     # width; without min-width:0 a max-content table widens the whole column.
     assert "flex: 1; min-width: 0;" in css
+
+
+def test_share_a_chat_via_link():
+    """Share-a-chat-via-link: the 🔗 header dialog (create + copy + revoke) and the public
+    /share/<token> read-only viewer that reuses the live transcript renderers."""
+    html = _ui("index.html")
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    # The 🔗 header button + the modal dialog and its controls exist and are wired in JS.
+    assert 'id="share-chat"' in html
+    for el_id in ("share-chat", "share-dialog", "share-close", "share-done",
+                  "share-status", "share-url", "share-copy", "share-open", "share-revoke", "share-banner"):
+        assert f'id="{el_id}"' in html, f"missing #{el_id} in index.html"
+        assert f'getElementById("{el_id}")' in js, f"#{el_id} not wired in app.js"
+    # Create / revoke hit the real owner-only routes; the link is copied with the shared helper.
+    assert "function shareChat" in js and "function revokeShare" in js
+    assert "/api/sessions/${encodeURIComponent(currentSession)}/share" in js
+    assert 'method: "DELETE" }' in js and "/api/share/${encodeURIComponent(shareToken)}" in js
+    assert "copyText(shareUrlInput" in js
+    # The public viewer: boot detects /share/<token>, renders the snapshot read-only, NO WebSocket.
+    assert "function shareTokenFromPath" in js
+    assert "function bootShareView" in js
+    assert 'location.pathname.match(/^\\/share\\/([0-9a-f]{32})$/)' in js
+    assert "} else if (shareTokenFromPath()) {" in js          # boot branch before the live boot
+    assert "/api/share/${encodeURIComponent(token)}" in js     # fetches the public transcript
+    assert "renderHistory(data.items" in js                    # reuses the live transcript renderer
+    assert 'document.body.classList.add("share-view")' in js
+    # Read-only mode strips every interactive affordance and shows the banner.
+    assert ".share-banner" in css and "body.share-view #composer" not in css  # composer lives in <footer>
+    assert "body.share-view footer" in css and "body.share-view #sidebar" in css
+    assert ".share-dialog::backdrop" in css
+
+
+def test_share_view_in_preview_harness():
+    """The preview harness exposes the share-view render path (no backend)."""
+    assert "bootShareView," in _ui("app.js")

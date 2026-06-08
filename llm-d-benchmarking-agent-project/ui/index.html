@@ -53,6 +53,12 @@
     </section>
   </aside>
   <div class="main-col">
+  <!-- Read-only banner: shown ONLY on the public /share/<token> viewer page (app.js sets
+       body.share-view), where there's no live agent — just a frozen, shared transcript. -->
+  <div id="share-banner" class="share-banner" hidden>
+    <span class="share-banner-text"><span aria-hidden="true">👁</span> You're viewing a read-only shared conversation.</span>
+    <a class="share-banner-cta" href="/">Open the assistant →</a>
+  </div>
   <header>
     <div class="brand">
       <button id="sidebar-toggle" class="icon-btn sidebar-toggle" type="button" title="Show / hide chats" aria-label="Toggle sidebar" aria-expanded="false">☰</button>
@@ -72,6 +78,7 @@
     </div>
     <div class="header-actions">
       <button id="builder-toggle" type="button" class="builder-btn" title="Design a benchmark — guided builder" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span> Design</button>
+      <button id="share-chat" type="button" class="icon-btn" title="Share this conversation with a read-only link" aria-label="Share this conversation"><span aria-hidden="true">🔗</span></button>
       <div id="token-total" class="token-chip" title="Total tokens used this session (input + output + cached)" hidden>Σ 0 tokens</div>
       <div id="context-window" class="token-chip" title="Estimated current context-window size sent to the model (≈ chars/4) — what dominates it" hidden>⛶ 0 ctx</div>
       <button id="debug-toggle" type="button" class="icon-btn" title="Debug view — show the commands the agent ran inline in the chat" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
@@ -193,6 +200,32 @@
     <div class="builder-actions">
       <button type="button" id="builder-cancel" class="ghost-btn">Cancel</button>
       <button type="button" id="builder-send" class="primary-btn">Send to assistant →</button>
+    </div>
+  </dialog>
+
+  <!-- Share dialog: opened by the 🔗 header button. Mints a read-only public link (a snapshot of
+       the current conversation) via POST /api/sessions/<id>/share, shows it for copying, and can
+       revoke it (DELETE /api/share/<token>). ChatGPT-style: messages sent after sharing are NOT in
+       the shared copy (the link is a point-in-time snapshot). -->
+  <dialog id="share-dialog" class="share-dialog">
+    <div class="builder-head">
+      <span><span aria-hidden="true">🔗</span> Share this conversation</span>
+      <button id="share-close" class="icon-btn icon-btn-sm" type="button" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="builder-intro">Anyone with this link can view a <strong>read-only</strong> snapshot of this
+      conversation — they can't reply or run anything. Messages you send after creating the link won't
+      appear in the shared copy.</p>
+    <div class="share-body">
+      <div id="share-status" class="share-status" aria-live="polite">Creating link…</div>
+      <div class="share-link-row">
+        <input id="share-url" class="share-url" type="text" readonly aria-label="Shareable link" />
+        <button id="share-copy" type="button" class="primary-btn" disabled>Copy link</button>
+      </div>
+    </div>
+    <div class="builder-actions">
+      <button type="button" id="share-revoke" class="ghost-btn share-revoke" disabled>Delete link</button>
+      <a id="share-open" class="ghost-btn" target="_blank" rel="noopener noreferrer">Open ↗</a>
+      <button type="button" id="share-done" class="primary-btn">Done</button>
     </div>
   </dialog>
 

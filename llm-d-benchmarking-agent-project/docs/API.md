@@ -26,6 +26,12 @@ the LLM as JSON Schema); the registry + descriptions live in
 | `GET` | `/api/history/trend?metric=&tag=&model=` | Time-series of one metric across stored results (values + the metric's better-direction; no verdict). |
 | `GET` | `/api/sessions/{id}/bundle/{bundle_id}` | One reproducibility provenance bundle's JSON (for the UI's Reproduce / Export affordances). Path hardened against `..` traversal in either id. |
 | `GET` | `/api/sessions/{id}/bundle/{bundle_id}/report-card.html` | Download a **self-contained** HTML report card for a provenance bundle (results + full provenance + copy-paste command; zero external assets). `Content-Disposition: attachment`. |
+| `POST` | `/api/sessions/{id}/share` | **Share a chat via link.** Mint a read-only public link — an *immutable snapshot* of the chat's transcript taken now (a still-pending approval gate is filtered out). Returns `{token, url}`. Owner-only (auth-gated); `404` unknown chat, `400` if there's nothing to share yet. |
+| `GET` | `/api/share/{token}` | **Public** read-only transcript of a shared conversation (`{title, created_at, shared_at, items, usage}`; the owning session id is withheld). Reachable **without** Bearer auth — the unguessable token *is* the credential. `404` for a malformed/unknown/revoked token. |
+| `GET` | `/share/{token}` | **Public** read-only viewer **page** — serves the SPA shell; the client detects the path, fetches `/api/share/{token}`, and renders the snapshot read-only (no WebSocket, no composer, no sidebar). |
+| `DELETE` | `/api/share/{token}` | Revoke a share link (delete its snapshot). Owner-only (auth-gated); `404` if already gone. |
+
+> **Share-link auth.** Only the `GET` viewer routes (`/share/{token}`, `/api/share/{token}`) bypass the optional Bearer auth (the token is the bearer secret); minting (`POST`) and revoking (`DELETE`) stay auth-gated. The snapshot exposes only the transcript the owner chose to share — never the session list, a live session, or secrets.
 
 ## WebSocket `/ws`
 
