@@ -35,7 +35,9 @@ the LLM as JSON Schema); the registry + descriptions live in
 > **Share-link auth.** Only the `GET` viewer routes (`/share/{token}`, `/api/share/{token}`) bypass the optional Bearer auth (the token is the bearer secret); minting (`POST`) and revoking (`DELETE`) stay auth-gated. The snapshot exposes only the transcript the owner chose to share — never the session list, a live session, or secrets.
 >
 > **Sharing with someone off-host.** Two ways, depending on whether you want to expose the running app:
-> - **Static-file export (no exposure).** Download the self-contained `.html` (the dialog's **Download file** button, or `GET /api/share/{token}/page.html`) and host it on any static host — GitHub Pages/gist, object storage, Netlify drop — or send it directly. The agent is never reachable; only a frozen, read-only file is. This is the recommended way to share with a friend.
+> - **Static-file export (no exposure) — recommended.** A shared chat is just a self-contained `.html` (the SPA + frozen snapshot inlined). Host it anywhere and the agent is never reachable.
+>   - **One command:** `scripts/publish_shared_chat.sh <token-or-link>` renders it and uploads it as a **secret GitHub gist** (unlisted; the gist id is the credential, like the share token), printing a public render URL. `--revoke <token>` deletes it; `--dry-run` previews. Needs `gh` (authenticated).
+>   - **By hand:** grab the file from the dialog's **Download file** button (or `GET /api/share/{token}/page.html`) and drop it on any static host — GitHub Pages, object storage, a Netlify drop — or just send it directly.
 > - **Expose the live app.** Reach it over a public URL (e.g. a `cloudflared tunnel --url http://localhost:8000` quick tunnel, or a deployment) — opening the app via that URL already makes links public, or set `SHARE_BASE_URL` to mint absolute links from a localhost session. Because this exposes the *whole* agent, set `AUTH_TOKEN` first: it locks the agent (401 without the token) while share links keep working for viewers (the GET-bypass above).
 
 ## WebSocket `/ws`
