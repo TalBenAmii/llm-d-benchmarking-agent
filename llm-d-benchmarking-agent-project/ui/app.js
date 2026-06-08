@@ -989,6 +989,17 @@ function renderResourceSide() {
 
   if (data.available === false) {
     body.appendChild(el("div", "resource-note", data.note || "live resource stats unavailable"));
+    // Surface the one-click fix RIGHT where the gap is visible. kind ships no metrics-server, so
+    // this panel reads "unavailable" and the agent — which never sees this zero-LLM poller event —
+    // would otherwise never know to offer the install. The button just sends a normal user message;
+    // the agent does the real, vetted, approval-gated install per knowledge/observability.md. This
+    // makes the offer guaranteed-visible instead of depending on the model volunteering it mid-deploy.
+    const fix = el("button", "chip resource-fix-btn", "Install metrics-server for live stats");
+    fix.title = "Ask the agent to install the in-cluster metrics-server (approval-gated)";
+    fix.onclick = () => { sendUserMessage(
+      "Install the in-cluster metrics-server so I can see live resource stats (CPU/memory) for " +
+      "this kind cluster."); };
+    body.appendChild(fix);
     return;
   }
   const rows = data.rows || [];

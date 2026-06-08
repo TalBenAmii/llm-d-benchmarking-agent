@@ -102,6 +102,24 @@ def test_live_resource_trend_sparklines():
     assert ".res-spark-line" in css
 
 
+def test_metrics_server_install_offer_on_unavailable_panel():
+    """When the live-resource panel reports unavailable (kind ships no metrics-server), it must
+    surface a one-click "Install metrics-server" offer. The agent never sees the zero-LLM poller
+    event, so this button is what makes the offer visible; it just sends a normal user message and
+    the agent does the real, approval-gated install (thin code / thick agent)."""
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    html = _ui("preview.html")
+    # The offer button lives in the available===false branch of the resource panel renderer…
+    assert "resource-fix-btn" in js
+    assert "Install metrics-server for live stats" in js
+    # …and it asks the AGENT to install it (a normal message — judgment/approval stay in the agent).
+    assert "sendUserMessage(" in js and "Install the in-cluster metrics-server" in js
+    assert ".resource-fix-btn" in css
+    # The preview harness shows the unavailable state so the offer is hand-verifiable with no backend.
+    assert "available: false" in html and "no metrics-server" in html
+
+
 def test_analyzer_next_steps_chips():
     """The analyzer's ranked next_steps render as clickable chips that send the step as a message."""
     js = _ui("app.js")
