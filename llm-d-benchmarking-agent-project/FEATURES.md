@@ -91,9 +91,9 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 
 ---
 
-## 4. The 31 agent tools (authoritative list — `app/tools/registry.py`)
+## 4. The 32 agent tools (authoritative list — `app/tools/registry.py`)
 
-> Note: the registry defines **31** tools (matches `CLAUDE.md`). Verify by reading
+> Note: the registry defines **32** tools (matches `CLAUDE.md`). Verify by reading
 > `app/tools/registry.py:build_registry`.
 
 **Sensing / grounding (read-only, auto-run):** `probe_environment`, `list_catalog`,
@@ -109,6 +109,14 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 
 **Analysis / history (read-only):** `compare_reports`, `compare_harness_runs`,
 `analyze_results`, `aggregate_runs`, `result_history`, `cancel_run`.
+
+**Closed-loop goal-seeking (read-only, auto-run):** `autotune_search` — the autotuner's
+search-state tracker for an adaptive search to an SLO at best goodput. Tracks the trial log,
+validates the agent's next candidate (bounds/duplicate/budget), and surfaces convergence
+FACTS (incumbent, SLO-feasible frontier via the reused `pareto_analysis`, budget remaining).
+It computes NO next config and returns NO converge/stop verdict — the strategy + stop
+decision live in `knowledge/autotune_strategy.md`. Rides one upfront `SessionPlan.autotune`
+approval.
 
 **Resilience (opt-in, double-gated, hermetic):** `run_resilience_drill` — inject faults via a
 `KubeClient` decorator + prove restart durability; returns a resilience report. Requires

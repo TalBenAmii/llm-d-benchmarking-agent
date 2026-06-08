@@ -1,4 +1,4 @@
-# app/tools/ — the 31 agent tools (mechanism layer)
+# app/tools/ — the 32 agent tools (mechanism layer)
 
 Tools validate their args against Pydantic schemas, gate mutating commands, run allowlisted
 argv through the executor, and return a flat JSON-serializable dict to the agent. `registry.py`

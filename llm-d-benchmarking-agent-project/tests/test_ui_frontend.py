@@ -169,6 +169,31 @@ def test_resilience_drill_card():
     assert "renderResilienceCard," in js
 
 
+def test_autotune_convergence_card():
+    """The autotune_search action='status' result renders a goal-seeking convergence card
+    (trial table + incumbent + SLO-feasible frontier + budget), reusing the shared
+    results-table / slo-pass / slo-fail visuals. Facts only — the card must NOT introduce a
+    converge/stop verdict (the stop decision is the agent's)."""
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    assert "function renderAutotuneCard" in js
+    # Dispatched from finishTool by tool name (reshaping the raw status result)…
+    assert 'data.name === "autotune_search") renderAutotuneCard(_card_from_autotune_status(r))' in js
+    assert "function _card_from_autotune_status" in js
+    # …and from the results_card event (card.kind === "autotune").
+    assert 'card.kind === "autotune"' in js
+    assert "renderAutotuneCard(card)" in js
+    # The card surfaces the convergence parts.
+    assert "Autotune search" in js and "Best feasible so far" in js
+    assert "SLO-feasible Pareto frontier" in js
+    # Facts-only: the renderer never asserts convergence on its own.
+    assert "converged" not in js.split("renderAutotuneCard")[1].split("function renderHistory")[0]
+    # A dedicated accent class on the card; otherwise it reuses the shared SLO visuals.
+    assert ".results-card.autotune" in css
+    # Exposed in the preview boot guard for hand verification.
+    assert "renderAutotuneCard," in js
+
+
 def test_results_card_copy_summary():
     js = _ui("app.js")
     css = _ui("styles.css")

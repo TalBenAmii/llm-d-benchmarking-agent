@@ -7,6 +7,11 @@ three things the proposal calls out as the analyzer's job: **SLO filtering**, **
 and **Pareto/DoE** frontier analysis. The tool is the *mechanism*; the judgment below is
 yours.
 
+> For **goal-seeking** (adaptive next-config: the agent picks each next config from the prior
+> result to converge on the SLO-feasible best, rather than analyzing a fixed set of runs), see
+> `read_knowledge('autotune_strategy')` — its "best feasible point" IS this analyzer's
+> `slo_frontier` pick.
+
 ## Capture the SLOs during the interview, into the plan
 
 The SLO targets belong in the **SessionPlan** (`slo` field). Elicit them from the use case:

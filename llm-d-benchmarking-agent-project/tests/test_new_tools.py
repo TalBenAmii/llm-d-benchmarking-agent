@@ -288,6 +288,29 @@ def test_system_prompt_inlines_core_and_indexes_on_demand(tool_ctx):
         assert name in prompt, f"on-demand file {name} missing from the index"
 
 
+def test_autotune_strategy_is_on_demand_not_core(tool_ctx):
+    # The autotuner's JUDGMENT lives in an ON-DEMAND knowledge file (goal-seeking is mid/late
+    # session) — it must be loadable by read_knowledge but NOT inlined into the always-on prompt.
+    from app.agent.prompt import build_system_prompt
+
+    out = probe.read_knowledge(tool_ctx, name="autotune_strategy")
+    assert out["name"] == "autotune_strategy.md" and out["content"]
+    prompt = build_system_prompt(tool_ctx)
+    body = (tool_ctx.settings.knowledge_dir / "autotune_strategy.md").read_text()
+    assert body[300:480] not in prompt, "autotune_strategy must NOT be inlined (it's on-demand, not CORE)"
+    assert "autotune_strategy" in prompt, "autotune_strategy must appear in the on-demand index"
+
+
+async def test_autotune_search_dispatch_status_facts_only(tool_ctx):
+    # End-to-end via dispatch: a status read on an empty search returns FACTS and NO verdict.
+    out = await dispatch(tool_ctx, "autotune_search", {
+        "action": "status", "search_id": "fresh",
+        "slo": {"ttft_ms": 300, "percentile": "p95"},
+        "objective": "output_token_rate", "direction": "max", "budget": 6})
+    assert "converged" not in out
+    assert out["trials_used"] == 0 and out["best_feasible"] is None
+
+
 def test_multi_harness_full_body_absent_but_indexed(tool_ctx):
     # Explicit single-file assertion required by the task: the multi_harness body is gone
     # from the prompt, yet its name still appears (so the model can load it on demand).

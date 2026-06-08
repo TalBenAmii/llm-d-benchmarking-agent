@@ -18,6 +18,7 @@ from app.tools import (
 )
 from app.tools import (
     analyze,
+    autotune,
     cancel,
     capacity,
     command,
@@ -46,6 +47,7 @@ from app.tools.schemas import (
     AdviseAcceleratorsInput,
     AggregateRunsInput,
     AnalyzeResultsInput,
+    AutotuneSearchInput,
     CancelRunInput,
     CheckCapacityInput,
     CheckEndpointReadinessInput,
@@ -423,6 +425,28 @@ _DESCRIPTIONS = {
         "answer 'has performance regressed over time?'. The tool returns facts (values + "
         "direction); call read_knowledge('history') to interpret trends and give the verdict."
     ),
+    "autotune_search": (
+        "CLOSED-LOOP GOAL-SEEKING search-state tracker. Use it when the user states a GOAL "
+        "('hit p95 TTFT under 300ms at the best output throughput you can, spend at most 6 "
+        "runs') rather than asking to compare N fixed configs. It tracks the trial log, "
+        "VALIDATES the next candidate YOU computed, and surfaces convergence FACTS — it does "
+        "NOT pick the next config and does NOT decide whether to stop. The search STRATEGY and "
+        "the STOP decision are YOURS, grounded in read_knowledge('autotune_strategy'). All "
+        "actions auto-run (read/write only the session workspace; nothing touches the cluster "
+        "or the repos). Three actions: (1) action='record_trial' (config + report_source + the "
+        "plan's slo/objective/direction) validates the Benchmark Report, evaluates it against "
+        "the SLO via the SAME analyzer the rest of the agent uses, and appends the trial — it "
+        "REFUSES an unvalidated report. (2) action='propose_next_config' (candidate + the "
+        "plan's knobs + budget) PURELY VALIDATES the config you computed: in-bounds? duplicate "
+        "of a prior trial? budget left? — it never produces the value. (3) action='status' "
+        "(slo/objective/direction/budget) returns the incumbent best_feasible, the "
+        "slo_feasible_frontier (REUSES pareto_analysis), budget_remaining, recent_improvement_pct, "
+        "and slo_boundary_bracketed — FACTS ONLY, with NO converge/stop verdict. Ride ONE "
+        "upfront SessionPlan approval (the plan's `autotune` block bounds the whole search); the "
+        "per-trial runs still go through execute_llmdbenchmark/orchestrate_benchmark_run + their "
+        "normal approval gate. WHEN to goal-seek vs sweep, which strategy, the start point/step, "
+        "and the convergence rubric are ALL in read_knowledge('autotune_strategy')."
+    ),
     "export_run_bundle": (
         "Capture a one-click REPRODUCIBILITY PROVENANCE BUNDLE for a VALIDATED run: both "
         "read-only repo SHAs (+ dirty flags), the exact resolved run-config the CLI wrote, an "
@@ -524,6 +548,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("compare_harness_runs", _DESCRIPTIONS["compare_harness_runs"], CompareHarnessRunsInput, multiharness.compare_harness_runs),
         ToolSpec("analyze_results", _DESCRIPTIONS["analyze_results"], AnalyzeResultsInput, analyze.analyze_results),
         ToolSpec("result_history", _DESCRIPTIONS["result_history"], ResultHistoryInput, history.result_history),
+        ToolSpec("autotune_search", _DESCRIPTIONS["autotune_search"], AutotuneSearchInput, autotune.autotune_search),
         ToolSpec("export_run_bundle", _DESCRIPTIONS["export_run_bundle"], ExportRunBundleInput, reproducibility.export_run_bundle),
         ToolSpec("reproduce_run", _DESCRIPTIONS["reproduce_run"], ReproduceRunInput, reproducibility.reproduce_run),
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),

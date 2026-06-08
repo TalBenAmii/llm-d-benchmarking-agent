@@ -143,6 +143,12 @@ Every tool call is validated against its Pydantic input model before the handler
 |---|---|---|
 | `result_history` | `action` (`store`/`list`/`get`/`trend`/`delete`), `source`, `label`, `tags`, `spec`/`harness`/`workload`/`namespace`/`session_id`, `record_id`, `metric`, `filter_tag`/`filter_model` | Persist a validated report's summary across sessions and read trends. `store` validates first and is idempotent; `trend` returns one metric's time-series. Interpreted with `knowledge/history.md`. |
 
+### Goal-seeking / autotuner (read-only — workspace read/write only)
+
+| Tool | Key inputs | What it does |
+|---|---|---|
+| `autotune_search` | `action` (`record_trial`/`propose_next_config`/`status`), `search_id`, `slo`, `objective`, `direction`, `config`, `report_source`, `candidate`, `knobs`, `budget` | The closed-loop **autotuner's search-state tracker** (mechanism only). `record_trial` validates the trial's Benchmark Report (refuses an unvalidated one), evaluates it against the plan's SLO, and appends it. `propose_next_config` PURELY validates the candidate the agent computed (in-bounds / duplicate / budget). `status` returns convergence **facts** — incumbent `best_feasible`, `slo_feasible_frontier` (reuses `pareto_analysis`), `budget_remaining`, `recent_improvement_pct`, `slo_boundary_bracketed` — with **no** converge/stop verdict. It never computes the next config; the strategy + stop decision are the agent's, in `knowledge/autotune_strategy.md`. Rides one upfront `SessionPlan.autotune` approval. |
+
 ### Reproducibility (read-only — git reads + a workspace write; no cluster mutation)
 
 | Tool | Key inputs | What it does |
@@ -169,6 +175,7 @@ cross-checked against the live catalog before the card is shown.
 | `use_case_summary` | str | Restated user intent. |
 | `goal_metrics` | list[str] | e.g. `["ttft","throughput"]`. |
 | `slo` | `SLOTargets?` | Optional QoS targets (max TTFT/TPOT/ITL/request-latency ms, throughput floor tok/s, success-rate floor); later consumed by `analyze_results`. |
+| `autotune` | `AutotunePlan?` | Optional closed-loop **goal-seeking** block: `strategy` (name), `objective` + `direction`, `knobs` (each a dotted `key` + `[min,max]` bounds), and a `budget` (max trials). One approval authorizes the whole bounded adaptive search; the agent then drives `autotune_search`. See `knowledge/autotune_strategy.md`. |
 | `spec` | str | A spec name from the live catalog, e.g. `cicd/kind`. |
 | `deploy_path` | `kind_sim`\|`guide`\|`gpu` | Default `kind_sim`. |
 | `namespace` | str | RFC1123 label. |

@@ -4,6 +4,10 @@ Use this when the user wants to compare configurations — "how does latency cha
 concurrency grows?", "is config A faster than B?", "find the best batch size", "sweep QPS".
 The mechanism is two tools; the *judgment* (what to vary, how to read the deltas) is here.
 
+> For **goal-seeking** (the user states a *target* and wants the best operating point, with the
+> next config chosen adaptively from each result — not a fixed grid), see
+> `read_knowledge('autotune_strategy')` (the `autotune_search` tool).
+
 ## Decide the shape first
 
 Ask (or infer) **what single thing varies** and **whether it changes the deployment**:

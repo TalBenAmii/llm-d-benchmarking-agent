@@ -96,7 +96,7 @@ also includes: a **Kubernetes-native benchmark orchestrator**
 sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
 comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
 **Prometheus/Grafana observability**, and a **hardened image + one-command Helm/Kustomize
-deploy** (`Dockerfile`, `deploy/`) with least-privilege RBAC. The agent exposes **31 tools**
+deploy** (`Dockerfile`, `deploy/`) with least-privilege RBAC. The agent exposes **32 tools**
 (see `app/tools/registry.py` for the authoritative list).
 All of this obeys the same thin-code/thick-agent + determinism-gate rules above.
 
@@ -119,7 +119,7 @@ Paths are relative to `llm-d-benchmarking-agent-project/`.
 **Technical docs (`docs/`)**
 - `docs/README.md` — the docs index.
 - `docs/ARCHITECTURE.md` — layers, components, the four determinism gates, trust boundaries.
-- `docs/API.md` — HTTP/WebSocket API + the 31-tool agent surface + `SessionPlan`.
+- `docs/API.md` — HTTP/WebSocket API + the 32-tool agent surface + `SessionPlan`.
 - `docs/DEPLOYMENT.md` — running locally and in-cluster (Helm/Kustomize), config, secrets, RBAC, observability.
 - `docs/USER_GUIDE.md` — using the agent end-to-end with no `llm-d-benchmark` expertise.
 - `docs/VALIDATION.md` — the flow-validation harness (does the agent run the *right* commands?).
