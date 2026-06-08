@@ -14,9 +14,13 @@ the steps/flags come from the real procedure rather than memory.
    stack is already running.
 2. **If a stack already runs** for the target namespace (`stack.detected == true`) — do
    NOT redeploy. Tell the user, and offer to benchmark the existing stack (skip to step 8).
-3. **Propose a plan** — `propose_session_plan` with:
+3. **Propose a plan** — emit it by CALLING `propose_session_plan` (this is what renders the
+   approval card; do NOT write the plan out as a chat message and ask the user to confirm in
+   text). Use:
    `spec=cicd/kind`, `deploy_path=kind_sim`, `namespace=llmd-quickstart`,
-   `harness=inference-perf`, `workload=sanity_random.yaml`,
+   `harness=inference-perf`, `workload=sanity_random.yaml` (THE quickstart workload — the
+   upstream default; do NOT ask the user to pick a workload here, only swap it if they
+   explicitly name a different one),
    `expected_steps=[install_prereqs?, ensure_repos, run_setup, create_cluster?, install_metrics_server?, standup, smoketest, run, report, teardown?]`
    (include `install_metrics_server?` when the user wants the live resource-stats panel — see step 5b).
    Wait for approval.

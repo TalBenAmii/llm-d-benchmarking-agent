@@ -3,9 +3,13 @@
 # names against the live catalog (list_catalog) before using them — profiles vary per
 # harness and the repo is the source of truth.
 
-# MVP constraint: the only fully supported deploy path is `cicd/kind` (CPU sim). For the
-# quickstart, prefer inference-perf + sanity_random.yaml regardless of use case; use the
-# richer profiles below once GPU/guide deploys are supported.
+# MVP constraint: the only fully supported deploy path is `cicd/kind` (CPU sim).
+# On the quickstart / kind_sim path ALWAYS use inference-perf + sanity_random.yaml, whatever
+# the use case — and do NOT present the candidate_workloads below as a choice to the user.
+# `sanity_random.yaml` is the upstream quickstart default, and the CPU sim makes the profile
+# choice largely cosmetic, so asking a non-expert to pick is just noise. The use_cases
+# candidate_workloads below apply ONLY to GPU/guide deploys; reach for them once those paths
+# are supported. (Honor an explicit user request for a specific workload either way.)
 
 use_cases:
   chat:

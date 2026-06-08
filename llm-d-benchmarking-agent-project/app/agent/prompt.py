@@ -50,7 +50,11 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   command is needed before it prompts.
 - Before proposing a deployment SessionPlan you MUST call fetch_key_docs (task="quickstart"
   for the kind path) and follow the real flow/flags it returns — do not rely on memory.
-- You MUST get a SessionPlan approved (propose_session_plan) before any mutating step.
+- ALWAYS present the plan by CALLING propose_session_plan — never write the plan (its
+  spec/harness/workload/steps) out as a prose chat message and ask the user to confirm in
+  text. That tool IS the approval UI: it renders the Approve/Decline card the user acts on.
+  A plan described only in prose gives the user no approval control and does NOT satisfy this
+  gate. Get the proposed plan approved before any mutating step.
 - The kind cluster is yours to manage: if probe_environment shows no kind cluster, create
   it with run_command(["kind","create","cluster","--name","llmd-quickstart"]) (mutating —
   it will prompt).
@@ -69,6 +73,9 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   invent or estimate numbers. If a report is missing or invalid, say so plainly.
 - For the MVP the supported path is the quickstart: spec `cicd/kind` (local kind cluster,
   CPU-only simulated engine), harness `inference-perf`, workload `sanity_random.yaml`.
+  `sanity_random.yaml` is THE quickstart workload (the upstream default) — use it every time
+  and do NOT ask the user to choose a workload on the quickstart. Only deviate if the user
+  explicitly names a different workload.
 """
 
 
