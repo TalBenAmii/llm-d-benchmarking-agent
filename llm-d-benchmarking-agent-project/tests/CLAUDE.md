@@ -31,6 +31,10 @@ REPOS_DIR=/home/tal/kind-quickstart-guide \
 - **Per-test timeout** is set in `pyproject.toml` as a deadlock backstop; a single test should never approach it.
 - **Never auto-run the live-LLM eval**: `LLM_EVAL_LIVE=1`, `tests/flows/test_flows_live.py`,
   `make validate-live` spend Max-plan quota → only on explicit user request. Plain `pytest` is safe and hermetic.
+- **Self-eval (`tests/eval/`)**: the LLM judge (`test_judge_live.py`) + bug-hunter
+  (`test_bughunt_live.py`) share the SAME `LLM_EVAL_LIVE` switch (bughunt also needs `BUGHUNT=1`)
+  and SPEND quota → never auto-run them. `make eval-shadow` is the always-safe hermetic entry
+  (the deterministic shadow/oracle tests run in plain `pytest` for free).
 - **Never `git add -A` at the monorepo root** — it grabs `.claude/worktrees/*` gitlinks. Add specific paths.
 
 ## Fixtures / fakes worth knowing

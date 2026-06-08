@@ -5,12 +5,25 @@ command sequence for each end-to-end task a user might ask for — e.g. the kind
 (benchmark repo) or the optimized-baseline guide (llm-d repo) — and that it gates and
 refuses commands exactly as the security policy requires.
 
-There are two layers, both built on the *same* flow fixtures:
+There are four layers. The first two are the flow-validation core (both built on the *same*
+flow fixtures); layers 3 and 4 are the **agent self-eval** harness (`tests/eval/`).
 
-| Layer | What it proves | Deterministic? | Needs | Gates CI? |
-|-------|----------------|----------------|-------|-----------|
-| **Golden transcript** (`tests/flows/test_flows.py`) | The *mechanism*: the allowlist accepts the flow, argv is built correctly, read-only vs mutating is classified right, and every mutation is approval-gated. | ✅ yes | nothing (no key/Docker/kind/repos) | ✅ **yes** |
-| **Live eval** (`tests/flows/test_flows_live.py`) | The *judgment*: a real LLM, given natural-language input, actually *chooses* the right commands. | ❌ no | an API key | ❌ no (opt-in) |
+| Layer | What it proves | Deterministic? | Needs | Gates CI? | Quota |
+|-------|----------------|----------------|-------|-----------|-------|
+| **Golden transcript** (`tests/flows/test_flows.py`) | The *mechanism*: the allowlist accepts the flow, argv is built correctly, read-only vs mutating is classified right, and every mutation is approval-gated. | ✅ yes | nothing (no key/Docker/kind/repos) | ✅ **yes** | none |
+| **Live eval** (`tests/flows/test_flows_live.py`) | The *judgment*: a real LLM, given natural-language input, actually *chooses* the right commands. | ❌ no | an API key + `LLM_EVAL_LIVE=1` | ❌ no (opt-in) | **spends** |
+| **(3) Agent-quality SHADOW** (`tests/eval/test_scorecard_shadow.py`) | The judge *pipeline*: a deterministic rule-based scorer runs each golden transcript through serialize → score → aggregate → render → artifact, reusing the harness's `score_flow`/`gating_problems`; the rubric asset parses; the gate is real. A golden transcript shadow-scores 1.0. | ✅ yes | nothing | ✅ **yes** (runs in plain pytest) | none |
+| **(3) LLM-judge** (`tests/eval/test_judge_live.py`) | The *interaction quality* the flow-eval can't: a judge LLM scores each session transcript against the versioned rubric (tool-choice, safety, helpfulness, goal) → an aggregate **AGENT-QUALITY SCORE** + a gate. Catches behavioral regressions. | ❌ no | an API key + `LLM_EVAL_LIVE=1` | ❌ no (opt-in) | **spends** (1 judge call / scored flow) |
+| **(4) Bug-oracle SHADOW** (`tests/eval/test_oracle_unit.py`) | The *deterministic bug oracle* + report assembly: invariant→category/severity mapping, dedup, gate (only deterministic `severity >= high` gates; advisory LLM findings never do); plus an end-to-end deterministic hunt (`run_bughunt` with the seeded-RNG fallback) over the real app asserting **0 oracle violations**. | ✅ yes | nothing | ✅ **yes** (runs in plain pytest) | none |
+| **(4) Exploratory bug-hunter** (`tests/eval/test_bughunt_live.py`) | An LLM drives the REAL app (HTTP+WS) open-endedly; the existing invariant battery is the authoritative oracle (only it can fail a build); LLM triage is advisory-only. Writes a reproducible bug report. | ❌ no (LLM-driven) / oracle is ✅ | an API key + `LLM_EVAL_LIVE=1` **AND** `BUGHUNT=1` | ❌ no (opt-in) | **spends** (≤ seeds × budget selector calls; printed up front) |
+
+> **⚠ Quota / cost.** Plain `pytest tests/` stays **hermetic and spends ZERO LLM quota** — only
+> the deterministic SHADOW layers (3-shadow + 4-shadow) are always-on; the two LLM layers are
+> **off by default**. They share the SAME `LLM_EVAL_LIVE=1` switch the live flow-eval uses (the
+> bug-hunter ALSO requires `BUGHUNT=1`), so they never run in plain pytest or gating CI. The
+> always-safe hermetic entry is **`make eval-shadow`**. The quota-spending entries are
+> **`make eval-judge`** and **`make bughunt`** (each `--timeout=600`). Verify off-by-default:
+> with no key / no flag, `pytest tests/eval/` runs only the shadow tests and SKIPS the live ones.
 
 ## Quick start
 
@@ -20,6 +33,9 @@ make flows             # list known flows
 make validate-live     # the real LLM drives each flow from mock input (needs a key in .env)
 make validate-pytest   # the gating checks, as pytest
 make test              # the whole suite
+make eval-shadow       # agent-quality + bug-oracle SHADOW (deterministic, hermetic, ZERO quota)
+make eval-judge        # LLM-judge agent-quality scorecard       (OPT-IN, SPENDS QUOTA, needs a key)
+make bughunt           # autonomous exploratory bug-hunter       (OPT-IN, SPENDS QUOTA, needs a key)
 ```
 
 `make validate` prints, per flow, the exact commands the agent runs:
@@ -153,12 +169,62 @@ No harness or CI changes are needed — the tests and the CLI pick it up automat
 > `examples/gpu` / `examples/cpu` / `examples/sim` specs, and the other CI clusters
 > `cicd/ocp` / `cicd/gke` / `cicd/cks`.
 
+## Agent self-eval (Layers 3 & 4) — `tests/eval/`
+
+A second harness scores the agent's **interaction quality** (Layer 3) and hunts for **bugs**
+(Layer 4). It mirrors the flow harness's two-tier design: a deterministic SHADOW that runs in
+plain pytest for free, plus an OPT-IN LLM layer (same `LLM_EVAL_LIVE` switch) that spends quota.
+The *judgment* — the grading rubric and the bug-oracle policy — lives in **versioned eval
+assets** (`tests/eval/rubric.md`, `tests/eval/oracle.md`), NOT in `knowledge/` (so they never
+inflate an agent call or let the agent study-to-the-test) and NOT in Python `if/elif`.
+
+**Layer 3 — LLM-judge quality scorecard.** A judge LLM scores each session transcript against
+`rubric.md` (dimensions/anchors/weights/hard-fail rules + `min_overall_threshold`, all `version: 1`).
+`tests/eval/judge.py` serializes a `FlowRun` (`transcript_for_judge`) and runs one judge call
+(`judge_session`); `scorecard.py` aggregates into a gateable score. Artifact → `workspace/eval/`:
+
+```json
+{ "rubric_version": "1", "judge_model": "claude-opus-4-8", "mode": "live",
+  "aggregate": { "mean_overall": 0.91, "min_overall": 0.78,
+                 "by_dimension": { "tool_choice": {"mean":0.95,"min":0.9}, "safety": {"mean":1.0,"min":1.0} },
+                 "gate": { "min_overall_threshold": 0.70, "passed": true } },
+  "sessions": [ { "flow": "kind-quickstart", "overall": 0.95, "rationale": "...",
+                  "deductions": [], "transcript_digest": "sha256:..." } ] }
+```
+
+**Layer 4 — exploratory bug-hunter.** An LLM (`explorer.py::LLMActionSelector`, prompt-seeded
+for reproducibility, with a deterministic seeded-RNG fallback when no key) drives the REAL app
+over the same HTTP+WS surface the self-play fuzzer drives (the reusable driver was factored out
+into `tests/eval/app_driver.py`, which `tests/test_selfplay_fuzz.py` now imports unchanged). The
+**deterministic invariant battery is the authoritative oracle** — only a deterministic finding
+with `severity >= high` fails the build; the LLM triage is **advisory-only** (`llm_triage`
+field), never gating. Every action is logged so a finding replays through the deterministic
+`Player` with no LLM. Artifact → `workspace/eval/`:
+
+```json
+{ "oracle_version": "1", "explorer_model": "claude-opus-4-8", "seeds": [1,7,42],
+  "actions_budget": 20, "total_actions": 60, "n_deterministic_high": 0,
+  "findings": [ { "id": "BUG-001", "severity": "high", "category": "state_corruption",
+                  "title": "on-disk transcript AHEAD of memory after chat-switch", "deterministic": true,
+                  "seed": 42, "action_index": 17, "repro_actions": ["new_chat","send_message","switch_chat"],
+                  "llm_triage": "matches the historic chat-switch class" } ],
+  "no_findings_note": "0 oracle violations." }
+```
+
+> **Cost & opt-in flags (read before running).** `make eval-shadow` is HERMETIC + ZERO quota.
+> `make eval-judge` needs `LLM_EVAL_LIVE=1` + a key. `make bughunt` needs `LLM_EVAL_LIVE=1`
+> **and** `BUGHUNT=1` (its worst-case selector-call budget — `seeds × actions_budget` — is
+> printed up front). NEVER run the live layers in gating CI. Artifacts land in the gitignored
+> `workspace/eval/` and are never committed.
+
 ## CI
 
 `.github/workflows/agent-flow-validation.yml` (at the repo root, since GitHub Actions reads
-workflows there) runs the hermetic gating job on every push/PR that touches the project.
-A separate **opt-in** `live-eval` job runs the real-LLM eval only on manual dispatch with an
-API-key secret, and is `continue-on-error` so it never blocks the build.
+workflows there) runs the hermetic gating job on every push/PR that touches the project — which
+now includes the always-on self-eval SHADOW tests (Layers 3-shadow + 4-shadow). A separate
+**opt-in** `live-eval` job runs the real-LLM eval only on manual dispatch with an API-key
+secret, and is `continue-on-error` so it never blocks the build; the LLM judge/bug-hunter join
+it automatically when run with `LLM_EVAL_LIVE=1` (the bug-hunter additionally needs `BUGHUNT=1`).
 
 ## Integration tests with llm-d-inference-sim (opt-in)
 

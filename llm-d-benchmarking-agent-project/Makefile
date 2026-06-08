@@ -7,11 +7,14 @@ PY := $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)
 COV_FAIL_UNDER := 85
 
 .PHONY: help install test validate validate-pytest validate-live snapshot-catalog flows \
-        lint typecheck coverage quality
+        lint typecheck coverage quality eval-shadow eval-judge bughunt
 
 help:
 	@echo "make validate         # prove the agent runs the right commands per flow (deterministic, hermetic)"
 	@echo "make validate-live    # same, but a real LLM drives each flow from mock input (needs an API key)"
+	@echo "make eval-shadow      # agent-quality + bug-oracle SHADOW checks (deterministic, hermetic, ZERO quota)"
+	@echo "make eval-judge       # LLM-judge agent-quality scorecard (OPT-IN, SPENDS QUOTA, needs a key)"
+	@echo "make bughunt          # autonomous exploratory bug-hunter (OPT-IN, SPENDS QUOTA, needs a key)"
 	@echo "make validate-pytest  # the same checks as gating pytest (tests/flows)"
 	@echo "make flows            # list the known flows"
 	@echo "make test             # full test suite"
@@ -50,6 +53,19 @@ validate-pytest:
 
 validate-live:
 	LLM_EVAL_LIVE=1 $(PY) scripts/validate_flows.py --live
+
+# --- Self-eval (Layer 3 + 4): agent-quality judge + exploratory bug-hunter ----
+# eval-shadow is HERMETIC + ZERO quota (the always-on guard, runs in plain pytest too).
+# eval-judge + bughunt are OPT-IN and SPEND LLM QUOTA — they share the LLM_EVAL_LIVE switch
+# (bughunt also needs BUGHUNT=1), exactly like validate-live. NEVER run them in CI gating.
+eval-shadow:
+	$(PY) -m pytest tests/eval/test_scorecard_shadow.py tests/eval/test_oracle_unit.py -v
+
+eval-judge:
+	LLM_EVAL_LIVE=1 $(PY) -m pytest tests/eval/test_judge_live.py -v --timeout=600
+
+bughunt:
+	LLM_EVAL_LIVE=1 BUGHUNT=1 $(PY) -m pytest tests/eval/test_bughunt_live.py -v --timeout=600
 
 flows:
 	$(PY) scripts/validate_flows.py --list
