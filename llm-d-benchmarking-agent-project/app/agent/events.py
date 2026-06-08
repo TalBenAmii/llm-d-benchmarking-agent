@@ -25,7 +25,7 @@ Server -> client:
                                             its concurrency slot is freed and subprocess reaped
   usage            {turn:{input,output,cache_read,cache_write,calls,total},
                     session:{input,output,cache_read,total},
-                    context_window:{tokens,limit,input,cache_read,cache_write},
+                    context_window:{tokens,input,cache_read,cache_write},
                     context_est:{total_chars,total_tokens_est,system_*,history_*,
                                  last_tool_result_*}}
                                            — REAL token usage from the provider API. A PER-TURN
@@ -34,8 +34,9 @@ Server -> client:
                                             in-progress turn, session.* the running session totals.
                                             context_window is the REAL current context-window
                                             occupancy: tokens = total_input of THIS call (NOT the
-                                            per-turn sum) vs the model's limit — the Claude-Code
-                                            "context used" meter (limit 0 for provider fakes).
+                                            per-turn sum) — the Claude-Code "context used" count.
+                                            No model limit/percentage: the active model can change
+                                            (and may be a remote API), so no fixed denominator.
                                             context_est is a cheap (char/4) ESTIMATE of the CURRENT
                                             assembled-context window size + a breakdown (system vs
                                             replayed history vs the last tool result) so the user

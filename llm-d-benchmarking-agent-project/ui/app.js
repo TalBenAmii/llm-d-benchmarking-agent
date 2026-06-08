@@ -24,7 +24,6 @@ const resultsToggle = document.getElementById("results-toggle");
 const workingEl = document.getElementById("working");
 const workWordEl = workingEl.querySelector(".working-word");
 const workStatsEl = workingEl.querySelector(".working-stats");
-const tokenChip = document.getElementById("token-total");
 const contextChip = document.getElementById("context-window");
 const stopBtn = document.getElementById("stop-run");
 const resourceSide = document.getElementById("resource-side");
@@ -137,7 +136,7 @@ function makeRecord(sid) {
     toolEls: {}, activeConsole: null,
     welcomeCard: null, resourceData: null, resourceActive: false,
     workStart: 0, workActivity: null, workWordFixed: false, workWord: "Working", workingHidden: true,
-    turnUsage: null, sessionTokens: 0,
+    turnUsage: null,
     lastSeq: 0, running: false, scrollTop: 0,
     pendingApprovals: {}, order: viewClock,
     // Run progress stepper: furthest workflow phase this chat has reached + the one currently
@@ -164,7 +163,7 @@ function snapshotActive() {
   cur.resourceActive = resourceActive;
   cur.workStart = workStart; cur.workActivity = workActivity; cur.workWordFixed = workWordFixed;
   cur.workWord = workWordEl.textContent; cur.workingHidden = workingEl.hidden;
-  cur.turnUsage = turnUsage; cur.sessionTokens = sessionTokens;
+  cur.turnUsage = turnUsage;
   // The executed-command trail now lives inline in the pane DOM, so detaching the pane
   // preserves it byte-for-byte — no separate cmdlog snapshot needed.
   if (cur.pane) { cur.scrollTop = transcript.scrollTop; cur.pane.remove(); }
@@ -186,7 +185,6 @@ function activate(rec) {
   readyNoteTimer = null;
   workStart = rec.workStart; workActivity = rec.workActivity; workWordFixed = rec.workWordFixed;
   turnUsage = rec.turnUsage;
-  setSessionTokens(rec.sessionTokens);
   workWordEl.textContent = rec.workWord || WORK_WORDS[0];
   clearInterval(workTimer); clearInterval(wordTimer); workTimer = wordTimer = null;
   if (rec.running) {
@@ -240,7 +238,6 @@ function evictPanes() {
 let workTimer = null, wordTimer = null, workStart = 0, workActivity = null, workWordFixed = false;
 
 // ---- token usage (REAL provider counts; see the `usage` event) -----------
-let sessionTokens = 0;     // running SESSION total (header chip), persisted across reloads
 let turnUsage = null;      // latest in-progress-turn totals (live line + per-turn footer)
 
 // Compact token formatting: <1000 -> integer; <1M -> one-decimal k; else one-decimal M.
@@ -249,13 +246,6 @@ function fmtTokens(n) {
   if (n < 1000) return String(Math.round(n));
   if (n < 1000000) return (n / 1000).toFixed(1) + "k";
   return (n / 1000000).toFixed(1) + "M";
-}
-
-function setSessionTokens(total) {
-  sessionTokens = Number(total) || 0;
-  if (!tokenChip) return;
-  tokenChip.hidden = sessionTokens <= 0;
-  tokenChip.textContent = "Σ " + fmtTokens(sessionTokens) + " tokens";
 }
 
 // The estimated current context-window chip (debugging token usage): shows the ~size of the
@@ -275,21 +265,20 @@ function setContextEstimate(est) {
 
 // The REAL current context-window meter — the number Claude Code shows as "context used".
 // `cw.tokens` is the provider's total_input (fresh + cache_read + cache_write) for the most
-// recent call; `cw.limit` is the model's context window. Renders "⛶ N / limit (P%)". The
-// optional char/4 `est` (when present) enriches the hover breakdown. Falls back to the estimate
-// chip when there's no real number yet (limit unknown / pre-feature backend).
+// recent call. Renders "⛶ N ctx" — the raw count, no model limit/percentage: the active model
+// can change (and may be a remote API), so a fixed denominator would be unreliable. The optional
+// char/4 `est` (when present) enriches the hover breakdown; falls back to the estimate chip when
+// there's no real number yet (pre-feature backend).
 function setContextWindow(cw, est) {
   if (!contextChip) return;
-  if (!cw || !cw.tokens || !cw.limit) {            // no real number — use the estimate if we have one
+  if (!cw || !cw.tokens) {                          // no real number — use the estimate if we have one
     if (est) setContextEstimate(est); else contextChip.hidden = true;
     return;
   }
   contextChip.hidden = false;
-  const pct = Math.round((cw.tokens / cw.limit) * 100);
-  contextChip.textContent = "⛶ " + fmtTokens(cw.tokens) + " / " + fmtTokens(cw.limit) + " (" + pct + "%)";
+  contextChip.textContent = "⛶ " + fmtTokens(cw.tokens) + " ctx";
   let tip =
-    "Current context window: " + fmtTokens(cw.tokens) + " of " + fmtTokens(cw.limit) +
-    " (" + pct + "%) — real provider count\n" +
+    "Current context window: " + fmtTokens(cw.tokens) + " tokens — real provider count\n" +
     "fresh input " + fmtTokens(cw.input || 0) +
     " · cache read " + fmtTokens(cw.cache_read || 0) +
     " · cache write " + fmtTokens(cw.cache_write || 0);
@@ -301,11 +290,10 @@ function setContextWindow(cw, est) {
   contextChip.title = tip;
 }
 
-// A `usage` event (per LLM call): refresh the running turn tally (live line) + the header chip.
+// A `usage` event (per LLM call): refresh the running turn tally (live line) + the context meter.
 function onUsage(data) {
   turnUsage = data.turn || null;
-  if (data.session) setSessionTokens(data.session.total);
-  // Prefer the REAL context-window meter; fall back to the char/4 estimate when no limit is known.
+  // Prefer the REAL context-window meter; fall back to the char/4 estimate (pre-feature backend).
   if (data.context_window) setContextWindow(data.context_window, data.context_est);
   else if (data.context_est) setContextEstimate(data.context_est);
   renderWorkStats();
@@ -401,8 +389,6 @@ function handle(msg) {
       // Full rebuild path: drop any cached content so the incoming `history` doesn't duplicate it.
       // Incremental: keep the cached pane and let the missed-tail replay patch it in place.
       if (!inc) clearActivePane();
-      // Restore the persisted session token total so the header chip is correct on (re)connect.
-      setSessionTokens((data.usage && data.usage.total) || 0);
       // Restore the last-known context-window meter (persisted) so it's right before the next turn.
       setContextWindow(data.context_window, null);
       if (!inc) {

@@ -177,18 +177,6 @@ def test_openai_usage_none_is_zeroed():
     assert _usage_from(None) == Usage()
 
 
-def test_model_context_limit_by_family():
-    from app.llm.provider import model_context_limit
-    # haiku is checked BEFORE the generic claude branch, so it gets 200k not 1M.
-    assert model_context_limit("claude-haiku-4-5") == 200_000
-    assert model_context_limit("claude-opus-4-8") == 1_000_000
-    assert model_context_limit("claude-sonnet-4-6") == 1_000_000
-    assert model_context_limit("gpt-4o") == 128_000
-    # Unknown / empty model -> conservative 200k fallback.
-    assert model_context_limit("some-future-model") == 200_000
-    assert model_context_limit("") == 200_000
-
-
 async def test_openai_does_not_send_cache_key_by_default():
     p = _openai_provider(send_cache_key=False)
     turn = await p.chat(system="s", messages=[{"role": "user", "content": "x"}], tools=_TOOLS, cache_key="sess1")
@@ -264,9 +252,9 @@ async def test_loop_emits_usage_and_accumulates_session_totals(tmp_path):
     assert ue["turn"]["total"] == 1030
     assert ue["session"]["total"] == 1030
     # context_window = total_input of THIS call (fresh+cache_read+cache_write), NOT the per-turn
-    # sum and NOT including output. Fakes have no context_limit -> limit 0.
+    # sum and NOT including output. No model limit/percentage (model can change) — just the count.
     assert ue["context_window"]["tokens"] == 100 + 900 + 10
-    assert ue["context_window"]["limit"] == 0
+    assert "limit" not in ue["context_window"]
     assert session.last_context_tokens == 1010
 
     # Session cumulative fields after turn 1.
