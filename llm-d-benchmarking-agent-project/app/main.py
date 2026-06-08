@@ -41,6 +41,7 @@ from app.observability.logctx import new_corr_id
 from app.observability.logging import setup_logging
 from app.observability.metrics import render_prometheus
 from app.packaging.report_card import render_report_card
+from app.packaging.shared_chat import render_shared_chat
 from app.security.allowlist import Allowlist
 from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocket_authorized
 from app.security.runner import CommandRunner, SimRunner
@@ -529,6 +530,23 @@ async def read_share(token: str) -> JSONResponse:
         "items": data.get("items", []),
         "usage": data.get("usage"),
     })
+
+
+@app.get("/api/share/{token}/page.html", dependencies=[Depends(rate_limit)])
+async def read_share_page(token: str) -> Response:
+    """PUBLIC self-contained, offline ``.html`` export of a shared conversation — the SPA + the
+    frozen snapshot inlined into ONE dependency-free file (no external assets, no network on open).
+    Host it anywhere, or open it from disk: the agent is never involved. This is the artifact the
+    publish-a-public-link path puts on a static host. 404 for a malformed/unknown/revoked token."""
+    data = _share_store().read(token)
+    if data is None:
+        raise HTTPException(status_code=404, detail="shared conversation not found")
+    html_doc = render_shared_chat(data, ui_dir=get_settings().ui_dir)
+    return Response(
+        content=html_doc,
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="shared-chat-{token}.html"'},
+    )
 
 
 @app.delete("/api/share/{token}", dependencies=[Depends(rate_limit)])

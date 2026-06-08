@@ -377,11 +377,14 @@ def test_share_a_chat_via_link():
     # The 🔗 header button + the modal dialog and its controls exist and are wired in JS.
     assert 'id="share-chat"' in html
     for el_id in ("share-chat", "share-dialog", "share-close", "share-done",
-                  "share-status", "share-url", "share-copy", "share-open", "share-revoke"):
+                  "share-status", "share-url", "share-copy", "share-open", "share-revoke",
+                  "share-download"):
         assert f'id="{el_id}"' in html, f"missing #{el_id} in index.html"
         assert f'getElementById("{el_id}")' in js, f"#{el_id} not wired in app.js"
     # There is deliberately NO read-only banner — the stripped-down viewer makes that obvious.
     assert 'id="share-banner"' not in html and "share-banner" not in css
+    # The single-file export: the Download link points at the self-contained .html route.
+    assert "/page.html" in js and 'shareDownloadLink.href' in js
     # Create / revoke hit the real owner-only routes; the link is copied with the shared helper.
     assert "function shareChat" in js and "function revokeShare" in js
     assert "/api/sessions/${encodeURIComponent(currentSession)}/share" in js
@@ -401,8 +404,12 @@ def test_share_a_chat_via_link():
     assert "body.share-view footer" in css and "body.share-view #sidebar" in css
     assert "body.share-view #composer" not in css  # composer is hidden via <footer>, not directly
     assert ".share-dialog::backdrop" in css
+    # Offline self-contained export: the SAME SPA boots from an EMBEDDED snapshot, no network.
+    assert "window.__LLMD_SHARED__" in js and "function bootSharedStatic" in js
+    assert "function renderSharedSnapshot" in js   # the render path shared by live + static viewers
 
 
 def test_share_view_in_preview_harness():
-    """The preview harness exposes the share-view render path (no backend)."""
-    assert "bootShareView," in _ui("app.js")
+    """The preview harness exposes the share-view render paths (live + offline static)."""
+    js = _ui("app.js")
+    assert "bootShareView," in js and "bootSharedStatic," in js

@@ -1012,6 +1012,8 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
   background: var(--code-bg); border: 1px solid var(--border-strong); border-radius: 9px; padding: 9px 11px;
 }
 .share-url:focus { outline: none; border-color: var(--accent); }
+.share-export-note { margin: 2px 18px 0; padding-top: 10px; border-top: 1px solid var(--border); }
+.share-export-note code { font: 500 11.5px/1 var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 5px; }
 .share-revoke { margin-right: auto; }   /* push Open/Done to the right, keep Delete on the left */
 .share-revoke:not(:disabled):hover { color: var(--danger, #e5484d); border-color: var(--danger, #e5484d); }
 .share-revoke:disabled { opacity: .45; cursor: default; }

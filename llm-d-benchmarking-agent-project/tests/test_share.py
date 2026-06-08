@@ -193,6 +193,30 @@ def test_read_404_for_malformed_token(client_with_share):
     assert client.get("/api/share/not-a-valid-token").status_code == 404
 
 
+def test_page_html_export_is_a_self_contained_download(client_with_share):
+    """GET /api/share/<token>/page.html returns ONE self-contained .html (offline single-file
+    export) as an attachment — the SPA + snapshot inlined, no /static/ refs, no external fonts."""
+    client, _ = client_with_share
+    token = client.post(f"/api/sessions/{_seed_chat(client).id}/share").json()["token"]
+
+    r = client.get(f"/api/share/{token}/page.html")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "attachment" in r.headers.get("content-disposition", "")
+    assert f"shared-chat-{token}.html" in r.headers["content-disposition"]
+    body = r.text
+    assert "window.__LLMD_SHARED__ = " in body          # snapshot embedded
+    assert "/static/app.js" not in body                 # app.js inlined, not referenced
+    assert "/static/styles.css" not in body             # css inlined, not referenced
+    assert "fonts.googleapis.com" not in body           # external fonts stripped
+
+
+def test_page_html_404_for_unknown_or_malformed_token(client_with_share):
+    client, _ = client_with_share
+    assert client.get("/api/share/" + "a" * 32 + "/page.html").status_code == 404   # unknown
+    assert client.get("/api/share/not-a-token/page.html").status_code == 404         # malformed
+
+
 def test_share_page_serves_the_spa_shell(client_with_share):
     """/share/<token> serves the same SPA HTML as / — the client renders the snapshot read-only.
     We don't 404 the page on an unknown token (the SPA shows that state from the JSON route)."""
@@ -219,9 +243,10 @@ def test_public_get_bypasses_auth_but_minting_and_revoking_stay_gated(client_wit
         assert r.status_code == 200
         token = r.json()["token"]
 
-        # PUBLIC viewer: reachable with NO token.
+        # PUBLIC viewer: reachable with NO token (incl. the single-file .html export).
         assert client.get(f"/api/share/{token}").status_code == 200
         assert client.get(f"/share/{token}").status_code == 200
+        assert client.get(f"/api/share/{token}/page.html").status_code == 200
         # A normal API route still 401s without the token (proves the bypass is scoped).
         assert client.get("/api/sessions").status_code == 401
 

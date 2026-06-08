@@ -48,6 +48,7 @@ const shareStatus = document.getElementById("share-status");
 const shareUrlInput = document.getElementById("share-url");
 const shareCopyBtn = document.getElementById("share-copy");
 const shareOpenLink = document.getElementById("share-open");
+const shareDownloadLink = document.getElementById("share-download");
 const shareRevokeBtn = document.getElementById("share-revoke");
 
 // ---- theme (dark default, light optional; persisted) --------------------
@@ -2847,6 +2848,7 @@ function openShareDialog() {
   shareToken = null;
   if (shareUrlInput) shareUrlInput.value = "";
   if (shareOpenLink) { shareOpenLink.removeAttribute("href"); shareOpenLink.classList.add("disabled"); }
+  if (shareDownloadLink) { shareDownloadLink.removeAttribute("href"); shareDownloadLink.classList.add("disabled"); }
   if (shareCopyBtn) shareCopyBtn.disabled = true;
   if (shareRevokeBtn) shareRevokeBtn.disabled = true;
   if (shareStatus) shareStatus.textContent = "Creating link…";
@@ -2877,6 +2879,12 @@ async function shareChat() {
     shareToken = j.token;
     if (shareUrlInput) { shareUrlInput.value = url; shareUrlInput.focus(); shareUrlInput.select(); }
     if (shareOpenLink) { shareOpenLink.href = url; shareOpenLink.classList.remove("disabled"); }
+    // Self-contained single-file export of this snapshot — always same-origin (the API path),
+    // independent of SHARE_BASE_URL; the browser downloads it via the route's Content-Disposition.
+    if (shareDownloadLink) {
+      shareDownloadLink.href = `/api/share/${encodeURIComponent(j.token)}/page.html`;
+      shareDownloadLink.classList.remove("disabled");
+    }
     if (shareCopyBtn) shareCopyBtn.disabled = false;
     if (shareRevokeBtn) shareRevokeBtn.disabled = false;
     if (shareStatus) shareStatus.textContent = "Link ready — anyone with it can view this conversation (read-only).";
@@ -2895,6 +2903,7 @@ async function revokeShare() {
   shareToken = null;
   if (shareUrlInput) shareUrlInput.value = "";
   if (shareOpenLink) { shareOpenLink.removeAttribute("href"); shareOpenLink.classList.add("disabled"); }
+  if (shareDownloadLink) { shareDownloadLink.removeAttribute("href"); shareDownloadLink.classList.add("disabled"); }
   if (shareCopyBtn) shareCopyBtn.disabled = true;
   if (shareRevokeBtn) shareRevokeBtn.disabled = true;
   if (shareStatus) shareStatus.textContent = "Link deleted — it no longer works.";
@@ -2907,9 +2916,25 @@ if (shareCopyBtn) shareCopyBtn.addEventListener("click", () => copyText(shareUrl
 if (shareRevokeBtn) shareRevokeBtn.addEventListener("click", revokeShare);
 if (shareDlg) shareDlg.addEventListener("click", (e) => { if (e.target === shareDlg) closeShareDialog(); });  // backdrop
 
+// Render a shared snapshot ({title, shared_at, items}) into the read-only viewer. Shared by the
+// live viewer (bootShareView, fetched over HTTP) and the offline self-contained export
+// (bootSharedStatic, embedded) so both look pixel-identical and reuse every transcript renderer.
+function renderSharedSnapshot(data) {
+  data = data || {};
+  document.title = (data.title ? data.title + " · " : "") + "Shared conversation";
+  // A small header line: the conversation title + when it was shared.
+  const meta = el("div", "share-meta");
+  meta.appendChild(el("div", "share-meta-title", data.title || "Shared conversation"));
+  const when = data.shared_at ? relTime(data.shared_at) : "";
+  meta.appendChild(el("div", "share-meta-sub", "Read-only snapshot" + (when ? " · shared " + when : "")));
+  activePane.appendChild(meta);
+  renderHistory(data.items || []);
+  if (!(data.items || []).length) addBubble("assistant", "_This conversation is empty._");
+}
+
 // The public read-only viewer (/share/<token>). Reuses every transcript renderer; no WebSocket,
 // no composer, no sidebar — body.share-view hides them via CSS. The "Read-only snapshot" meta
-// line (below) is the only read-only cue; the stripped-down, composer-less page makes the rest
+// line is the only read-only cue; the stripped-down, composer-less page makes the rest
 // self-evident, so there's deliberately no banner.
 async function bootShareView(token) {
   document.body.classList.add("share-view");
@@ -2917,26 +2942,31 @@ async function bootShareView(token) {
   try {
     const r = await fetch(`/api/share/${encodeURIComponent(token)}`);
     if (!r.ok) throw new Error("not found: " + r.status);
-    const data = await r.json();
-    document.title = (data.title ? data.title + " · " : "") + "Shared conversation";
-    // A small header line: the conversation title + when it was shared.
-    const meta = el("div", "share-meta");
-    meta.appendChild(el("div", "share-meta-title", data.title || "Shared conversation"));
-    const when = data.shared_at ? relTime(data.shared_at) : "";
-    meta.appendChild(el("div", "share-meta-sub", "Read-only snapshot" + (when ? " · shared " + when : "")));
-    activePane.appendChild(meta);
-    renderHistory(data.items || []);
-    if (!(data.items || []).length) addBubble("assistant", "_This conversation is empty._");
+    renderSharedSnapshot(await r.json());
   } catch (e) {
     addBubble("error", "This shared link is no longer available — it may have been deleted by its owner, or the link is incorrect.");
   }
+}
+
+// The offline, self-contained export (app/packaging/shared_chat.py): the SAME SPA with the
+// snapshot EMBEDDED in window.__LLMD_SHARED__ instead of fetched. Renders read-only with ZERO
+// network — so a shared chat can live as one .html file on any static host, the agent never
+// involved. (No try/catch: the data is inline, so there's nothing to fail.)
+function bootSharedStatic(data) {
+  document.body.classList.add("share-view");
+  activate(makeRecord(null));
+  renderSharedSnapshot(data);
 }
 
 // ---- boot ---------------------------------------------------------------
 // ui/preview.html sets window.__LLMD_PREVIEW__ to drive the renderers with fixture data and no
 // backend. In that mode we skip the live boot (sessions/history fetch + WebSocket connect) and
 // expose the render entry points so the preview can exercise the real rendering paths.
-if (window.__LLMD_PREVIEW__) {
+if (window.__LLMD_SHARED__) {
+  // Self-contained static export: the snapshot is embedded, so render it read-only with NO
+  // live boot and NO network at all (this file may be opened from disk or a static host).
+  bootSharedStatic(window.__LLMD_SHARED__);
+} else if (window.__LLMD_PREVIEW__) {
   window.__llmd = {
     handle, bootChat, startWorking,
     renderResultsCard, renderParetoCard, renderComparisonCard, renderHarnessCompareCard,
@@ -2945,7 +2975,7 @@ if (window.__LLMD_PREVIEW__) {
     renderAcceleratorCard, renderDoeCard, renderOrchestrateCard, renderResilienceCard,
     renderAutotuneCard,
     openBuilder, composeBrief,
-    bootShareView,
+    bootShareView, bootSharedStatic,
   };
 } else if (shareTokenFromPath()) {
   // Public read-only viewer page: render the shared snapshot, no live boot / WebSocket.
