@@ -104,7 +104,7 @@ Before running a flow, eyeball the static UI features. *(§3)*
 - [ ] **[A/B]** **Theme toggle** (top-right) flips light/dark; reload → choice persists (`localStorage`).
 - [ ] **[A/B]** **Recent chats sidebar** lists prior sessions; clicking one **replays its transcript**.
 - [ ] **[A/B]** **Debug view** toggle (`>_`, top-right) filters the transcript to just executed commands.
-- [ ] **[A/B]** **Context-window chip** in the header (`⛶ N ctx`) is present (it updates once you chat — current prompt size sent to the model). *(§12)*
+- [ ] **[A/B]** **Context-window chip** under the chat input, right-aligned on the hint row (`⛶ N ctx`) is present (it updates once you chat — current prompt size sent to the model). *(§12)*
 
 You'll confirm the dynamic ones (working spinner, markdown, approval cards, per-turn token line,
 inline charts) during the flows below.

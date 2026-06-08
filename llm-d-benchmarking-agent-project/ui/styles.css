@@ -716,7 +716,15 @@ footer {
 }
 #send:hover { filter: brightness(1.1); }
 #send:disabled { box-shadow: none; }
-.hint { max-width: 900px; margin: 9px auto 0; color: var(--muted); font-size: 12px; }
+/* Footer row beneath the composer: the safety hint on the left, the live context-window
+   chip on the right — kept in the same 900px column as the input so the meter sits right
+   under the chatbox (where it's visible while typing), not lost up in the header. */
+.composer-foot {
+  display: flex; align-items: center; gap: 12px;
+  max-width: 900px; margin: 9px auto 0;
+}
+.hint { flex: 1; min-width: 0; margin: 0; color: var(--muted); font-size: 12px; }
+.composer-foot .token-chip { flex: none; }
 
 /* Jump-to-latest: floats above the composer when the user has scrolled up. */
 .jump-latest {
