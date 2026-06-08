@@ -330,8 +330,12 @@ main {
 .msg.assistant .who, .msg.report .who { color: var(--accent); }
 .bubble {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 11px 15px; flex: 1; white-space: pre-wrap; box-shadow: var(--shadow);
+  padding: 11px 15px; flex: 1; min-width: 0; white-space: pre-wrap; box-shadow: var(--shadow);
 }
+/* min-width:0 above is load-bearing: a flex item defaults to min-width:auto, which refuses to
+   shrink below its content's intrinsic width. Without it a wide GFM table (width:max-content)
+   blows the bubble — and the whole chat column — past the viewport. With it, the table's
+   max-width:100% + overflow-x:auto can finally cap and scroll the table inside the bubble. */
 .msg.user .bubble { background: var(--user-bg); border-color: var(--user-border); }
 .msg.error .bubble {
   background: color-mix(in srgb, var(--red) 14%, var(--panel));

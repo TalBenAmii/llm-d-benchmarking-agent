@@ -273,3 +273,9 @@ def test_markdown_table_rendering_is_wired():
     assert "!isTableStart(lines, i)) { para.push" in js
     # …with matching styles (scrollable, zebra header).
     assert "table.md-table" in css and ".md-table th" in css
+    # …and the table is width-contained: it caps at the bubble and scrolls internally rather
+    # than blowing the chat column past the viewport (regression guard — see screenshot bug).
+    assert "max-width: 100%" in css and "overflow-x: auto" in css
+    # The fix only works because the bubble flex item is allowed to shrink below its content
+    # width; without min-width:0 a max-content table widens the whole column.
+    assert "flex: 1; min-width: 0;" in css
