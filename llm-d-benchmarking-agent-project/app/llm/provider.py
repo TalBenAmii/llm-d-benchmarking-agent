@@ -63,7 +63,36 @@ class AssistantTurn:
     usage: Usage = field(default_factory=Usage)
 
 
+def model_context_limit(model: str) -> int:
+    """The model's context-window size (input-token budget), used to render the live
+    context-window meter (current prompt size / limit) the same way Claude Code shows
+    "context used". Family-matched, not exact per snapshot — order matters (``haiku`` is
+    checked before the generic ``claude`` branch). Unknown models get a conservative 200k."""
+    m = (model or "").lower()
+    if "haiku" in m:
+        return 200_000
+    if "opus" in m or "sonnet" in m or "claude" in m:
+        return 1_000_000
+    if "gpt-4o" in m or "gpt-4.1" in m or "gpt-4-turbo" in m:
+        return 128_000
+    return 200_000
+
+
 class LLMProvider(ABC):
+    # Concrete providers set ``self._model`` in __init__ (anthropic_model / agent_sdk_model /
+    # openai_model). These read-only views expose it uniformly so the agent loop can size the
+    # context-window meter without knowing which provider is active. Default "" keeps the
+    # properties safe even if a subclass never set a model.
+    _model: str = ""
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    @property
+    def context_limit(self) -> int:
+        return model_context_limit(self._model)
+
     @abstractmethod
     async def chat(
         self,

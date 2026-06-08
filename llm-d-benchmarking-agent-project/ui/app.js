@@ -271,11 +271,41 @@ function setContextEstimate(est) {
     "last tool result ~" + fmtTokens(est.last_tool_result_tokens_est) + " (estimate)";
 }
 
+// The REAL current context-window meter — the number Claude Code shows as "context used".
+// `cw.tokens` is the provider's total_input (fresh + cache_read + cache_write) for the most
+// recent call; `cw.limit` is the model's context window. Renders "⛶ N / limit (P%)". The
+// optional char/4 `est` (when present) enriches the hover breakdown. Falls back to the estimate
+// chip when there's no real number yet (limit unknown / pre-feature backend).
+function setContextWindow(cw, est) {
+  if (!contextChip) return;
+  if (!cw || !cw.tokens || !cw.limit) {            // no real number — use the estimate if we have one
+    if (est) setContextEstimate(est); else contextChip.hidden = true;
+    return;
+  }
+  contextChip.hidden = false;
+  const pct = Math.round((cw.tokens / cw.limit) * 100);
+  contextChip.textContent = "⛶ " + fmtTokens(cw.tokens) + " / " + fmtTokens(cw.limit) + " (" + pct + "%)";
+  let tip =
+    "Current context window: " + fmtTokens(cw.tokens) + " of " + fmtTokens(cw.limit) +
+    " (" + pct + "%) — real provider count\n" +
+    "fresh input " + fmtTokens(cw.input || 0) +
+    " · cache read " + fmtTokens(cw.cache_read || 0) +
+    " · cache write " + fmtTokens(cw.cache_write || 0);
+  if (est && est.total_tokens_est) {
+    tip += "\nbreakdown (est ≈ chars/4): system ~" + fmtTokens(est.system_tokens_est) +
+      " · history ~" + fmtTokens(est.history_tokens_est) +
+      " · last tool result ~" + fmtTokens(est.last_tool_result_tokens_est);
+  }
+  contextChip.title = tip;
+}
+
 // A `usage` event (per LLM call): refresh the running turn tally (live line) + the header chip.
 function onUsage(data) {
   turnUsage = data.turn || null;
   if (data.session) setSessionTokens(data.session.total);
-  if (data.context_est) setContextEstimate(data.context_est);
+  // Prefer the REAL context-window meter; fall back to the char/4 estimate when no limit is known.
+  if (data.context_window) setContextWindow(data.context_window, data.context_est);
+  else if (data.context_est) setContextEstimate(data.context_est);
   renderWorkStats();
 }
 
@@ -371,6 +401,8 @@ function handle(msg) {
       if (!inc) clearActivePane();
       // Restore the persisted session token total so the header chip is correct on (re)connect.
       setSessionTokens((data.usage && data.usage.total) || 0);
+      // Restore the last-known context-window meter (persisted) so it's right before the next turn.
+      setContextWindow(data.context_window, null);
       if (!inc) {
         if (data.running) addNote("⏳ Picking up a benchmark already running in this chat — catching up to live…");
         // A brand-new chat shows the welcome card with suggestion chips (a `suggestions` event

@@ -100,6 +100,11 @@ class Session:
     total_output_tokens: int = 0         # generated tokens
     total_cache_read_tokens: int = 0     # input served from cache
     total_cache_write_tokens: int = 0    # input written to cache (Anthropic only)
+    # Size of the CURRENT context window: the total_input (fresh + cache_read + cache_write) of
+    # the MOST RECENT LLM call — NOT a running sum. This is the number Claude Code shows as
+    # "context used"; it reflects current occupancy and shrinks when the transcript is compacted.
+    # Persisted so the context-window meter is correct on reload, before the next turn refreshes it.
+    last_context_tokens: int = 0
     # One-shot flag: the live catalog snapshot has been injected as a synthetic conversation
     # message (see app/agent/loop.py). PERSISTED — the injected message itself lives in
     # ``messages`` and is reloaded with the transcript, so a resumed chat must NOT inject a
@@ -173,6 +178,7 @@ class Session:
                         "total_output_tokens": self.total_output_tokens,
                         "total_cache_read_tokens": self.total_cache_read_tokens,
                         "total_cache_write_tokens": self.total_cache_write_tokens,
+                        "last_context_tokens": self.last_context_tokens,
                         "catalog_injected": self.catalog_injected,
                         "prewarmed": self.prewarmed,
                     },
@@ -257,6 +263,7 @@ class SessionManager:
             total_output_tokens=data.get("total_output_tokens", 0),
             total_cache_read_tokens=data.get("total_cache_read_tokens", 0),
             total_cache_write_tokens=data.get("total_cache_write_tokens", 0),
+            last_context_tokens=data.get("last_context_tokens", 0),
             # Default False: a pre-feature snapshot has no catalog message, so let the next turn
             # inject one. (Once injected + persisted, a reloaded chat sees True and skips it.)
             catalog_injected=data.get("catalog_injected", False),

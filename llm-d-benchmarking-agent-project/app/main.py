@@ -696,6 +696,12 @@ async def ws(websocket: WebSocket) -> None:
             "cache_read": session.total_cache_read_tokens,
             "total": session.session_total,
         },
+        # Last-known context-window occupancy (persisted) against the live provider's model limit,
+        # so the "context used" meter is right on connect/reload before the next turn refreshes it.
+        "context_window": {
+            "tokens": session.last_context_tokens,
+            "limit": getattr(app.state.provider, "context_limit", 0),
+        },
     })
     if resumed and not incremental:
         # Commands are interleaved into `items` (as `command` entries in their original

@@ -102,6 +102,9 @@ class AgentLoop:
         # UI line ticks up on every step and the per-turn footer is exact.
         turn_usage = Usage()
         calls = 0
+        # The active model's context-window size, for the live "context used" meter. getattr keeps
+        # provider fakes (no context_limit) working — they report 0 and the UI hides the percentage.
+        context_limit = getattr(self._provider, "context_limit", 0)
 
         # Stream the model's text to the UI as it generates (perceived-latency win): the provider
         # calls this with each delta; the UI appends it to the live assistant bubble, then the
@@ -134,6 +137,11 @@ class AgentLoop:
                 session.total_output_tokens += turn.usage.output_tokens
                 session.total_cache_read_tokens += turn.usage.cache_read_tokens
                 session.total_cache_write_tokens += turn.usage.cache_write_tokens
+                # The CURRENT context window = total_input of THIS one call (fresh + cache_read +
+                # cache_write) — NOT the per-turn sum, which double-counts the cached prefix re-sent
+                # each step. Persisted so the meter is right on reload; this is the "context used"
+                # number Claude Code shows, and it shrinks when compaction trims the transcript.
+                session.last_context_tokens = turn.usage.total_input
                 await emit(events.USAGE, {
                     "turn": {
                         "input": turn_usage.input_tokens,
@@ -148,6 +156,16 @@ class AgentLoop:
                         "output": session.total_output_tokens,
                         "cache_read": session.total_cache_read_tokens,
                         "total": session.session_total,
+                    },
+                    # REAL current context-window occupancy from the provider (this call's
+                    # total_input) against the model's limit — the Claude-Code-style "N / limit (%)"
+                    # meter. ``limit`` is 0 for provider fakes without a context_limit (tests).
+                    "context_window": {
+                        "tokens": turn.usage.total_input,
+                        "limit": context_limit,
+                        "input": turn.usage.input_tokens,
+                        "cache_read": turn.usage.cache_read_tokens,
+                        "cache_write": turn.usage.cache_write_tokens,
                     },
                     # DEBUGGING TOKEN USAGE: a cheap (char/4) ESTIMATE of the CURRENT assembled-context
                     # window size + a breakdown (system vs replayed history vs the last tool result),

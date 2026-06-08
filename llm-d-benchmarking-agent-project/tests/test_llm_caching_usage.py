@@ -177,6 +177,18 @@ def test_openai_usage_none_is_zeroed():
     assert _usage_from(None) == Usage()
 
 
+def test_model_context_limit_by_family():
+    from app.llm.provider import model_context_limit
+    # haiku is checked BEFORE the generic claude branch, so it gets 200k not 1M.
+    assert model_context_limit("claude-haiku-4-5") == 200_000
+    assert model_context_limit("claude-opus-4-8") == 1_000_000
+    assert model_context_limit("claude-sonnet-4-6") == 1_000_000
+    assert model_context_limit("gpt-4o") == 128_000
+    # Unknown / empty model -> conservative 200k fallback.
+    assert model_context_limit("some-future-model") == 200_000
+    assert model_context_limit("") == 200_000
+
+
 async def test_openai_does_not_send_cache_key_by_default():
     p = _openai_provider(send_cache_key=False)
     turn = await p.chat(system="s", messages=[{"role": "user", "content": "x"}], tools=_TOOLS, cache_key="sess1")
@@ -251,6 +263,11 @@ async def test_loop_emits_usage_and_accumulates_session_totals(tmp_path):
     # turn.total = total_input + output = (100+900+10) + 20
     assert ue["turn"]["total"] == 1030
     assert ue["session"]["total"] == 1030
+    # context_window = total_input of THIS call (fresh+cache_read+cache_write), NOT the per-turn
+    # sum and NOT including output. Fakes have no context_limit -> limit 0.
+    assert ue["context_window"]["tokens"] == 100 + 900 + 10
+    assert ue["context_window"]["limit"] == 0
+    assert session.last_context_tokens == 1010
 
     # Session cumulative fields after turn 1.
     assert session.total_input_tokens == 100
@@ -268,6 +285,9 @@ async def test_loop_emits_usage_and_accumulates_session_totals(tmp_path):
     # turn totals reset per turn.
     assert ue2["turn"]["input"] == 50
     assert ue2["turn"]["calls"] == 1
+    # context_window tracks the LATEST call only — it does NOT accumulate across turns.
+    assert ue2["context_window"]["tokens"] == 50 + 1000 + 0
+    assert session.last_context_tokens == 1050
     # session totals accumulated across both turns.
     assert session.total_input_tokens == 150
     assert session.total_output_tokens == 25
@@ -290,6 +310,7 @@ async def test_session_token_totals_survive_persist_and_load(tmp_path):
     sess.total_output_tokens = 22
     sess.total_cache_read_tokens = 3333
     sess.total_cache_write_tokens = 44
+    sess.last_context_tokens = 5050
     sess.persist()
 
     # Drop from memory and reload from disk.
@@ -300,6 +321,8 @@ async def test_session_token_totals_survive_persist_and_load(tmp_path):
     assert loaded.total_output_tokens == 22
     assert loaded.total_cache_read_tokens == 3333
     assert loaded.total_cache_write_tokens == 44
+    # The context-window meter is correct on reload before the next turn refreshes it.
+    assert loaded.last_context_tokens == 5050
     assert loaded.session_total == 111 + 22 + 3333 + 44
 
 
