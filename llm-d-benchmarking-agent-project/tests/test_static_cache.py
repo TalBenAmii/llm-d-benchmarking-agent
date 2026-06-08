@@ -2,7 +2,7 @@
 
 The chat UI is a single-page app that fetches ``/static/app.js`` once and never re-fetches it on
 in-app navigation. Without ``Cache-Control: no-cache`` a browser keeps serving the cached JS, so a
-shipped UI change (e.g. the metrics-server install button) stays invisible until a manual
+shipped UI change (e.g. the metrics-server pre-flight hint) stays invisible until a manual
 hard-refresh. These hermetic TestClient checks lock the revalidation header in place so future UI
 changes are picked up on a normal reload.
 """
@@ -22,10 +22,11 @@ def test_static_assets_send_no_cache_revalidation():
             assert "no-cache" in cc, f"/static/{asset} missing no-cache (got {cc!r})"
 
 
-def test_served_app_js_carries_the_metrics_server_button():
-    # Guards that the asset actually on the wire is the current one — the button users were not
-    # seeing was a stale-cache artifact, not a missing-from-disk one.
+def test_served_app_js_carries_the_metrics_server_hint():
+    # Guards that the asset on the wire is current. The mid-run install BUTTON was retired (it
+    # collided with the in-flight-turn guard); the agent now offers the install before the run, so
+    # the unavailable panel shows a passive hint instead.
     with TestClient(main.app) as client:
         body = client.get("/static/app.js").text
-    assert "resource-fix-btn" in body
-    assert "Install metrics-server for live stats" in body
+    assert "resource-fix-btn" not in body
+    assert "offers to install it" in body

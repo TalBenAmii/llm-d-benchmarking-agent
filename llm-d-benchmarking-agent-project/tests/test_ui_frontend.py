@@ -107,41 +107,21 @@ def test_live_resource_trend_sparklines():
     assert ".res-spark-line" in css
 
 
-def test_metrics_server_install_offer_on_unavailable_panel():
-    """When the live-resource panel reports unavailable (kind ships no metrics-server), it must
-    surface a one-click "Install metrics-server" offer. The agent never sees the zero-LLM poller
-    event, so this button is what makes the offer visible; it just sends a normal user message and
-    the agent does the real, approval-gated install (thin code / thick agent)."""
+def test_metrics_server_passive_hint_on_unavailable_panel():
+    """When the live-resource panel reports unavailable (kind ships no metrics-server) it shows a
+    PASSIVE hint — no actionable button. The mid-run install button was retired because it lived in
+    a busy-only panel and collided with the in-flight-turn guard ("still working on the previous
+    request"); the agent now offers the approval-gated install BEFORE the run (a deterministic
+    probe fact + a HARD_RULE). Judgment/approval still live in the agent."""
     js = _ui("app.js")
-    css = _ui("styles.css")
     html = _ui("preview.html")
-    # The offer button lives in the available===false branch of the resource panel renderer…
-    assert "resource-fix-btn" in js
-    assert "Install metrics-server for live stats" in js
-    # …and it asks the AGENT to install it (a normal message — judgment/approval stay in the agent).
-    assert "Install the in-cluster metrics-server" in js
-    assert ".resource-fix-btn" in css
-    # The preview harness shows the unavailable state so the offer is hand-verifiable with no backend.
+    # No clickable install control inside the busy-only panel anymore.
+    assert "resource-fix-btn" not in js
+    assert "Install metrics-server for live stats" not in js
+    # A passive hint explains where live stats come from.
+    assert "offers to install it" in js
+    # The preview still renders the unavailable state so it's hand-verifiable with no backend.
     assert "available: false" in html and "no metrics-server" in html
-
-
-def test_metrics_server_button_queues_when_busy():
-    """REGRESSION: the resource panel is shown ONLY during a run (busy === true), and
-    sendUserMessage() refuses to send while busy — so a button that called it directly would
-    silently no-op (the reported "clicking does nothing"). The button must instead go through
-    sendOrQueueUserMessage, which DEFERS the request to turn-end, and that queue must be flushed
-    from the `done` handler so the install fires the instant the run finishes."""
-    js = _ui("app.js")
-    # The button queues rather than calling the busy-guarded sendUserMessage directly.
-    assert "sendOrQueueUserMessage(" in js
-    assert "function sendOrQueueUserMessage" in js
-    assert "function flushPendingUserSend" in js
-    # The queue is flushed when a turn ends, so the deferred message actually sends.
-    assert "flushPendingUserSend()" in js
-    assert 'case "done":' in js and "flushPendingUserSend();" in js
-    # A click registers visibly (queued label + sticky flag survives the panel's frequent re-renders).
-    assert "metricsInstallRequested" in js
-    assert "install queued" in js
 
 
 def test_analyzer_next_steps_chips():

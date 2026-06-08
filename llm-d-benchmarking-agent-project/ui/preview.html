@@ -337,9 +337,9 @@
       A.renderResourceStats({ available: true, namespace: "llmd-quickstart", rows });
     }
     // 6a) The "no metrics-server" state — kind ships without it, so this is what a quickstart run
-    // shows. The panel now carries a one-click "Install metrics-server for live stats" offer
-    // (clicking sends a normal message; the agent does the approval-gated install). Rendered LAST so
-    // the offer is the visible panel state in this preview.
+    // shows. The panel now shows a PASSIVE hint (no button): the agent proactively offers the
+    // approval-gated install BEFORE the run (deterministic probe fact + HARD_RULE), so a mid-run
+    // button is no longer needed. Rendered LAST so the unavailable state is the visible panel here.
     A.renderResourceStats({ available: false, note: "live resource stats unavailable (no metrics-server)" });
 
     // 6b) Actionable "next steps" chips (clickable; from the analyzer).
