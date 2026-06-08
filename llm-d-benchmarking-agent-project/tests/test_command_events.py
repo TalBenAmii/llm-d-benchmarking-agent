@@ -124,13 +124,15 @@ async def test_no_emit_wired_is_safe(tmp_path):
 
 async def test_probe_environment_emits_command_per_probe(tmp_path):
     """The headline Phase-1 behavior: read-only probes are now visible. With all tools
-    present and a namespace, probe_environment runs exactly 9 read-only commands (the 6
+    present and a namespace, probe_environment runs exactly 11 read-only commands (the 6
     original probes plus the Phase-27 prometheus_crds probe `kubectl get crd`, the
-    Phase-60 cluster-preconditions probe `kubectl version --output json`, and ONE shared
+    Phase-60 cluster-preconditions probe `kubectl version --output json`, ONE shared
     `kubectl get nodes -o json` that both the Phase-61 node-capacity and Phase-64
     provider-detection probes consume — probe_environment fetches the node list ONCE and
-    hands the same result to both, deduping the formerly-doubled fetch) and each is
-    announced (auto_run) — proving probe-emit/exec parity."""
+    hands the same result to both, deduping the formerly-doubled fetch — and the
+    metrics-server pre-flight probe's two reads: `kubectl top nodes` + `kubectl get
+    deployment -n kube-system -l k8s-app=metrics-server -o json`) and each is announced
+    (auto_run) — proving probe-emit/exec parity."""
     from unittest.mock import patch
 
     from app.tools.probe import probe_environment
@@ -142,13 +144,17 @@ async def test_probe_environment_emits_command_per_probe(tmp_path):
         await probe_environment(ctx, namespace="llmd-quickstart")
 
     cmds = _commands(events)
-    assert len(cmds) == 9, [c["text"] for c in cmds]
+    assert len(cmds) == 11, [c["text"] for c in cmds]
     assert all(c["mode"] == "read_only" and c["auto_run"] is True for c in cmds)
-    assert len(runner.calls) == 9  # one announcement per real execution
+    assert len(runner.calls) == 11  # one announcement per real execution
     exes = {c["argv"][0] for c in cmds}
     assert exes == {"docker", "kind", "kubectl"}
     # the Phase-27 CRD probe is among them (read-only `kubectl get crd`).
     assert any(c["argv"][:3] == ["kubectl", "get", "crd"] for c in cmds)
+    # The metrics-server pre-flight probe's two read-only reads are among them.
+    assert ["kubectl", "top", "nodes"] in [c["argv"] for c in cmds]
+    assert ["kubectl", "get", "deployment", "-n", "kube-system",
+            "-l", "k8s-app=metrics-server", "-o", "json"] in [c["argv"] for c in cmds]
     # The node list is fetched (shared by node-capacity + provider-detection).
     assert ["kubectl", "get", "nodes", "-o", "json"] in [c["argv"] for c in cmds]
     # The cluster-preconditions probe (Phase 60) is among them (read-only `kubectl version`).

@@ -1,7 +1,7 @@
 # Design: proactive metrics-server pre-flight check + agent offer
 
 **Date:** 2026-06-08
-**Status:** approved-pending-review
+**Status:** implemented
 **Branch:** `feature/metrics-server-preflight`
 
 ## Problem
