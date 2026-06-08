@@ -114,10 +114,29 @@ def test_metrics_server_install_offer_on_unavailable_panel():
     assert "resource-fix-btn" in js
     assert "Install metrics-server for live stats" in js
     # …and it asks the AGENT to install it (a normal message — judgment/approval stay in the agent).
-    assert "sendUserMessage(" in js and "Install the in-cluster metrics-server" in js
+    assert "Install the in-cluster metrics-server" in js
     assert ".resource-fix-btn" in css
     # The preview harness shows the unavailable state so the offer is hand-verifiable with no backend.
     assert "available: false" in html and "no metrics-server" in html
+
+
+def test_metrics_server_button_queues_when_busy():
+    """REGRESSION: the resource panel is shown ONLY during a run (busy === true), and
+    sendUserMessage() refuses to send while busy — so a button that called it directly would
+    silently no-op (the reported "clicking does nothing"). The button must instead go through
+    sendOrQueueUserMessage, which DEFERS the request to turn-end, and that queue must be flushed
+    from the `done` handler so the install fires the instant the run finishes."""
+    js = _ui("app.js")
+    # The button queues rather than calling the busy-guarded sendUserMessage directly.
+    assert "sendOrQueueUserMessage(" in js
+    assert "function sendOrQueueUserMessage" in js
+    assert "function flushPendingUserSend" in js
+    # The queue is flushed when a turn ends, so the deferred message actually sends.
+    assert "flushPendingUserSend()" in js
+    assert 'case "done":' in js and "flushPendingUserSend();" in js
+    # A click registers visibly (queued label + sticky flag survives the panel's frequent re-renders).
+    assert "metricsInstallRequested" in js
+    assert "install queued" in js
 
 
 def test_analyzer_next_steps_chips():

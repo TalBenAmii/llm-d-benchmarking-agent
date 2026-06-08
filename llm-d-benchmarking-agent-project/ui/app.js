@@ -82,6 +82,14 @@ initDebug();
 
 let ws = null;
 let busy = false;
+// A queued user message to auto-send the instant the current turn ends. Some UI actions can ONLY be
+// clicked WHILE a turn is in flight (busy) — notably the "Install metrics-server" button, which lives
+// on the live-resource panel that is shown ONLY during a benchmark run. sendUserMessage() refuses to
+// send while busy, so without this the click would silently no-op. The agent is blocked executing the
+// run mid-turn and can't act anyway, so we remember the request and flush it on `done` (see
+// sendOrQueueUserMessage / flushPendingUserSend). Shape: {text, session}.
+let pendingUserSend = null;
+let metricsInstallRequested = false;  // sticky "metrics-server install queued" flag (survives panel re-renders)
 let activeConsole = null;     // <pre> for the currently-running command's output
 let currentSession = null;    // id of the chat we're attached to (null until "ready")
 let switching = false;        // true while intentionally closing to switch chats
@@ -405,7 +413,7 @@ function handle(msg) {
     case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
-    case "done": resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
+    case "done": resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); flushPendingUserSend(); break;
     case "pong": break;
   }
   // Advance this chat's resume cursor for every turn event we rendered (live or replayed); the
@@ -1037,11 +1045,28 @@ function renderResourceSide() {
     // would otherwise never know to offer the install. The button just sends a normal user message;
     // the agent does the real, vetted, approval-gated install per knowledge/observability.md. This
     // makes the offer guaranteed-visible instead of depending on the model volunteering it mid-deploy.
-    const fix = el("button", "chip resource-fix-btn", "Install metrics-server for live stats");
+    // This panel is shown ONLY during a run (when busy === true), so a plain sendUserMessage() would
+    // hit its `busy` guard and silently do nothing. Queue instead: sendOrQueueUserMessage defers the
+    // request to turn-end (`done`), and `metricsInstallRequested` keeps the "queued" state across the
+    // panel's frequent re-renders so a freshly-rebuilt button doesn't look actionable again.
+    const fix = el("button", "chip resource-fix-btn",
+      metricsInstallRequested ? "metrics-server install queued — runs after this benchmark"
+                              : "Install metrics-server for live stats");
     fix.title = "Ask the agent to install the in-cluster metrics-server (approval-gated)";
-    fix.onclick = () => { sendUserMessage(
-      "Install the in-cluster metrics-server so I can see live resource stats (CPU/memory) for " +
-      "this kind cluster."); };
+    fix.disabled = metricsInstallRequested;
+    fix.onclick = () => {
+      const r = sendOrQueueUserMessage(
+        "Install the in-cluster metrics-server so I can see live resource stats (CPU/memory) for " +
+        "this kind cluster.");
+      if (r === "queued") {
+        metricsInstallRequested = true;
+        fix.disabled = true;
+        fix.textContent = "metrics-server install queued — runs after this benchmark";
+        addNote("⏳ I'll install the in-cluster metrics-server as soon as this run finishes — " +
+                "your next run will then show live CPU/memory stats.");
+      }
+      // r === "sent" (idle): a normal install turn starts now; the panel clears on its `done`.
+    };
     body.appendChild(fix);
     return;
   }
@@ -1069,6 +1094,7 @@ function renderResourceSide() {
 // On `done` (run finished): collapse the split view back to full width for the active chat.
 function clearResourceStats() {
   resourceActive = false;
+  metricsInstallRequested = false;  // the panel is gone; a future run's panel starts actionable again
   if (cur) cur.resourceActive = false;
   renderResourceSide();
 }
@@ -2569,6 +2595,30 @@ function sendUserMessage(text) {
   if (cur) cur.running = true;      // this chat now has a turn in flight (kept across switches)
   startWorking();
   stickBottom = true; scroll();     // sending always pins to the newest message
+}
+
+// Send `text` now if the UI is idle; otherwise queue it to fire when the current turn ends.
+// Returns "sent" | "queued" | "noop" so the caller can reflect a deferral in its own UI. Lets a
+// control (e.g. the live-resource panel's install button) register a click that lands mid-run —
+// the only time that panel is even shown — instead of silently no-opping against the busy guard.
+function sendOrQueueUserMessage(text) {
+  text = (text || "").trim();
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return "noop";
+  if (!busy) { sendUserMessage(text); return "sent"; }
+  pendingUserSend = { text, session: currentSession };
+  return "queued";
+}
+
+// Fire a queued message once the turn that was in flight has ended (called from the `done` handler,
+// after setEnabled(true) has cleared `busy`). Only auto-sends in the SAME chat the request was made
+// in — a `done` for a different chat must not inject it there — and drops it either way so it can't
+// fire twice or linger.
+function flushPendingUserSend() {
+  if (!pendingUserSend) return;
+  const { text, session } = pendingUserSend;
+  pendingUserSend = null;
+  if (session && session !== currentSession) return;  // attention moved to another chat — discard
+  sendUserMessage(text);
 }
 
 form.addEventListener("submit", (e) => {
