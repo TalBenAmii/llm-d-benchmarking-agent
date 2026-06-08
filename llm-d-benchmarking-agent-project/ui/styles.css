@@ -151,16 +151,14 @@ body {
 /* ── Stored results browser + trends (sidebar) ──────────────────────────── */
 /* Collapsed by default: the conv-list fills the sidebar and the results panel shows only its
    toggle bar, pinned at the bottom. The `results-open` class (toggled in app.js, persisted to
-   localStorage) caps the conv-list and expands the panel body UPWARD above the bar. */
-.conv-list { max-height: none; }
-.sidebar.results-open .conv-list { max-height: 40%; }
+   localStorage) reveals the panel body, which sizes to its content and hugs the bar — growing
+   UPWARD into the conv-list's space (which yields via its own scroll) with no mid-panel gap. */
 .history {
   flex: none; display: flex; flex-direction: column;
   border-top: 1px solid var(--border); overflow: hidden;
 }
-.sidebar.results-open .history { flex: 1; min-height: 120px; }
 .history-body {
-  display: none; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;
+  display: none; flex-direction: column; max-height: 48vh; min-height: 0; overflow: hidden;
 }
 .sidebar.results-open .history-body { display: flex; }
 .history-head { display: flex; align-items: center; justify-content: space-between; }
@@ -198,7 +196,7 @@ body {
 .trend-delta.good { color: var(--green); }
 .trend-delta.bad { color: var(--red); }
 .trend-delta.flat { color: var(--muted); }
-.history-list { flex: 1; overflow-y: auto; padding: 2px 8px 12px; }
+.history-list { flex: 0 1 auto; overflow-y: auto; padding: 2px 8px 12px; }
 .history-empty { color: var(--muted); font-size: 12px; padding: 8px 12px; }
 .history-row {
   padding: 8px 10px; border-radius: 9px; margin-bottom: 2px; cursor: default;
