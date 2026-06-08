@@ -186,7 +186,9 @@ body {
 .trend-view { padding: 0 12px; }
 .trend-card {
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
-  padding: 9px 11px; margin-bottom: 8px;
+  /* top pad == .trend-title margin-bottom so the caption sits symmetric between the card's
+     top border and the sparkline below it; keep a touch more below for the delta line. */
+  padding: 6px 11px 9px; margin-bottom: 8px;
 }
 .trend-title { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
 .spark { width: 100%; height: auto; display: block; }
