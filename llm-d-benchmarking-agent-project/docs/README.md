@@ -10,6 +10,7 @@ agent + Kubernetes-native benchmark orchestrator + results analyzer for
 | [API.md](API.md) | integrators / contributors | The HTTP/WebSocket API and the 28-tool agent surface (inputs, classification, result shapes) + the `SessionPlan`. |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | operators | Running locally and in-cluster (Helm/Kustomize), configuration, secrets, least-privilege RBAC, observability. |
 | [USER_GUIDE.md](USER_GUIDE.md) | end users | Using the agent end-to-end with no `llm-d-benchmark` expertise. |
+| [GPU_CLUSTER_RUNBOOK.md](GPU_CLUSTER_RUNBOOK.md) | end users / operators | Going beyond the CPU `cicd/kind` quickstart: stand up a real **single-GPU** cluster (minikube + NVIDIA, WSL2/RTX 4060 worked example), author a tiny-model scenario that fits 8 GB, and a feature-by-feature checklist of what's real vs simulated on one card. |
 | [VALIDATION.md](VALIDATION.md) | contributors | The flow-validation harness — proving the agent runs the *right* commands. |
 | [SECURITY.md](SECURITY.md) | operators / reviewers | Threat model: trust boundaries, the allowlist/approval model, secret scrubbing, network-exposure guidance, what requires isolation. |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | operators | Symptom → what to check; debug mode; the structured logs + `corr_id`; the readiness/metrics endpoints. |
