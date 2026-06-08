@@ -1,5 +1,7 @@
 # Secrets
 .env
+.env.*
+!.env.example
 # Deploy secrets (Kustomize secretGenerator inputs); the .example is committed, the real one isn't.
 deploy/kustomize/overlays/*/secret.env
 
