@@ -192,6 +192,7 @@ function activate(rec) {
 // an incremental patch — e.g. first open of a chat, or the resume cursor fell off the buffer).
 function clearActivePane() {
   if (activePane) activePane.innerHTML = "";
+  resetStreamBubble();          // the live streaming bubble (if any) was just wiped with the pane
   toolEls = cur ? (cur.toolEls = {}) : {};
   activeConsole = null; if (cur) cur.activeConsole = null;
   welcomeCard = null; if (cur) cur.welcomeCard = null;
@@ -390,8 +391,18 @@ function handle(msg) {
     case "session_saved": loadSessions(); break;
     case "assistant_text":
       removeWelcomeCard();                          // the conversation has started — clear the chips
-      addBubble("assistant", data.text);
+      // If this step streamed deltas, finalize that live bubble with the authoritative text
+      // (re-render markdown + code blocks). Otherwise (non-streaming provider) add a fresh bubble.
+      if (!finalizeStreamBubble(data.text)) addBubble("assistant", data.text);
       if (!workingEl.hidden) resumeThinking();      // between steps: back to generic cycling
+      break;
+    // A token-by-token fragment of the agent's reply, streamed live as it generates. Append it to
+    // the live assistant bubble (created on the first delta); the step's `assistant_text` above
+    // finalizes it. NON_TURN_EVENT (no seq) — purely a perceived-latency win, never buffered.
+    case "assistant_delta":
+      removeWelcomeCard();
+      appendStreamDelta(data.text || "");
+      if (!workingEl.hidden) resumeThinking();
       break;
     case "tool_call": startTool(data); setWorkTool(data.name); advancePhase(data.name, data.input); break;
     // Clear the welcome card only when a real turn is running — NOT for the background environment
@@ -402,11 +413,11 @@ function handle(msg) {
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "results_card": renderResultsCard(data.card); break;
     case "approval_request": addApprovalCard(data); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // now waiting on the user, not the model
-    case "error": addBubble("error", data.message); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
-    case "cancelled": addNote("⏹ " + (data.message || "run cancelled")); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
+    case "error": resetStreamBubble(); addBubble("error", data.message); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
+    case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
-    case "done": setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
+    case "done": resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
     case "pong": break;
   }
   // Advance this chat's resume cursor for every turn event we rendered (live or replayed); the
@@ -783,6 +794,45 @@ function addBubble(role, text) {
 }
 
 function addNote(text) { addBubble("assistant", text); }
+
+// ---- live streaming assistant bubble -------------------------------------
+// The agent streams its reply token-by-token via `assistant_delta` events (see app/agent/events.py
+// + app/llm/agent_sdk_provider.py). We render those into ONE live bubble as they arrive; the step's
+// final `assistant_text` then finalizes it (authoritative re-render). `streamBubble` is the live
+// <div.bubble> or null between steps; `streamText` accumulates the raw markdown so each delta
+// re-renders the whole block (markdown isn't append-safe — a half-open `**` or table needs the
+// full source). Deltas are unbuffered/seqless, so a mid-turn reconnect just rebuilds from history.
+let streamBubble = null;
+let streamText = "";
+
+function appendStreamDelta(text) {
+  if (!streamBubble) {
+    const wrap = el("div", "msg assistant");
+    wrap.appendChild(el("div", "who", "assistant"));
+    streamBubble = el("div", "bubble markdown");
+    wrap.appendChild(streamBubble);
+    activePane.appendChild(wrap);
+    streamText = "";
+  }
+  streamText += text;
+  streamBubble.innerHTML = renderMarkdown(streamText);
+}
+
+// Finalize the live streaming bubble with the authoritative full text from `assistant_text`
+// (re-render markdown + wire up code-block copy buttons). Returns true if a live bubble was open
+// (and finalized), false if there was nothing to finalize — so the caller adds a normal bubble.
+function finalizeStreamBubble(text) {
+  if (!streamBubble) return false;
+  streamBubble.innerHTML = renderMarkdown(text || streamText || "");
+  enhanceCodeBlocks(streamBubble);
+  streamBubble = null;
+  streamText = "";
+  return true;
+}
+
+// Drop the live-bubble reference (leaving any DOM in place) so the NEXT delta starts a fresh
+// bubble. Called when the pane is cleared/rebuilt or a turn ends — never appends to a stale node.
+function resetStreamBubble() { streamBubble = null; streamText = ""; }
 
 // ---- start-of-chat welcome card + suggestion chips -----------------------
 // On a brand-new chat the server emits a DETERMINISTIC `welcome` event (heading + capability

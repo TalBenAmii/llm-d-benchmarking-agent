@@ -11,10 +11,16 @@ Neutral message items (a list of dicts):
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.config import Settings
+
+# Called with each streamed text delta as the model generates (when a provider streams). The
+# agent loop passes one that emits an ``assistant_delta`` event so the UI fills the live bubble
+# token-by-token; providers that don't stream simply never invoke it.
+OnText = Callable[[str], Awaitable[None]]
 
 
 @dataclass
@@ -68,6 +74,75 @@ class LLMProvider(ABC):
         cache_key: str | None = None,
     ) -> AssistantTurn:
         ...
+
+
+class ProviderTurn:
+    """A turn-scoped handle that spans all of ONE user turn's LLM steps.
+
+    The agent loop makes several ``chat()`` calls per user turn — one per round of tool calls.
+    A ``ProviderTurn`` (an async context manager) lets a provider amortize expensive per-turn
+    setup across those steps: ``__aenter__`` opens whatever is costly once, ``chat()`` runs each
+    step (optionally streaming text via ``on_text``), ``__aexit__`` tears it down. The default
+    :class:`StatelessTurn` does NO amortization — it just forwards each step to the provider's
+    one-shot ``chat()`` — so every provider works through this interface unchanged. The Claude
+    Agent SDK provider overrides it (``open_turn``) to keep one warm CLI subprocess per turn.
+    """
+
+    async def __aenter__(self) -> ProviderTurn:
+        return self
+
+    async def __aexit__(self, *exc: Any) -> bool:
+        return False
+
+    async def chat(
+        self, messages: list[dict[str, Any]], *, on_text: OnText | None = None
+    ) -> AssistantTurn:
+        raise NotImplementedError
+
+
+class StatelessTurn(ProviderTurn):
+    """Default turn handle: no per-turn amortization. Each step is an independent one-shot
+    ``provider.chat()`` over the FULL message list — exactly the behavior that predates the turn
+    abstraction. Used by every provider that does not override ``open_turn`` (and by the test
+    fakes, whose ``chat()`` signature is unchanged). ``on_text`` is accepted for interface parity
+    and ignored: the one-shot path does not stream partial text."""
+
+    def __init__(
+        self,
+        provider: Any,
+        *,
+        system: str,
+        tools: list[dict[str, Any]],
+        cache_key: str | None = None,
+    ):
+        self._provider = provider
+        self._system = system
+        self._tools = tools
+        self._cache_key = cache_key
+
+    async def chat(
+        self, messages: list[dict[str, Any]], *, on_text: OnText | None = None
+    ) -> AssistantTurn:
+        return await self._provider.chat(
+            system=self._system, messages=messages, tools=self._tools, cache_key=self._cache_key
+        )
+
+
+def open_provider_turn(
+    provider: Any,
+    *,
+    system: str,
+    tools: list[dict[str, Any]],
+    cache_key: str | None = None,
+) -> ProviderTurn:
+    """Return a turn handle for ``provider``: its own amortized turn if it implements
+    ``open_turn`` (only the Claude Agent SDK provider does), else a :class:`StatelessTurn`
+    wrapper. Duck-typed on ``open_turn`` so test fakes (which don't inherit ``LLMProvider``)
+    transparently get the stateless path."""
+    factory = getattr(provider, "open_turn", None)
+    if factory is not None:
+        return factory(system=system, tools=tools, cache_key=cache_key)
+    return StatelessTurn(provider, system=system, tools=tools, cache_key=cache_key)
 
 
 class ProviderError(RuntimeError):

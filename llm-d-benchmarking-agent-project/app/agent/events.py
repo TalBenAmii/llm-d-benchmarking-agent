@@ -1,7 +1,14 @@
 """Event types streamed to the UI over the WebSocket.
 
 Server -> client:
-  assistant_text   {text}                 — a chat message from the agent
+  assistant_text   {text}                 — a chat message from the agent (the FINAL, authoritative
+                                            text for one step; buffered + replayed). When a step
+                                            streamed `assistant_delta`s, this finalizes that bubble.
+  assistant_delta  {text}                 — a token-by-token text fragment streamed live as the
+                                            model generates, so the UI fills the assistant bubble
+                                            in real time instead of waiting for the whole step.
+                                            Live-only (a NON_TURN_EVENT: unbuffered/seqless); the
+                                            step's `assistant_text` carries the complete text.
   tool_call        {id, name, input}       — the agent invoked a tool
   command          {argv, text, mode, auto_run}  — EVERY command actually executed,
                                             including auto-run read-only probes. Lets the UI
@@ -72,6 +79,7 @@ so a client that dropped catches up to the LIVE stream, then continues live.
 from __future__ import annotations
 
 ASSISTANT_TEXT = "assistant_text"
+ASSISTANT_DELTA = "assistant_delta"
 TOOL_CALL = "tool_call"
 COMMAND = "command"
 OUTPUT = "output"
@@ -107,9 +115,16 @@ PONG = "pong"
 #   * session_saved — a one-shot "the chat is now on disk; refresh your sidebar" ping emitted at
 #     the start of a turn. A mid-turn reconnect already finds the chat via /api/sessions, so
 #     buffering/replaying it would be pure noise.
+#   * assistant_delta — token-by-token text streamed live as the model generates (perceived-
+#     latency win). High-frequency and transient: buffering deltas would evict the REAL turn
+#     events from the bounded ring. They are unbuffered/seqless and live-only — a mid-turn
+#     reconnect simply doesn't see the in-flight step's partial text, then the step's FINAL
+#     `assistant_text` (which IS buffered + seq-stamped) replays the complete block.
 # results_card is DELIBERATELY NOT here: it is a TURN event (emitted during the turn, right after
 # the report/analysis tool result), so it must be buffered + seq-stamped + replayed like a
 # tool_call/tool_result so a mid-turn reconnect still catches it.
 # The buffer therefore holds only the in-flight TURN's meaningful events, exactly as replay_live
 # promises.
-NON_TURN_EVENTS = frozenset({READY, HISTORY, PONG, WELCOME, SUGGESTIONS, SESSION_SAVED, RESOURCE_STATS})
+NON_TURN_EVENTS = frozenset(
+    {READY, HISTORY, PONG, WELCOME, SUGGESTIONS, SESSION_SAVED, RESOURCE_STATS, ASSISTANT_DELTA}
+)
