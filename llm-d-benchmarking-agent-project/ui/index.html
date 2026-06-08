@@ -224,11 +224,11 @@
         <button id="share-copy" type="button" class="primary-btn" disabled>Copy link</button>
       </div>
     </div>
-    <p class="builder-intro share-export-note">Prefer not to host anything? <strong>Download a single
-      file</strong> — a self-contained <code>.html</code> of this conversation (no server, nothing
-      exposed) you can send directly or drop on any static host. For a one-command public link,
-      run <code>scripts/publish_shared_chat.sh &lt;this link&gt;</code> (publishes a secret GitHub
-      gist — your agent stays private).</p>
+    <p class="builder-intro share-export-note">A public link is a frozen, self-contained snapshot
+      hosted as a <strong>secret GitHub gist</strong> (unlisted — only people you send it to can open
+      it); your running agent is never exposed. Prefer a file? <strong>Download a single
+      <code>.html</code></strong> to send directly or host anywhere. Manage or revoke published links
+      from a terminal with <code>scripts/publish_shared_chat.sh</code>.</p>
     <div class="builder-actions">
       <button type="button" id="share-revoke" class="ghost-btn share-revoke" disabled>Delete link</button>
       <a id="share-download" class="ghost-btn disabled" download>⬇ Download file</a>

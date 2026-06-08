@@ -2803,8 +2803,19 @@ function openShareDialog() {
 }
 function closeShareDialog() { if (shareDlg && shareDlg.open) shareDlg.close(); }
 
-// Mint (or surface) a read-only public link for the CURRENT conversation. The backend snapshots
-// the transcript as it is right now; sending more messages later won't change the shared copy.
+// Put a URL into the dialog as the ACTIVE link (input + Open + Copy enabled). Reused for the
+// public gist link and for the same-origin fallback.
+function setShareUrl(url) {
+  if (shareUrlInput) { shareUrlInput.value = url; shareUrlInput.focus(); shareUrlInput.select(); }
+  if (shareOpenLink) { shareOpenLink.href = url; shareOpenLink.classList.remove("disabled"); }
+  if (shareCopyBtn) shareCopyBtn.disabled = false;
+}
+
+// Mint (or surface) a read-only link for the CURRENT conversation, then PUBLISH it to a public host
+// so the dialog shows a real public link BY DEFAULT — no terminal step. Publishing renders a frozen,
+// self-contained snapshot and uploads it as a SECRET (unlisted) GitHub gist, so the agent is never
+// exposed. The backend snapshots the transcript as it is right now; sending more messages later
+// won't change the shared copy.
 async function shareChat() {
   openShareDialog();
   if (!currentSession) {
@@ -2819,24 +2830,48 @@ async function shareChat() {
     }
     if (!r.ok) throw new Error("share failed: " + r.status);
     const j = await r.json();
-    // The backend returns an ABSOLUTE url when SHARE_BASE_URL is configured (so links carry a
-    // public domain a friend can open); otherwise it's a relative /share/<token> path and we
-    // prepend this browser's origin — already the public host when the app is opened via one.
-    const url = /^https?:\/\//i.test(j.url) ? j.url : location.origin + j.url;
     shareToken = j.token;
-    if (shareUrlInput) { shareUrlInput.value = url; shareUrlInput.focus(); shareUrlInput.select(); }
-    if (shareOpenLink) { shareOpenLink.href = url; shareOpenLink.classList.remove("disabled"); }
+    // The same-origin link (ABSOLUTE when SHARE_BASE_URL is set, else this browser's origin). Kept
+    // as the fallback; shown as the primary link only if publishing a public one isn't possible.
+    const localUrl = /^https?:\/\//i.test(j.url) ? j.url : location.origin + j.url;
     // Self-contained single-file export of this snapshot — always same-origin (the API path),
     // independent of SHARE_BASE_URL; the browser downloads it via the route's Content-Disposition.
     if (shareDownloadLink) {
       shareDownloadLink.href = `/api/share/${encodeURIComponent(j.token)}/page.html`;
       shareDownloadLink.classList.remove("disabled");
     }
-    if (shareCopyBtn) shareCopyBtn.disabled = false;
     if (shareRevokeBtn) shareRevokeBtn.disabled = false;
-    if (shareStatus) shareStatus.textContent = "Link ready — anyone with it can view this conversation (read-only).";
+    // Publish to a public host (secret gist) and surface THAT link by default.
+    await publishShareLink(j.token, localUrl);
   } catch (e) {
     if (shareStatus) shareStatus.textContent = "Couldn't create a share link. Please try again.";
+  }
+}
+
+// Publish the freshly-minted snapshot as a secret gist and show the PUBLIC link by default. Falls
+// back to the same-origin link (with the reason) when publishing isn't available — e.g. the GitHub
+// CLI isn't installed/authenticated, so a user can still copy a link that works while the app runs.
+async function publishShareLink(token, localUrl) {
+  if (shareStatus) shareStatus.textContent = "Publishing a public link…";
+  let resp = null, body = {};
+  try {
+    resp = await fetch(`/api/share/${encodeURIComponent(token)}/publish`, { method: "POST" });
+    body = await resp.json().catch(() => ({}));
+  } catch (e) { resp = null; body = {}; }
+  if (resp && resp.ok && body.public_url) {
+    setShareUrl(body.public_url);
+    if (shareStatus) shareStatus.textContent =
+      "Public link ready — send it to anyone. It opens a read-only copy; your agent stays private.";
+    return;
+  }
+  // No public link — show the same-origin one and say why.
+  setShareUrl(localUrl);
+  if (body && body.reason === "gh-missing") {
+    if (shareStatus) shareStatus.textContent =
+      "Showing a local link (works only while this app is reachable). For a public link, install the GitHub CLI (gh), or run scripts/publish_shared_chat.sh.";
+  } else {
+    if (shareStatus) shareStatus.textContent =
+      "Couldn't publish a public link (check ‘gh auth status’) — showing a local link instead. You can also run scripts/publish_shared_chat.sh.";
   }
 }
 
@@ -2853,7 +2888,7 @@ async function revokeShare() {
   if (shareDownloadLink) { shareDownloadLink.removeAttribute("href"); shareDownloadLink.classList.add("disabled"); }
   if (shareCopyBtn) shareCopyBtn.disabled = true;
   if (shareRevokeBtn) shareRevokeBtn.disabled = true;
-  if (shareStatus) shareStatus.textContent = "Link deleted — it no longer works.";
+  if (shareStatus) shareStatus.textContent = "Link deleted — the public link no longer works either.";
 }
 
 if (shareBtn) shareBtn.addEventListener("click", shareChat);

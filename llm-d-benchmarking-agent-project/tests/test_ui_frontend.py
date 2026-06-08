@@ -365,6 +365,12 @@ def test_share_a_chat_via_link():
     assert 'id="share-banner"' not in html and "share-banner" not in css
     # The single-file export: the Download link points at the self-contained .html route.
     assert "/page.html" in js and 'shareDownloadLink.href' in js
+    # Sharing PUBLISHES by default: after minting, the dialog auto-posts to /publish and shows the
+    # public (secret-gist) link, falling back to the same-origin link only if publishing fails.
+    assert "function publishShareLink" in js and "function setShareUrl" in js
+    assert "/api/share/${encodeURIComponent(token)}/publish" in js
+    assert "Publishing a public link" in js and "body.public_url" in js
+    assert "gh-missing" in js                                   # the no-gh fallback message branch
     # Create / revoke hit the real owner-only routes; the link is copied with the shared helper.
     assert "function shareChat" in js and "function revokeShare" in js
     assert "/api/sessions/${encodeURIComponent(currentSession)}/share" in js

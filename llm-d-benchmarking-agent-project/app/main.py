@@ -40,6 +40,7 @@ from app.observability.logctx import bind as log_bind
 from app.observability.logctx import new_corr_id
 from app.observability.logging import setup_logging
 from app.observability.metrics import render_prometheus
+from app.packaging import gist_publish
 from app.packaging.report_card import render_report_card
 from app.packaging.shared_chat import render_shared_chat
 from app.security.allowlist import Allowlist
@@ -549,12 +550,54 @@ async def read_share_page(token: str) -> Response:
     )
 
 
+@app.post("/api/share/{token}/publish", dependencies=[Depends(rate_limit)])
+def publish_share(token: str) -> JSONResponse:
+    """Publish a shared conversation as a PUBLIC link WITHOUT exposing the agent: render its frozen
+    snapshot to a self-contained ``.html`` and upload it as a SECRET (unlisted) GitHub gist via the
+    user's ``gh`` CLI. Returns the public render URL the dialog shows by default. Owner-only
+    (auth-gated like minting/revoking — it is NOT a public GET; it creates content on the user's
+    GitHub account). 404 if the token isn't a live share; 503 (with a machine ``reason``) when ``gh``
+    is missing or fails, so the dialog can explain it and fall back to the same-origin link. Declared
+    sync on purpose: the blocking ``gh`` subprocess runs in Starlette's threadpool, off the loop."""
+    settings = get_settings()
+    data = _share_store().read(token)
+    if data is None:
+        raise HTTPException(status_code=404, detail="shared conversation not found")
+    try:
+        result = gist_publish.publish(
+            token, workspace=settings.resolved_workspace_dir, ui_dir=settings.ui_dir, snapshot=data
+        )
+    except gist_publish.GistPublishError as exc:
+        # Not a server fault — the publishing host (the user's gh/GitHub) is unavailable. Hand the
+        # reason back so the dialog can say why and fall back to the local link.
+        return JSONResponse(status_code=503, content={"detail": str(exc), "reason": exc.reason})
+    return JSONResponse({
+        "token": result.token,
+        "gist_id": result.gist_id,
+        "public_url": result.public_url,
+        "fallback_url": result.fallback_url,
+        "reused": result.reused,
+    })
+
+
 @app.delete("/api/share/{token}", dependencies=[Depends(rate_limit)])
-async def revoke_share(token: str) -> JSONResponse:
-    """Revoke a share link (delete its snapshot). Owner-only (auth-gated). 404 if already gone."""
+def revoke_share(token: str) -> JSONResponse:
+    """Revoke a share link: delete its snapshot AND, if one was published, its secret gist — so the
+    public link dies together with the in-app link. Owner-only (auth-gated). 404 if the snapshot is
+    already gone. Gist deletion is best-effort: a gh/network failure still revokes the snapshot (the
+    gist mapping survives under ``<workspace>/shares`` to be cleaned later via the script). Sync for
+    the same threadpool reason as publish."""
+    settings = get_settings()
+    gist_revoked = False
+    if gist_publish.mapping_path(settings.resolved_workspace_dir, token).exists():
+        try:
+            gist_publish.revoke(token, workspace=settings.resolved_workspace_dir)
+            gist_revoked = True
+        except gist_publish.GistPublishError:
+            gist_revoked = False  # best-effort; the snapshot deletion below still proceeds
     if not _share_store().delete(token):
         raise HTTPException(status_code=404, detail="shared conversation not found")
-    return JSONResponse({"deleted": True, "token": token})
+    return JSONResponse({"deleted": True, "token": token, "gist_revoked": gist_revoked})
 
 
 @app.get("/share/{token}")

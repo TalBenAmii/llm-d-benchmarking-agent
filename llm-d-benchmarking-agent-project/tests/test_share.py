@@ -217,6 +217,79 @@ def test_page_html_404_for_unknown_or_malformed_token(client_with_share):
     assert client.get("/api/share/not-a-token/page.html").status_code == 404         # malformed
 
 
+def test_publish_returns_the_public_link(client_with_share, monkeypatch):
+    """POST /api/share/<token>/publish returns the secret-gist render URLs the dialog shows by
+    default. The gist upload itself (gh) is stubbed — we assert the route's plumbing, not GitHub."""
+    from app.packaging import gist_publish
+
+    client, _ = client_with_share
+    token = client.post(f"/api/sessions/{_seed_chat(client).id}/share").json()["token"]
+
+    captured = {}
+
+    def fake_publish(tok, *, workspace, ui_dir, snapshot=None):
+        captured.update(token=tok, has_snapshot=snapshot is not None)
+        return gist_publish.PublishResult(
+            token=tok, gist_id="abc123",
+            public_url="https://gist.githack.com/u/abc123/raw/x/chat.html",
+            fallback_url="https://htmlpreview.github.io/?https://gist.githubusercontent.com/u/abc123/raw/x/chat.html",
+            reused=False,
+        )
+
+    monkeypatch.setattr(gist_publish, "publish", fake_publish)
+    r = client.post(f"/api/share/{token}/publish")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["public_url"].startswith("https://gist.githack.com/")
+    assert body["gist_id"] == "abc123" and body["reused"] is False
+    # The route loaded the snapshot once and handed it to the engine (no double read).
+    assert captured == {"token": token, "has_snapshot": True}
+
+
+def test_publish_503_when_gh_is_unavailable(client_with_share, monkeypatch):
+    """When the GitHub CLI is missing/unauthenticated the engine raises; the route answers 503 with
+    a machine ``reason`` so the dialog can fall back to the same-origin link."""
+    from app.packaging import gist_publish
+
+    client, _ = client_with_share
+    token = client.post(f"/api/sessions/{_seed_chat(client).id}/share").json()["token"]
+
+    def boom(*a, **k):
+        raise gist_publish.GistPublishError("no gh here", reason="gh-missing")
+
+    monkeypatch.setattr(gist_publish, "publish", boom)
+    r = client.post(f"/api/share/{token}/publish")
+    assert r.status_code == 503
+    assert r.json()["reason"] == "gh-missing"
+
+
+def test_publish_404_for_unknown_token(client_with_share):
+    client, _ = client_with_share
+    assert client.post("/api/share/" + "a" * 32 + "/publish").status_code == 404
+
+
+def test_revoke_also_revokes_the_published_gist(client_with_share, monkeypatch):
+    """Deleting the in-app link also deletes its published gist, so the public link dies with it.
+    The gh delete is stubbed; we assert the route invokes the engine when a mapping exists."""
+    from app.packaging import gist_publish
+
+    client, settings = client_with_share
+    token = client.post(f"/api/sessions/{_seed_chat(client).id}/share").json()["token"]
+
+    # Simulate a previously-published gist by writing the token→gist mapping the engine reads.
+    mapping = gist_publish.mapping_path(settings.resolved_workspace_dir, token)
+    mapping.parent.mkdir(parents=True, exist_ok=True)
+    mapping.write_text("gistabc\n", encoding="utf-8")
+
+    revoked = {}
+    monkeypatch.setattr(gist_publish, "revoke",
+                        lambda tok, *, workspace: revoked.setdefault("token", tok))
+    r = client.delete(f"/api/share/{token}")
+    assert r.status_code == 200
+    assert r.json()["gist_revoked"] is True
+    assert revoked == {"token": token}
+
+
 def test_share_page_serves_the_spa_shell(client_with_share):
     """/share/<token> serves the same SPA HTML as / — the client renders the snapshot read-only.
     We don't 404 the page on an unknown token (the SPA shows that state from the JSON route)."""
@@ -249,6 +322,9 @@ def test_public_get_bypasses_auth_but_minting_and_revoking_stay_gated(client_wit
         assert client.get(f"/api/share/{token}/page.html").status_code == 200
         # A normal API route still 401s without the token (proves the bypass is scoped).
         assert client.get("/api/sessions").status_code == 401
+        # Publishing a public link is owner-only too (it creates content on the user's account) —
+        # rejected before the route runs, so no gh call happens here.
+        assert client.post(f"/api/share/{token}/publish").status_code == 401
 
         # Revoking requires the token (DELETE is not exempt).
         assert client.delete(f"/api/share/{token}").status_code == 401
