@@ -52,8 +52,11 @@ class CommandExecutor:
 
     async def _emit_command(self, decision: Decision, *, auto_run: bool) -> None:
         """Announce a command the instant before it runs — for EVERY execution, not just
-        the approval-gated ones, so the UI can show the full executed-command trail and a
-        debug view. ``auto_run`` is True for read-only commands that ran without a prompt."""
+        the approval-gated ones, so the UI can show the full executed-command trail inline
+        in the chat (the debug view). ``auto_run`` is True for read-only commands that ran
+        without a prompt. ``tool_call_id`` ties the command to the tool call that issued it
+        (None for the pre-turn environment probe), so a resumed chat replays each command
+        inline in its original transcript position — right after its tool call."""
         ctx = self._ctx
         if ctx.emit is not None:
             await ctx.emit("command", {
@@ -62,6 +65,7 @@ class CommandExecutor:
                 "mode": decision.mode,
                 "auto_run": auto_run,
                 "simulated": ctx.settings.simulate,  # flag simulated (no-op) commands in the UI/trail
+                "tool_call_id": ctx.current_tool_call_id,
             })
 
     def _record_metric(self, decision: Decision, *, auto_run: bool, result: RunResult) -> None:

@@ -55,8 +55,10 @@ The agent will walk through, roughly:
   the **exact command** and waits for you to click **Approve** (or Reject). If you Reject,
   the agent acknowledges and replans.
 
-Nothing runs off-screen: the UI shows every command, and a one-click **Debug view** lists
-just the executed-command trail with read-only/mutating badges.
+Nothing runs off-screen: the UI shows every command, and the one-click **Debug view** (`>_`)
+reveals the executed-command trail *inline in the chat* — each command appears in place,
+between the messages, in the order it ran, with read-only/mutating badges. Toggle it off to
+hide the commands again.
 
 ## Reading the results
 

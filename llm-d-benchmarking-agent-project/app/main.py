@@ -315,6 +315,15 @@ def _history_items(session) -> list[dict[str, Any]]:
     eviction and is restored in its transcript position even on a full history rebuild
     (the in-memory Channel's ``reemit_pending`` is then de-duped on the client by
     request_id, so the card never double-renders).
+
+    Executed commands (``session.commands``) are interleaved the same way — as ``command``
+    items right after the tool call that ran them (matched on ``tool_call_id``) — so the
+    debug view's inline command trail is restored in its original transcript position on
+    resume. Pre-turn probe commands carry no owning tool call (``tool_call_id`` is None):
+    they ran before the first message, so they lead the transcript. Any command whose tool
+    call is no longer in the replayed messages (e.g. compacted away) is appended at the end
+    so the trail is never silently truncated. (Sessions persisted before commands carried a
+    ``tool_call_id`` degrade gracefully — every command keys to None and leads instead.)
     """
     approvals_by_tc: dict[str, list[dict[str, Any]]] = {}
     for a in getattr(session, "approvals", []) or []:
@@ -322,8 +331,21 @@ def _history_items(session) -> list[dict[str, Any]]:
     pending_by_tc: dict[str, list[dict[str, Any]]] = {}
     for p in getattr(session, "in_flight_approvals", []) or []:
         pending_by_tc.setdefault(p.get("tool_call_id"), []).append(p)
+    commands_by_tc: dict[str | None, list[dict[str, Any]]] = {}
+    for c in getattr(session, "commands", []) or []:
+        commands_by_tc.setdefault(c.get("tool_call_id"), []).append(c)
+
+    def _command_item(c: dict[str, Any]) -> dict[str, Any]:
+        return {"role": "command", "text": c.get("text"), "argv": c.get("argv"),
+                "mode": c.get("mode"), "auto_run": c.get("auto_run"),
+                "simulated": c.get("simulated")}
 
     items: list[dict[str, Any]] = []
+    rendered_tcs: set[str | None] = set()
+    # Pre-turn probe commands ran before any tool call (and before the first message) — lead with them.
+    for c in commands_by_tc.get(None, []):
+        items.append(_command_item(c))
+    rendered_tcs.add(None)
     for m in session.messages:
         role = m.get("role")
         if role == "user":
@@ -342,13 +364,24 @@ def _history_items(session) -> list[dict[str, Any]]:
             if m.get("content"):
                 items.append({"role": "assistant", "text": m["content"]})
             for tc in m.get("tool_calls") or []:
+                tc_id = tc.get("id")
                 items.append({"role": "tool_call", "name": tc.get("name"), "input": tc.get("input")})
-                for a in approvals_by_tc.get(tc.get("id"), []):
+                for a in approvals_by_tc.get(tc_id, []):
                     items.append({"role": "approval_decision", "kind": a.get("kind"),
                                   "payload": a.get("payload"), "approved": a.get("approved")})
-                for p in pending_by_tc.get(tc.get("id"), []):
+                for p in pending_by_tc.get(tc_id, []):
                     items.append({"role": "approval_request", "request_id": p.get("request_id"),
                                   "kind": p.get("kind"), "payload": p.get("payload")})
+                # The commands this tool call ran fire after its approval (mirroring live order).
+                for c in commands_by_tc.get(tc_id, []):
+                    items.append(_command_item(c))
+                rendered_tcs.add(tc_id)
+    # Don't lose commands whose owning tool call fell out of the replayed messages (compaction).
+    for tc_id, cmds in commands_by_tc.items():
+        if tc_id in rendered_tcs:
+            continue
+        for c in cmds:
+            items.append(_command_item(c))
     return items
 
 
@@ -548,7 +581,9 @@ async def ws(websocket: WebSocket) -> None:
         },
     })
     if resumed and not incremental:
-        await channel.emit("history", {"items": _history_items(session), "commands": session.commands})
+        # Commands are interleaved into `items` (as `command` entries in their original
+        # transcript position) by _history_items — no separate flat `commands` list needed.
+        await channel.emit("history", {"items": _history_items(session)})
     elif not resumed:
         # Brand-new chat: emit the DETERMINISTIC welcome card (B2) FIRST — a code-built greeting
         # that concisely offers the assistant's capabilities, consistent every time and with NO

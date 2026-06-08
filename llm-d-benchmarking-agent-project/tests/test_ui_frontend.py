@@ -256,6 +256,34 @@ def test_builder_and_glossary_in_preview_harness():
     assert 'id="builder"' in html and 'id="glossary"' in html
 
 
+def test_debug_view_renders_commands_inline_in_chat():
+    """The debug view (>_ toggle) reveals each executed command INLINE in the transcript, in
+    execution order between the messages — not on a separate command-log screen. Commands are
+    appended to the active pane (live and on history replay) and stay hidden until debug is on."""
+    html = _ui("index.html")
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    # The toggle button is still present and its state persists across reloads.
+    assert 'id="debug-toggle"' in html and 'getElementById("debug-toggle")' in js
+    assert 'localStorage.setItem("llmd-debug"' in js
+    # A command renders inline by appending a .cmd-inline row to the active transcript pane.
+    assert "function addInlineCommand" in js
+    assert 'el("div", "cmd-inline")' in js and "activePane.appendChild(row)" in js
+    # Both the live `command` event and a replayed `command` history item flow through it.
+    assert "addInlineCommand(data)" in js                          # onCommand (live)
+    assert 'it.role === "command") addInlineCommand(it)' in js     # renderHistory (resume)
+    # Hidden until debug mode is on, then shown in place — no separate screen.
+    assert ".cmd-inline { display: none; }" in css
+    assert 'html[data-debug="on"] .cmd-inline' in css
+    # The OLD separate-screen approach is gone: no command-log section, and debug mode no longer
+    # hides the chat transcript.
+    assert 'id="cmdlog"' not in html
+    assert 'html[data-debug="on"] #transcript' not in css
+    assert "cmdlog" not in css
+    # The preview harness seeds command events so the inline trail is hand-verifiable with no backend.
+    assert 'type: "command"' in _ui("preview.html")
+
+
 def test_markdown_table_rendering_is_wired():
     """The assistant bubble's markdown renderer must turn GFM pipe-tables into real <table>
     markup (was: raw `| … |` text). Wiring-level guard; the rendered table is eyeballed via

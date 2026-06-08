@@ -15,7 +15,6 @@ const themeBtn = document.getElementById("theme-toggle");
 const convList = document.getElementById("conv-list");
 const newChatBtn = document.getElementById("new-chat");
 const debugBtn = document.getElementById("debug-toggle");
-const cmdlogList = document.getElementById("cmdlog-list");
 const historyList = document.getElementById("history-list");
 const historyRefresh = document.getElementById("history-refresh");
 const trendMetric = document.getElementById("trend-metric");
@@ -65,13 +64,16 @@ themeBtn.addEventListener("click", () => {
 });
 initTheme();
 
-// ---- debug view (show only executed commands; persisted) ----------------
+// ---- debug view (reveal the executed commands inline in the chat; persisted) ----
+// Each command the agent runs is appended to the transcript in execution order, between the
+// messages (see addInlineCommand). They're CSS-hidden until debug mode is on, so toggling the
+// button just shows/hides the inline command trail in place — no separate screen.
 function applyDebug(on) {
   document.documentElement.setAttribute("data-debug", on ? "on" : "off");
   debugBtn.setAttribute("aria-pressed", on ? "true" : "false");
   debugBtn.title = on
-    ? "Hide debug view — back to chat"
-    : "Toggle debug view — show only the commands the agent executed";
+    ? "Hide the executed commands from the chat"
+    : "Debug view — show the commands the agent ran inline in the chat";
 }
 function initDebug() {
   let on = false;
@@ -123,7 +125,7 @@ function makeRecord(sid) {
     welcomeCard: null, resourceData: null, resourceActive: false,
     workStart: 0, workActivity: null, workWordFixed: false, workWord: "Working", workingHidden: true,
     turnUsage: null, sessionTokens: 0,
-    cmdlogHTML: "", lastSeq: 0, running: false, scrollTop: 0,
+    lastSeq: 0, running: false, scrollTop: 0,
     pendingApprovals: {}, order: viewClock,
     // Run progress stepper: furthest workflow phase this chat has reached + the one currently
     // running (-1 = none). State lives only on the record; the shared #run-steps rail renders
@@ -150,7 +152,8 @@ function snapshotActive() {
   cur.workStart = workStart; cur.workActivity = workActivity; cur.workWordFixed = workWordFixed;
   cur.workWord = workWordEl.textContent; cur.workingHidden = workingEl.hidden;
   cur.turnUsage = turnUsage; cur.sessionTokens = sessionTokens;
-  cur.cmdlogHTML = cmdlogList ? cmdlogList.innerHTML : "";
+  // The executed-command trail now lives inline in the pane DOM, so detaching the pane
+  // preserves it byte-for-byte — no separate cmdlog snapshot needed.
   if (cur.pane) { cur.scrollTop = transcript.scrollTop; cur.pane.remove(); }
 }
 
@@ -171,7 +174,6 @@ function activate(rec) {
   workStart = rec.workStart; workActivity = rec.workActivity; workWordFixed = rec.workWordFixed;
   turnUsage = rec.turnUsage;
   setSessionTokens(rec.sessionTokens);
-  if (cmdlogList) { cmdlogList.innerHTML = rec.cmdlogHTML || ""; if (!cmdlogList.childNodes.length) clearCmdlog(); }
   workWordEl.textContent = rec.workWord || WORK_WORDS[0];
   clearInterval(workTimer); clearInterval(wordTimer); workTimer = wordTimer = null;
   if (rec.running) {
@@ -203,7 +205,6 @@ function clearActivePane() {
   turnUsage = null; if (cur) cur.turnUsage = null;
   if (readyNoteTimer) { clearTimeout(readyNoteTimer); readyNoteTimer = null; }
   if (cur) { cur.pendingApprovals = {}; cur.lastSeq = 0; }
-  clearCmdlog();
 }
 
 // Bound memory: keep at most MAX_PANES cached panes, evicting the least-recently-viewed chats
@@ -328,12 +329,6 @@ function bootChat() {
   connect(null, null);
 }
 
-function clearCmdlog() {
-  if (!cmdlogList) return;
-  cmdlogList.innerHTML = "";
-  cmdlogList.appendChild(el("div", "cmdlog-empty", "No commands executed yet."));
-}
-
 function setStatus(text, cls) {
   statusEl.textContent = text;
   statusEl.className = "status" + (cls ? " " + cls : "");
@@ -381,7 +376,7 @@ function handle(msg) {
       else { if (cur) cur.running = false; stopWorking(); }
       break;
     }
-    case "history": renderHistory(data.items || [], data.commands || []); break;
+    case "history": renderHistory(data.items || []); break;
     case "welcome": renderWelcome(data); break;
     case "suggestions": renderSuggestions(data.chips || []); break;
     // The backend persisted this chat at the START of the turn — refresh the sidebar NOW so a
@@ -1760,21 +1755,21 @@ function renderOrchestrateCard(r) {
   scroll();
 }
 
-function renderHistory(items, commands) {
+function renderHistory(items) {
   for (const it of items) {
     if (it.role === "user") addBubble("user", it.text);
     else if (it.role === "assistant") addBubble("assistant", it.text);
     else if (it.role === "tool_call") addHistoryTool(it);
+    // Executed commands are interleaved into `items` by the server in their original transcript
+    // position (right after the tool call that ran them), so they restore inline in the chat —
+    // hidden until debug view is on, exactly like a live run (see addInlineCommand).
+    else if (it.role === "command") addInlineCommand(it);
     else if (it.role === "approval_decision") addDecisionCard(it);
     // A still-PENDING gate the turn is parked on (persisted in-flight): restore it as a LIVE,
     // clickable card in its transcript position. Registering it in cur.pendingApprovals lets the
     // server's subsequent reemit_pending be de-duped (addApprovalCard skips a known request_id),
     // so it survives a chat switch / pane eviction without double-rendering.
     else if (it.role === "approval_request") addApprovalCard(it);
-  }
-  if (commands && commands.length) {
-    clearCmdlog();
-    for (const c of commands) addCmdRow(c);
   }
   scroll();
 }
@@ -1819,24 +1814,26 @@ function consoleLine(text, cls) {
 
 function appendConsole(line) { consoleLine(line, null); }
 
-// A command the agent actually executed — show it inline (so even silent read-only
-// probes are visible in the tool's console) and add a row to the debug command log.
+// A command the agent actually executed — stream it into the running tool's console (so even
+// silent read-only probes stay visible there) AND drop an inline command row into the transcript
+// at this exact point in execution order. The inline row is the debug view: CSS-hidden until
+// debug mode is on, so toggling the >_ button reveals/hides the command trail in place.
 function onCommand(data) {
   consoleLine("$ " + (data.text || (data.argv || []).join(" ")), "cmd-line");
-  addCmdRow(data);
+  addInlineCommand(data);
 }
 
-function addCmdRow(data) {
-  if (!cmdlogList) return;
-  const empty = cmdlogList.querySelector(".cmdlog-empty");
-  if (empty) empty.remove();
+// Append one executed command to the active transcript, in the position it ran. Same shape for a
+// live `command` event and a replayed `command` history item, so both render identically. Stays
+// display:none unless html[data-debug="on"] (see the inline-command CSS).
+function addInlineCommand(data) {
+  if (!activePane) return;
   const mutating = data.mode && data.mode !== "read_only";
-  const row = el("div", "cmd-row");
+  const row = el("div", "cmd-inline");
   row.appendChild(el("span", "badge " + (mutating ? "mut" : "ro"), mutating ? "mutating" : "read-only"));
   row.appendChild(el("span", "cmd-text", data.text || (data.argv || []).join(" ")));
   row.appendChild(el("span", "cmd-tag", data.auto_run ? "auto" : "approved"));
-  cmdlogList.appendChild(row);
-  cmdlogList.scrollTop = cmdlogList.scrollHeight;
+  activePane.appendChild(row);
 }
 
 function finishTool(data) {

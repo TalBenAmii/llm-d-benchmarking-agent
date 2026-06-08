@@ -23,10 +23,12 @@ invents a feature — every endpoint, env var, and log key below exists in the c
 
 ## Debug mode (UI)
 
-The chat UI has a **Debug toggle** (Phase 1) that shows the full **executed-command trail** —
-every command the agent ran, read-only probes included, each badged read-only/mutating and
-auto/approved. The setting persists. Use it to answer *"what did the agent actually run?"*
-without leaving the browser. The same trail is replayed on reconnect.
+The chat UI has a **Debug toggle** (`>_`) that reveals the full **executed-command trail**
+*inline in the chat* — every command the agent ran (read-only probes included) appears in
+place, between the messages, in execution order, each badged read-only/mutating and
+auto/approved. Toggling it off hides the commands again; the setting persists. Use it to
+answer *"what did the agent actually run?"* without leaving the conversation. The inline
+trail is replayed in its original transcript position on reconnect/resume.
 
 ## Symptom → what to check
 

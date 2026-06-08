@@ -74,7 +74,7 @@
       <button id="builder-toggle" type="button" class="builder-btn" title="Design a benchmark — guided builder (⌘/Ctrl + J)" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span> Design</button>
       <div id="token-total" class="token-chip" title="Total tokens used this session (input + output + cached)" hidden>Σ 0 tokens</div>
       <div id="context-window" class="token-chip" title="Estimated current context-window size sent to the model (≈ chars/4) — what dominates it" hidden>⛶ 0 ctx</div>
-      <button id="debug-toggle" type="button" class="icon-btn" title="Toggle debug view — show only the commands the agent executed" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
+      <button id="debug-toggle" type="button" class="icon-btn" title="Debug view — show the commands the agent ran inline in the chat" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
       <button id="glossary-toggle" type="button" class="icon-btn" title="Glossary — what the metrics mean" aria-label="Open the metrics glossary">📖</button>
       <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
       <button id="help-toggle" type="button" class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
@@ -88,17 +88,10 @@
        Hidden until the active chat has reached at least one phase. -->
   <div id="run-steps" class="run-steps" role="list" aria-label="Benchmark workflow progress" hidden></div>
 
+  <!-- The transcript hosts the chat AND (when debug view is on) the executed-command trail:
+       each command the agent runs is appended inline here in execution order, between the
+       messages, and revealed/hidden by the >_ toggle (html[data-debug] + the .cmd-inline CSS). -->
   <main id="transcript" aria-live="polite"></main>
-
-  <section id="cmdlog" class="cmdlog" aria-label="Executed commands">
-    <div class="cmdlog-head">
-      <span>Executed commands</span>
-      <span class="cmdlog-hint">every command the agent ran this session — read-only probes included</span>
-    </div>
-    <div id="cmdlog-list" class="cmdlog-list" aria-live="polite">
-      <div class="cmdlog-empty">No commands executed yet.</div>
-    </div>
-  </section>
 
   <footer>
     <div id="working" class="working" role="status" aria-live="polite" hidden>

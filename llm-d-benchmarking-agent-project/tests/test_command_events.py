@@ -214,3 +214,51 @@ def test_session_persists_and_reloads_commands(tmp_path):
     reloaded = mgr.load("s1")
     assert reloaded is not None
     assert reloaded.commands and reloaded.commands[0]["argv"] == RO
+
+
+async def test_emitted_command_carries_tool_call_id(tmp_path):
+    """The command event ties back to the issuing tool call (None for the pre-turn probe), so a
+    resumed chat can replay each command inline in its original transcript position."""
+    events, emit = _collector()
+    ctx, _ = _ctx(tmp_path, emit=emit)
+    ctx.current_tool_call_id = "tc-123"
+    await ctx.run_readonly(RO)
+    cmds = _commands(events)
+    assert cmds and cmds[0]["tool_call_id"] == "tc-123"
+
+
+def test_history_items_interleave_commands_inline():
+    """_history_items replays the executed-command trail INLINE: each command becomes a `command`
+    item right after the tool call that ran it; pre-turn (tool_call_id=None) probes lead the
+    transcript; a command whose tool call was compacted out of `messages` is still not dropped."""
+    from app.main import _history_items
+
+    s = Session(id="h", ctx=None)
+    # A pre-turn probe (no owning tool call) ran before the first message.
+    s.record_command({"text": "docker info", "argv": ["docker", "info"],
+                      "mode": "read_only", "auto_run": True, "tool_call_id": None})
+    s.messages.append({"role": "user", "content": "benchmark it"})
+    s.messages.append({"role": "assistant", "content": "on it",
+                       "tool_calls": [{"id": "tc1", "name": "execute_llmdbenchmark", "input": {}}]})
+    # Two commands issued by tc1, in order (read-only probe then approved mutation).
+    s.record_command({"text": "kind get clusters", "argv": ["kind", "get", "clusters"],
+                      "mode": "read_only", "auto_run": True, "tool_call_id": "tc1"})
+    s.record_command({"text": "kind create cluster", "argv": ["kind", "create", "cluster"],
+                      "mode": "mutating", "auto_run": False, "tool_call_id": "tc1"})
+    # A command whose owning tool call is no longer in `messages` (compacted) must survive.
+    s.record_command({"text": "kubectl get ns", "argv": ["kubectl", "get", "ns"],
+                      "mode": "read_only", "auto_run": True, "tool_call_id": "gone"})
+
+    items = _history_items(s)
+    roles = [it["role"] for it in items]
+    # The pre-turn probe leads the transcript (before the first user bubble).
+    assert items[0]["role"] == "command" and items[0]["text"] == "docker info"
+    assert roles.index("user") > 0
+    # tc1's two commands appear right after its tool_call, in order.
+    tc_idx = roles.index("tool_call")
+    assert roles[tc_idx + 1] == "command" and items[tc_idx + 1]["text"] == "kind get clusters"
+    assert roles[tc_idx + 2] == "command" and items[tc_idx + 2]["text"] == "kind create cluster"
+    # The command shape carries everything the inline renderer needs.
+    assert items[tc_idx + 2]["mode"] == "mutating" and items[tc_idx + 2]["auto_run"] is False
+    # The orphaned command (its tool call gone) is appended last, never silently truncated.
+    assert items[-1]["role"] == "command" and items[-1]["text"] == "kubectl get ns"

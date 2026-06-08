@@ -30,7 +30,9 @@
       try {
         var t = localStorage.getItem("llmd-theme") || "dark";
         document.documentElement.setAttribute("data-theme", t);
-        document.documentElement.setAttribute("data-debug", "off");
+        // Default debug view ON in the preview so the inline executed-command trail is visible
+        // (the >_ button still toggles it). The real app defaults it off.
+        document.documentElement.setAttribute("data-debug", "on");
       } catch (e) {}
     })();
     // …then flip into preview mode and neutralize the live transport BEFORE app.js runs:
@@ -84,7 +86,7 @@
     <div class="header-actions">
       <button id="builder-toggle" type="button" class="builder-btn" title="Design a benchmark — guided builder (⌘/Ctrl + J)" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span> Design</button>
       <div id="token-total" class="token-chip" title="Total tokens used this session" hidden>Σ 0 tokens</div>
-      <button id="debug-toggle" type="button" class="icon-btn" title="Toggle debug view" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
+      <button id="debug-toggle" type="button" class="icon-btn" title="Debug view — show the commands the agent ran inline in the chat" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
       <button id="glossary-toggle" type="button" class="icon-btn" title="Glossary — what the metrics mean" aria-label="Open the metrics glossary">📖</button>
       <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
       <button id="help-toggle" type="button" class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
@@ -95,11 +97,6 @@
   <div id="run-steps" class="run-steps" role="list" aria-label="Benchmark workflow progress" hidden></div>
 
   <main id="transcript" aria-live="polite"></main>
-
-  <section id="cmdlog" class="cmdlog" aria-label="Executed commands">
-    <div class="cmdlog-head"><span>Executed commands</span></div>
-    <div id="cmdlog-list" class="cmdlog-list" aria-live="polite"><div class="cmdlog-empty">No commands executed yet.</div></div>
-  </section>
 
   <footer>
     <div id="working" class="working" role="status" aria-live="polite" hidden>
@@ -253,6 +250,18 @@
      ["write_and_validate_config", {}], ["execute_llmdbenchmark", { subcommand: "standup" }],
      ["execute_llmdbenchmark", { subcommand: "run" }]
     ].forEach((t, i) => A.handle({ type: "tool_call", data: { id: "t" + i, name: t[0], input: t[1] } }));
+
+    // 1b) Executed-command trail — these appear INLINE in the chat, in execution order, and only
+    //     when the >_ debug view is on (this preview defaults it on). Read-only probes auto-run;
+    //     the cluster create is mutating, so it's tagged "approved". Toggle >_ to hide them.
+    [
+      { mode: "read_only", auto_run: true, text: "docker info" },
+      { mode: "read_only", auto_run: true, text: "kind get clusters" },
+      { mode: "read_only", auto_run: true, text: "kubectl get nodes -o json" },
+      { mode: "mutating", auto_run: false, text: "kind create cluster --name llmd-quickstart" },
+      { mode: "mutating", auto_run: false, text: "llmdbenchmark standup --spec cicd/kind" },
+      { mode: "mutating", auto_run: false, text: "llmdbenchmark run --spec cicd/kind -l inference-perf -w sanity_random.yaml" },
+    ].forEach((c) => A.handle({ type: "command", data: c }));
 
     // 2) Assistant message with a fenced code block (copy button) + markdown + a GFM table.
     A.handle({ type: "assistant_text", data: { text:
