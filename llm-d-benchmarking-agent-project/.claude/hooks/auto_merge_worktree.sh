@@ -6,7 +6,8 @@
 # reply. So this is opt-in PER FEATURE: when the work is genuinely complete, drop a marker —
 #     touch .ready-to-merge          (from the worktree root)
 # — and the next time Claude stops, this hook merges the branch into main (--no-ff, so it's one
-# revertable commit) and removes the marker. No marker => this hook is a silent no-op.
+# revertable commit), removes the marker, and removes the now-merged worktree. No marker => this
+# hook is a silent no-op.
 #
 # Guards (all must hold, else it reports to stderr and skips — never leaves main half-merged):
 #   • we're inside a managed worktree under .claude/worktrees/  (normal sessions are skipped)
@@ -19,7 +20,8 @@
 # exit 0 before the merge, e.g.  export AUTO_MERGE_TEST_CMD="make -C llm-d-benchmarking-agent-project test"
 # Disable entirely: set AUTO_MERGE_OFF=1, or remove the Stop block from .claude/settings.json.
 #
-# Note: merges LOCALLY only (no push) and does NOT delete the worktree — run ExitWorktree for that.
+# Note: merges LOCALLY only (no push), then removes the now-merged worktree (the branch ref is
+# kept — it's already in main). Keep the worktree after merge instead: set AUTO_MERGE_KEEP_WORKTREE=1.
 set -u
 [ "${AUTO_MERGE_OFF:-0}" = "1" ] && exit 0
 
@@ -72,7 +74,16 @@ fi
 # Merge. --no-ff keeps it as a single revertable merge commit. Abort cleanly on conflict.
 rm -f "$WT_ROOT/$SENTINEL_NAME"   # consume the marker first, so a conflict can't cause a retry loop
 if git -C "$MAIN_ROOT" merge --no-ff -m "merge $BRANCH into $TARGET_BRANCH (auto-merge on Stop)" "$BRANCH" >/dev/null 2>&1; then
-  echo "auto-merge: merged '$BRANCH' into '$TARGET_BRANCH' (local, --no-ff). Worktree left intact — ExitWorktree to remove it." >&2
+  if [ "${AUTO_MERGE_KEEP_WORKTREE:-0}" = "1" ]; then
+    echo "auto-merge: merged '$BRANCH' into '$TARGET_BRANCH' (local, --no-ff). Worktree kept (AUTO_MERGE_KEEP_WORKTREE=1) — ExitWorktree to remove it." >&2
+  # Remove the merged worktree. Driven from MAIN_ROOT (never from inside the dir we're deleting).
+  # --force: the tree holds untracked bits (the empty nested sibling-repo gitlinks) that would
+  # otherwise make `worktree remove` refuse. The branch ref is left in place — it's now in main.
+  elif git -C "$MAIN_ROOT" worktree remove --force "$WT_ROOT" >/dev/null 2>&1; then
+    echo "auto-merge: merged '$BRANCH' into '$TARGET_BRANCH' (local, --no-ff) and removed the worktree at $WT_ROOT (branch ref kept)." >&2
+  else
+    echo "auto-merge: merged '$BRANCH' into '$TARGET_BRANCH' (local, --no-ff), but could NOT remove the worktree at $WT_ROOT — remove it manually: git worktree remove --force '$WT_ROOT'." >&2
+  fi
 else
   git -C "$MAIN_ROOT" merge --abort >/dev/null 2>&1
   echo "auto-merge: '$BRANCH' CONFLICTS with '$TARGET_BRANCH' — aborted, main untouched. Resolve, then re-touch $SENTINEL_NAME." >&2
