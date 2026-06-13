@@ -19,6 +19,16 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/auto_merge_worktree.sh"
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "matcher": "clear|logout|other",
