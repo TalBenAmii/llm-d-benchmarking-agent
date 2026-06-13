@@ -148,6 +148,14 @@ async def graceful_shutdown(app: FastAPI) -> dict[str, Any]:
         return {"cancelled": [], "count": 0}
     summary = await runs.shutdown()
     log.info("shutdown.runs_cancelled", extra={"count": summary["count"]})
+    # Disconnect any prewarmed spare LLM connection (the Agent SDK provider keeps one warm
+    # subprocess for the next turn) so SIGTERM leaves nothing connected. Best-effort + duck-typed:
+    # only the Agent SDK provider implements aclose(); other providers have nothing to close.
+    provider = getattr(app.state, "provider", None)
+    closer = getattr(provider, "aclose", None)
+    if closer is not None:
+        with contextlib.suppress(Exception):
+            await closer()
     return summary
 
 

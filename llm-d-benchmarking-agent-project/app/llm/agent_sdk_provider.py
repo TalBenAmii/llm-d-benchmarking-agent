@@ -30,8 +30,10 @@ override the subscription and force per-token API billing, so we blank it for th
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
+import time
 from typing import Any
 
 from app.config import Settings
@@ -44,6 +46,14 @@ _TOOL_PREFIX = f"mcp__{_SERVER_NAME}__"
 
 # Result subtypes that are NOT real failures: a clean finish, or our deliberate one-turn cap.
 _OK_RESULT_SUBTYPES = frozenset({"success", "error_max_turns"})
+
+# Connection prewarm (latency #1b). Connecting a ``claude`` CLI subprocess costs ~0.5s and sits
+# on the critical path before the FIRST token of every turn. After a turn finishes we eagerly
+# connect ONE spare client in the background (while the user reads the answer) so the NEXT turn
+# adopts an already-connected client instead of paying that ~0.5s itself. A prewarmed connection
+# older than this TTL is discarded and reconnected fresh, bounding the risk of adopting a CLI
+# subprocess that has since died idle. Single global slot => at most one spare subprocess.
+_PREWARM_TTL_S = 120.0
 
 # Blank these for the spawned CLI so a stray key can't bypass the subscription. An empty value
 # is treated as "unset" by the CLI (it falls back to the logged-in subscription); we cannot
@@ -152,6 +162,14 @@ class AgentSdkProvider(LLMProvider):
         self._model = settings.agent_sdk_model
         self._cli_path = settings.claude_cli_path or None
         self._server_cache: tuple[tuple[str, ...], Any] | None = None
+        # Single-slot connection prewarm (see _PREWARM_TTL_S). Holds a background ``connect()``
+        # task for the NEXT turn's client, its (system, tools) fingerprint, and when it started —
+        # so a later turn can adopt it only if it matches and is still fresh. The provider is an
+        # app-level singleton (app.state.provider), so this slot persists across turns/sessions
+        # of the single local user; at most ONE spare subprocess is ever held.
+        self._prewarm_task: asyncio.Task | None = None
+        self._prewarm_fp: tuple[int, tuple[str, ...]] | None = None
+        self._prewarm_at: float = 0.0
 
     def _server(self, tools: list[dict[str, Any]]) -> Any:
         key = tuple(t["name"] for t in tools)
@@ -165,6 +183,108 @@ class AgentSdkProvider(LLMProvider):
             server = create_sdk_mcp_server(name=_SERVER_NAME, version="1.0.0", tools=sdk_tools)
             self._server_cache = (key, server)
         return self._server_cache[1]
+
+    # ---- persistent-client connection + prewarm pool ---------------------------------------
+    async def _connect_client(self, system: str, tools: list[dict[str, Any]]) -> Any:
+        """Build the persistent-client options and return a freshly ``connect()``-ed
+        ``ClaudeSDKClient``. Shared by the live turn (:meth:`_AgentSdkTurn.__aenter__`) and the
+        background prewarm so both produce an IDENTICAL connection — the only difference is WHEN
+        the ~0.5s connect is paid. The client comes back empty (no conversation state); the
+        turn's first ``chat()`` seeds the full history, so a prewarmed client is interchangeable
+        with one connected at turn start."""
+        from claude_agent_sdk import (
+            ClaudeAgentOptions,
+            ClaudeSDKClient,
+            PermissionResultDeny,
+        )
+
+        async def _deny(tool_name: str, input_data: dict[str, Any], context: Any) -> Any:
+            return PermissionResultDeny(message=_DENY_MESSAGE, interrupt=False)
+
+        options = ClaudeAgentOptions(
+            model=self._model,
+            system_prompt=system,
+            mcp_servers={_SERVER_NAME: self._server(tools)},
+            tools=[],
+            allowed_tools=[],
+            setting_sources=[],
+            permission_mode="default",
+            can_use_tool=_deny,
+            max_turns=1,
+            include_partial_messages=True,   # stream text deltas to the UI (see _consume)
+            env=dict(_NEUTRALIZE_ENV),
+            cli_path=self._cli_path,
+        )
+        client = ClaudeSDKClient(options=options)
+        await client.connect()
+        return client
+
+    @staticmethod
+    def _fingerprint(system: str, tools: list[dict[str, Any]]) -> tuple[int, tuple[str, ...]]:
+        """A cheap identity for a (system, tools) pair. Both are stable across a session, so a
+        prewarmed connection built for one turn is reusable by the next iff this matches."""
+        return (hash(system), tuple(t["name"] for t in tools))
+
+    async def acquire_client(self, system: str, tools: list[dict[str, Any]]) -> Any:
+        """Return a connected client for a turn: adopt a matching, still-fresh prewarmed
+        connection if one is ready (its ~0.5s connect was paid in the background during the
+        previous turn's idle gap), else connect a fresh one now. Adopting a prewarmed connect
+        that FAILED in the background transparently falls back to a fresh connect — so prewarm
+        only ever helps, never regresses correctness."""
+        task = self._take_prewarmed(system, tools)
+        if task is not None:
+            try:
+                return await task
+            except Exception:  # noqa: BLE001 — background connect failed; just connect fresh
+                pass
+        return await self._connect_client(system, tools)
+
+    def _take_prewarmed(self, system: str, tools: list[dict[str, Any]]) -> asyncio.Task | None:
+        """Hand off the prewarmed connect task iff it matches ``(system, tools)`` and is within
+        the freshness TTL; otherwise drop it (disconnecting in the background) and return None."""
+        task = self._prewarm_task
+        if task is None:
+            return None
+        matches = self._prewarm_fp == self._fingerprint(system, tools)
+        fresh = (time.monotonic() - self._prewarm_at) < _PREWARM_TTL_S
+        if matches and fresh:
+            self._prewarm_task = None
+            self._prewarm_fp = None
+            return task
+        self._discard_prewarm()  # stale or mismatched — never adopt; reclaim the subprocess
+        return None
+
+    def start_prewarm(self, system: str, tools: list[dict[str, Any]]) -> None:
+        """Kick off a background connect for the NEXT turn (single global slot). Best-effort and
+        non-blocking: any prior unused prewarm is discarded first so at most one spare subprocess
+        is ever held. Called at end-of-turn, when the user is reading the answer (idle time)."""
+        self._discard_prewarm()
+        self._prewarm_fp = self._fingerprint(system, tools)
+        self._prewarm_at = time.monotonic()
+        self._prewarm_task = asyncio.create_task(self._connect_client(system, tools))
+
+    def _discard_prewarm(self) -> None:
+        """Clear the prewarm slot and, if it held a connect task, disconnect the (soon-to-be)
+        client in the background so an unadopted spare subprocess is never leaked."""
+        task = self._prewarm_task
+        self._prewarm_task = None
+        self._prewarm_fp = None
+        if task is None:
+            return
+
+        async def _cleanup() -> None:
+            try:
+                client = await task
+            except Exception:  # noqa: BLE001 — connect never completed; nothing to disconnect
+                return
+            with contextlib.suppress(Exception):
+                await client.disconnect()
+
+        asyncio.create_task(_cleanup())
+
+    async def aclose(self) -> None:
+        """Disconnect any prewarmed spare connection (graceful shutdown). Idempotent."""
+        self._discard_prewarm()
 
     async def chat(self, *, system, messages, tools, cache_key=None) -> AssistantTurn:
         # cache_key is accepted for the provider-agnostic interface but ignored — the CLI caches
@@ -335,31 +455,11 @@ class _AgentSdkTurn:
 
     async def __aenter__(self) -> _AgentSdkTurn:
         try:
-            from claude_agent_sdk import (
-                ClaudeAgentOptions,
-                ClaudeSDKClient,
-                PermissionResultDeny,
-            )
-
-            async def _deny(tool_name: str, input_data: dict[str, Any], context: Any) -> Any:
-                return PermissionResultDeny(message=_DENY_MESSAGE, interrupt=False)
-
-            options = ClaudeAgentOptions(
-                model=self._provider._model,
-                system_prompt=self._system,
-                mcp_servers={_SERVER_NAME: self._provider._server(self._tools)},
-                tools=[],
-                allowed_tools=[],
-                setting_sources=[],
-                permission_mode="default",
-                can_use_tool=_deny,
-                max_turns=1,
-                include_partial_messages=True,   # stream text deltas to the UI (see _consume)
-                env=dict(_NEUTRALIZE_ENV),
-                cli_path=self._provider._cli_path,
-            )
-            self._client = ClaudeSDKClient(options=options)
-            await self._client.connect()
+            # Adopt a prewarmed connection if one is ready (its ~0.5s connect was paid in the
+            # background during the previous turn's idle gap), else connect fresh. The options +
+            # connect live on the provider (_connect_client) so the prewarm and the live path are
+            # byte-identical — only the timing differs.
+            self._client = await self._provider.acquire_client(self._system, self._tools)
         except Exception:  # noqa: BLE001 — any connect failure degrades to one-shot, never fatal
             self._client = None
             self._degraded = True
@@ -401,4 +501,11 @@ class _AgentSdkTurn:
             with contextlib.suppress(Exception):
                 await self._client.disconnect()
             self._client = None
+        # Prewarm the NEXT turn's connection now, while the user reads this answer, so its ~0.5s
+        # connect is off the critical path. Skip when this turn ran degraded (the persistent path
+        # is unavailable in this environment, so a prewarm would just fail every turn). Best-effort
+        # — start_prewarm never raises into the turn teardown.
+        if not self._degraded:
+            with contextlib.suppress(Exception):
+                self._provider.start_prewarm(self._system, self._tools)
         return False
