@@ -7,6 +7,8 @@ tool-capture) is validated out-of-band against a real Max-plan login.
 """
 from __future__ import annotations
 
+import asyncio
+
 import claude_agent_sdk as sdk
 import pytest
 
@@ -177,3 +179,122 @@ def test_self_check_treats_agent_sdk_as_keyless_coherent():
     out = _check_provider_coherent(_settings())
     assert out.ok is True
     assert out.data["key_attr"] is None
+
+
+# ---- connection prewarm pool (latency #1b) -------------------------------------------------
+# These exercise the pool bookkeeping WITHOUT a real CLI: _connect_client is monkeypatched to
+# hand back a fake client (recording connect/disconnect) so adopt / fingerprint-match / TTL /
+# leak-cleanup are all verified hermetically.
+
+class _FakeClient:
+    def __init__(self):
+        self.connected = True
+        self.disconnected = False
+
+    async def disconnect(self):
+        self.disconnected = True
+        self.connected = False
+
+
+def _provider_with_fake_connect(monkeypatch, *, connects: list, fail: bool = False):
+    """An AgentSdkProvider whose _connect_client returns a fresh _FakeClient each call (or raises
+    when ``fail``), appending every produced client to ``connects`` so a test can inspect them."""
+    p = AgentSdkProvider(_settings())
+
+    async def _fake_connect(system, tools):
+        if fail:
+            raise RuntimeError("CLI not found")
+        c = _FakeClient()
+        connects.append(c)
+        return c
+
+    monkeypatch.setattr(p, "_connect_client", _fake_connect)
+    return p
+
+
+def _tools():
+    return [{"name": "probe_environment", "description": "d", "input_schema": {"type": "object"}}]
+
+
+async def test_prewarm_adopted_by_matching_next_turn(monkeypatch):
+    connects: list = []
+    p = _provider_with_fake_connect(monkeypatch, connects=connects)
+    # Prewarm one connection, then acquire with the SAME (system, tools) -> adopts it, no new connect.
+    p.start_prewarm("sys", _tools())
+    adopted = await p.acquire_client("sys", _tools())
+    assert adopted is connects[0]           # the prewarmed client itself
+    assert len(connects) == 1               # acquire did NOT connect a second time
+    assert p._prewarm_task is None          # slot consumed
+
+
+async def test_acquire_without_prewarm_connects_fresh(monkeypatch):
+    connects: list = []
+    p = _provider_with_fake_connect(monkeypatch, connects=connects)
+    c = await p.acquire_client("sys", _tools())
+    assert c is connects[0]
+    assert len(connects) == 1
+
+
+async def test_prewarm_fingerprint_mismatch_is_discarded_not_adopted(monkeypatch):
+    connects: list = []
+    p = _provider_with_fake_connect(monkeypatch, connects=connects)
+    p.start_prewarm("sys-A", _tools())
+    await asyncio.sleep(0)                    # let the background connect task run
+    spare = connects[0]
+    # A turn with a DIFFERENT system prompt must not adopt the mismatched spare; it connects fresh
+    # and the spare is disconnected in the background (leak guard).
+    c = await p.acquire_client("sys-B", _tools())
+    assert c is not spare
+    assert len(connects) == 2               # spare + the fresh connect
+    await asyncio.sleep(0)                   # let the background cleanup task run
+    assert spare.disconnected is True
+
+
+async def test_stale_prewarm_past_ttl_is_discarded(monkeypatch):
+    connects: list = []
+    p = _provider_with_fake_connect(monkeypatch, connects=connects)
+    p.start_prewarm("sys", _tools())
+    await asyncio.sleep(0)                    # let the background connect task run
+    spare = connects[0]
+    # Force the prewarm to look older than the TTL -> not adopted; a fresh client is connected.
+    from app.llm import agent_sdk_provider as mod
+    p._prewarm_at -= (mod._PREWARM_TTL_S + 1.0)
+    c = await p.acquire_client("sys", _tools())
+    assert c is not spare
+    assert len(connects) == 2
+    await asyncio.sleep(0)
+    assert spare.disconnected is True
+
+
+async def test_start_prewarm_replaces_prior_spare_no_leak(monkeypatch):
+    connects: list = []
+    p = _provider_with_fake_connect(monkeypatch, connects=connects)
+    p.start_prewarm("sys", _tools())
+    await asyncio.sleep(0)                    # let the first background connect task run
+    first = connects[0]
+    p.start_prewarm("sys", _tools())         # a second prewarm before the first was used
+    await asyncio.sleep(0.01)                 # background cleanup of the displaced first spare
+    assert first.disconnected is True        # the displaced spare is disconnected (single slot)
+    assert p._prewarm_task is not None        # the new spare is held
+
+
+async def test_acquire_falls_back_when_prewarm_connect_failed(monkeypatch):
+    # The background prewarm connect raised; acquire must transparently connect fresh (which here
+    # also raises, surfacing as the same error the live __aenter__ degrades on) — never adopt a
+    # broken task silently.
+    p = _provider_with_fake_connect(monkeypatch, connects=[], fail=True)
+    p.start_prewarm("sys", _tools())
+    with pytest.raises(RuntimeError):
+        await p.acquire_client("sys", _tools())
+
+
+async def test_aclose_disconnects_spare(monkeypatch):
+    connects: list = []
+    p = _provider_with_fake_connect(monkeypatch, connects=connects)
+    p.start_prewarm("sys", _tools())
+    await asyncio.sleep(0)                    # let the background connect task run
+    spare = connects[0]
+    await p.aclose()
+    await asyncio.sleep(0.01)
+    assert spare.disconnected is True
+    assert p._prewarm_task is None

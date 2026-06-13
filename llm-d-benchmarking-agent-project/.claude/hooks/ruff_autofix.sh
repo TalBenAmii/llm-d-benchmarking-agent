@@ -21,7 +21,10 @@ case "$FILE" in *.py) : ;; *) exit 0 ;; esac
 case "$FILE" in */llm-d-benchmarking-agent-project/*) : ;; *) exit 0 ;; esac
 [ -f "$FILE" ] || exit 0
 
-RUFF=/home/tal/kind-quickstart-guide/llm-d-benchmarking-agent-project/.venv/bin/ruff
+# Resolve ruff relative to THIS script's location (portable across machines/clones):
+# script lives at <project>/.claude/hooks/, so the project venv is two dirs up.
+HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+RUFF="$HOOK_DIR/../../.venv/bin/ruff"
 [ -x "$RUFF" ] || RUFF=$(command -v ruff 2>/dev/null) || exit 0
 
 "$RUFF" check --fix --quiet "$FILE" >/dev/null 2>&1 || true

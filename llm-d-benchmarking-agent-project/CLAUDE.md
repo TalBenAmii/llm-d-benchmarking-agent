@@ -14,7 +14,7 @@ and explains the results — driving the `llmdbenchmark` CLI on their behalf.
 
 ## Workspace structure (three sibling folders)
 ```
-/home/tal/kind-quickstart-guide/
+<repo-root>/                         # this monorepo checkout (any path / clone location)
 ├── llm-d/                            # guide repo — READ-ONLY context (deploy guides)
 ├── llm-d-benchmark/                  # benchmark repo — READ-ONLY; provides the `llmdbenchmark`
 │                                     #   CLI (console script `llmdbenchmark = llmdbenchmark.cli:cli`)
@@ -143,7 +143,8 @@ pytest tests/
 ## Working in a worktree + running the suite (recurring setup — DON'T re-derive each task)
 Established facts; reuse them instead of re-investigating every session (the `tests/CLAUDE.md`
 has the tests-local quick reference):
-- **Git root = this monorepo** (`/home/tal/kind-quickstart-guide`); `llm-d-benchmarking-agent-project/`
+- **Git root = this monorepo** (the repo checkout, at whatever path you cloned it to —
+  referred to below as `<repo-root>`); `llm-d-benchmarking-agent-project/`
   is a subdir; `llm-d/` + `llm-d-benchmark/` are **nested untracked repos that are EMPTY in any
   worktree** → catalog/report tests break there unless pointed back at the primary copy via `REPOS_DIR`.
 - **Branch worktrees off LOCAL `main` HEAD, not origin** (main is many commits ahead of origin and
@@ -157,8 +158,8 @@ has the tests-local quick reference):
   ```bash
   cd <worktree>/llm-d-benchmarking-agent-project
   PYTHONPATH=<worktree>/llm-d-benchmarking-agent-project \
-  REPOS_DIR=/home/tal/kind-quickstart-guide \
-  /home/tal/kind-quickstart-guide/llm-d-benchmarking-agent-project/.venv/bin/python -m pytest tests/
+  REPOS_DIR=<repo-root> \
+  <repo-root>/llm-d-benchmarking-agent-project/.venv/bin/python -m pytest tests/
   ```
 - **Healthy baseline ≈ 1598 passed / 20 skipped in ~15–20s.** Establish green BEFORE changing anything.
 - Don't auto-run live-LLM eval (`LLM_EVAL_LIVE=1`, `test_flows_live.py`, `make validate-live`) — spends

@@ -21,6 +21,7 @@ Missing pieces degrade gracefully (the UI falls back to its plain note / chips).
 - Compare configurations and run parameter sweeps to see what wins.
 - Read and explain Benchmark Reports in plain language, tied to your goal.
 - Track results and trends over time so you can spot regressions and wins.
+- Co-author a custom spec and workload with you, step by step, then validate it before running.
 
 ### Nudge
 Tell me what you'd like to benchmark, or pick one of the suggestions below to get started.

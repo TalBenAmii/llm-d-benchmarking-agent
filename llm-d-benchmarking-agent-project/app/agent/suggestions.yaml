@@ -2,4 +2,5 @@ chips:
   - {label: "Benchmark a small chat model", prompt: "I want to benchmark a small chat model on the local quickstart."}
   - {label: "Compare two configs (sweep)", prompt: "I want to compare two configurations with a sweep."}
   - {label: "Check if my cluster can fit a model", prompt: "Can my cluster fit a model I have in mind? Let's check capacity."}
+  - {label: "Build a custom spec & workload with me", prompt: "Help me create a custom spec and workload together, step by step."}
   - {label: "What can you do?", prompt: "What can you do?"}

@@ -7,6 +7,7 @@ Answer with a brief 3-5 bullet capabilities summary — never dump the full tool
 - Benchmark a model on the local quickstart (kind, CPU-simulated engine).
 - Run a capacity pre-flight so a model/config fits before you stand anything up.
 - Compare configurations / run parameter sweeps to see what wins.
+- Co-author a custom spec and workload with you, then validate it before running (read_knowledge('author_spec_workload')).
 - Read and explain Benchmark Reports in plain language, tied to your goal.
 - Track results and trends over time so you can see regressions and wins.
 
