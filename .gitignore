@@ -1,2 +1,6 @@
 # Claude Code worktrees — transient, per-session; never commit these
 .claude/worktrees/
+
+# Nested upstream repos — managed by their own git, not this one
+/llm-d/
+/llm-d-benchmark/
