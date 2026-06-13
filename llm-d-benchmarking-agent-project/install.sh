@@ -71,13 +71,18 @@ trap 'rc=$?; [[ $rc -ne 0 ]] && printf "\n\033[1;31m[install] aborted (exit %s).
 SUDO=""
 if [[ "$(id -u)" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
 
-# ── Base tools (git / curl / tar) — bootstrap them on a bare Debian/Ubuntu ─
+# ── Base tools (git / curl / tar / sudo) — bootstrap on a bare Debian/Ubuntu ─
 # A fresh box may have none of these, yet step 1 needs git+curl to clone and
-# the client toolchain needs curl+tar to fetch binaries. apt-install whatever
-# is missing (no-op on a warm box; harmless if apt is absent and they exist).
+# the client toolchain needs curl+tar to fetch binaries. We also ensure `sudo`:
+# the upstream installers call `sudo …` UNCONDITIONALLY (even when run as root),
+# so a raw root rootfs with no sudo binary dies with "sudo: command not found".
+# Installing it is harmless — as root, sudo just execs the command. apt-install
+# whatever is missing (no-op on a warm box; harmless if apt is absent and they exist).
 ensure_base_tools() {
-  local miss=() t
-  for t in git curl tar; do command -v "$t" >/dev/null 2>&1 || miss+=("$t"); done
+  local miss=() t need="git curl tar"
+  # only need sudo when we'll invoke the upstream installers (they hard-require it)
+  [[ "$NO_CLIENT" != 1 || "$NO_BENCH" != 1 ]] && need="$need sudo"
+  for t in $need; do command -v "$t" >/dev/null 2>&1 || miss+=("$t"); done
   [[ ${#miss[@]} -eq 0 ]] && return 0
   if command -v apt-get >/dev/null 2>&1; then
     log "Installing base tools (${miss[*]})…"

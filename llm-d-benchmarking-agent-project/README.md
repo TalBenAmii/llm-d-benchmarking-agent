@@ -47,9 +47,11 @@ knowledge lives in the agent's editable "brain" ([`knowledge/`](knowledge/)), no
 ## Quick start
 
 **First-time, full bootstrap** — `install.sh` sets up *everything* needed to actually run a
-benchmark: it clones the two upstream repos if missing, installs the `llm-d` client toolchain
-(kubectl/helm/helmfile/kustomize/yq) and the `llmdbenchmark` CLI, then builds this project's
-venv + `.env`. Add `--prereqs` to also install Docker + kind (needs passwordless sudo):
+benchmark: on a fresh Debian/Ubuntu box it bootstraps the base tools it needs (`git`, `curl`,
+`python3-venv`) automatically, then clones the two upstream repos if missing, installs the
+`llm-d` client toolchain (kubectl/helm/helmfile/kustomize/yq) and the `llmdbenchmark` CLI, and
+finally builds this project's venv + `.env`. Add `--prereqs` to also install Docker + kind
+(needs passwordless sudo):
 
 ```bash
 ./install.sh            # repos + client deps + benchmark CLI + this app
