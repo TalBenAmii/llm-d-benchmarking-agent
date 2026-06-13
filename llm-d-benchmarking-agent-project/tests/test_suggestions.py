@@ -7,11 +7,13 @@ from app.agent import suggestions
 from app.config import Settings
 
 
-def test_load_suggestions_returns_the_four_chips():
+def test_load_suggestions_returns_the_chips():
     chips = suggestions.load_suggestions(Settings(_env_file=None))
-    assert len(chips) == 4
+    assert len(chips) == 5
     labels = [c["label"] for c in chips]
     assert "What can you do?" in labels
+    # The start-of-chat entry point for co-authoring a spec + workload (author_spec_workload.md).
+    assert any("spec" in lbl.lower() and "workload" in lbl.lower() for lbl in labels)
     for c in chips:
         assert set(c) == {"label", "prompt"}
         assert isinstance(c["label"], str) and c["label"]
