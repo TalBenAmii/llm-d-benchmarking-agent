@@ -126,7 +126,7 @@ Paths are relative to `llm-d-benchmarking-agent-project/`.
 - `docs/SECURITY.md` · `docs/TROUBLESHOOTING.md` · `docs/CONTRIBUTING.md` · `docs/CHANGELOG.md` — ops/trust, symptom→fix, how to add a tool/flow, release history.
 - `docs/BENCHMARK_FEATURE_COVERAGE.md` — benchmark-CLI feature-coverage catalog (✅/🟡/⬜).
 - `docs/USEFUL_REPO_DOCS.md` — curated index of which upstream `llm-d` / `llm-d-benchmark` docs matter and why.
-- `docs/DEV_PLUGINS.md` — the Claude Code dev plugins enabled for this repo (project-scoped in `.claude/settings.json`) + which need a restart / external setup to work in this headless WSL host.
+- `docs/DEV_PLUGINS.md` — historical reference for the 14 Claude Code dev plugins that were once project-scoped in `.claude/settings.json` (all uninstalled in commit `394130c`; `enabledPlugins` is now `{}`) + which had needed a restart / external setup on this headless WSL host.
 - `INTERACTIVE_TEST_GUIDE.md` — follow-along runbook to drive every feature by hand with a real LLM.
 
 **Agent brain** — `knowledge/*.md|*.yaml` hold all *judgment* (loaded at runtime; not docs to edit casually). See `knowledge/CLAUDE.md` before editing them.

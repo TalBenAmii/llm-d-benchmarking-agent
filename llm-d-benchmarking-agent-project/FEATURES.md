@@ -294,19 +294,12 @@ helm template deploy/helm/llm-d-benchmarking-agent → + Secret  (6 kinds total)
 
 ## Findings / caveats
 
-History: five early findings (orphaned harness PNG charts unreachable behind `/static`; empty
-trend sparkline until a result is stored; `/healthz`+`/readyz` wrongly gated by auth; `CLAUDE.md`
-tool-count drift; ambiguous latency units) were all **fixed on 2026-06-02** (commit `1515959`,
-merged via `3363496`) — the chart route, auth-exempt probes, baseline-store guidance in
-`knowledge/history.md`, the 22-tool count, and the seconds-not-ns units in
-`knowledge/results_interpretation.md` described above are the resolved state. No open caveats.
+No open caveats. Five early findings (orphaned harness PNG charts behind `/static`; empty trend
+sparkline until a result is stored; `/healthz`+`/readyz` wrongly auth-gated; `CLAUDE.md` tool-count
+drift; ambiguous latency units) were all **fixed on 2026-06-02** (`1515959`, merged `3363496`) — done.
 
-**Count refresh (2026-06-04).** A full live re-verification of the running app against the whole
-commit history confirmed every feature is present and valid, and refreshed four counts that had
-drifted as ROADMAP_V4 (phases 27–66) and the todo-batch follow-ups landed after this file was last
-updated at Phase 26: **agent tools 22 → 28** (added `provision_hf_secret`, `aggregate_runs`,
-`convert_guide_to_scenario`, `discover_stack`, `advise_accelerators`, `search_knowledge`),
-**trendable history metrics 8 → 11** (added `kv_cache_hit_rate`, `gpu_utilization`,
-`schedule_delay`), **allowlisted executables 9 → 15**, and **`/metrics` families 6 → 7** (added
-`_runs_terminal_total`). The figures above reflect the verified current state (`pytest`: 1543
-passed / 19 skipped).
+**Counts (current).** Verified against the running app: **32 agent tools** (matches `CLAUDE.md` /
+`registry.py:build_registry`), **11 trendable history metrics** (incl. `kv_cache_hit_rate`,
+`gpu_utilization`, `schedule_delay`), **15 allowlisted executables**, **7 `/metrics` families**.
+All ROADMAP_V4 active phases (27–66) are merged; 7 are explicitly deferred (34/43/44/47/52/57/58 —
+see `ROADMAP_V4.md`).

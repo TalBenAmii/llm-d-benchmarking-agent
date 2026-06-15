@@ -157,7 +157,9 @@ Notes:
   | `Qwen/Qwen2.5-3B-Instruct` | 3B | ⚠️ risky on WSL2 | 512–1024 |
   | 7B and up | ≥7B | ❌ won't fit unquantized | — use `SIMULATE=1` |
 
-  Skip FP8 — the GeForce 40-series lacks the datacenter-Ada FP8 path; serve fp16/bf16.
+  Serve fp16/bf16 to start. FP8 is a per-arch call: the GeForce 40-series (Ada) lacks the
+  datacenter-Ada FP8 path so skip it there; 50-series (Blackwell, sm_120) **does** have FP8, but
+  still validate fp16/bf16 first.
 
 ---
 
@@ -238,6 +240,7 @@ at one with `KUBECONFIG=…` and the same flow applies.
 | Node never advertises `nvidia.com/gpu` (verify step prints empty) | `minikube addons enable nvidia-device-plugin`; ensure the device-plugin pod runs under the **nvidia runtime** (a common WSL2 trap — it reports 0 GPUs otherwise); `minikube stop && minikube start … --gpus all`. |
 | minikube rejects `--gpus all` | Use **`--driver=docker --container-runtime=docker`** (not containerd) and minikube **≥ v1.32.0**. |
 | `nvidia-smi` not found inside WSL | Update the **Windows** NVIDIA driver; do **not** apt-install a Linux driver in WSL. |
+| Serve pod dies at `standup`/`smoketest` with **"no kernel image is available for execution on the device"** | The vLLM image lacks kernels for your GPU's compute capability — the top risk on a **Blackwell 50-series (sm_120)** card, which needs an image built with **CUDA 12.8+**. Pin a newer vLLM image tag in the scenario, or fall back to `SIMULATE=1`. |
 | vLLM **CUDA OOM** at startup | Lower `model.gpuMemoryUtilization` (0.8 → 0.7), shorten `model.maxModelLen`, or drop to `Qwen2.5-0.5B`. WSL2 fragments VRAM, so leave headroom. |
 | Serving pod stuck **Pending** | Check the model PVC is **Bound** (storageClass `standard`); confirm the node has GPU capacity free; single-node minikube usually has no GPU taint, so no toleration is needed. |
 | `observe_run_metrics` returns nothing | `minikube addons enable metrics-server`; wait for the pod to be Ready. |

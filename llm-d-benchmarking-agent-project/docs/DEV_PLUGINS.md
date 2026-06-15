@@ -1,21 +1,30 @@
 # Developer plugins (Claude Code)
 
+> **NOTE (2026-06): all 14 plugins below were UNINSTALLED in commit `394130c`
+> (`chore(plugins): uninstall all Claude Code dev plugins`, Jun 13).** That commit fully
+> removed them (registry, on-disk cache, and data dirs — not just disabled) and deleted the
+> `enabledPlugins` block; **`.claude/settings.json` now has an empty `enabledPlugins: {}`** and
+> no `settings*.json` references any of these plugins. **This table is historical/reference
+> only** — a record of what was tried and what could be re-enabled, **not** a description of the
+> current state. The "Status in this env" column describes how each plugin behaved *while it was
+> enabled* (commit `6659817` → `394130c`).
+
 These are **developer-environment** plugins for working *on* this repo with Claude Code — not
-agent runtime features and not application dependencies. They are enabled (project-scoped) in
-the repo-root **`.claude/settings.json`** under `enabledPlugins`, all from the
+agent runtime features and not application dependencies. While enabled, they were project-scoped
+in the repo-root **`.claude/settings.json`** under `enabledPlugins`, all from the
 `claude-plugins-official` marketplace (`anthropics/claude-plugins-official`).
 
-> **Two caveats before relying on any of these**
+> **Two caveats that applied while these were enabled (kept for reference if re-enabling)**
 > 1. **Enablement takes effect on the next Claude Code start** — plugins load at startup, so a
->    session that was already running when this file changed will not see them until restarted.
+>    session that was already running when this file changed would not see them until restarted.
 > 2. **This host is headless WSL with no Node/Chromium and no third-party API keys.** Plugins
 >    whose capability is a Claude skill/hook/agent work out of the box; plugins that are an
 >    external **MCP server** need their own setup (a binary, an account, or a key) before their
 >    tools come online. The table flags which is which.
 
-## Enabled plugins
+## Plugins that were enabled (now uninstalled — reference only)
 
-| Plugin | What it gives you | Status in this env |
+| Plugin | What it gave you | Status while enabled |
 |---|---|---|
 | `superpowers` | Brainstorming, TDD, systematic debugging, subagent-driven dev, skill authoring | ✅ Works (Claude skills) |
 | `frontend-design` | Higher-quality, non-generic frontend code generation (the `ui/` work) | ✅ Works (Claude skill) |
@@ -34,10 +43,11 @@ the repo-root **`.claude/settings.json`** under `enabledPlugins`, all from the
 
 Legend: ✅ usable now · ⚠️ needs external account/key/network · ⛔ blocked by a missing host dep.
 
-## Notes for this repo
+## Notes for this repo (why they were optional, and why removal is safe)
 - **Code quality is already gated locally** — `ruff check` (clean) and `mypy` (clean, 91 files)
   run via the venv and a `ruff_autofix` PostToolUse hook. `pyright-lsp` + `semgrep` + `code-review`
-  add overlapping coverage; they don't replace the existing `make`/pytest gates.
+  would have added overlapping coverage; they never replaced the existing `make`/pytest gates,
+  which is part of why uninstalling them (commit `394130c`) cost no required capability.
 - **The repo deliberately does not follow `ruff format` style** (only `ruff check` is enforced) —
   don't let a formatter plugin mass-reformat the tree.
 - **`playwright`/`chrome-devtools` won't run here** until Node + a browser are installed; the

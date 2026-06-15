@@ -40,10 +40,9 @@ else is refused before it runs. Out-of-range or reversed (`9-5`) specs are toler
 
 `-s`/`--step` is valid ONLY on **standup, smoketest, run, teardown** (verified against the
 upstream interface — each of those `interface/<name>.py` declares `-s`/`--step`). It is NOT a
-flag on **plan, experiment, results** — don't set `step` there. The allowlist value-pins the
-step spec ONLY on the four accepting subcommands (so a malformed spec is refused there); it does
-NOT add a step flagspec to plan/experiment/results, so passing one there is wrong and pointless
-— the CLI would reject the unknown flag. Just never set `step` on those three.
+flag on **plan, experiment, results** — never set `step` there. The allowlist value-pins the
+step spec only on the four accepting subcommands (so a malformed spec is refused) and adds no
+step flagspec to plan/experiment/results, so the CLI would reject one as an unknown flag.
 
 ## Per-phase step numbering — READ IT AT RUNTIME, don't hardcode
 
@@ -77,9 +76,9 @@ known-good and only a later step needs another attempt.
 
 A `standup`/`run`/`teardown` is still a MUTATING command when scoped with `-s`; re-running a
 mutating step is still **approval-gated**. `-s` only narrows WHICH steps run, never WHETHER
-approval is required. Re-running selected steps must be idempotent-friendly: prefer steps the
-phase is designed to repeat (the upstream steps are written to be re-runnable), and if in doubt
-about a destructive step, fall back to a clean `teardown` + full `standup`.
+approval is required. Prefer steps the phase is designed to repeat (upstream steps are written
+to be re-runnable); if in doubt about a destructive step, fall back to a clean `teardown` + full
+`standup`.
 
 ## When NOT to use it
 

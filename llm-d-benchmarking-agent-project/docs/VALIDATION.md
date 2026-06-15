@@ -80,7 +80,7 @@ For each flow the harness runs the **real agent loop** and asserts:
 
 ## The flows today
 
-`tests/flows/flows.py` defines 30 flows (`ALL_FLOWS`), in four groups.
+`tests/flows/flows.py` defines 40 flows (`ALL_FLOWS`), in five groups.
 
 **Deploy + benchmark vertical** — the kind quickstart plus seven guide deploys:
 
@@ -122,11 +122,27 @@ live-eval target:
 | `compare-ab-runs` | A straight A/B via `compare_reports` — per-metric deltas. |
 | `result-history-baseline` | Cross-session history: store a validated report as a tagged baseline + read a trend. |
 | `multi-harness-compare` | Cross-harness comparison (inference-perf vs guidellm) via `compare_harness_runs`. |
+| `autotune-goal-seek` | Goal-seeking autotuner: iteratively propose/run configs to find the BEST setting (not just A/B). |
+| `export-provenance-bundle` | Capture a reproducibility/provenance bundle for a good run. |
+| `reproduce-from-bundle` | Replay an earlier run from its provenance bundle id. |
 | `capacity-preflight` | Capacity pre-flight ("will it fit?") via the benchmark repo's own planner. |
 | `orchestrate-k8s-job` | K8s-native path: `orchestrate_benchmark_run` (submit → watch → collect). |
 | `endpoint-readiness-gate` | `check_endpoint_readiness` — endpoint is actually serving, not just present. |
 | `observe-live-usage` | `observe_run_metrics` — live pod CPU/memory during a run. |
 | `cancel-stuck-run` | Run lifecycle: `cancel_run` frees a concurrency slot held by a stuck run. |
+| `resilience-drill` | Chaos/resilience drill: inject a fault during a benchmark and verify safe recovery. |
+
+**Feature coverage** (`FEATURE_FLOWS`) — pre-deploy advice + scenario authoring + access
+surfaces. Same deterministic golden-transcript + gating treatment as the rest:
+
+| Flow | What it validates |
+|------|-------------------|
+| `advise-accelerators` | `advise_accelerators` — inspect the cluster's real accelerators before deploying. |
+| `aggregate-repeated-runs` | Aggregate N repeats of the same benchmark into one stats summary. |
+| `discover-stack` | Discover/characterize an already-serving OpenAI-compatible endpoint. |
+| `convert-guide-to-scenario` | Turn an llm-d deploy guide into a reusable benchmark scenario. |
+| `write-and-validate-config` | Author a custom scenario (vLLM flag overrides) and validate it via the CLI's own gate. |
+| `provision-hf-secret` | `provision_hf_secret` — set up HF token access for a gated model. |
 
 **Error / troubleshooting** (`ERROR_PATH_FLOWS`) — the agent meets a **failure** and recovers
 correctly: it surfaces the problem, reaches for the right knowledge/recovery tool, and refuses

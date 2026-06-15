@@ -7,7 +7,7 @@
 > sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
 > comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
 > **Prometheus/Grafana observability**, and a **hardened image + one-command Helm/Kustomize
-> deploy** with least-privilege RBAC. The agent now exposes **30 tools**, and the full
+> deploy** with least-privilege RBAC. The agent now exposes **32 tools**, and the full
 > technical documentation suite lives under [`docs/`](docs/) (architecture, API reference,
 > deployment guide, user guide). See **[Implementation status](#implementation-status)** for
 > the MVP record; the sections after it are the original design reference (kept as written).
@@ -24,8 +24,9 @@
 
 **Built:** the full MVP vertical — chat UI → agent loop → schema-validated, approval-gated
 tools → real `llmdbenchmark` execution → validated Benchmark Report summary. The project
-has since grown to **30 tools**; see [`FEATURES.md`](FEATURES.md) for the authoritative,
-current feature inventory and [`ROADMAP_V4.md`](ROADMAP_V4.md) for remaining/deferred work.
+has since grown to **32 tools**; see [`FEATURES.md`](FEATURES.md) for the authoritative,
+current feature inventory and [`ROADMAP_V4.md`](ROADMAP_V4.md), whose Phases 27-66 are now
+merged (57 & 58 deferred), for the roadmap record and any remaining/deferred work.
 The MVP step record below is preserved for tracking; the design sections after it are the
 original design
 reference (kept as written).
@@ -56,8 +57,8 @@ MVP plan steps (all 8 complete):
 > comparison, capacity pre-flight, history, observability, and generated workloads have
 > since shipped — see `FEATURES.md`. GPU / `llm-d/guides/*` deploy execution
 > remains future work (path 2 is advisory-only per `knowledge/deploy_path_playbook.md`; the
-> Kustomize/WVA guide knobs are tracked in `ROADMAP_V4.md`). The current forward-looking gap
-> roadmap is [`ROADMAP_V4.md`](ROADMAP_V4.md) (Phases 27-66).
+> Kustomize/WVA guide knobs are tracked in `ROADMAP_V4.md`). The roadmap record is
+> [`ROADMAP_V4.md`](ROADMAP_V4.md) — its Phases 27-66 are now merged (57 & 58 deferred).
 
 ---
 
@@ -121,7 +122,7 @@ schema-valid **Benchmark Report**, never scraped from logs.
 ## Workspace layout (for CLAUDE.md)
 
 ```
-/home/tal/kind-quickstart-guide/
+<repo-root>/                  # monorepo checkout (any path / clone location)
 ├── llm-d/                    # guide repo — READ-ONLY context (deploy guides, later milestone)
 ├── llm-d-benchmark/          # benchmark repo — READ-ONLY; provides `llmdbenchmark` CLI + its .venv
 └── llm-d-benchmarking-agent-project/   # THE ONLY folder we write code in

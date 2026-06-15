@@ -263,8 +263,8 @@ of the run, two ways:
 - **`observe_run_metrics` (kubectl top)** — live **CPU/memory** of the model-server / harness
   pods **WHILE the run is in flight** (read-only, auto-runs; see §2 for how to read the numbers
   and pre-empt an OOM/throttle). This is the closest thing to a live metric feed: poll it during
-  the run to watch resource pressure in real time. Needs the in-cluster metrics-server, which is
-  NOT installed by kind or the `cicd/kind` spec — add it to the cluster separately.
+  the run to watch resource pressure in real time. Needs the in-cluster metrics-server (§2 covers
+  the per-cluster install).
 - **Phase-21 real-time pod-log streaming** — when you drive the run via
   `orchestrate_benchmark_run`, the benchmark pod's **log lines are forwarded live to the user as
   `output` events** (the same transport the runner uses for streamed command output). That gives

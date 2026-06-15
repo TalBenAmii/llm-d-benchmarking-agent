@@ -1,7 +1,7 @@
 # API & Tool Reference
 
 Two interfaces: the **HTTP/WebSocket API** the browser (or any client) speaks to the
-backend, and the **agent tool surface** — the 28 schema-validated tools that are the LLM's
+backend, and the **agent tool surface** — the 32 schema-validated tools that are the LLM's
 *entire* set of actions. The tool input schemas are defined in
 [`app/tools/schemas.py`](../app/tools/schemas.py) (the single source of truth, emitted to
 the LLM as JSON Schema); the registry + descriptions live in

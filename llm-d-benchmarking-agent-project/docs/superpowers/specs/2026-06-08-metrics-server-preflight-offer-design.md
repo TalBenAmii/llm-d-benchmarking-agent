@@ -1,8 +1,11 @@
 # Design: proactive metrics-server pre-flight check + agent offer
 
 **Date:** 2026-06-08
-**Status:** implemented
-**Branch:** `feature/metrics-server-preflight`
+**Status:** SHIPPED — this is the historical design record. The feature is live in code:
+`metrics_server` is a fact in `_ALL_CHECKS`/`_probe_metrics_server` (`app/tools/probe.py`),
+the offer is a `HARD_RULES` line (`app/agent/prompt.py`), and the live panel shows the passive
+note (`ui/app.js`). Read the code for current behavior; this doc explains the *why*.
+**Branch:** `feature/metrics-server-preflight` (merged)
 
 ## Problem
 
@@ -55,37 +58,26 @@ Three coordinated changes.
 
 ### 1. Deterministic, early detection — a `metrics_server` fact in `probe_environment`
 
-Add a `metrics_server` entry to `_ALL_CHECKS` in `app/tools/probe.py:34` and a
-`_probe_metrics_server(ctx)` helper, mirroring the existing `_probe_prometheus_crds`
-(`probe.py:226-251`) — a read-only, fact-only probe that never raises and degrades cleanly
-with no cluster.
+A `metrics_server` entry in `_ALL_CHECKS` plus a `_probe_metrics_server(ctx)` helper
+(`app/tools/probe.py`), mirroring `_probe_prometheus_crds` — read-only, fact-only, never
+raises, degrades cleanly with no cluster. Three fields:
 
-It reports (both commands verified already-allowlisted — **no `security/allowlist.yaml`
-change needed**):
+- `available` — `kubectl top nodes` exit `== 0`; authoritative "do we have live stats", matches
+  the live poller's notion exactly.
+- `installed` — `kubectl get deployment -n kube-system -l k8s-app=metrics-server -o json` →
+  `.items` non-empty.
+- `ready_replicas` — `.items[0].status.availableReplicas`; distinguishes "not installed" from
+  "installed but NotReady" (the kind `--kubelet-insecure-tls` gotcha), so the agent can phrase a
+  precise offer.
 
-| field           | source command                                                                         | meaning |
-|-----------------|----------------------------------------------------------------------------------------|---------|
-| `available`     | `kubectl top nodes` → exit code `== 0`                                                  | metrics actually flowing (the same `kubectl top` family the live poller uses) |
-| `installed`     | `kubectl get deployment -n kube-system -l k8s-app=metrics-server -o json` → `.items` non-empty | the metrics-server Deployment exists |
-| `ready_replicas`| `.items[0].status.availableReplicas` from that same get                                | distinguishes "not installed" from "installed but NotReady" (the kind `--kubelet-insecure-tls` gotcha) |
+Both commands were already allowlisted — **no `security/allowlist.yaml` change**. Key reuse
+constraint preserved here for future edits: `kubectl get` permits only ONE positional
+(`kubectl_resource`), so the probe queries by **label selector** (`-l k8s-app=metrics-server`),
+not by name (`get deployment metrics-server` is two positionals → rejected).
 
-> **Allowlist note:** `kubectl get` permits only ONE positional (`kubectl_resource`), so the
-> probe queries by **label selector** (`-l k8s-app=metrics-server`), not by name
-> (`get deployment metrics-server` would be two positionals and is rejected). `deployment` is
-> in the `kubectl_resource` enum; `k8s-app=metrics-server` passes the `label_selector` regex;
-> `kubectl top nodes` is permitted (positional enum includes `node`/`nodes`). All verified
-> against `security/allowlist.yaml` — reuse only, no widening.
-
-`available` is the authoritative "do we have live stats" signal and matches the poller's
-notion exactly. `installed`/`ready_replicas` give the agent enough to phrase a precise offer
-("metrics-server isn't installed" vs "it's installed but not ready — needs
-`--kubelet-insecure-tls` on kind").
-
-Guarded on `shutil.which("kubectl")`; when kubectl is absent or the cluster is unreachable
-the probe returns `{available: False, installed: False, ready_replicas: None}`. Two cheap
-read-only calls (bounded by ~12s timeouts, the existing pattern). **Mechanism only — no
-judgment branch** (the `prometheus_crds` precedent: it reports facts; the
-`--monitoring` decision lives in `knowledge/observability.md`).
+Guarded on `shutil.which("kubectl")`; absent kubectl / unreachable cluster returns
+`{available: False, installed: False, ready_replicas: None}`. **Mechanism only, no judgment
+branch** — like `prometheus_crds`, it reports facts; the decision lives in knowledge/prompt.
 
 Because `probe_environment` is the mandatory first step (ROLE step 2, HARD_RULES) **and** is
 injected as the per-turn `[environment pre-probe …]` snapshot (the proactive/pre-warm path),
@@ -154,33 +146,21 @@ agent reaches the deploy/run boundary on a kind cluster
 fallback: if a run somehow starts without stats, the live panel shows a passive note (no button)
 ```
 
-## Testing
+## Testing (shipped)
 
-- **`tests/` probe test** (extend `tests/test_*probe*` or `test_new_tools.py`): mock `kubectl`
-  to assert the `metrics_server` fact shape for three states — not installed (`available:false,
-  installed:false`), installed-but-NotReady (`installed:true, ready_replicas:0, available:false`),
-  and available (`available:true`). Assert no raise when kubectl is missing.
-- **`tests/test_context_mgmt.py`**: re-baseline the byte-stable prefix snapshot (HARD_RULES
-  grew by stable bytes). Confirms the cache-stability invariant still holds.
-- **`tests/test_ui_frontend.py`**: drop/replace the assertion on the
-  `"Install metrics-server"` button text; assert the passive note text instead. (No
-  Node/Chromium — UI is verified via this test + `ui/preview.html`.)
-- **Flow validation** (`tests/` flow harness): `install_metrics_server?` is already a
-  conditional `expected_step`, so the offer should not break flow expectations; re-run to
-  confirm.
-- **Full suite** healthy baseline ≈ 1820 passed / ~38 skipped; establish green before and
-  after. Do NOT run live-LLM eval (`LLM_EVAL_LIVE=1`) — quota.
+Probe-fact test asserts the three states (not installed / installed-but-NotReady / available)
+and no-raise when kubectl is missing; `tests/test_context_mgmt.py` re-baselined for the stable
+HARD_RULES byte growth; `tests/test_ui_frontend.py` now asserts the passive-note text instead of
+the old button; flow harness confirms `install_metrics_server?` stays a conditional
+`expected_step`. (Live-LLM eval `LLM_EVAL_LIVE=1` is intentionally not run — quota.)
 
-## Files touched
+## Files touched (shipped)
 
-| File | Change |
-|------|--------|
-| `app/tools/probe.py` | add `metrics_server` to `_ALL_CHECKS` + `_probe_metrics_server` helper (fact-only) |
-| `app/agent/prompt.py` | one new `HARD_RULES` line (offer before run when `metrics_server.available==false` on kind) |
-| `knowledge/quickstart_playbook.md` | tie step 5b trigger to the probe fact + the run boundary |
-| `knowledge/observability.md` | pointer tweak to key the offer off the probe fact (no substantive rewrite) |
-| `ui/app.js` | replace mid-run install button with a passive note; remove now-dead queueing/state if unused |
-| `tests/…` | probe-fact test; re-baseline context-mgmt; update ui-frontend assertion |
+`app/tools/probe.py` (`metrics_server` in `_ALL_CHECKS` + `_probe_metrics_server`) ·
+`app/agent/prompt.py` (the offer `HARD_RULES` line) · `knowledge/quickstart_playbook.md` (step
+5b keyed to the probe fact) · `knowledge/observability.md` (pointer tweak) · `ui/app.js`
+(mid-run button → passive note) · `tests/` (probe-fact test, context-mgmt re-baseline,
+ui-frontend assertion).
 
 ## Thin-code / thick-agent compliance
 

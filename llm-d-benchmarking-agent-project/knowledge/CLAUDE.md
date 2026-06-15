@@ -1,6 +1,6 @@
 # knowledge/ — the agent's editable brain (judgment, not mechanism)
 
-These ~48 markdown/yaml files hold ALL judgment (which spec/harness/workload, what flags, how
+These ~50 markdown/yaml files hold ALL judgment (which spec/harness/workload, what flags, how
 to read results, capacity rules, EPP drop decoding, …). **No Python, no `if/elif`** — decision
 logic that belongs in a model's reasoning lives here, loaded at runtime. This file is meta-guidance
 for *you* editing these files; it is deliberately excluded from the runtime knowledge glob (see below).

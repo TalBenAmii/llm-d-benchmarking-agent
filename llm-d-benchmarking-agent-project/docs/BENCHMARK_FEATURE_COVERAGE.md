@@ -2,7 +2,7 @@
 
 > **What this is.** A grounded cross-reference of every feature documented in the
 > [`llm-d-benchmark`](https://github.com/llm-d/llm-d-benchmark) repo against THIS agent's
-> coverage (the 30 tools in `app/tools/registry.py`, `security/allowlist.yaml`, the
+> coverage (the 32 tools in `app/tools/registry.py`, `security/allowlist.yaml`, the
 > `knowledge/` brain, and `app/validation/`). Each row is verified against source: every ✅
 > cites the tool + file that backs it; every ⬜ cites the benchmark doc that documents the
 > missing capability.
@@ -10,7 +10,10 @@
 > **Generated** by the `benchmark-catalog-gap` workflow (extract → cross-reference →
 > 3-lens adversarial skeptic → synthesize). Re-runnable when the benchmark docs change.
 > Canonical source of the gap roadmap: [`ROADMAP_V4.md`](../ROADMAP_V4.md) — each ⬜/🟡 row
-> below maps 1:1 to a v4 phase (27-58).
+> below maps 1:1 to a v4 phase (27-66). As of 2026-06-07 all 32 active v4 phases are merged to
+> `main`; the only rows that remain ⬜/🟡 are the 7 DEFERRED phases (34, 43, 44, 47, 52, 57, 58 —
+> environment-gated / experimental / empty-upstream-stub) plus Phase 55 (genuinely
+> upstream-unimplemented, so honestly 🟡).
 
 ## Legend
 
@@ -25,28 +28,29 @@
 
 ## Coverage summary
 
-67 documented features audited: **39 ✅ / 14 🟡 / 14 ⬜**.
+68 documented features audited: **60 ✅ / 2 🟡 / 6 ⬜** (as of 2026-06-07 — all 32 active v4
+phases merged; the 8 non-✅ rows are the 7 DEFERRED phases + the upstream-unimplemented Phase 55).
 
 | Area | Description | ✅ | 🟡 | ⬜ |
 |---|---|---:|---:|---:|
-| A | Lifecycle subcommands, CLI flags & deploy options | 19 | 10 | 5 |
-| B | Configuration system (override chain, schema, vLLM knobs) | 6 | 0 | 0 |
-| C | Workloads, harnesses & the run/harness contract | 2 | 0 | 2 |
-| D | Design of Experiments (factors/levels/treatments lifecycle) | 1 | 0 | 0 |
-| E | Results parsing, analysis, comparison & history | 3 | 2 | 2 |
-| F | Observability (metrics collection, tracing, dashboards, logging) | 4 | 0 | 1 |
-| H | Utilities & CLI internals (capacity, cluster, pod lifecycle, workspace) | 4 | 1 | 1 |
+| A | Lifecycle subcommands, CLI flags & deploy options | 31 | 1 | 2 |
+| B | Configuration system (override chain, schema, vLLM knobs) | 5 | 0 | 0 |
+| C | Workloads, harnesses & the run/harness contract | 3 | 0 | 1 |
+| D | Design of Experiments (factors/levels/treatments lifecycle) | 2 | 0 | 0 |
+| E | Results parsing, analysis, comparison & history | 8 | 0 | 0 |
+| F | Observability (metrics collection, tracing, dashboards, logging) | 4 | 1 | 0 |
+| H | Utilities & CLI internals (capacity, cluster, pod lifecycle, workspace) | 5 | 0 | 1 |
 | I | Project meta (governance, discovery tool, placeholder docs) | 2 | 0 | 2 |
-| **Total** | | **40** | **14** | **13** |
+| **Total** | | **60** | **2** | **6** |
 
 > **Headline gap — CLOSED (Phase 27, 2026-06-03).** Area F's *Benchmark metrics collection
-> (`--monitoring`)* is now **✅**: the *consumer* shipped in Phase 25 (parses `results.observability`
-> via `knowledge/standard_metrics.yaml` + `app/validation/report.py`) and the *producer* is now
+> (`--monitoring`)* is **✅**: the *consumer* shipped in Phase 25 (parses `results.observability`
+> via `knowledge/standard_metrics.yaml` + `app/validation/report.py`) and the *producer* is
 > activated — `build_argv` emits `--monitoring`/`--no-monitoring` subcommand-aware via the agent-set
 > `ExecuteInput.flags["monitoring"]`, allowlisted under standup/run/experiment/plan, with a read-only
-> `_probe_prometheus_crds` CRD check feeding the knowledge-driven opt-out. The only remaining slice is
-> wiring the 3 standard `results.observability` metrics into the trend store (`history.py`) — tracked
-> as **Phase 49**.
+> `_probe_prometheus_crds` CRD check feeding the knowledge-driven opt-out. The remaining slice (3
+> standard `results.observability` metrics into the trend store, `history.py`) also shipped as
+> **Phase 49**.
 
 ---
 
@@ -66,7 +70,7 @@
 | Capacity Planner validation gating | docs/standup.md#use; llmdbenchmark/utilities/README.md#capacity_validator-py | LLMDBENCH_IGNORE_FAILED_VALIDATION, run_capacity_planner, ValidationParams | Y | on | ✅ | `check_capacity` (`app/tools/capacity.py`) runs the repo's own `run_capacity_planner` over the rendered config; `knowledge/capacity.md`; auto-runs as project-script (Phase 6). |
 | Gateway class / provider (istio/agentgateway/gke/epponly) | docs/standup.md#gateway-provider | gateway.className, --gateway-class | Y | on | ✅ | **Phase 32** lets the agent choose the gateway PROVIDER instead of inheriting it from the scenario: `build_argv` (`app/tools/execute.py`) emits `flags["gateway_class"]` → `--gateway-class <provider>` unconditionally across all six subcommands (pure mechanism, no value branching), `security/allowlist.yaml` (DATA) value-pins the full upstream enum (epp-only/istio/agentgateway/gke/data-science-gateway-class) on each subcommand without changing its mode, and the per-provider what-it-deploys + when-to-pick JUDGMENT lives in `knowledge/gateway_class.md` (schemas.py + registry.py document the flag; `tests/test_gateway_class.py`). |
 | Multi-stack scenarios + --stack subset + --parallel | docs/standup.md#multi-stack-scenarios; docs/run.md#targeting-a-single-pool-stack | scenario:, shared:, httpRoute.mode: shared, --stack, --parallel | Y | off | ✅ | Phase 33: `build_argv` emits subcommand-aware `--stack <names>` (standup/smoketest/run/teardown) to target a stack subset + `--parallel <int>` (standup/smoketest/experiment, `is not None`) to cap per-pool parallelism, DISTINCT from `--parallelism`/`-j`; allowlisted (DATA, `stack_list` constraint); per-pool guidance in `knowledge/multi_stack.md`. |
-| Workload Variant Autoscaler (WVA) (-u/--wva, wva.* knobs) | docs/workload-variant-autoscaler.md; llmdbenchmark/interface/README.md | -u/--wva, LLMDBENCH_WVA, wva.controller/variantAutoscaling/hpa.*, WVA guides | Y | off | 🟡 | `knowledge/welllit_path_advisor.yaml` references WVA guides as advisory; a WVA spec would render its `wva:` block. No `-u/--wva` flag, not allowlisted; HPA/VA knobs + 8 smoketests + OpenShift gate unsurfaced. Gap: docs/workload-variant-autoscaler.md. Fix → ROADMAP_V4 Phase 34. |
+| Workload Variant Autoscaler (WVA) (-u/--wva, wva.* knobs) | docs/workload-variant-autoscaler.md; llmdbenchmark/interface/README.md | -u/--wva, LLMDBENCH_WVA, wva.controller/variantAutoscaling/hpa.*, WVA guides | Y | off | 🟡 | `knowledge/welllit_path_advisor.yaml` references WVA guides as advisory; a WVA spec would render its `wva:` block. No `-u/--wva` flag, not allowlisted; HPA/VA knobs + 8 smoketests + OpenShift gate unsurfaced. Gap: docs/workload-variant-autoscaler.md. ROADMAP_V4 Phase 34 — **DEFERRED** (WVA is OpenShift-only, out of the Kind/CPU MVP; reopen on a non-Kind target). |
 | Standup monitoring flag (PodMonitor/ServiceMonitor + EPP verbosity) | llmdbenchmark/standup/README.md#--monitoring-flag; docs/observability.md#cli-monitoring-flags | --monitoring, --no-monitoring, monitoring.podmonitor.enabled, monitoring.installPrometheusCrds | Y | on | ✅ | **DONE (Phase 27).** `build_argv` now emits `--monitoring`/`--no-monitoring` per subcommand (both for standup); `ExecuteInput.flags["monitoring"]` is the agent-set key; allowlisted under standup/run/experiment/plan; `_probe_prometheus_crds` detects PodMonitor/ServiceMonitor CRDs so the opt-out judgment lives in `knowledge/observability.md`. |
 | Skip auto post-standup smoketests (--skip-smoketest) + smoketest steps | llmdbenchmark/standup/README.md#post-standup-smoketests; llmdbenchmark/smoketests/README.md#steps | --skip-smoketest, smoketest (subcommand), health_check, inference_test | Y | on | ✅ | `build_argv` emits `--skip-smoketest`; smoketest is a gated first-class subcommand; the MVP runs smoketest between standup and run. |
 | Run harness selection (-l/--harness) | docs/run.md#harnesses; workload/README.md#available-harnesses | -l/--harness: inference-perf, guidellm, vllm-benchmark, inferencemax, nop | Y | on | ✅ | `build_argv` emits `-l`; `list_catalog` discovers harnesses from the repo (no hardcoded whitelist); `knowledge/usecase_to_profile.yaml`, `knowledge/multi_harness.md`. |
@@ -86,8 +90,8 @@
 | Phase orchestration internals (step partitions, executor, wait helpers) | llmdbenchmark/executor/README.md#architecture; #wait-helpers | pre-global/per-stack/post-global, max_parallel_stacks, wait_for_pods/job/pvc | N | n/a | ✅ | CLI internals driven via `execute_llmdbenchmark`; the agent layers its own K8s-native Job lifecycle/fault classification/readiness waits (`app/orchestrator/controller.py`, `faults.py`, `readiness.py`). |
 | Kind local quickstart lifecycle (CPU-only sim) | docs/quickstart.md#what-you-will-build; config/README.md#scenarioscicd | --spec cicd/kind, llm-d-inference-sim, kind create cluster | Y | n/a | ✅ | The MVP vertical; `run_command` creates/deletes the kind cluster (`app/tools/command.py`); `knowledge/quickstart_playbook.md`; `tests/integration` + `knowledge/sim_integration.md`. |
 | install.sh bootstrap + tool / Python prerequisites | README.md#install; llmdbenchmark/executor/README.md#dependency-checker-depspy | install.sh, --uv/--no-uv, REQUIRED_TOOLS (kubectl/helm/helmfile/jq/yq), Python>=3.11 | N | n/a | ✅ | `run_setup` (`app/tools/repos.py`) runs `install.sh`; `ensure_repos` clones the repos; allowlisted (install.sh, install_prereqs.sh); `knowledge/preconditions.md`; `/readyz`. |
-| Administrative privilege / --non-admin skip | README.md#administrative-requirements; llmdbenchmark/executor/README.md#executioncontext | --non-admin, -i, context.non_admin | N | off | ⬜ | README.md#administrative-requirements: no `--non-admin` flag; the local kind path runs cluster-admin so the skip is not needed. Fix → ROADMAP_V4 Phase 43. |
-| Telemetry push (queue-based async usage reporting) | llmdbenchmark/README.md#telemetry; llmdbenchmark/telemetry/README.md | --telemetry-enabled, LLMDBENCH_TELEMETRY_*, --telemetry-provider=http | Y | off | ⬜ | llmdbenchmark/telemetry/README.md: never enabled/surfaced; the agent ships its own Prometheus `/metrics` for operability instead. Fix → ROADMAP_V4 Phase 44. |
+| Administrative privilege / --non-admin skip | README.md#administrative-requirements; llmdbenchmark/executor/README.md#executioncontext | --non-admin, -i, context.non_admin | N | off | ⬜ | README.md#administrative-requirements: no `--non-admin` flag; the local kind path runs cluster-admin so the skip is not needed. ROADMAP_V4 Phase 43 — **DEFERRED** (shared-cluster-only; reopen on a non-Kind/namespace-scoped target). |
+| Telemetry push (queue-based async usage reporting) | llmdbenchmark/README.md#telemetry; llmdbenchmark/telemetry/README.md | --telemetry-enabled, LLMDBENCH_TELEMETRY_*, --telemetry-provider=http | Y | off | ⬜ | llmdbenchmark/telemetry/README.md: never enabled/surfaced; the agent ships its own Prometheus `/metrics` for operability instead. ROADMAP_V4 Phase 44 — **DEFERRED** (off-by-default upstream; reopen only if a user opts in). |
 
 ## Area B — Configuration system
 
@@ -105,7 +109,7 @@
 |---|---|---|---|---|---|---|
 | Harness script contract + ConfigMap mounting + 11-step run lifecycle | workload/README.md#harness-script-contract; #step-by-step-execution-flow | fixed env-var interface, llmdbench-harness-scripts ConfigMap, run steps 00-10 | N | n/a | ✅ | CLI/harness internals invoked by `execute_llmdbenchmark run`; the agent never edits harness scripts (repos read-only); the orchestrator can alternatively run the benchmark as a K8s Job (`app/orchestrator/job.py`). |
 | Multi-harness in one session (cross-harness comparison) | workload/README.md#available-harnesses | inference-perf vs guidellm vs vllm-benchmark, same stack | Y | off | ✅ | `compare_harness_runs` (`app/tools/multiharness.py`) contrasts reports from different harnesses (harness read from the report, never guessed); `knowledge/multi_harness.md` (Phase 10). |
-| Multi-turn trace replay benchmark (experimental) | experimental/multi-turn/README.md#overview | production-trace-replay-qwen.py, --trace-file (JSONL), TTFT-by-turn-buckets | Y | off | ⬜ | experimental/multi-turn/README.md: an experimental standalone script outside the supported lifecycle; not surfaced. Fix → ROADMAP_V4 Phase 52. |
+| Multi-turn trace replay benchmark (experimental) | experimental/multi-turn/README.md#overview | production-trace-replay-qwen.py, --trace-file (JSONL), TTFT-by-turn-buckets | Y | off | ⬜ | experimental/multi-turn/README.md: an experimental standalone script outside the supported lifecycle; not surfaced. ROADMAP_V4 Phase 52 — **DEFERRED** (experimental upstream; reopen when it stabilizes). |
 | convert-guide skill (guide → scenario/experiment file gen) | skills/convert-guide/SKILL.md#purpose | /convert-guide <url-or-path>, ai.<name>.sh/.yaml, LLMDBENCH_* mappings | Y | off | ✅ | `convert_guide_to_scenario` (`app/tools/convert_guide.py`) emits a workspace-only `ai.<name>.sh` + validatable `ai.<name>.yaml`/`.spec.yaml` twin via `LLMDBENCH_*` mappings (DATA in `knowledge/convert_guide.md`); never writes the read-only repo; gated by plan/--dry-run (Phase 53). |
 
 ## Area D — Design of Experiments
@@ -147,7 +151,7 @@
 | Capacity validation internals (GPU mem & KV-cache planner) | llmdbenchmark/utilities/README.md#capacity_validator-py | run_capacity_planner, ValidationParams (replicas/gpu_memory/tp/pp/dp/max_model_len/hf_token), ignore_failures | N | on | ✅ | `check_capacity` (`app/tools/capacity.py`) invokes the repo's `run_capacity_planner` over the rendered config + returns its diagnostics; `CheckCapacityInput` maps the ValidationParams; `knowledge/capacity.md` (Phase 6). |
 | Cluster connectivity / platform detection / endpoint discovery / model verification | llmdbenchmark/utilities/README.md#cluster-py; #endpoint-py | resolve_cluster, is_openshift/is_kind/is_minikube, find_*_endpoint, test_model_serving, /v1/models | N | on | ✅ | `probe_environment` detects runtime/kind/kube-context/reachability/namespaces/stack (`app/tools/probe.py`); `check_endpoint_readiness` reads `kubectl get endpoints` + corroborates with `run --list-endpoints` (`app/orchestrator/readiness.py`). **Phase 59** adds true model-serving readiness: a GET-only `curl` probe (allowlist enum `{/v1/models, /health}` on in-namespace `*.svc`) + pod readiness-condition/`restartCount`/age parsing classifies a `Running`-but-`NotReady` server as "still loading weights" vs "wedged/broken" (`app/tools/readiness.py`, judgment in `knowledge/readiness_probes.md`). **Phase 61** adds a read-only `node_capacity` probe (per-node allocatable/capacity CPU + min-allocatable across nodes via `kubectl get nodes -o json`) feeding a backend-only `harness_cpu_nr` flag that right-sizes the launcher's `LLMDBENCH_HARNESS_CPU_NR` env var for small/Kind nodes (judgment in `knowledge/harness_sizing.md`), turning a silent `FailedScheduling`/`Pending` launcher pod into a scheduled run. **Phase 60** adds a read-only `cluster_preconditions` probe (`kubectl version --output json` → `cluster_info.server_version` `{major, minor}` + the spec's pinned vLLM/NIXL/UCX/NVSHMEM `{repository, tag}` image tags parsed off the rendered scenario YAML) — FACTS only; the K8s-version/sidecar-Init:0/1 and image-minimum thresholds (≥1.29, 1.33+ sidecar, vLLM 0.10.0+ / NIXL 0.5.0+ / UCX 0.19.0+ / NVSHMEM 3.3.9+) + verdict bands live as DATA in `knowledge/infrastructure_preconditions.yaml` (prose in `knowledge/preconditions.md`), giving an honest go/no-go BEFORE a long real-cluster standup instead of an opaque post-standup Init:0/1 stall. **Phase 63** adds a read-only `advise_accelerators` probe (`kubectl get nodes -o json` → per-node `capacity`/`allocatable` cpu + memory and the advertised accelerator extended-resource keys `nvidia.com/gpu` + amd/gaudi/tpu/Intel-XPU siblings; FACTS only — `any_accelerator`/`cpu_only`/`advertised_resources`) so the agent can answer "can my hardware run this?"; the CUDA/driver minimums, Device-Plugin-vs-DRA, the real-CPU 64c/64GB-per-replica floor, and the Kind/CPU-sim exemption live as DATA in `knowledge/accelerators.yaml` (pointers from `knowledge/preconditions.md` + `knowledge/capacity.md`), complementing `check_capacity`'s GPU-memory sizing (`tests/test_accel_advisor.py`). **Phase 64** adds a read-only `provider_detection` capability to `probe_environment` (`kubectl get nodes -o json` → detected cloud `provider` openshift/gke/doks/aks vs a `kind` default, `providers_seen`, and per-node `gpu_taints` `{node,key,value,effect}`; FACTS only, label-prefix membership lookup, no provider `if/elif`) so the agent's commands and unstick-advice fit the real provider — the which-CLI (`oc` vs `kubectl`, the `oc:` allowlist entry mirrors kubectl's read-only subcommands as DATA), which-toleration, and which-known-issue (GKE Google-Managed-Prometheus / "Undetected platform" / NVSHMEM) playbook is JUDGMENT in `knowledge/infra_providers.yaml` (`tests/test_provider_pack.py`, `tests/test_allowlist.py`). **Phase 65** extends `check_endpoint_readiness` to the Gateway-API control plane (`check_gateway` flag, on by default): in gateway-mode deploys `app/orchestrator/readiness.py` reads `kubectl get gateway,gatewayclass,inferencepool,httproute -o json` and folds the status conditions into FACTS on the verdict — Gateway `PROGRAMMED`, InferencePool `Accepted`/`ResolvedRefs`, HTTPRoute `Accepted`/`Reconciled`, GatewayClass-exists — so the agent tells "the model pods are Ready" apart from "traffic can actually reach them" (pods Ready while the Gateway is still `PROGRAMMED:False`); the four resources are DATA-only read-only `kubectl_resource` enum additions in `security/allowlist.yaml`, and the wait-vs-stand-up-vs-config-error judgment (incl. the GKE fault-filter-abort symptom) is JUDGMENT in `knowledge/gateway_readiness.md` (`tests/test_gateway_readiness.py`). |
 | Pod lifecycle / crash-state detection / result collection / log capture | llmdbenchmark/utilities/README.md#kube_helpers-py | CRASH_STATES, wait_for_pods, collect_pod_results, capture_pod_logs, process_epp_logs.py | N | on | ✅ | The orchestrator classifies OOM/timeout/unschedulable/evicted/image/run-error (`app/orchestrator/faults.py`); `kube.stream_logs(follow=True)` streams pod logs into live `output` events; `knowledge/orchestrator.md`. |
-| Cloud results upload internals (GCS/S3 upload helpers) | llmdbenchmark/utilities/README.md#cloud_upload-py | upload_results_dir, gcloud storage cp, aws s3 cp, output=local (no-op) | Y | off | ⬜ | llmdbenchmark/utilities/README.md#cloud_upload-py: gs://, s3:// destinations are intentionally NOT permitted in `security/allowlist.yaml` for the MVP; results stay local. Fix → ROADMAP_V4 Phase 47. |
+| Cloud results upload internals (GCS/S3 upload helpers) | llmdbenchmark/utilities/README.md#cloud_upload-py | upload_results_dir, gcloud storage cp, aws s3 cp, output=local (no-op) | Y | off | ⬜ | llmdbenchmark/utilities/README.md#cloud_upload-py: gs://, s3:// destinations are intentionally NOT permitted in `security/allowlist.yaml` for the MVP; results stay local. ROADMAP_V4 Phase 47 — **DEFERRED** (Kind-MVP; pairs with Phase 39; reopen on a cloud target). |
 
 ## Area I — Project meta
 
@@ -155,8 +159,8 @@
 |---|---|---|---|---|---|---|
 | Contribution / governance / quality (DCO, pre-commit, tests, CoC, security policy) | CONTRIBUTING.md; PR_SIGNOFF.md; tests/README.md; docs/developer-guide.md | git commit -s (DCO), pre-commit (pytest/ruff/detect-secrets), pytest tests/, OWNERS | N | n/a | ✅ | The agent has its own governance/quality stack: `knowledge/governance.md`; pytest suite; ruff+mypy+coverage gates (`pyproject.toml`, `Makefile`); flow-validation harness; root CI. Repos read-only, so it does not contribute upstream. |
 | Stack discovery tool (llm-d-discover: URL → live stack config, BR-v0.2 output) | llm_d_stack_discovery/README.md; ARCHITECTURE.md | llm-d-discover <url>, --output-format benchmark-report, collectors (vLLM/GAIE/Gateway), env-var redaction + read-only RBAC | Y | off | ✅ | **DONE (Phase 56).** `discover_stack` (`app/tools/discover.py` + `DiscoverStackInput`) runs the allowlisted READ-ONLY `llm-d-discover <url> -f benchmark-report`, writes raw JSON + the wrapped BR-v0.2 `{"scenario": {"stack": [...]}}` capture into the session workspace, and returns structured stack facts (component count, models, roles, parallelism). Endpoint/readiness probing stays the unconditional default; WHEN-to-use judgment lives in `knowledge/stack_discovery.md` (`tests/test_stack_discovery.py`). |
-| flexibility.md (placeholder doc) | docs/flexibility.md | (none) | N | n/a | ⬜ | docs/flexibility.md: an unpopulated stub ("To be populated."); zero substantive features; recorded only for doc-completeness. Fix → ROADMAP_V4 Phase 57. |
-| FAQ / RBAC-audit placeholder docs | docs/faq.md; util/rbac_audit_report.md | (none) | N | n/a | ⬜ | docs/faq.md, util/rbac_audit_report.md: empty/placeholder docs with no documented features; recorded for doc-completeness. Fix → ROADMAP_V4 Phase 58. |
+| flexibility.md (placeholder doc) | docs/flexibility.md | (none) | N | n/a | ⬜ | docs/flexibility.md: an unpopulated stub ("To be populated."); zero substantive features; recorded only for doc-completeness. ROADMAP_V4 Phase 57 — **DEFERRED** (empty upstream stub; reopen when upstream populates it). |
+| FAQ / RBAC-audit placeholder docs | docs/faq.md; util/rbac_audit_report.md | (none) | N | n/a | ⬜ | docs/faq.md, util/rbac_audit_report.md: empty/placeholder docs with no documented features; recorded for doc-completeness. ROADMAP_V4 Phase 58 — **DEFERRED** (empty upstream stubs; reopen when upstream populates them). |
 
 ---
 

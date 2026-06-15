@@ -350,7 +350,7 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
 |---|---|
 | §2 Core agent workflow | §3 |
 | §3 Chat UI | §2, §3 |
-| §4 The 30 tools | §3–§5, §8 (each renders as a card) |
+| §4 The 32 tools | §3–§5, §8 (each renders as a card) |
 | §5 Orchestrator | §8 (Track B) / hermetic fallback |
 | §6 Analysis & history | §4, §5 |
 | §7 Observability | §1, §7 |
