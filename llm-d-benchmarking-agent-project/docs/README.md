@@ -7,7 +7,7 @@ agent + Kubernetes-native benchmark orchestrator + results analyzer for
 | Doc | For | Covers |
 |---|---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | engineers / reviewers | System design: layers, components, the four determinism gates, request flow, trust boundaries, concurrency & resilience. |
-| [API.md](API.md) | integrators / contributors | The HTTP/WebSocket API and the 28-tool agent surface (inputs, classification, result shapes) + the `SessionPlan`. |
+| [API.md](API.md) | integrators / contributors | The HTTP/WebSocket API and the 32-tool agent surface (inputs, classification, result shapes) + the `SessionPlan`. |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | operators | Running locally and in-cluster (Helm/Kustomize), configuration, secrets, least-privilege RBAC, observability. |
 | [USER_GUIDE.md](USER_GUIDE.md) | end users | Using the agent end-to-end with no `llm-d-benchmark` expertise. |
 | [GPU_CLUSTER_RUNBOOK.md](GPU_CLUSTER_RUNBOOK.md) | end users / operators | Going beyond the CPU `cicd/kind` quickstart: stand up a real **single-GPU** cluster (minikube + NVIDIA, WSL2/RTX 4060 worked example), author a tiny-model scenario that fits 8 GB, and a feature-by-feature checklist of what's real vs simulated on one card. |

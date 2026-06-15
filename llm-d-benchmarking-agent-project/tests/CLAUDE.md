@@ -13,8 +13,8 @@ PYTHONPATH must point at *your* worktree, and the empty sibling repos must be po
 ```bash
 cd <worktree>/llm-d-benchmarking-agent-project
 PYTHONPATH=<worktree>/llm-d-benchmarking-agent-project \
-REPOS_DIR=/home/tal/kind-quickstart-guide \
-/home/tal/kind-quickstart-guide/llm-d-benchmarking-agent-project/.venv/bin/python -m pytest tests/
+REPOS_DIR=<repo-root> \
+<repo-root>/llm-d-benchmarking-agent-project/.venv/bin/python -m pytest tests/
 ```
 **Healthy baseline ≈ 1598 passed / ~20 skipped in ~15–20s.** Establish green BEFORE changing anything.
 

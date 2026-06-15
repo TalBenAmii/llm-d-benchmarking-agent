@@ -6,7 +6,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Versions corr
 phased build-out, now summarized in [`FEATURES.md`](../FEATURES.md) (the live feature
 inventory), with remaining/deferred work in [`ROADMAP_V4.md`](../ROADMAP_V4.md).
 
-## [Unreleased] — v3: proposal-completion features + token-tracking (Phases 19-26)
+## [Unreleased] — v4: benchmark/deploy-coverage gaps + UX (Roadmap v4)
+
+Post-v3 work tracked live in [`FEATURES.md`](../FEATURES.md) and [`ROADMAP_V4.md`](../ROADMAP_V4.md);
+the only outstanding roadmap items are the 7 DEFERRED phases. The agent tool surface has grown from
+22 to **32 tools** (`app/tools/registry.py` is authoritative). Landed since v3 (representative, not
+exhaustive — see `FEATURES.md` for the evidence-backed inventory): interactive spec + workload
+co-creation, proactive metrics-server pre-flight + pre-run install offer, one-command publish of a
+chat to a public link, a single-GPU-cluster runbook, and assorted UI/observability refinements.
+
+## [0.3.0] — v3: proposal-completion features + token-tracking (Phases 19-26)
 
 Developed on the `feature/roadmap-v3` integration branch and merged into `main`. This wave closes
 the remaining proposal-coverage gaps (DOE generation, the well-lit-path advisor, live log
@@ -67,7 +76,7 @@ caching. The agent tool surface grows from 18 to **22 tools**.
   `ep/endpoints`) ride the existing read-only allowlisted `kubectl` enum; the inference-sim live
   test is env-gated and off by default.
 
-## v2 — production operability, trust & quality (Phases 11-18)
+## [0.2.0] — v2: production operability, trust & quality (Phases 11-18)
 
 Developed on the `feature/roadmap-v2` integration branch and merged into `main`; each phase lands
 after its full hermetic-suite gate is green. This work hardens the v1 agent for operation without
@@ -166,4 +175,6 @@ thick-agent and a deny-by-default security model throughout.
   or modified.
 
 [Unreleased]: https://github.com/TalBenAmii/llm-d-benchmarking-agent
+[0.3.0]: https://github.com/TalBenAmii/llm-d-benchmarking-agent
+[0.2.0]: https://github.com/TalBenAmii/llm-d-benchmarking-agent
 [0.1.0]: https://github.com/TalBenAmii/llm-d-benchmarking-agent

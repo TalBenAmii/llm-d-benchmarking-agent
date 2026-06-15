@@ -346,7 +346,7 @@ project's working rules.
 This project sits alongside two **read-only** repos and never modifies them:
 
 ```
-kind-quickstart-guide/
+<repo-root>/                         # this monorepo checkout (any path / clone location)
 ├── llm-d/                            # deployment guides (read-only context)
 ├── llm-d-benchmark/                  # provides the llmdbenchmark CLI (read-only)
 └── llm-d-benchmarking-agent-project/ # this project

@@ -1,5 +1,14 @@
 # SPEC: Chaos / Fault-Injection + Orchestrator-Restart Durability + Resilience Report
 
+> **Status: IMPLEMENTED & merged** (as of 2026-06). This was a pre-implementation design
+> spec; the feature now ships essentially as designed here. The "Exact new/changed files"
+> and test-plan sections below are kept as the design record — the shipped code lives at
+> `app/orchestrator/{chaos,resilience,restart}.py`, the `run_resilience_drill` tool at
+> `app/tools/resilience.py` (registered in `app/tools/registry.py`), the `chaos_enabled`
+> gate in `app/config.py`, the resilience card in `app/agent/results_card.py`, judgment in
+> `knowledge/resilience.md`, and tests in `tests/test_{chaos_injection,orchestrator_restart,
+> resilience_report,resilience_tool}.py`. Read it as rationale, not as pending work.
+
 ## 0. Investigation summary (what exists today)
 
 - **Fault classification** is pure and stable: `app/orchestrator/faults.py:14-22` defines the kinds (`timeout`, `oom`, `unschedulable`, `evicted`, `image_error`, `run_error`, `unknown`, `none`); `classify_failure()` (`faults.py:99-119`) scans a `JobStatus` + the Job's pod JSON in priority order (timeout → oom → unschedulable → evicted → image → run_error). Facts only.

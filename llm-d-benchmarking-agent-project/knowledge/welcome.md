@@ -7,10 +7,11 @@ stays mechanism. Keep it aligned with the "What can you do?" bullets in
 conversation_style.md so the deterministic welcome matches the agent's own voice.
 
 The loader (app/agent/welcome.py) parses this file deterministically:
-- the first `## ` heading's text becomes the card **heading**;
-- every top-level `- ` bullet under the `### Capabilities` section becomes a capability bullet;
-- the first paragraph under `### Nudge` becomes the closing nudge line.
-Missing pieces degrade gracefully (the UI falls back to its plain note / chips).
+- the **last** `## ` heading's text becomes the card **heading** (the first `## ` is the
+  file's own title above, so put the greeting in the last `## `);
+- every `- ` bullet under the `### Capabilities` section becomes a capability bullet;
+- the first non-empty line under `### Nudge` becomes the closing nudge.
+Missing pieces degrade gracefully (no bullets → no card; heading/nudge fall back to empty).
 
 ## Hi! I'm the llm-d Benchmarking Assistant — here's how I can help.
 

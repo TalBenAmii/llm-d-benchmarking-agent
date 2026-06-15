@@ -15,8 +15,8 @@ alone (not `standup`/`plan`/`experiment`), so only ever set it on a `run`.
 ## WHAT it actually does
 
 - **Skips the load.** No new traffic is generated; the served stack is not exercised. So it
-  does **not** mutate the cluster — it is a read-only/collect-only operation and **auto-runs**
-  (no approval prompt, exactly like `--dry-run`/`--list-endpoints`).
+  does **not** mutate the cluster — it is read-only and **auto-runs** (no approval prompt, like
+  `--dry-run`/`--list-endpoints`); it never tears down or redeploys the stack.
 - **Re-collects + re-analyzes the EXISTING results.** It reads the raw artifacts a prior `run`
   left in the workspace and re-derives the report from them. So it only makes sense **after a
   real run has already loaded** against the same workspace — there must be existing results to
@@ -60,5 +60,3 @@ Do **not** use it:
 - Pure mechanism vs. judgment: emitting `-z` is mechanism (`build_argv`); the allowlist permits
   `-z`/`--skip` as a `read_only_trigger` under `run` (data). WHETHER a collect-only re-derivation
   is the right move — vs. a fresh run — is the judgment that lives **here**, never in Python.
-- It does not change anything on the cluster, so it never needs approval and never tears down or
-  redeploys the stack — it is purely a data-collection pass over results already on disk.

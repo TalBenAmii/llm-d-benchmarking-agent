@@ -1,5 +1,14 @@
 # SPEC: Agent Self-Eval — LLM-Judge Rubric Scoring + Autonomous Exploratory Bug-Hunter
 
+> **Status (2026-06): IMPLEMENTED & merged.** This spec is preserved as the design record for
+> shipped code. The harness now lives under `tests/eval/` (`judge.py`, `scorecard.py`,
+> `explorer.py`, `bug_report.py`, `app_driver.py`, the `rubric.md`/`oracle.md` data assets, and
+> the `test_scorecard_shadow.py` / `test_oracle_unit.py` hermetic + `test_judge_live.py` /
+> `test_bughunt_live.py` opt-in tests) and is documented as VALIDATION Layers 3 & 4
+> (`docs/VALIDATION.md`). File-level details below reflect the original design intent; one item
+> changed in delivery — the bug-hunter now *requires* `BUGHUNT=1` in addition to `LLM_EVAL_LIVE=1`
+> (see §5 open questions, since resolved as "yes").
+
 **Status:** Design / read-only investigation complete.
 **Provider context:** The agent runs on Claude. `app/config.py:30-32` sets `llm_provider="anthropic"`, `anthropic_model="claude-opus-4-8"`; the keyless Max-plan path is `claude-agent-sdk` (`app/llm/agent_sdk_provider.py`). Both judge (A) and explorer (B) reuse the existing provider abstraction (`app/llm/provider.py::get_provider`) — no new SDK code.
 
@@ -177,7 +186,7 @@ Assembles `findings[]` from oracle hits + LLM triage; dedups by `(category, inva
 
 ### Risks & open questions
 - **Judge flakiness** (primary). Mitigations: zero temp, JSON-only, embed rubric verbatim, pin model+version, the *always-on deterministic shadow carries the real CI weight* (LLM score is the signal not the sole gate), conservative threshold (0.70). Open: average N judge calls for stability vs quota — default 1.
-- **Quota control.** Both share `LLM_EVAL_LIVE`; never in plain `pytest`/gating CI; budget bounded+printed; bughunt's cost is one small selector call/action + one triage/run (agent runs scripted, not live). Open: AND a second flag (`BUGHUNT=1`) for extra conservatism? (Recommended for bughunt.)
+- **Quota control.** Both share `LLM_EVAL_LIVE`; never in plain `pytest`/gating CI; budget bounded+printed; bughunt's cost is one small selector call/action + one triage/run (agent runs scripted, not live). *Resolved in delivery:* the bug-hunter additionally requires `BUGHUNT=1` (AND-gated for extra conservatism).
 - **False-positive bug reports.** Resolved: only the **deterministic** oracle fails a build; LLM triage advisory-only. The deterministic oracle is the proven invariant set → no false positives.
 - **Refactor risk in `test_selfplay_fuzz.py`** (subtle gate-resume/handshake contracts). Mitigation: pure *move* into `app_driver.py`, original test imports them, assert identical behavior before adding the LLM selector.
 - **Open — separate judge model?** Cheaper judge reduces quota but adds a variable; default to the agent model, expose override.
