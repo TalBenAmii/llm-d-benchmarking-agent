@@ -71,6 +71,35 @@ _DENY_MESSAGE = (
 )
 
 
+# Effort levels the SDK/CLI accepts. Anything else falls back to None (the CLI's own default),
+# so a typo can never crash a turn — it just declines to override the effort.
+_EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
+
+
+def _thinking_options(thinking: str) -> dict[str, Any]:
+    """Translate the ``AGENT_SDK_THINKING`` setting into ClaudeAgentOptions thinking kwargs.
+
+    ``"adaptive"`` → ``thinking={"type": "adaptive"}`` (Claude decides depth — what Sonnet 4.6
+    in Claude Code does); a positive integer string → ``thinking={"type": "enabled",
+    "budget_tokens": N}`` (a fixed per-turn budget that forces thinking every turn);
+    ``"off"``/``"disabled"``/``"none"``/``"0"`` (or anything unrecognized) → ``{}`` (no extended
+    thinking — nothing for the loop to capture). Returned as kwargs so an empty dict cleanly
+    means "don't set the option at all"."""
+    value = (thinking or "").strip().lower()
+    if value == "adaptive":
+        return {"thinking": {"type": "adaptive"}}
+    if value.isdigit() and int(value) > 0:
+        return {"thinking": {"type": "enabled", "budget_tokens": int(value)}}
+    return {}
+
+
+def _effort_option(effort: str) -> dict[str, Any]:
+    """Translate ``AGENT_SDK_EFFORT`` into an ``effort`` kwarg, or ``{}`` for an unknown value
+    (so the CLI keeps its own default rather than erroring)."""
+    value = (effort or "").strip().lower()
+    return {"effort": value} if value in _EFFORT_LEVELS else {}
+
+
 def _strip_prefix(name: str) -> str:
     return name[len(_TOOL_PREFIX):] if name.startswith(_TOOL_PREFIX) else name
 
@@ -161,6 +190,12 @@ class AgentSdkProvider(LLMProvider):
             raise ProviderError("the 'claude-agent-sdk' package is not installed") from exc
         self._model = settings.agent_sdk_model
         self._cli_path = settings.claude_cli_path or None
+        # Reasoning-quality + chain-of-thought options, resolved ONCE (stable for the process).
+        # Merged into every ClaudeAgentOptions below so the one-shot and persistent-client paths
+        # are byte-identical. ``_thinking_active`` tells the loop whether to expect thinking blocks.
+        self._reasoning_opts = {**_thinking_options(settings.agent_sdk_thinking),
+                                **_effort_option(settings.agent_sdk_effort)}
+        self._thinking_active = "thinking" in self._reasoning_opts
         self._server_cache: tuple[tuple[str, ...], Any] | None = None
         # Single-slot connection prewarm (see _PREWARM_TTL_S). Holds a background ``connect()``
         # task for the NEXT turn's client, its (system, tools) fingerprint, and when it started —
@@ -214,6 +249,7 @@ class AgentSdkProvider(LLMProvider):
             include_partial_messages=True,   # stream text deltas to the UI (see _consume)
             env=dict(_NEUTRALIZE_ENV),
             cli_path=self._cli_path,
+            **self._reasoning_opts,          # effort + extended-thinking (chain-of-thought capture)
         )
         client = ClaudeSDKClient(options=options)
         await client.connect()
@@ -295,6 +331,7 @@ class AgentSdkProvider(LLMProvider):
             PermissionResultDeny,
             ResultMessage,
             TextBlock,
+            ThinkingBlock,
             ToolUseBlock,
             query,
         )
@@ -316,9 +353,11 @@ class AgentSdkProvider(LLMProvider):
             max_turns=1,                           # exactly one assistant turn
             env=dict(_NEUTRALIZE_ENV),
             cli_path=self._cli_path,               # None => the SDK auto-discovers `claude` on PATH
+            **self._reasoning_opts,                # effort + extended-thinking (chain-of-thought capture)
         )
 
         text_parts: list[str] = []
+        thinking_parts: list[str] = []
         tool_calls: list[ToolCall] = []
         usage = Usage()
         assistant_error: str | None = None
@@ -331,6 +370,8 @@ class AgentSdkProvider(LLMProvider):
                     for block in msg.content:
                         if isinstance(block, TextBlock):
                             text_parts.append(block.text)
+                        elif isinstance(block, ThinkingBlock):
+                            thinking_parts.append(block.thinking)
                         elif isinstance(block, ToolUseBlock):
                             tool_calls.append(
                                 ToolCall(id=block.id, name=_strip_prefix(block.name), input=dict(block.input))
@@ -357,6 +398,7 @@ class AgentSdkProvider(LLMProvider):
             tool_calls=tool_calls,
             stop_reason="tool_use" if tool_calls else "end_turn",
             usage=usage,
+            thinking="".join(thinking_parts) or None,
         )
 
     def open_turn(self, *, system, tools, cache_key=None) -> _AgentSdkTurn:
@@ -367,21 +409,28 @@ class AgentSdkProvider(LLMProvider):
         return _AgentSdkTurn(self, system=system, tools=tools, cache_key=cache_key)
 
 
-async def _consume(stream: Any, on_text: OnText | None) -> tuple[str, list[ToolCall], Usage]:
-    """Read an SDK message stream into ``(text, tool_calls, usage)``, forwarding text deltas to
-    ``on_text`` as they arrive when partial-message streaming is enabled. Mirrors the parsing in
-    :meth:`AgentSdkProvider.chat`; used by the persistent per-turn path (:class:`_AgentSdkTurn`),
-    whose ``receive_response()`` iterator terminates cleanly on the ``ResultMessage`` (it does
-    NOT raise ``error_max_turns`` the way the one-shot ``query()`` iterator does)."""
+async def _consume(
+    stream: Any, on_text: OnText | None
+) -> tuple[str, list[ToolCall], Usage, str]:
+    """Read an SDK message stream into ``(text, tool_calls, usage, thinking)``, forwarding text
+    deltas to ``on_text`` as they arrive when partial-message streaming is enabled. Mirrors the
+    parsing in :meth:`AgentSdkProvider.chat`; used by the persistent per-turn path
+    (:class:`_AgentSdkTurn`), whose ``receive_response()`` iterator terminates cleanly on the
+    ``ResultMessage`` (it does NOT raise ``error_max_turns`` the way the one-shot ``query()``
+    iterator does). Thinking is collected from the authoritative ``ThinkingBlock``(s) — never
+    forwarded to ``on_text``, so the model's chain-of-thought never leaks into the UI text bubble;
+    the loop persists it to the per-session debug trace instead."""
     from claude_agent_sdk import (
         AssistantMessage,
         ResultMessage,
         StreamEvent,
         TextBlock,
+        ThinkingBlock,
         ToolUseBlock,
     )
 
     text_parts: list[str] = []
+    thinking_parts: list[str] = []
     tool_calls: list[ToolCall] = []
     usage = Usage()
     assistant_error: str | None = None
@@ -391,6 +440,8 @@ async def _consume(stream: Any, on_text: OnText | None) -> tuple[str, list[ToolC
             # include_partial_messages=True surfaces the raw Anthropic SSE events. Forward only
             # text deltas to the UI; the authoritative full text is taken from the AssistantMessage
             # TextBlock(s) below, so a dropped/duplicated delta never corrupts the recorded turn.
+            # thinking_delta events are intentionally NOT forwarded — reasoning is captured from
+            # the ThinkingBlock(s) below for the trace, never streamed into the visible answer.
             ev = msg.event or {}
             if ev.get("type") == "content_block_delta" and on_text is not None:
                 delta = ev.get("delta") or {}
@@ -404,6 +455,8 @@ async def _consume(stream: Any, on_text: OnText | None) -> tuple[str, list[ToolC
             for block in msg.content:
                 if isinstance(block, TextBlock):
                     text_parts.append(block.text)
+                elif isinstance(block, ThinkingBlock):
+                    thinking_parts.append(block.thinking)
                 elif isinstance(block, ToolUseBlock):
                     tool_calls.append(
                         ToolCall(id=block.id, name=_strip_prefix(block.name), input=dict(block.input))
@@ -418,7 +471,7 @@ async def _consume(stream: Any, on_text: OnText | None) -> tuple[str, list[ToolC
         raise ProviderError(f"Agent SDK error: {assistant_error}")
     if fatal:
         raise ProviderError(f"Agent SDK {fatal}")
-    return "".join(text_parts), tool_calls, usage
+    return "".join(text_parts), tool_calls, usage, "".join(thinking_parts)
 
 
 class _AgentSdkTurn:
@@ -483,7 +536,7 @@ class _AgentSdkTurn:
 
         try:
             await self._client.query(_astream(_to_sdk_messages(to_send)))
-            text, tool_calls, usage = await _consume(self._client.receive_response(), on_text)
+            text, tool_calls, usage, thinking = await _consume(self._client.receive_response(), on_text)
         except ProviderError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -491,6 +544,7 @@ class _AgentSdkTurn:
 
         return AssistantTurn(
             text=text or None,
+            thinking=thinking or None,
             tool_calls=tool_calls,
             stop_reason="tool_use" if tool_calls else "end_turn",
             usage=usage,

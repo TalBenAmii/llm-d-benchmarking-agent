@@ -61,6 +61,12 @@ class AssistantTurn:
     tool_calls: list[ToolCall] = field(default_factory=list)
     stop_reason: str | None = None
     usage: Usage = field(default_factory=Usage)
+    # The model's extended-thinking / chain-of-thought for this step, when the provider both
+    # ran with thinking enabled AND surfaces it (only the Claude Agent SDK provider does today).
+    # NEVER fed back into the conversation (it would bloat context and the SDK replays history as
+    # plain text) — captured purely so the agent loop can persist it to the per-session debug
+    # trace. ``None`` when the provider produced no thinking this step.
+    thinking: str | None = None
 
 
 class LLMProvider(ABC):

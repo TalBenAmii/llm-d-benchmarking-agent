@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     # ``claude_cli_path`` is optional (the SDK auto-discovers the CLI on PATH when unset).
     agent_sdk_model: str = "claude-haiku-4-5"
     claude_cli_path: str | None = None
+    # Reasoning quality + chain-of-thought capture for the Claude Agent SDK provider. These two
+    # knobs make the provider match the Sonnet-4.6 behavior of Claude Code: ``effort`` is the
+    # response-effort level ("low"|"medium"|"high"|"xhigh"|"max"; "high" is Claude Code's default
+    # deep-reasoning level) and ``thinking`` selects the extended-thinking mode — "adaptive"
+    # (Claude decides when/how much to think, exactly what Sonnet 4.6 in Claude Code uses), a
+    # positive integer (a fixed per-turn thinking-token budget, forces thinking every turn), or
+    # "off"/"disabled" to turn extended thinking off. When thinking is active the agent loop
+    # captures the model's reasoning into the per-session trace (see app/observability/cot_trace.py).
+    agent_sdk_effort: str = "high"
+    agent_sdk_thinking: str = "adaptive"
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o"

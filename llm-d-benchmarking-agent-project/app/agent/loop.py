@@ -14,6 +14,7 @@ from app.agent.results_card import build_results_card
 from app.agent.session import Session
 from app.agent.tool_result_budget import clamp_tool_result_content
 from app.llm.provider import LLMProvider, Usage, open_provider_turn
+from app.observability.cot_trace import TurnTrace
 from app.observability.logctx import bind as log_bind
 from app.tools.context import ApprovalRejected, QuotaError, ToolError
 from app.tools.registry import dispatch, tool_definitions
@@ -49,6 +50,11 @@ class AgentLoop:
         ctx = session.ctx
         ctx.emit = emit
         ctx.request_approval = request_approval
+        # Chain-of-thought debug trace: append the model's reasoning + every decision this turn
+        # to the session's OWN folder (<workspace>/sessions/<id>/cot_trace.jsonl), so a mistake
+        # can be debugged after the fact. Always on — best-effort and never raises into the turn.
+        trace = TurnTrace.for_session(ctx.workspace)
+        trace.event("turn_start", session_id=session.id, user_text=user_text)
         # If a read-only environment pre-probe ran in the background while the user typed their
         # first message, hand its snapshot to the model as a synthetic user turn BEFORE the real
         # message — so the agent starts environment-aware without spending an extra LLM turn (or
@@ -195,6 +201,18 @@ class AgentLoop:
                     "content": turn.text or "",
                     "tool_calls": [{"id": tc.id, "name": tc.name, "input": tc.input} for tc in turn.tool_calls],
                 })
+                # Record this LLM call to the debug trace: the model's chain-of-thought, the text
+                # it produced, the tool calls it decided on, and this call's token usage. The
+                # reasoning is NEVER added to session.messages (it would bloat context) — only here.
+                trace.event(
+                    "step",
+                    step=calls,
+                    thinking=turn.thinking,
+                    text=turn.text or None,
+                    tool_calls=[{"name": tc.name, "input": tc.input} for tc in turn.tool_calls],
+                    usage={"input": turn.usage.input_tokens, "output": turn.usage.output_tokens,
+                           "cache_read": turn.usage.cache_read_tokens},
+                )
                 if turn.text:
                     await emit(events.ASSISTANT_TEXT, {"text": turn.text})
 
@@ -238,19 +256,24 @@ class AgentLoop:
                         card = build_results_card(tc.name, result)
                         if card is not None:
                             await emit(events.RESULTS_CARD, {"id": tc.id, "card": card})
+                    clamped = clamp_tool_result_content(result, _TOOL_RESULT_BUDGET)
                     tool_result_msgs.append({
                         "tool_call_id": tc.id,
                         "name": tc.name,
                         # Bound the result to the feed-back budget WITHOUT slicing mid-JSON: an
                         # overflow becomes a valid truncation envelope, never malformed JSON.
-                        "content": clamp_tool_result_content(result, _TOOL_RESULT_BUDGET),
+                        "content": clamped,
                     })
+                    # Trace the result the model will actually see (the same budget-clamped text),
+                    # so the debug record shows the exact evidence each decision was based on.
+                    trace.event("tool_result", tool=tc.name, id=tc.id, result=clamped)
 
                 session.messages.append({"role": "tool_results", "results": tool_result_msgs})
             else:
                 await emit(events.ERROR, {"message": f"reached the step limit ({MAX_STEPS}); pausing."})
                 log.warning("turn.step_limit", extra={"max_steps": MAX_STEPS})
 
+        trace.event("turn_end", tool_calls=tool_calls_made, llm_calls=calls)
         log.info("turn.end", extra={"session_id": session.id, "tool_calls": tool_calls_made})
         session.persist()
         await emit(events.DONE, {})

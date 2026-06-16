@@ -3,8 +3,9 @@
 Hermetic — no CLI subprocess, no network. We exercise:
   * StatelessTurn / open_provider_turn (the default path every non-SDK provider + the test fakes
     get): each step is a one-shot chat() over the FULL message list, on_text ignored.
-  * _consume(): parses an SDK message stream into (text, tool_calls, usage) and forwards text
-    deltas to on_text — built from real ``claude_agent_sdk`` message objects.
+  * _consume(): parses an SDK message stream into (text, tool_calls, usage, thinking) and forwards
+    text deltas to on_text (thinking is captured but NOT streamed) — built from real
+    ``claude_agent_sdk`` message objects.
   * _AgentSdkTurn incremental send logic (with a fake connected client) + graceful degradation.
   * The agent loop streaming end-to-end: a provider that streams via open_turn makes the loop
     emit ASSISTANT_DELTA fragments live, then a final ASSISTANT_TEXT.
@@ -97,6 +98,7 @@ async def test_consume_collects_text_tool_calls_usage_and_streams_deltas():
         _delta("lo"),
         sdk.AssistantMessage(
             content=[
+                sdk.ThinkingBlock(thinking="Let me probe the cluster first.", signature="sig"),
                 sdk.TextBlock(text="Hello"),
                 sdk.ToolUseBlock(id="t1", name="mcp__benchtools__probe_environment",
                                  input={"namespace": "llm-d"}),
@@ -108,9 +110,11 @@ async def test_consume_collects_text_tool_calls_usage_and_streams_deltas():
                           usage={"input_tokens": 5, "output_tokens": 9,
                                  "cache_read_input_tokens": 100, "cache_creation_input_tokens": 0}),
     ]
-    text, tool_calls, usage = await _consume(_stream(msgs), on_text)
+    text, tool_calls, usage, thinking = await _consume(_stream(msgs), on_text)
 
     assert text == "Hello"                       # authoritative text from the TextBlock
+    assert thinking == "Let me probe the cluster first."  # CoT captured from the ThinkingBlock...
+    assert "thinking" not in "".join(deltas).lower()      # ...but NEVER streamed into the UI text
     assert deltas == ["Hel", "lo"]               # live deltas forwarded in order...
     assert "".join(deltas) == text               # ...and they reconstruct the full text exactly
     assert len(tool_calls) == 1
@@ -125,9 +129,10 @@ async def test_consume_without_on_text_still_parses():
         sdk.ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
                           num_turns=1, session_id="s", usage=None),
     ]
-    text, tool_calls, usage = await _consume(_stream(msgs), None)
+    text, tool_calls, usage, thinking = await _consume(_stream(msgs), None)
     assert text == "done"
     assert tool_calls == []
+    assert thinking == ""  # no ThinkingBlock in the stream → empty (the loop stores None)
 
 
 # ---- _AgentSdkTurn: incremental send + degradation -----------------------------------------
