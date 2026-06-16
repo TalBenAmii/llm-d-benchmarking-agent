@@ -42,6 +42,15 @@ class RunnerError(RuntimeError):
     pass
 
 
+# Sentinel line appended to a timed-out command's captured output. A timeout is structurally
+# distinguishable from "ran and returned empty" via ``RunResult.timed_out`` / ``exit_code == -1``,
+# but a downstream caller that only reads ``.output`` (e.g. a probe that strips and checks for a
+# non-empty string) would otherwise see an EMPTY string and treat the timeout as a clean empty
+# success. This marker makes the timeout visible even to such ``.output``-only readers so a
+# kubectl probe that blows its deadline narrates "timed out / unknown", not "ran, found nothing".
+TIMEOUT_MARKER = "[runner: command timed out — result is INCOMPLETE, not an empty success]"
+
+
 @dataclass
 class RunResult:
     exit_code: int
@@ -51,6 +60,10 @@ class RunResult:
     output: str = ""              # captured stdout+stderr (tail-bounded)
     timed_out: bool = False
     lines: list[str] = field(default_factory=list)
+    # The deadline (seconds) this command was bounded by. None when no explicit deadline applied
+    # (the runner's huge global default). Carried so a timeout is fully self-describing — a caller
+    # narrating a timeout can say "kubectl exceeded its Ns deadline" without re-deriving it.
+    deadline_s: float | None = None
 
 
 def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
@@ -226,6 +239,10 @@ class CommandRunner:
             timed_out = True
             log.warning("runner.exec.timeout", extra={
                 "exe": real_argv[0] if real_argv else "", "deadline_s": deadline})
+            # Make the timeout visible to callers that only inspect captured output (see
+            # TIMEOUT_MARKER): without it an empty-output timeout is indistinguishable from a
+            # clean empty success at the text level.
+            captured.append(TIMEOUT_MARKER)
             _kill_process_group(proc)
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(proc.wait(), timeout=5.0)  # brief grace to reap
@@ -250,6 +267,7 @@ class CommandRunner:
             output="\n".join(captured),
             timed_out=timed_out,
             lines=captured,
+            deadline_s=deadline,
         )
 
 
@@ -287,4 +305,5 @@ class SimRunner(CommandRunner):
             output="\n".join(lines),
             lines=lines,
             timed_out=False,
+            deadline_s=timeout,
         )

@@ -56,6 +56,16 @@ _SCENARIOS_SUBDIR = ("config", "scenarios")
 _VALUES_FILE_SUBPATH = ("config", "templates", "values", "defaults.yaml")
 _TEMPLATE_DIR_SUBPATH = ("config", "templates", "jinja")
 
+# The leaf segment of a supplied dotted override key is the actual field/flag NAME (e.g.
+# ``enforceEager`` in ``vllmCommon.flags.enforceEager``). We build a known-name set LIVE from
+# every NESTED key the repo's scenario examples + stock defaults.yaml actually use, so a
+# fabricated vLLM flag (sim-1 01:10: ``enablePrefixCachingV2`` etc., which exist in NO repo
+# file) can be surfaced as ``unrecognized_flags`` — ADVISORY only, never a hard fail (shape
+# still passes). A name PRESENT in the reference is "seen in the repo", which is NOT a promise
+# the target vLLM version accepts it (see knowledge/vllm_overrides.md). These segments are
+# reserved DOTTED-PATH STRUCTURE, never flag names, so they are excluded from the leaf check.
+_STRUCTURAL_LEAF_SEGMENTS = frozenset({"flags", "name"})
+
 # Suffix for the companion specification file authored beside a scenario. A bare ``*.spec.yaml``
 # under the session workspace is what the allowlist's ``spec_workspace_path`` constraint admits
 # as a ``--spec`` value (in addition to live-catalog names), so this file is the allowlisted
@@ -94,6 +104,21 @@ def _scenario_reference(bench_repo: Path) -> dict[str, Any]:
     return _scenario_reference_cached(str(bench_repo.joinpath(*_SCENARIOS_SUBDIR)))
 
 
+def _collect_leaf_keys(node: Any, into: set[str]) -> None:
+    """Recursively collect every mapping KEY name reachable in ``node`` into ``into``.
+
+    A flat name set of every field the repo actually uses at any nesting depth — the basis for
+    the advisory ``unrecognized_flags`` check (a supplied override key whose leaf segment never
+    appears here is "not seen in the repo")."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            into.add(k)
+            _collect_leaf_keys(v, into)
+    elif isinstance(node, list):
+        for it in node:
+            _collect_leaf_keys(it, into)
+
+
 @cache
 def _scenario_reference_cached(scenarios_dir: str) -> dict[str, Any]:
     """Memoized core of ``_scenario_reference``, keyed by the scenarios-dir path string. See the
@@ -102,6 +127,7 @@ def _scenario_reference_cached(scenarios_dir: str) -> dict[str, Any]:
     if not scen_dir.is_dir():
         return {}
     knob_keys: set[str] = set()
+    known_leaf_keys: set[str] = set()
     examples: list[str] = []
     for path in sorted(scen_dir.rglob("*.yaml")):
         try:
@@ -117,14 +143,53 @@ def _scenario_reference_cached(scenarios_dir: str) -> dict[str, Any]:
         for row in rows:
             if isinstance(row, dict) and isinstance(row.get("name"), str):
                 knob_keys.update(row.keys())
+                _collect_leaf_keys(row, known_leaf_keys)
                 named_row = True
         if named_row:
             examples.append(str(path.relative_to(scen_dir)).removesuffix(".yaml"))
     if not examples:
         return {}
+    # Widen the known-name set with the stock defaults.yaml field names (siblings of the
+    # scenarios dir: ../templates/values/defaults.yaml) so a legitimate-but-rarely-used knob
+    # that no example sets is not falsely flagged. Best-effort; the advisory degrades to the
+    # examples-only set if defaults can't be read.
+    defaults_path = scen_dir.parent / "templates" / "values" / "defaults.yaml"
+    try:
+        defaults = yaml.safe_load(defaults_path.read_text())
+        _collect_leaf_keys(defaults, known_leaf_keys)
+    except (OSError, yaml.YAMLError):
+        pass
     # Union in the soft-optional knobs (e.g. ``tracing``) the jinja renders but the examples
     # omit, so the validator accepts an authored tracing block even though no example yields it.
-    return {"examples": sorted(examples), "knob_keys": sorted(knob_keys | _SOFT_OPTIONAL_KNOBS)}
+    return {
+        "examples": sorted(examples),
+        "knob_keys": sorted(knob_keys | _SOFT_OPTIONAL_KNOBS),
+        "known_leaf_keys": sorted(known_leaf_keys | _SOFT_OPTIONAL_KNOBS),
+    }
+
+
+def unrecognized_flags(content: dict[str, Any], reference: dict[str, Any]) -> list[str]:
+    """ADVISORY: the supplied dotted-override keys whose leaf NAME never appears in the repo's
+    scenario examples or stock defaults — i.e. flags/fields we could NOT corroborate against
+    repo truth (sim-1 01:10: fabricated vLLM flags like ``enablePrefixCachingV2``).
+
+    Non-fatal: shape validation still passes; this only lets the agent WARN. Returns the FULL
+    dotted keys (sorted, de-duped) so the agent can name them precisely. Empty when there is no
+    reference (repo absent) — we don't guess without repo truth. Structural path segments
+    (``flags``, ``name``) and any segment the repo uses are NOT flagged."""
+    known = set(reference.get("known_leaf_keys", []))
+    if not known:
+        return []
+    flagged: set[str] = set()
+    for dotted in content:
+        if dotted == "name":
+            continue
+        leaf = dotted.split(".")[-1]
+        if leaf in _STRUCTURAL_LEAF_SEGMENTS:
+            continue
+        if leaf not in known:
+            flagged.add(dotted)
+    return sorted(flagged)
 
 
 def validate_scenario_structure(document: dict[str, Any], reference: dict[str, Any]) -> list[str]:
@@ -253,6 +318,11 @@ def author_scenario(
     document = _build_scenario_document(name, content)
     reference = _scenario_reference(ctx.settings.bench_repo)
     errors = validate_scenario_structure(document, reference)
+    # ADVISORY (non-fatal): dotted override keys whose leaf name we could not corroborate
+    # against the repo's scenario examples / defaults — likely typos or flags that exist in NO
+    # repo file (sim-1 01:10). Surfaced so the agent WARNS, never blocks; passing SHAPE
+    # validation does NOT mean a flag name is real (see knowledge/vllm_overrides.md).
+    unknown_flags = unrecognized_flags(overrides, reference)
 
     ctx.workspace.mkdir(parents=True, exist_ok=True)
     dest = ctx.workspace / target_filename
@@ -265,6 +335,7 @@ def author_scenario(
             "artifact_type": "scenario",
             "valid": False,
             "errors": errors,
+            "unrecognized_flags": unknown_flags,
             "validated_against_examples": reference.get("examples", []),
         }
 
@@ -284,7 +355,7 @@ def author_scenario(
     spec_dest = ctx.workspace / _spec_filename(target_filename)
     spec_dest.write_text(yaml.safe_dump(spec_doc, sort_keys=False))
 
-    return {
+    result: dict[str, Any] = {
         "path": str(dest),
         "spec_path": str(spec_dest),
         "artifact_type": "scenario",
@@ -292,6 +363,7 @@ def author_scenario(
         "errors": [],
         "scenario_name": name,
         "knobs_set": sorted(overrides),
+        "unrecognized_flags": unknown_flags,
         "validated_against_examples": reference.get("examples", []),
         "note": "GATE this authored scenario on the CLI's determinism check before any "
                 "mutation: pass spec_path as the `spec` argument — "
@@ -299,6 +371,17 @@ def author_scenario(
                 "flags={'dry_run': True}). A clean plan/--dry-run is the acceptance gate. "
                 "WHICH knobs to set is judgment — read_knowledge('vllm_overrides').",
     }
+    if unknown_flags:
+        # SHAPE passing is NOT proof a flag name is real. Make that explicit alongside the list
+        # so the agent never tells the user fabricated flags were "authored correctly"/valid.
+        result["unrecognized_flags_note"] = (
+            "These override keys are NOT found in the repo's scenario examples or stock "
+            "defaults — they may be typos or flags that do not exist in the target vLLM "
+            "version. Shape-validation PASSING does NOT verify a flag name is real; warn the "
+            "user that unknown flags are passed as-is and fail at runtime. Do NOT claim they "
+            "are valid/authored correctly. See read_knowledge('vllm_overrides')."
+        )
+    return result
 
 
 async def write_and_validate_config(

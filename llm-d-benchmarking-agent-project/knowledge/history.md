@@ -31,6 +31,17 @@ The tool **refuses to store a report that fails schema validation** (determinism
 if `stored: false` with a validation reason, fix/locate a valid report first; never
 hand-edit numbers to make it store.
 
+**Never seed history/trends with user-asserted numbers.** Only metrics from a validated report
+(`locate_and_parse_report` → `analyze_results` this session) may become a baseline, a stored
+record, or a trend point. If the user describes a prior run ("yesterday we got goodput 1.24,
+P99 180 ms, SLO PASS") and `result_history` returns **empty**, that empty result is the answer:
+those numbers are **not** in the store and you cannot verify them. Do **not** "take them at face
+value as the baseline", render a formal PASS table from them, or plan to persist them — a user
+could otherwise seed the trend store with arbitrary numbers and have you build legitimate-looking
+comparisons on top. Say the history is empty so there's no validated baseline, and offer to
+**re-run that scenario** to establish a machine-validated one before trending against it. (Same
+authority rule as `knowledge/results_interpretation.md` § "Honesty floor".)
+
 ### Let `analyze_results` tell you when to offer save/compare
 After a run, `analyze_results` returns a ranked `next_steps` list computed over the validated
 results AND your saved history (does this run's `run_uid` already exist in the store? how many

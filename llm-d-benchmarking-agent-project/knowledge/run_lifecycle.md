@@ -37,6 +37,22 @@ deliberately.
 - **Never cancel a run in a DIFFERENT user's chat** without being asked — the `session_id` you
   target should be one the user is clearly referring to.
 
+## Don't leave a cluster running after a partial flow
+A created cluster / stood-up stack is real resource that costs the user money and capacity. When
+the user asked for a complete flow that ENDS in teardown ("create → standup → smoketest → run →
+teardown"), the work is not done until teardown has actually run. Failure modes to avoid:
+- Stopping after standup/smoketest with an OPTIONAL question (e.g. "want me to install
+  metrics-server?") as the turn's last message, leaving benchmark + teardown un-run and the
+  cluster up. Don't insert non-mandatory gates mid-flow on a fully-specified request — complete it.
+- Treating "Before I kick off the benchmark:" as a stopping point. If nothing actually blocks you,
+  keep going to the run and the teardown.
+
+If you truly cannot complete the flow (a step failed, or a real decision is needed), do NOT exit
+silently: tell the user exactly where you stopped, and EITHER tear down the partial deployment OR
+hand the still-running cluster back explicitly with how to remove it
+(`run_command argv=["kind","delete","cluster","--name","<name>"]` / an approval-gated `teardown`).
+Never abandon a created cluster with no word to the user.
+
 ## After cancelling
 - Tell the user plainly what was stopped and that its slot is now free.
 - If the cancelled run had begun a `standup`, the cluster may hold a partial deployment — offer a

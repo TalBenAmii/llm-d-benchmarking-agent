@@ -156,6 +156,14 @@ value_constraints:
   # child env var (LLMDBENCH_CLUSTER_URL/_TOKEN) — see the cluster-access non-leak note on the
   # llmdbenchmark entry below and knowledge/preconditions.md for the WHEN-to-target judgment.
   kubeconfig_path: { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+$" }
+  # ---- multi-cluster context switching (real-1 07:20): the `kubectl config use-context`
+  # target + the `kind export kubeconfig --name` cluster. With several kind clusters present
+  # the active kubectl context can drift to a sibling cluster; the agent must be able to point
+  # back at the right one. A context name is a safe DNS-ish label (kind contexts are
+  # `kind-<cluster>`; same charset family as cluster_name but allows the `kind-` prefix and a
+  # slightly longer bound). Switching the active context only rewrites a pointer in kubeconfig
+  # — it mutates no cluster — so the enclosing `config` subcommand stays read_only.
+  kube_context:    { regex: "^[A-Za-z0-9]([-A-Za-z0-9_.]{0,62}[A-Za-z0-9])?$" }
   output_format:   { enum: [json, yaml, wide, name] }
   methods:         { enum: [standalone, modelservice, kustomize, fma] }
   # ---- gateway provider selection (Phase 32): --gateway-class value ----
@@ -287,6 +295,17 @@ executables:
     subcommands:
       get: { mode: read_only, positionals: [ { value: { enum: [clusters, nodes] } } ] }
       version: { mode: read_only }
+      # `kind export kubeconfig` writes/refreshes the kubeconfig entry + context for a kind
+      # cluster (real-1 07:20: needed to recover when the active context drifted to a sibling
+      # cluster). It touches NO cluster state — it only writes a local kubeconfig file — so it is
+      # read_only-ish (auto-runs). `--name <cluster>` selects which cluster; `--kubeconfig <path>`
+      # targets a specific (non-default, non-traversing) kubeconfig file.
+      export:
+        mode: read_only
+        positionals: [ { value: { enum: [kubeconfig] } } ]
+        flags:
+          "--name": { takes_value: true, value: { ref: cluster_name } }
+          "--kubeconfig": { takes_value: true, value: { ref: kubeconfig_path } }
       # The agent creates/deletes the local kind cluster itself (the upstream quickstart
       # makes this a manual prereq; we let the agent do it, gated by approval).
       create:
@@ -305,14 +324,31 @@ executables:
 
   kubectl:
     subcommands:
+      # timeout_s here (DATA) overrides the probe tool's caller timeout for these read-only
+      # kubectl probes. On WSL2 / Docker-Desktop kubectl routinely takes >12s (and more under
+      # concurrent sessions), so the old 12s fallback produced a flood of spurious
+      # `runner.exec.timeout` WARNINGs on calls that would have succeeded a few seconds later
+      # (real-1 00:15, real-2 08:10). 25s is realistic for WSL2 without being open-ended; it
+      # applies ONLY to these read-only probe subcommands — the mutating apply/delete keep their
+      # own (unset → global default) deadline. When NO cluster exists the call still fails fast
+      # via connection refusal long before this deadline; the deadline only bites a slow-but-
+      # reachable apiserver.
       config:
         mode: read_only
-        positionals: [ { value: { enum: [current-context, view, get-contexts] } } ]
+        timeout_s: 25
+        # `use-context <ctx>` switches the ACTIVE context (real-1 07:20: recover from context
+        # drift when multiple kind clusters exist). It only rewrites a pointer in kubeconfig —
+        # no cluster mutation — so the subcommand stays read_only. The first positional is the
+        # config verb; the optional second is the target context for `use-context` (the other
+        # verbs take none — `optional: true` allows their absence).
+        positionals:
+          - { value: { enum: [current-context, view, get-contexts, use-context] } }
+          - { value: { ref: kube_context }, optional: true }
         flags:
           "-o": { takes_value: true, value: { ref: output_format } }
           "--minify": {}
-      cluster-info: { mode: read_only }
-      version: { mode: read_only, flags: { "--output": { takes_value: true, value: { ref: output_format } }, "--client": {} } }
+      cluster-info: { mode: read_only, timeout_s: 25 }
+      version: { mode: read_only, timeout_s: 25, flags: { "--output": { takes_value: true, value: { ref: output_format } }, "--client": {} } }
       # Live resource usage (CPU/memory) for pods/nodes — read_only, observe-only. Powers the
       # observe_run_metrics tool's "live system metrics during a run" view. Requires the
       # in-cluster metrics-server, which kind and the cicd/kind spec do NOT install — it must be
@@ -320,6 +356,7 @@ executables:
       # the command fails read-only and the agent relays that — it never mutates anything.
       top:
         mode: read_only
+        timeout_s: 25
         positionals: [ { value: { enum: [pod, pods, node, nodes] } } ]
         flags:
           "-n": { takes_value: true, value: { ref: namespace } }
@@ -333,6 +370,7 @@ executables:
           "--containers": {}
       get:
         mode: read_only
+        timeout_s: 25
         # `pods -o json` (already in the kubectl_resource enum) now ALSO feeds the Phase 59
         # serving-readiness classifier (pod phase / Ready conditions / restartCount / age /
         # role-by-port), alongside the Phase 24 endpoint check. No schema change here.

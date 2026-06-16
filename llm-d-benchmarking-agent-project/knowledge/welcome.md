@@ -13,6 +13,12 @@ The loader (app/agent/welcome.py) parses this file deterministically:
 - the first non-empty line under `### Nudge` becomes the closing nudge.
 Missing pieces degrade gracefully (no bullets → no card; heading/nudge fall back to empty).
 
+**This card is the ONLY greeting.** It is shown by code at connect time, BEFORE the user's first
+message. So the agent must NOT repeat a capabilities splash in response to the user's first
+message when that message has real content — it should engage the request (or engage-and-refuse)
+exactly as on any later turn. Re-stating the capabilities summary in chat is reserved for when
+the user's message is itself empty or a bare greeting/"what can you do?". See conversation_style.md.
+
 ## Hi! I'm the llm-d Benchmarking Assistant — here's how I can help.
 
 ### Capabilities

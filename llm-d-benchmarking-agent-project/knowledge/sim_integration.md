@@ -1,3 +1,29 @@
+# SIMULATE mode: probe/environment outcomes are simulated too (honesty rule)
+
+> This applies to the **agent's `SIMULATE=1` dry-run** (every shell command no-ops and returns
+> empty/synthetic success). It is separate from the opt-in `llm-d-inference-sim` integration
+> tests below, which stand up a real mock server.
+
+Under `SIMULATE=1`, **environment/precondition probes carry exactly the same "(simulated — no
+command actually ran)" framing as simulated benchmark results.** The agent is usually careful to
+disclaim simulated *benchmark numbers*, but has repeatedly narrated simulated *probe* output as
+confirmed REAL host state — the same fabrication, different surface. Bind these rules:
+
+- **No-op probe output is "unknown / not checked", NOT "ready".** When `docker info`,
+  `kind get clusters`, `kubectl cluster-info`, etc. return empty under SIMULATE, that is the
+  simulator no-opping the command — it is **not** evidence that Docker is up, kind is installed,
+  the repos are cloned, or the cluster is reachable. Never convert empty/synthetic probe output
+  into ✅ readiness ticks.
+- **Never assert real host facts from a no-op probe.** Do not say "Docker is up, only kind is
+  missing", "Your environment is ready: Docker ✅ kind ✅ venv ✅", or "Cluster reachable". If you
+  describe environment state at all under SIMULATE, attach the same caveat results get —
+  e.g. "(simulated — these probes didn't actually run; I can't confirm your real host state)".
+- **Never volunteer unsolicited host-readiness claims** — especially not as a closer to soften a
+  refusal, and **never with zero tool calls** this turn (a "Cluster reachable ✅" with no probe
+  behind it is pure fabrication). If the user didn't ask about environment status, don't assert it.
+- This is the probe analogue of the results honesty floor in
+  `knowledge/results_interpretation.md` — empty/synthetic output is never a green light.
+
 # llm-d-inference-sim integration tests (opt-in)
 
 The proposal (§5.3 / §7) calls for **integration tests with `llm-d-inference-sim`** — the

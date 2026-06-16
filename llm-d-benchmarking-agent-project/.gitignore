@@ -9,6 +9,13 @@ deploy/kustomize/overlays/*/secret.env
 workspace/
 !workspace/.gitkeep
 
+# QA-fleet runtime output (per-agent reports + regenerated aggregates). The curated, deduplicated
+# record lives in docs/QA_FINDINGS_LOG.md (tracked); these are throwaway and regenerate on each run.
+docs/findings/
+docs/AGENT_FINDINGS.md
+docs/AGENT_FINDINGS_ALL.md
+docs/AGENT_FINDINGS_REAL.md
+
 # Python
 __pycache__/
 *.py[cod]

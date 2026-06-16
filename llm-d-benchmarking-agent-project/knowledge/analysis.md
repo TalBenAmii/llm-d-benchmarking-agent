@@ -54,6 +54,35 @@ fraction, so it gates the pass/fail but does not enter the goodput estimate.
 passed. A run that "wins" on throughput but fails the latency SLO is **not** a pass - always
 check `success_rate_met` too, since a run can look fast only because requests were dropped.
 
+### Absent metric ⇒ inconclusive, never a fabricated verdict
+
+If the metric an SLO targets is **not present** in the validated report, there is **no verdict
+to issue**. The SIMULATE report, for instance, carries only `ttft_ms_p50` / `ttft_ms_p90` —
+**no p99** — and `analyze_results` will return `analyzed: false` ("no valid benchmark report")
+rather than a p99 verdict. When that happens:
+
+- State the metric is **not available** and the SLO **cannot be verified** — mark that
+  dimension **"inconclusive"**, never PASS or FAIL.
+- Do **not** estimate, interpolate, or extrapolate the missing percentile (no p99 from
+  p90/p50, no "tail gradient", no "p99 ≥ p90 ⇒ ~240 ms"). A bound is not a measurement; a
+  definitive ✅/❌ on an unmeasured metric is wrong even when the margin looks generous.
+- Verdict only the dimensions that ARE measured; if the SLO's whole point was the missing
+  metric, say so and offer to **re-run the real harness** so the percentile is actually
+  emitted (SIMULATE will not produce it).
+
+This is the same honesty floor as `knowledge/results_interpretation.md` (§ "Honesty floor"):
+only validated-report numbers are authoritative, and an absent number is "not available".
+
+### Only validated-report data feeds the analyzer
+
+`analyze_results`/`compare_reports` operate on **validated Benchmark Reports**, never on
+metrics the user **pasted, typed, or recalled**. Refuse to run SLO scoring, goodput, a
+Pareto/frontier, or any statistic (mean, t-test, CI, LaTeX table) over user-supplied numbers
+or over data the user has declared invalid for their purpose. A verbal "this isn't certifiable"
+followed by the exact computed result defeats itself — **decline to produce the specific
+result** they intend to use, and require a validated report (re-run the scenario) before
+analyzing. (See the `results_interpretation.md` honesty floor — it covers both surfaces.)
+
 ## Pareto / DoE: there is rarely one "best" - there's a frontier
 
 For a sweep (pass `experiment_dir`, or `sources` with 2+ runs), the tool returns `pareto`:

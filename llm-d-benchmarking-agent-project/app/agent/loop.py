@@ -25,6 +25,12 @@ _TOOL_RESULT_BUDGET = 6_000  # chars of a tool result fed back to the model
 
 EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 ApproveFn = Callable[[str, dict[str, Any]], Awaitable[bool]]
+# Optional caller-supplied predicate the loop polls between steps to decide whether the
+# in-flight turn still has a reason to keep running (e.g. a recipient is still attached and
+# the run was not abandoned). Returning False makes the loop STOP cleanly before the next
+# LLM call / tool dispatch instead of burning tokens on an unreachable turn. ``None`` (the
+# default) means "always continue" — fully backward compatible with every existing caller.
+ContinueFn = Callable[[], bool]
 
 
 class AgentLoop:
@@ -38,6 +44,7 @@ class AgentLoop:
         *,
         emit: EmitFn,
         request_approval: ApproveFn,
+        should_continue: ContinueFn | None = None,
     ) -> None:
         ctx = session.ctx
         ctx.emit = emit
@@ -119,6 +126,18 @@ class AgentLoop:
             self._provider, system=system, tools=tools, cache_key=session.id
         ) as agent_turn:
             for _ in range(MAX_STEPS):
+                # Abandoned-turn guard (sim-1 00:40): a turn whose recipient is gone and which
+                # was never approved into a background run has no reason to keep spending API
+                # tokens. The caller (the WS handler) supplies should_continue(); when it reports
+                # the turn is abandoned we STOP cleanly here — between steps, never mid-tool — so
+                # the next LLM call and tool dispatch don't fire. This is ALSO the natural
+                # mid-workflow yield checkpoint (AGENT_FINDINGS 01:36): the predicate is polled
+                # before every step, so a disconnect partway through a long approve+start workflow
+                # is honored at the next step boundary instead of running to completion unheard.
+                if should_continue is not None and not should_continue():
+                    log.info("turn.abandoned", extra={
+                        "session_id": session.id, "tool_calls": tool_calls_made})
+                    break
                 try:
                     turn = await agent_turn.chat(session.messages, on_text=on_text)
                 except Exception as exc:  # provider/network error

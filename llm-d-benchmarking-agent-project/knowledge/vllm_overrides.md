@@ -117,6 +117,36 @@ add config noise without changing the measurement — don't set them there.
 - `routing.servicePort` — change the service port the router exposes (default matches the
   helm chart's vLLM service port). Only touch it on a real port conflict.
 
+## Validation only checks SHAPE — it does NOT verify a flag NAME is real
+
+This is the most important caveat. `write_and_validate_config` returning `valid: true` means
+the authored YAML **passed structural (shape) validation** — top-level keys match the repo's
+scenario format and it re-parses. It does **NOT** mean a vLLM flag name actually exists, nor
+that the target vLLM version accepts it. In SIMULATE mode the downstream `plan`/`--dry-run`
+no-ops too, so a fabricated flag can sail through the whole flow untouched.
+
+**Never tell the user their supplied flags were "authored correctly", "valid", or "accepted"
+on the strength of `valid: true` alone.** Shape-passing ≠ real flag. A flag the agent invented
+or mis-remembered (e.g. `enablePrefixCachingV2`, `kvCacheSharingStrategy`,
+`speculativeDecodeTokenBudget`, `enableChunkedPrefillV3` — none of which exist in the repo)
+will pass shape validation and then fail at vLLM startup with `error: unrecognized arguments`.
+
+To make this checkable, the tool result carries an additive **`unrecognized_flags`** list: the
+override keys whose leaf name appears in **no** repo scenario example **and** not in stock
+`defaults.yaml`. It is **advisory, non-fatal** — the tool never blocks on it (the agent warns,
+it doesn't gate). When `unrecognized_flags` is non-empty:
+- **Warn the user explicitly**: name the flags and say you could not corroborate them against
+  the repo, so they may be typos or flags that don't exist in the target vLLM version, and that
+  unknown flags are passed as-is and **fail at runtime** (`unrecognized arguments`).
+- Do **not** claim the flags are valid. Offer to re-read `defaults.yaml` + a real scenario
+  example to find the correct name, or to drop the flag.
+- An empty `unrecognized_flags` is corroboration-against-repo-truth, still **not** a hard
+  guarantee for a specific vLLM version — but it means the name is at least used upstream.
+
+When `unrecognized_flags` is absent (older result) or empty, you STILL cannot certify flag
+existence in the user's vLLM version — add the runtime-verification caveat whenever the user
+supplied flags you didn't read out of the repo yourself.
+
 ## Guardrails
 - One scenario edit at a time when you're attributing a result to it — change the knob, plan,
   run, compare. Bundling many knobs makes the delta unattributable.
@@ -124,3 +154,5 @@ add config noise without changing the measurement — don't set them there.
   spec under `config/scenarios/`.
 - If a knob you want isn't accepted, you guessed a field name — re-read `defaults.yaml` and a
   real scenario example, then re-author.
+- `valid: true` is a SHAPE pass, not a flag-existence guarantee — see the validation caveat
+  above and surface any `unrecognized_flags` to the user before claiming a flag is correct.

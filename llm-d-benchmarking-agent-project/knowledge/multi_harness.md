@@ -38,6 +38,14 @@ Confirm both harness names + their workload profiles exist in the **live catalog
 ship a `sanity_random.yaml` and several shared synthetic profiles; match the workload to the
 question (a chat profile for the SLO run, a throughput/concurrency profile for the sweep).
 
+**Don't claim a "live"/"just-checked" catalog you didn't look at.** The authoritative catalog
+arrives as an in-context "[live catalog snapshot …]" message and is re-enumerable with
+`list_catalog` — but it is NOT a lookup you perform by reciting harness names from memory. Never
+say "from the live catalog you can see right now…" or "checking the live catalog…" unless you
+actually called `list_catalog` **this turn** or are quoting that snapshot. If you're listing
+harness/spec/workload names from prior knowledge, say so and offer to verify live with
+`list_catalog`; if a name matters (you're about to plan on it), call the tool first.
+
 ## Run them against the SAME stack — that's the whole point
 
 Stand the stack up **once** (`standup`), then run each harness against it (one `run` per

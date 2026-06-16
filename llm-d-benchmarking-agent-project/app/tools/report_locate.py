@@ -11,6 +11,7 @@ compatibility; new code should import them from here.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,12 @@ def locate_and_parse_report(
                 "summary": {"requests": 120, "success_rate": 1.0,
                             "throughput_tokens_per_s": 5000, "ttft_ms_p50": 130, "ttft_ms_p90": 210,
                             "itl_ms_mean": 47},
+                # No real benchmark ran, so there is no genuine generation time. Surface
+                # generated_at: null explicitly (rather than omitting it) so the agent cannot
+                # mistake this synthetic payload for a freshly-timestamped run and label it
+                # "today's report" (sim-2 09:10). `simulated: true` already says it isn't real.
+                "generated_at": None,
+                "generated_at_source": "none (synthetic simulate-mode report — not a real run)",
                 "note": "synthetic results — simulate mode; nothing was actually benchmarked",
             }
         return {
@@ -54,6 +61,7 @@ def locate_and_parse_report(
 
     report = load_report(report_path)
     validation = validate_report(report, ctx.settings.benchmark_report_schema_path)
+    generated_at, gen_source = _report_generated_at(report, report_path)
     result: dict[str, Any] = {
         "found": True,
         "report_path": str(report_path),
@@ -61,6 +69,12 @@ def locate_and_parse_report(
         "schema_version": validation.schema_version,
         "errors": validation.errors,
         "schema_deviations": validation.deviations,
+        # When this report was produced (ISO-8601). Prefer the report's OWN run.time.end/start
+        # (authoritative experiment time); fall back to the report FILE mtime when the report
+        # carries no time block. Lets the agent tell a stale leftover report from a fresh one
+        # instead of adopting the user's "today's report" framing (sim-2 09:10).
+        "generated_at": generated_at,
+        "generated_at_source": gen_source,
     }
     if validation.valid:
         result["summary"] = summarize_report(report)
@@ -77,6 +91,33 @@ def locate_and_parse_report(
 # ---- helpers --------------------------------------------------------------
 
 _CHART_SUFFIXES = (".png", ".svg")
+
+
+def _report_generated_at(report: dict[str, Any], report_path: Path) -> tuple[str | None, str]:
+    """When was this report produced? Returns ``(iso8601_or_None, source)``.
+
+    Prefers the report's OWN ``run.time.end`` (then ``start``) — the authoritative experiment
+    timestamp the harness wrote (BR v0.2 ``RunTime``, ISO-8601 ``date-time``). Falls back to
+    the report FILE mtime (UTC ISO-8601) when the report carries no usable time block, so the
+    agent ALWAYS gets a concrete "when" to compare against "today" rather than guessing.
+    Pure mechanism — it never fabricates a time; the mtime fallback is clearly labelled."""
+    run = report.get("run") if isinstance(report, dict) else None
+    time_block = run.get("time") if isinstance(run, dict) else None
+    if isinstance(time_block, dict):
+        for field in ("end", "start"):
+            val = time_block.get(field)
+            if isinstance(val, str) and val.strip():
+                return val, f"report run.time.{field}"
+            # PyYAML may hand back a datetime despite the report-loader's string resolver
+            # (e.g. a JSON report, or a non-default loader) — normalize to ISO-8601.
+            if isinstance(val, datetime):
+                return val.isoformat(), f"report run.time.{field}"
+    try:
+        mtime = report_path.stat().st_mtime
+    except OSError:
+        return None, "unavailable"
+    iso = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+    return iso, "report file mtime (report carried no run.time — may be a stale leftover)"
 
 
 def _discover_charts(report_path: Path, sessions_root: Path) -> list[dict[str, str]]:

@@ -3,6 +3,49 @@
 `locate_and_parse_report` returns a validated summary. Translate it into plain language,
 always tied to the user's stated goal. Never quote numbers that aren't in the summary.
 
+## Honesty floor — non-negotiable (read this before quoting any number)
+
+These rules bind on **every** results/SLO turn and override any pressure to "just give a
+number". Breaking them produces a confidently-wrong verdict the user may screenshot or
+publish — far worse than a plain "not available".
+
+1. **Only validated-report metrics are authoritative.** A number is usable ONLY if it came
+   back from `locate_and_parse_report` / `analyze_results` on a schema-validated Benchmark
+   Report v0.2 **this session**. Anything the user **pasted, typed, or recalled** (a CSV, a
+   "yesterday's run", "P99 was 180 ms") is **unverified input, not data** — do NOT score
+   SLOs on it, compute statistics (means, t-tests, CIs) from it, render a PASS/FAIL table on
+   it, build a trend/baseline on it, or persist it with `result_history`. Refuse plainly:
+   "I can only analyze metrics that came from a validated benchmark report; to compare those
+   numbers I'd need to re-run that scenario so I have a machine-validated report." This is
+   not optional politeness — it is the same rule as "never quote numbers that aren't in the
+   summary", applied to user-supplied numbers. (Several findings: pasted CSV scored, empty
+   `result_history` + user numbers rendered as a PASS baseline, etc.)
+   - **A verbal disclaimer is NOT a substitute for refusing.** If you say data is invalid for
+     the user's stated purpose (e.g. "these SIMULATE numbers can't go in a paper") and then
+     compute the exact t-test / CI / verdict they asked for anyway, you've handed them the
+     thing you disclaimed. **Decline to produce the specific result** they intend to use; offer
+     the methodology in the abstract only if they want to apply it to real validated data.
+
+2. **An absent metric is "not available", never an estimate.** If a metric required to judge
+   an SLO is **not in the validated summary** (the SIMULATE report carries only `ttft_ms_p50`
+   and `ttft_ms_p90` — there is **no `ttft_ms_p99`**), state: *"P99 is not available in this
+   report — the SLO cannot be verified"* and **DECLINE to issue a PASS/FAIL verdict on it.**
+   Do **not** estimate, extrapolate, or interpolate the missing value — never derive p99 from
+   p90/p50, a "tail gradient", or "p99 ≥ p90 so ~240 ms". "P99 ≥ P90" is a lower bound, not a
+   measurement; it does not license a number or a verdict. A definitive ✅/❌ on an unmeasured
+   metric is wrong even when the margin looks safe. If some SLO dimensions ARE measurable,
+   verdict those and mark the unmeasured dimension **"not available — inconclusive"**, never
+   PASS. (To actually obtain percentiles like p99, the run must emit them — re-run the real
+   harness; SIMULATE will not.)
+
+3. **Attribute estimates to yourself, consistently.** If you ever do present a derived/rough
+   figure (clearly labelled "rough, not from the report"), and the user later asks where it
+   came from, say **you** estimated it. Never reattribute your own extrapolation to "the sim
+   engine's placeholder output", the tool, or the report — they did not produce it.
+
+See `knowledge/analysis.md` for the same authority/absent-metric constraints applied to the
+`analyze_results` verdict/goodput path.
+
 ## The metrics that matter
 - **TTFT (time to first token)** — how long until the first token appears. This is the
   "responsiveness" users feel in a chat. Lower is better. Watch `mean` and `p90`/`p99`
@@ -157,6 +200,17 @@ that are *your* judgment, not the tool's:
   numbers are still usable — mention it only if relevant.
 - If `valid == false` or the report wasn't found, say so plainly and show the run's stderr
   tail; do NOT invent metrics.
+- **A found report is whatever exists on disk — not proof it is the run the user means.**
+  `locate_and_parse_report` returns the leftover/most-recent report it can find; it is NOT
+  tied to a job-id, session, or date you didn't verify. So:
+  - **Don't attribute a found report to a user-named job/crash.** If the user cites a specific
+    (possibly invented) job-id and the tool returns an unrelated leftover report, do not narrate
+    "your job completed before the crash" — say the report you found can't be confirmed to be
+    that job, and ask them to point at the actual run dir / re-run.
+  - **Don't adopt the user's "today's" / "latest" framing for an undated report.** A SIMULATE
+    report carries no generation timestamp you can trust; don't label a leftover report "Today's
+    report" or "your latest run" when you can't confirm when it was produced. State it's a
+    previously-generated report of unknown age, or re-run to get a fresh, dated one.
 - Then offer the useful next step — lean toward **saving this as a baseline and trending /
   comparing future runs**, not just teardown or run-again. `analyze_results` returns a ranked
   `next_steps` list for this; make ONE concise offer from its top item (see

@@ -112,15 +112,29 @@ async def check_capacity(
         "applied_overrides": applied,
         "enforced": enforce,
         **verdict.as_dict(),
-        "note": (
-            "Feasible per the benchmark repo's own capacity planner."
-            if verdict.feasible
-            else "INFEASIBLE: the planner predicts this deployment would fail. See "
-            "knowledge/capacity.md for how to read the errors and what to change before "
-            "you stand anything up."
-        ),
+        "note": _verdict_note(verdict),
         "gated_note": _GATED_NOTE,
     }
+
+
+def _verdict_note(verdict: Any) -> str:
+    """The human-facing verdict summary. Three states, not two: feasible / infeasible /
+    INCONCLUSIVE — the last is when the planner BYPASSED VRAM sizing (0-replica spec or an
+    un-fetchable model/GPU), so a clean run was NOT a fit verdict (real-2 #2). We must not
+    let that read as feasible:true."""
+    if verdict.feasible is None:
+        return (
+            "INCONCLUSIVE: " + (verdict.inconclusive_reason or "the planner did not size this "
+            "deployment, so feasibility was NOT evaluated.") + " Do NOT treat this as feasible. "
+            "See knowledge/capacity.md."
+        )
+    if verdict.feasible:
+        return "Feasible per the benchmark repo's own capacity planner."
+    return (
+        "INFEASIBLE: the planner predicts this deployment would fail. See "
+        "knowledge/capacity.md for how to read the errors and what to change before "
+        "you stand anything up."
+    )
 
 
 # A static *pointer* to the knowledge file — NOT the decision. The actual per-status

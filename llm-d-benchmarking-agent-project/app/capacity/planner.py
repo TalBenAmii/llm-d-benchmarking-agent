@@ -28,6 +28,20 @@ _FAIL_MARKER = "DEPLOYMENT WILL FAIL"
 _ERROR_TAG = "ERROR:"
 _WARNING_TAG = "WARNING:"
 
+# Substrings the upstream planner emits when it BYPASSES the VRAM/KV-cache sizing for a
+# method instead of evaluating it. When sizing is bypassed there is NO fit/won't-fit signal,
+# so a clean (no-ERROR) run does NOT mean "it fits" — it means "feasibility was not
+# evaluated". We detect these to downgrade the verdict to inconclusive (feasible=None)
+# rather than letting an un-sized run read as feasible:true (real-2 #2: a 405B model
+# "feasible" because every method was skipped). Faithful to the repo's own log strings:
+#   * run_capacity_planner: "<method> is disabled or has 0 replicas -- skipping"
+#   * validate_vllm_params: "...Skipping GPU memory checks." (accelerator.memory unknown)
+#   * validate_vllm_params: "...skipping memory checks." (model architecture unavailable)
+_REPLICA_SKIP_MARKER = "0 replicas -- skipping"
+_GPU_SKIP_MARKERS = ("skipping gpu memory checks", "skipping memory checks")
+# The line that proves sizing actually ran for a method (KV-cache/VRAM arithmetic happened).
+_SIZED_MARKER = "available gpu memory"
+
 # Plan-config keys an override may touch. Restricting the surface keeps overrides honest:
 # the agent expresses *what the user asked for* (a bigger model, longer context, a real
 # GPU), not arbitrary helm-values surgery. Mechanism, not judgment.
@@ -54,12 +68,18 @@ class CapacityVerdict:
     """A structured reading of the planner's flat diagnostic list. Facts only — the
     remediation narrative belongs to the agent + ``knowledge/capacity.md``."""
 
-    feasible: bool                       # no hard-fail / error line
+    feasible: bool | None                # True=fits / False=won't fit / None=NOT evaluated
     will_fail: bool                      # a "DEPLOYMENT WILL FAIL" line was present
     errors: list[str] = field(default_factory=list)     # ERROR:-tagged lines
     warnings: list[str] = field(default_factory=list)   # WARNING:-tagged lines
     info: list[str] = field(default_factory=list)       # everything else (sizing facts)
     diagnostics: list[str] = field(default_factory=list)  # the raw list, verbatim
+    # Whether the VRAM/KV-cache sizing was actually EVALUATED (vs bypassed for every method
+    # because a method had 0 replicas / the GPU memory or model architecture was unknown).
+    # When False, ``feasible`` is None (inconclusive) and ``inconclusive_reason`` says why —
+    # a clean run with sizing skipped must NOT read as feasible:true (real-2 #2).
+    sizing_evaluated: bool = True
+    inconclusive_reason: str = ""
     # Gated-model access pre-flight (Phase 62) — facts from the repo's OWN gating check.
     # gated: any served model is gated. authorized: True if your token can pull every gated
     # model, False if any cannot, None when gating is N/A or unknown. gated_reason: the
@@ -76,6 +96,8 @@ class CapacityVerdict:
             "warnings": self.warnings,
             "info": self.info,
             "diagnostics": self.diagnostics,
+            "sizing_evaluated": self.sizing_evaluated,
+            "inconclusive_reason": self.inconclusive_reason,
             "gated": self.gated,
             "authorized": self.authorized,
             "gated_reason": self.gated_reason,
@@ -94,10 +116,20 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
     warnings: list[str] = []
     info: list[str] = []
     will_fail = False
+    any_sized = False          # a method's VRAM/KV-cache arithmetic actually ran
+    replica_skip = False       # >=1 method skipped for 0 replicas / disabled
+    gpu_skip = False           # sizing bypassed (unknown GPU memory / model architecture)
 
     for line in diags:
+        low = line.lower()
         if _FAIL_MARKER in line:
             will_fail = True
+        if _SIZED_MARKER in low:
+            any_sized = True
+        if _REPLICA_SKIP_MARKER in line:
+            replica_skip = True
+        if any(m in low for m in _GPU_SKIP_MARKERS):
+            gpu_skip = True
         if _ERROR_TAG in line:
             errors.append(line)
         elif _WARNING_TAG in line:
@@ -105,7 +137,42 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
         else:
             info.append(line)
 
-    feasible = not (will_fail or errors)
+    hard_infeasible = will_fail or bool(errors)
+    # Sizing is treated as bypassed ONLY on POSITIVE evidence that the planner emitted a skip
+    # line — never merely from the absence of sizing facts (an empty or info/warning-only
+    # diagnostic list keeps the prior feasible reading). Two bypass signals, both faithful to
+    # the planner's own log strings:
+    #   * a 0-replica / disabled method skip ("<method> ... 0 replicas -- skipping"); or
+    #   * the VRAM/KV-cache memory-fit check itself being skipped ("...skipping (gpu) memory
+    #     checks.") because the accelerator memory or model architecture was unknown — the
+    #     "...available GPU memory" line is only the GPU-COUNT summary, NOT a fit verdict.
+    # When a method was skipped for 0 replicas yet ANOTHER method DID size, that other method
+    # carries the verdict, so a replica skip alone (with sizing elsewhere) is not a bypass.
+    # A hard ERROR / will-fail is authoritative and wins below; we only downgrade an otherwise
+    # CLEAN run to inconclusive (real-2 #2: a clean run with sizing bypassed must not read as
+    # feasible:true).
+    sizing_bypassed = gpu_skip or (replica_skip and not any_sized)
+    sizing_evaluated = not sizing_bypassed
+    inconclusive_reason = ""
+    if hard_infeasible:
+        feasible: bool | None = False
+    elif sizing_bypassed:
+        feasible = None
+        if replica_skip and not any_sized:
+            inconclusive_reason = (
+                "VRAM sizing skipped (spec has 0 decode/prefill replicas) — feasibility NOT "
+                "evaluated. Set decode_replicas/prefill_replicas (>=1) so the planner sizes "
+                "the deployment, then re-check."
+            )
+        else:
+            inconclusive_reason = (
+                "VRAM sizing skipped (accelerator memory or model architecture could not be "
+                "determined) — feasibility NOT evaluated. Supply gpu_memory_gb and a model the "
+                "planner can fetch a config for, then re-check."
+            )
+    else:
+        feasible = True
+
     return CapacityVerdict(
         feasible=feasible,
         will_fail=will_fail,
@@ -113,6 +180,8 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
         warnings=warnings,
         info=info,
         diagnostics=diags,
+        sizing_evaluated=sizing_evaluated,
+        inconclusive_reason=inconclusive_reason,
     )
 
 
@@ -186,11 +255,24 @@ def _load_first_scenario(scenario_file: Path) -> dict[str, Any]:
 def _deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge ``over`` onto a deep copy of ``base`` (scenario over defaults).
 
-    Mirrors how the standup composes a values file from defaults + the scenario overlay.
-    Non-dict values (and lists) replace wholesale; nested dicts merge key-by-key.
+    Mirrors how the standup composes a values file from defaults + the scenario overlay —
+    specifically the repo's OWN ``RenderSpecification.deep_merge`` (parser/render_plans.py),
+    whose documented contract is: "``None`` values in the override dict are skipped (YAML keys
+    with no value do not clobber defaults)". We must match it byte-for-byte, because the
+    plan_config we hand the planner has to be the one the real standup would build.
+
+    A bare YAML key with no value (``decode:`` with every sub-key commented out, as in the
+    examples/gpu scenario) parses to ``None``. Faithfully skipping it keeps the rich default
+    ``decode`` block (``replicas: 1`` and friends) instead of replacing it with ``None`` —
+    which is what was wiping the section and causing both the ``'NoneType'.get()`` crash in
+    the upstream planner AND the spurious "decode … 0 replicas -- skipping" that bypassed VRAM
+    sizing. Non-dict, non-None values (and lists) replace wholesale; nested dicts merge
+    key-by-key.
     """
     out = copy.deepcopy(base)
     for key, val in (over or {}).items():
+        if val is None:
+            continue  # YAML key with no value -- don't clobber the default (upstream contract)
         if isinstance(val, dict) and isinstance(out.get(key), dict):
             out[key] = _deep_merge(out[key], val)
         else:
@@ -226,7 +308,22 @@ def apply_overrides(plan_config: dict[str, Any], overrides: dict[str, Any]) -> l
                 f"{sorted(_OVERRIDE_PATHS)}"
             )
         _set_path(plan_config, path, value)
+        # The agent's `model` override means "serve THIS model" — but the scenario's
+        # `model.name` AND `model.huggingfaceId` both start out as the spec default (e.g.
+        # facebook/opt-125m), and BOTH the upstream sizing path (capacity_validator reads
+        # `model.huggingfaceId or model.name`) and the gated-access check PREFER
+        # `huggingfaceId`. Setting only `model.name` left the planner sizing + gating the
+        # SPEC DEFAULT model, not the override (real-2 #2: "Model facebook/opt-125m is not
+        # gated -- ..." for an override of Llama-3.1-405B). So when `model` is overridden
+        # (and the caller didn't ALSO pass an explicit `huggingface_id`), keep `huggingfaceId`
+        # in lockstep so the model actually EVALUATED is the one the user asked for. This is
+        # an INTERNAL consistency sync of the same value, not a distinct user override, so it
+        # is folded into the one `model.name` transparency line rather than listed twice.
         applied.append(f"{'.'.join(path)} = {value!r}")
+        if key == "model" and "huggingface_id" not in (overrides or {}):
+            hf_path = _OVERRIDE_PATHS["huggingface_id"]
+            _set_path(plan_config, hf_path, value)
+            applied.append(f"{'.'.join(hf_path)} = {value!r}")
     return applied
 
 

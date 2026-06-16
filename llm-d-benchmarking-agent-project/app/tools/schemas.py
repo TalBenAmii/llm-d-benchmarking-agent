@@ -686,6 +686,21 @@ class ResultHistoryInput(BaseModel):
     filter_model: str | None = Field(
         default=None, description="action=list/trend: only include results for this model name.",
     )
+    start_date: str | None = Field(
+        default=None,
+        description="action=list/trend: only include results STORED on or after this date "
+                    "(inclusive). Accepts an ISO-8601 date ('2026-05-01') or datetime "
+                    "('2026-05-01T00:00:00'); a bare date is treated as 00:00:00 UTC that day. "
+                    "Filters on each record's stored_at (when it was persisted to history), the "
+                    "only timestamp every record carries. Omit for no lower bound.",
+    )
+    end_date: str | None = Field(
+        default=None,
+        description="action=list/trend: only include results STORED on or before this date. A "
+                    "bare date ('2026-06-15') is treated as the END of that day (23:59:59.999 "
+                    "UTC) so the day is inclusive; a full datetime is used as-is. Filters on "
+                    "stored_at. Omit for no upper bound.",
+    )
 
 
 class AutotuneSearchInput(BaseModel):

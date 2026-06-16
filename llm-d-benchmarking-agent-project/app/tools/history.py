@@ -11,6 +11,7 @@ agent's, grounded in ``knowledge/history.md`` (thin code, thick agent).
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,58 @@ from app.validation.report import (
     summarize_report,
     validate_report,
 )
+
+# Filters the LIST/TREND actions support server-side. Advertised in every list/trend result
+# so the agent can surface a limitation IMMEDIATELY (e.g. "no harness filter") instead of
+# discovering it a turn later. start_date/end_date filter on each record's stored_at (when it
+# was persisted) — the only timestamp every record carries (real-1 11:30).
+_SUPPORTED_LIST_FILTERS = ["tag", "model", "start_date", "end_date"]
+
+
+def _parse_bound(raw: str, *, end_of_day: bool) -> float:
+    """Parse a user date/datetime bound to an epoch-seconds float (UTC).
+
+    Accepts an ISO-8601 date ('2026-05-01') or datetime. A bare date becomes 00:00:00 (start
+    bound) or 23:59:59.999999 (end bound) so an end_date day is inclusive. A naive datetime is
+    assumed UTC. Raises ValueError on an unparseable string (the caller turns it into a clean,
+    self-correctable error)."""
+    s = raw.strip()
+    dt = datetime.fromisoformat(s)
+    # A bare date parses to midnight with no time component in the original string.
+    if "T" not in s and " " not in s and end_of_day:
+        dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def _filter_by_date(
+    records: list[HistoryRecord], start_date: str | None, end_date: str | None
+) -> tuple[list[HistoryRecord], dict[str, Any]]:
+    """Filter records to those whose stored_at falls within [start_date, end_date] (inclusive).
+
+    Returns ``(filtered, applied)`` where ``applied`` echoes the resolved bounds (or an
+    ``error`` for an unparseable date — the caller short-circuits and the agent self-corrects).
+    No-op (returns the input) when neither bound is set."""
+    applied: dict[str, Any] = {}
+    if start_date is None and end_date is None:
+        return records, applied
+    lo = hi = None
+    try:
+        if start_date is not None:
+            lo = _parse_bound(start_date, end_of_day=False)
+            applied["start_date"] = start_date
+        if end_date is not None:
+            hi = _parse_bound(end_date, end_of_day=True)
+            applied["end_date"] = end_date
+    except ValueError as exc:
+        applied["error"] = f"could not parse date bound: {exc}"
+        return records, applied
+    out = [
+        r for r in records
+        if (lo is None or r.stored_at >= lo) and (hi is None or r.stored_at <= hi)
+    ]
+    return out, applied
 
 
 def _record_view(rec: HistoryRecord) -> dict[str, Any]:
@@ -113,6 +166,8 @@ async def result_history(
     metric: str | None = None,
     filter_tag: str | None = None,
     filter_model: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> dict[str, Any]:
     store = ctx.history_store()
 
@@ -124,11 +179,18 @@ async def result_history(
 
     if action == "list":
         records = store.list(tag=filter_tag, model=filter_model)
+        records, date_applied = _filter_by_date(records, start_date, end_date)
         return {
             "action": "list",
             "n": len(records),
             "records": [_record_view(r) for r in records],
-            "filters": {"tag": filter_tag, "model": filter_model},
+            "filters": {
+                "tag": filter_tag, "model": filter_model,
+                "start_date": start_date, "end_date": end_date,
+                "date_filter": date_applied or None,
+            },
+            "supported_filters": _SUPPORTED_LIST_FILTERS,
+            "date_filter_basis": "stored_at (when the result was persisted to history)",
         }
 
     if action == "get":
@@ -143,9 +205,16 @@ async def result_history(
         if not metric:
             return {"error": "trend requires `metric`", "available_metrics": available_metrics()}
         records = store.list(tag=filter_tag, model=filter_model)
+        records, date_applied = _filter_by_date(records, start_date, end_date)
         result = trend(records, metric)
         result["action"] = "trend"
-        result["filters"] = {"tag": filter_tag, "model": filter_model}
+        result["filters"] = {
+            "tag": filter_tag, "model": filter_model,
+            "start_date": start_date, "end_date": end_date,
+            "date_filter": date_applied or None,
+        }
+        result["supported_filters"] = _SUPPORTED_LIST_FILTERS
+        result["date_filter_basis"] = "stored_at (when the result was persisted to history)"
         return result
 
     if action == "delete":

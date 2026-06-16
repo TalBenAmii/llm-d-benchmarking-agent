@@ -64,6 +64,22 @@ The sizing `info` lines (parameters, memory required, allocatable KV cache, **ma
 requests**) are useful even on the feasible path: surface "max concurrent requests" when the
 user cares about how many simultaneous users a config can serve.
 
+### "How many concurrent users?" — use Little's Law, never throughput-as-concurrency
+
+When the user asks **how many simultaneous/concurrent users** a config supports, **do not equate
+replies-per-second (throughput) with concurrent users** — they're only equal if a reply takes
+exactly 1 second. Concurrency and throughput relate by **Little's Law**:
+
+> **concurrent ≈ throughput × per-request latency.**
+
+So replies/s must be multiplied by how long a reply takes. Example of the trap: 5000 tok/s with
+~100-token replies = ~50 replies/s, but at ITL ≈ 47 ms/token a 100-token reply takes ~4.7 s, so
+concurrency ≈ 50 × 4.7 ≈ **~235** in flight — **not** "50 concurrent users". Quoting 50 here is
+both ~5× low and internally inconsistent with your own latency numbers. Either apply Little's Law
+explicitly (and show the per-request latency you used), or defer the number to the capacity
+pre-flight's **"max concurrent requests"** sizing line above — don't do throughput-as-concurrency
+back-of-envelope math.
+
 ## Gated-model access pre-flight — "can your token even pull the weights?"
 
 `check_capacity` pairs the "will it fit?" sizing verdict with a **gated-model access**

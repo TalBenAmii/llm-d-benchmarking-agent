@@ -3,6 +3,17 @@
 Two ways an llm-d stack comes into being. For the MVP only the first is supported
 end-to-end; the others are described so you can set expectations honestly.
 
+## Completing a deploy flow — no optional mid-flow gates, always finish teardown
+When the user gives a complete end-to-end instruction (e.g. "create cluster → standup → smoketest
+→ run → teardown"), run it to completion: do NOT pause mid-execution on a NON-mandatory offer
+(the metrics-server install is optional — skip it silently if it wasn't requested rather than
+ending the turn on that question), and if the instruction included a teardown, the flow is not
+done until teardown has run. Never leave a created cluster up after a partial flow without
+explicitly telling the user and either tearing down or handing it back. Full rule: quickstart_playbook.md
+("Complete a fully-specified run+teardown…") + run_lifecycle.md ("Don't leave a cluster running…").
+Garbled / low-confidence intent must be CLARIFIED before any irreversible action (cluster create) —
+see quickstart_playbook.md and governance.md; do not deploy off a keyword wall.
+
 ## 1. kind + simulated engine (MVP — supported)
 `spec=cicd/kind`. Local kind cluster, CPU-only, `llm-d-inference-sim`. No GPU, no model
 download, no HF token. This is the quickstart (`quickstart_playbook.md`). Use for

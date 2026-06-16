@@ -681,6 +681,25 @@ async def ws(websocket: WebSocket) -> None:
         # appended to the channel's bounded ring buffer so a client that reconnects mid-turn can
         # replay what it missed and catch up to the LIVE stream.
         channel.begin_turn()
+        # Abandoned-turn guard (sim-1 00:40). Once the user APPROVES a mutating run (SessionPlan or
+        # a gated command), that run must survive a disconnect and finish in the background — a
+        # benchmark you navigated away from still completes (the WS-disconnect finally backgrounds
+        # it). But a turn that is only thinking/probing — never approved — has no recipient once the
+        # socket is gone and no reason to keep spending API tokens. So we latch approval grants and
+        # hand loop.run_turn a should_continue() that stays True only while a socket is attached
+        # (incl. a reconnect that took over the channel) OR an approval has been granted this turn;
+        # the loop honors it at the next step boundary, never mid-tool.
+        approved = {"value": False}
+
+        async def _request_approval(kind: str, payload: dict) -> bool:
+            ok = await channel.request_approval(kind, payload)
+            if ok:
+                approved["value"] = True
+            return ok
+
+        def _should_continue() -> bool:
+            return channel.ws is not None or approved["value"]
+
         try:
             if loop is None:
                 # No LLM, but still record the turn so the chat persists / resumes.
@@ -689,7 +708,12 @@ async def ws(websocket: WebSocket) -> None:
                 await channel.emit("error", {"message": f"LLM provider not configured: {app.state.provider_error}"})
                 await channel.emit("done", {})
                 return
-            await loop.run_turn(session, text, emit=channel.emit, request_approval=channel.request_approval)
+            await loop.run_turn(
+                session, text,
+                emit=channel.emit,
+                request_approval=_request_approval,
+                should_continue=_should_continue,
+            )
         except asyncio.CancelledError:
             # The turn was cancelled (Phase 16: cancel tool / control message / graceful
             # shutdown). The concurrency slot is already released as this unwinds the runner's

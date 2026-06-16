@@ -49,3 +49,38 @@ docs:
       The metrics-collection configuration (metricsScrapeEnabled /
       LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED, DCGM/cAdvisor/EPP sources) and the
       report-integration mapping into results.observability that report.py consumes.
+
+# ---------------------------------------------------------------------------
+# CANONICAL workload-profile file locations — so you NEVER path-guess for sanity_random.yaml.
+# Workload profiles live under workload/profiles/<harness>/ and are TEMPLATES with a `.yaml.in`
+# suffix (the harness renders them at run time). When the agent needs the on-disk file (e.g. to
+# read dotted override keys before generate_doe_experiment), read it directly via read_repo_doc
+# with the exact path below — do NOT guess config/workloads/, harnesses/, experiments/, etc.
+# (all wrong) and burn the session in a discovery loop. `list_catalog` enumerates the names;
+# these are where they actually live. Verified under the read-only llm-d-benchmark checkout.
+workload_profiles:
+  dir_template: "llm-d-benchmark/workload/profiles/<harness>/<name>.yaml.in"
+  note: >
+    Profiles carry a `.yaml.in` suffix on disk (template; rendered per run). The agent usually
+    passes the bare name (e.g. workload=sanity_random.yaml) to execute_llmdbenchmark /
+    generate_doe_experiment and never needs to open the file — only read the file when you must
+    confirm a dotted override key name, and use the canonical path, not a guess.
+  files:
+    # THE quickstart workload (inference-perf harness, the cicd/kind default):
+    - path: llm-d-benchmark/workload/profiles/inference-perf/sanity_random.yaml.in
+      harness: inference-perf
+      why: The quickstart workload (sanity_random) for the inference-perf harness — the cicd/kind default.
+    # Same-named sanity profile for the other harnesses that ship one:
+    - path: llm-d-benchmark/workload/profiles/guidellm/sanity_random.yaml.in
+      harness: guidellm
+    - path: llm-d-benchmark/workload/profiles/vllm-benchmark/sanity_random.yaml.in
+      harness: vllm-benchmark
+    # Sibling inference-perf profiles (read via the same workload/profiles/inference-perf/ dir):
+    - path: llm-d-benchmark/workload/profiles/inference-perf/chatbot_sharegpt.yaml.in
+      harness: inference-perf
+    - path: llm-d-benchmark/workload/profiles/inference-perf/chatbot_synthetic.yaml.in
+      harness: inference-perf
+    - path: llm-d-benchmark/workload/profiles/inference-perf/shared_prefix_synthetic.yaml.in
+      harness: inference-perf
+    - path: llm-d-benchmark/workload/profiles/inference-perf/summarization_synthetic.yaml.in
+      harness: inference-perf

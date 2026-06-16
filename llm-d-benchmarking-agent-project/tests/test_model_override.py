@@ -136,7 +136,11 @@ def test_capacity_override_targets_same_config_path_as_standup_model():
     applied = apply_overrides(plan_config, {"model": emitted})
     # The pre-flight now sizes the SAME model the standup will deploy — not the spec default.
     assert plan_config["model"]["name"] == MODEL == emitted
-    assert applied == [f"model.name = {MODEL!r}"]
+    # A `model` override also syncs `model.huggingfaceId` (real-2 07:15 fix): upstream sizing and
+    # the gated-model check prefer `huggingfaceId`, so without this they evaluated the spec default
+    # (facebook/opt-125m) instead of the override. Both transparency entries are emitted.
+    assert f"model.name = {MODEL!r}" in applied
+    assert plan_config["model"]["huggingfaceId"] == MODEL
 
 
 def test_capacity_override_path_is_model_name():
