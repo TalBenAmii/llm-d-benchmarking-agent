@@ -216,11 +216,8 @@ class AgentLoop:
                 if turn.text:
                     await emit(events.ASSISTANT_TEXT, {"text": turn.text})
 
-                if not turn.tool_calls:
-                    break  # the model is done for this turn
-
                 tool_result_msgs = []
-                for tc in turn.tool_calls:
+                for tc in turn.tool_calls:  # empty when the model is done -> no tool_results block
                     tool_calls_made += 1
                     # Bind the tool name into the log context so every record emitted while this
                     # tool runs (incl. the command runner's exec line) carries `tool` alongside
@@ -268,20 +265,31 @@ class AgentLoop:
                     # so the debug record shows the exact evidence each decision was based on.
                     trace.event("tool_result", tool=tc.name, id=tc.id, result=clamped)
 
-                session.messages.append({"role": "tool_results", "results": tool_result_msgs})
+                # A tool_results block is appended ONLY when the model actually called tools, so a
+                # final text-only step never leaves a dangling empty block before any drained steer.
+                if turn.tool_calls:
+                    session.messages.append({"role": "tool_results", "results": tool_result_msgs})
 
-                # Mid-turn user steer (type-instead-of-approve). If the user typed a message
-                # while a tool was parked at an approval gate, the WS handler declined the gate
-                # (so the tool result above is a rejection) AND captured the typed text on the
-                # ctx. Surface each captured message as a real user turn right after the tool
-                # results, so this SAME turn continues and the model responds to the steer —
-                # adjusting and (if appropriate) re-proposing a fresh approval card — instead of
-                # the message being dropped with a "please wait". Appended AFTER the tool_results
-                # block so tool-call/result pairing is never broken. Persisted with the turn.
+                # Mid-turn user STEER (Claude-Code style). The WS handler drops any message the user
+                # types while this turn runs into ctx.steer_messages — whether they typed mid-thinking
+                # (no gate open) or INSTEAD of approving an open gate (the handler also declines the
+                # gate, so the tool result above is a rejection). Surface each captured message as a
+                # real user turn now, so this SAME turn picks it up at the next step and the model
+                # responds to the steer — adjusting and, if appropriate, re-proposing a fresh approval
+                # card — instead of it being dropped. Appended AFTER any tool_results block above so
+                # tool-call/result pairing is never broken. Persisted with the turn.
+                steered = False
                 if ctx.steer_messages:
                     for steer in ctx.steer_messages:
                         session.messages.append({"role": "user", "content": steer})
                     ctx.steer_messages = []
+                    steered = True
+
+                # End the turn only when the model made NO tool calls AND no steer is waiting: a
+                # queued steer keeps the SAME turn alive (loop again) so the agent answers it rather
+                # than the message hanging until the user's next turn.
+                if not turn.tool_calls and not steered:
+                    break
             else:
                 await emit(events.ERROR, {"message": f"reached the step limit ({MAX_STEPS}); pausing."})
                 log.warning("turn.step_limit", extra={"max_steps": MAX_STEPS})

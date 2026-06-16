@@ -75,7 +75,11 @@ Server -> client:
 
 Client -> server (validated against app.agent.ws_schemas; a malformed frame is rejected with
 an error event of kind "protocol_error" and the connection is kept alive):
-  user_message     {text}
+  user_message     {text}                   — a chat turn. Sent while a turn is ALREADY running it
+                                            STEERS (Claude-Code style): the server queues it onto
+                                            ctx.steer_messages and the running loop picks it up at
+                                            its next step instead of starting a concurrent turn (and,
+                                            if an approval gate is open, declines the gate too).
   approval         {request_id, approved}
   ping             {}                      — keep-alive; answered with a `pong` event
 

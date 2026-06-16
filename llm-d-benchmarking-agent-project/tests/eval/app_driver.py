@@ -389,8 +389,10 @@ class Player:
     def _is_busy(self, sid: str | None) -> bool:
         """True if ``sid`` has an in-flight turn (a live task, or a turn parked at a gate).
 
-        Sending a ``user_message`` into a busy chat draws only a 'still working' error and no
-        terminal frame, so the driver must not start a turn (or block reading for one) on it.
+        Sending a ``user_message`` into a busy chat now STEERS the in-flight turn (the text is
+        queued and picked up at its next step) rather than starting a new turn — so it yields no
+        fresh terminal frame of its own, and the driver must not start a turn (or block reading for
+        one) on it.
         """
         if sid is None:
             return False

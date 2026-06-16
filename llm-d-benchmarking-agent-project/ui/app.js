@@ -11,6 +11,10 @@ const statusEl = document.getElementById("status");
 const form = document.getElementById("composer");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("send");
+// The composer stays usable WHILE a turn runs so the user can steer; the placeholder swaps to
+// signal that a send now redirects the in-flight turn rather than starting a new one.
+const IDLE_PLACEHOLDER = input.getAttribute("placeholder") || "";
+const STEER_PLACEHOLDER = "Steer the agent — type to add to what it's working on…";
 const themeBtn = document.getElementById("theme-toggle");
 const convList = document.getElementById("conv-list");
 const newChatBtn = document.getElementById("new-chat");
@@ -361,9 +365,15 @@ function setStatus(text, cls) {
 
 function setEnabled(on) {
   busy = !on;
-  input.disabled = !on;
-  sendBtn.disabled = !on;
-  if (on) input.focus();
+  // Decouple "can type" from "turn idle": the composer is usable whenever the socket is OPEN —
+  // even mid-turn — so the user can STEER (a send while busy is queued and the agent picks it up
+  // at its next step, Claude-Code style). It locks only when we're disconnected. `on` now only
+  // drives autofocus + the steer-hint placeholder, not the enabled state.
+  const usable = !!ws && ws.readyState === WebSocket.OPEN;
+  input.disabled = !usable;
+  sendBtn.disabled = !usable;
+  input.placeholder = busy && usable ? STEER_PLACEHOLDER : IDLE_PLACEHOLDER;
+  if (on && usable) input.focus();
 }
 
 function handle(msg) {
@@ -1086,8 +1096,9 @@ function renderResourceSide() {
 
   if (data.available === false) {
     body.appendChild(el("div", "resource-note", data.note || "live resource stats unavailable"));
-    // No actionable control here: this panel is shown ONLY during a run, so a button would collide
-    // with the backend's single-turn-in-flight guard ("still working on the previous request").
+    // No actionable control here: this panel is shown ONLY during a run, and a mid-run install
+    // button historically collided with the single-turn-in-flight guard (a 2nd message mid-run is
+    // now STEERED into the running turn, not run as its own action — so a button still wouldn't fit).
     // Live stats need the in-cluster metrics-server, which the agent now PROACTIVELY offers to
     // install BEFORE the run — driven by a deterministic probe fact (app/tools/probe.py
     // `metrics_server`) + a HARD_RULE (app/agent/prompt.py). A passive hint is enough here.
@@ -2635,7 +2646,11 @@ function resumeThinking() {        // back between steps — resume generic cycl
 // paths never drift. Appends the user bubble, sends the frame, and flips the UI into "working".
 function sendUserMessage(text) {
   text = (text || "").trim();
-  if (!text || busy || !ws || ws.readyState !== WebSocket.OPEN) return;
+  // No `busy` guard: sending WHILE a turn runs is allowed and means "steer". Only a closed socket
+  // or empty text blocks the send. At an approval gate the turn is PARKED (busy=false), so that
+  // type-instead-of-approve path flows through the normal "start working" branch below, unchanged.
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const steering = busy;            // a turn is actively running -> this send redirects it
   removeWelcomeCard();              // the conversation has started — clear any suggestion chips
   // If a turn is parked at an approval gate and the user typed instead of clicking, this message
   // means "decline the pending action(s) and do THIS instead". The server resolves those gates as
@@ -2653,16 +2668,25 @@ function sendUserMessage(text) {
   }
   addBubble("user", text);
   ws.send(JSON.stringify({ type: "user_message", text }));
-  setEnabled(false);
-  if (cur) cur.running = true;      // this chat now has a turn in flight (kept across switches)
-  startWorking();
+  if (steering) {
+    // The turn is already running and will pick this up at its next step — the server queued it.
+    // Don't re-lock the composer or restart the "working" indicator (it's already spinning); just
+    // leave the optimistic bubble in place. Mark a steer so the indicator reads as redirected.
+    setWorkActivity("Steering — folding in your message…");
+  } else {
+    setEnabled(false);
+    if (cur) cur.running = true;    // this chat now has a turn in flight (kept across switches)
+    startWorking();
+  }
   stickBottom = true; scroll();     // sending always pins to the newest message
 }
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value.trim();
-  if (!text || busy || !ws || ws.readyState !== WebSocket.OPEN) return;
+  // No `busy` guard here either — a submit mid-turn steers (sendUserMessage routes it). Guard only
+  // empty text / a closed socket so the field still clears predictably.
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
   sendUserMessage(text);
   input.value = "";
   input.style.height = "auto";

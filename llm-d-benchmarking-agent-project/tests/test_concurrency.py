@@ -319,9 +319,12 @@ def test_post_disconnect_approval_stays_pending_and_reemits_on_reconnect(tmp_pat
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
-def test_second_connection_to_running_session_is_rejected(tmp_path):
-    """A 2nd connection to a session whose turn is still running must NOT start a concurrent
-    turn (two turns mutating one chat) — it sees running=True and gets 'still working'."""
+def test_second_message_to_running_session_is_queued_as_steer(tmp_path):
+    """A message sent to a session whose turn is still running must NOT start a concurrent turn
+    (two turns mutating one chat). Instead of the old "still working" rejection it is QUEUED as a
+    steer (Claude-Code style): the running loop drains it at its next step. Here a 2nd connection
+    sends mid-standup; we assert no concurrent turn starts, the message is queued (not rejected),
+    and once the standup completes it's threaded into the SAME turn as a user message."""
     from app.main import app
 
     started, gate = threading.Event(), threading.Event()
@@ -350,17 +353,30 @@ def test_second_connection_to_running_session_is_rejected(tmp_path):
                 r2 = ws2.receive_json()
                 assert r2["type"] == "ready" and r2["data"]["running"] is True
                 ws2.send_json({"type": "user_message", "text": "do something else"})
-                msg = None
-                for _ in range(20):
-                    ev = ws2.receive_json()
-                    if ev["type"] == "error":
-                        msg = ev["data"]["message"]
+                # The send is QUEUED as a steer, not rejected and not a new turn. The turn is parked
+                # in the gated runner so we can't block-read a reply on ws2 — check server state.
+                s = app.state.sessions.get(sid)
+                for _ in range(100):
+                    if "do something else" in s.ctx.steer_messages:
                         break
-                    # a resumed session replays a `history` event first — skip it
-                assert msg and "still working" in msg
+                    time.sleep(0.02)
+                assert "do something else" in s.ctx.steer_messages, "the message was not queued as a steer"
+                assert app.state.provider.i == i_before, "a second concurrent turn was started on one session"
 
-            assert app.state.provider.i == i_before, "a second concurrent turn was started on one session"
-            gate.set()  # release ws1's standup so the server can finish + clean up
+                gate.set()  # release the standup so the SAME turn drains the steer + finishes
+                seen = []
+                for _ in range(120):
+                    ev = ws2.receive_json()
+                    seen.append(ev["type"])
+                    if ev["type"] == "done":
+                        break
+                assert "error" not in seen, f"the steer produced an error frame: {seen}"
+                assert seen[-1] == "done"
+
+        # The steer was threaded into the running turn as a real user message (not dropped).
+        s = app.state.sessions.get(sid)
+        assert any(m.get("role") == "user" and m.get("content") == "do something else"
+                   for m in s.messages), "the steer was not threaded into the running turn"
 
 
 async def test_runner_timeout_bounds_whole_lifecycle(tmp_path):

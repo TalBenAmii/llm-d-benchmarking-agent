@@ -96,6 +96,50 @@ async def test_full_loop_with_gating(tmp_path):
     assert "session_plan" in approval_calls and "command" in approval_calls
 
 
+async def test_mid_thinking_steer_extends_the_same_turn(tmp_path):
+    """Claude-Code steering at the loop level: a message queued onto ctx.steer_messages WHILE the
+    agent is mid-turn (here: the instant it emits what would be its final, tool-less reply) is
+    drained at the next step boundary and keeps the SAME turn alive, so the model answers the steer
+    instead of the turn ending. This is the core behavior the WS handler relies on when it queues a
+    message typed while the agent is 'thinking' (no approval gate open)."""
+    if not get_settings().bench_repo.is_dir():
+        pytest.skip("repo not present")
+
+    turns = [
+        # Step 1: a final, tool-less reply. WITHOUT a steer the turn ends right here.
+        AssistantTurn(text="All set — anything else?", tool_calls=[]),
+        # Step 2: only reached because the steer kept the turn alive; the model answers it.
+        AssistantTurn(text="Sure — bumping to 1000 users.", tool_calls=[]),
+    ]
+
+    session = _session(tmp_path)
+    events: list[tuple[str, dict]] = []
+    injected = {"done": False}
+
+    async def emit(t, p):
+        events.append((t, p))
+        # Stand in for the WS handler queueing a steer the moment the agent produces its
+        # (would-be final) reply — i.e. the user typed while it was thinking. One-shot.
+        if t == "assistant_text" and not injected["done"]:
+            session.ctx.steer_messages.append("actually make it 1000 concurrent users")
+            injected["done"] = True
+
+    async def request_approval(kind, payload):
+        raise AssertionError("no approval gate is expected in this turn")
+
+    loop = AgentLoop(FakeProvider(turns))
+    await loop.run_turn(session, "benchmark a tiny chat model", emit=emit, request_approval=request_approval)
+
+    # The turn did NOT stop at step 1: the queued steer drove a second LLM call.
+    assert loop._provider.i == 2, "the steer must have extended the turn to a second LLM call"
+    # It was threaded into the transcript as a real user turn (so the model saw it).
+    assert any(m.get("role") == "user" and m.get("content") == "actually make it 1000 concurrent users"
+               for m in session.messages)
+    # The queue was drained, not left dangling for a future turn.
+    assert session.ctx.steer_messages == []
+    assert events[-1][0] == "done"
+
+
 async def test_invalid_plan_is_reported_not_executed(tmp_path):
     if not get_settings().bench_repo.is_dir():
         pytest.skip("repo not present")
