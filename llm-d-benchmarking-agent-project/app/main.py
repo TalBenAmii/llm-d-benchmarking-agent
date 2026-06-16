@@ -736,9 +736,25 @@ async def ws(websocket: WebSocket) -> None:
             # Deregister this turn from the lifecycle registry (Phase 16) on normal completion;
             # forget() is a no-op if a newer turn already replaced this session's handle.
             app.state.runs.forget(session.id, asyncio.current_task())
+            # Steer backstop (residual race). A steer the user sent in the NARROW window between the
+            # loop's last drain and `done` — i.e. during the closing awaits (provider-turn teardown /
+            # the `done` emit) — is still queued and would otherwise hang until the user's next
+            # message. Every steer sent DURING the turn is handled inside loop.run_turn and never
+            # reaches here; this catches only that tail. If any remain — and a socket is still
+            # attached to hear the reply — start a fresh follow-up turn now so the agent still
+            # answers promptly. asyncio.create_task schedules it on the next tick, so this turn's
+            # `busy=False`/registry-pop above settle first; the new turn re-arms both.
+            leftover = session.ctx.steer_messages
+            if leftover and loop is not None and channel.ws is not None:
+                followup = "\n\n".join(leftover)
+                session.ctx.steer_messages = []
+                with log_bind(corr_id=new_corr_id(), session_id=session.id):
+                    backstop = asyncio.create_task(run_turn(followup))
+                app.state.running[session.id] = backstop
+                app.state.runs.register(session.id, backstop)
             # Forget the channel once its turn ends with nothing attached/pending, so a long-
             # lived server doesn't accumulate one channel per chat ever opened.
-            if channel.ws is None and not channel.pending:
+            elif channel.ws is None and not channel.pending:
                 app.state.channels.pop(session.id, None)
 
     async def _prewarm_env(s, ch) -> None:
@@ -900,7 +916,15 @@ async def ws(websocket: WebSocket) -> None:
                     for rid in list(channel.pending):
                         channel.resolve(rid, False)
                 if turn_running:
-                    await channel.emit("error", {"message": "still working on the previous request — please wait."})
+                    # STEER (Claude-Code style): the user typed while a turn is mid-flight and NO
+                    # approval gate is open (the gate case is handled above). Don't reject and don't
+                    # start a concurrent turn on the same chat — queue the text so the running loop
+                    # injects it as a real user turn at its NEXT step boundary (loop.py drains
+                    # ctx.steer_messages). The agent thus receives the message as soon as it finishes
+                    # the current step and adapts, instead of it being dropped with "please wait".
+                    # No echo frame: the UI already rendered the user's bubble optimistically, exactly
+                    # as for a normal send (parity with the start-of-turn path below).
+                    session.ctx.steer_messages.append(msg.text)
                     continue
                 # Mint a fresh correlation id at the WS boundary (one per connection/turn) and
                 # bind it before creating the turn task: asyncio.create_task snapshots the

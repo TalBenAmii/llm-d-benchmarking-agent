@@ -86,12 +86,14 @@ class ToolContext:
     # app/tools/knowledge_access.py). RUNTIME-ONLY (not persisted) — a resumed chat starts with an
     # empty set, so the first fetch in the new process always returns full content. Mechanism only.
     fetched_docs: set[str] = field(default_factory=set, repr=False)
-    # Mid-turn user steer (type-instead-of-approve). When the user types a message INSTEAD of
-    # clicking Approve/Decline on an open gate, the WS handler (app/main.py) declines the gate
-    # AND drops the typed text here; the agent loop drains it into the transcript as a user
-    # message right after the rejected tool result, so the SAME turn continues and responds to
-    # the steer (and may re-propose a fresh card). RUNTIME-ONLY (not persisted) — the loop
-    # appends the drained text to session.messages, which IS persisted. Mechanism only.
+    # Mid-turn user STEER queue (Claude-Code style). Any message the user types WHILE a turn is
+    # running is dropped here by the WS handler (app/main.py): (a) mid-thinking — no gate open —
+    # the message is simply queued; (b) type-instead-of-approve — the handler ALSO declines the
+    # open gate. Either way the agent loop drains this queue at its next step boundary, injecting
+    # each entry into the transcript as a user message (after any tool_results, so tool-call/result
+    # pairing is intact), and keeps the SAME turn alive so the model picks it up and responds —
+    # rather than the message being dropped with a "please wait". RUNTIME-ONLY (not persisted) —
+    # the loop appends the drained text to session.messages, which IS persisted. Mechanism only.
     steer_messages: list[str] = field(default_factory=list, repr=False)
 
     def catalog(self, *, refresh: bool = False) -> dict[str, Any]:

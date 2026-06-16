@@ -147,6 +147,78 @@ def test_ws_typing_instead_of_approving_steers_the_turn():
             "steer message must follow the rejected tool result, in the same turn"
 
 
+class _BlockingProvider:
+    """Returns scripted turns but BLOCKS at the start of a chosen LLM call until released, so a test
+    can send a message while the agent is 'thinking' (mid-chat) and assert it steers the SAME turn.
+    ``await asyncio.to_thread(...)`` yields the event loop while blocked, so the WS receive handler
+    still runs and processes the inbound steer frame."""
+
+    def __init__(self, turns, block_at, started, release):
+        self._turns = turns
+        self.i = 0
+        self._block_at = block_at
+        self._started = started
+        self._release = release
+
+    async def chat(self, *, system, messages, tools, cache_key=None):
+        import asyncio
+        if self.i == self._block_at:
+            self._started.set()
+            await asyncio.to_thread(self._release.wait, 5)
+        turn = self._turns[self.i]
+        self.i += 1
+        return turn
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_typing_while_thinking_steers_the_same_turn():
+    """Mid-thinking steer (Claude-Code style): a user_message sent WHILE the agent is thinking and
+    NO approval gate is open must NOT be rejected ("please wait") or start a concurrent turn — it's
+    queued and threaded into the SAME turn, which the model then answers. The provider blocks on its
+    first LLM call so the test can inject the steer during the thinking window."""
+    import threading
+    import time
+
+    from app.main import app
+
+    started, release = threading.Event(), threading.Event()
+    turns = [
+        AssistantTurn(text="On it.", tool_calls=[]),                # would END the turn without a steer
+        AssistantTurn(text="Got it — 1000 users.", tool_calls=[]),  # only reached because of the steer
+    ]
+    with TestClient(app) as client:
+        app.state.provider = _BlockingProvider(turns, 0, started, release)
+        with client.websocket_connect("/ws") as ws:
+            ready = ws.receive_json()
+            assert ready["type"] == "ready"
+            sid = ready["data"]["session_id"]
+            ws.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
+            assert started.wait(timeout=5)        # the agent is now thinking (blocked in chat)
+            # Type a steer WHILE it's thinking. No gate is open.
+            ws.send_json({"type": "user_message", "text": "actually make it 1000 concurrent users"})
+            s = app.state.sessions.get(sid)
+            for _ in range(150):                  # wait for the handler to queue it (not reject it)
+                if "actually make it 1000 concurrent users" in s.ctx.steer_messages:
+                    break
+                time.sleep(0.02)
+            assert "actually make it 1000 concurrent users" in s.ctx.steer_messages
+            release.set()                          # let the agent finish thinking; the steer drains
+            seen = []
+            for _ in range(80):
+                ev = ws.receive_json()
+                seen.append(ev["type"])
+                if ev["type"] == "done":
+                    break
+
+    assert "error" not in seen, f"a steer while thinking produced an error frame: {seen}"
+    assert seen[-1] == "done"
+    # The steer extended the turn to a 2nd LLM call (it didn't stop at the first tool-less reply)…
+    assert app.state.provider.i == 2
+    # …and was threaded into the transcript as a real user message the model could answer.
+    assert any(m.get("role") == "user" and m.get("content") == "actually make it 1000 concurrent users"
+               for m in s.messages)
+
+
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_ws_approval_decisions_persist_and_replay():
     """A decided approval (Approve/Reject) is persisted and replayed as an `approval_decision`
