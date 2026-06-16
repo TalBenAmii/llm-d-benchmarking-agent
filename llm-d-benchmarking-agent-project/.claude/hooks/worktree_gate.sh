@@ -14,6 +14,7 @@ set -u
 
 INPUT=$(cat)
 FILE=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("tool_input",{}).get("file_path",""))' 2>/dev/null) || exit 0
+TOOL=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("tool_name",""))' 2>/dev/null) || TOOL="Edit"
 
 # Harness config (anything under a `.claude/` dir — settings.json, hooks, skills, workflows) is
 # NOT project code; never gate it. This also stops the gate from blocking edits to itself or to
@@ -23,6 +24,12 @@ case "$FILE" in */.claude/*) exit 0 ;; esac
 case "$FILE" in */llm-d-benchmarking-agent-project/*) : ;; *) exit 0 ;; esac
 # Already isolated in a worktree → allow.
 case "$FILE" in */.claude/worktrees/*) exit 0 ;; esac
+
+# Record this block as a lesson so the inject hook reminds us to isolate FIRST next time.
+# (PreToolUse denials never reach the PostToolUse capture path, so we record at the source.)
+LTOOL="${TOOL:-Edit}" LINPUT="$FILE" \
+LERROR="worktree gate: Edit/Write to the shared checkout is refused. Call EnterWorktree FIRST, then edit the copy under .claude/worktrees/." \
+  bash "$(dirname "$0")/record_lesson.sh" 2>/dev/null || true
 
 cat >&2 <<EOF
 worktree gate: refusing to edit the shared checkout.
