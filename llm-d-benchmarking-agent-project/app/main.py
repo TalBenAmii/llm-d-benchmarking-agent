@@ -880,7 +880,26 @@ async def ws(websocket: WebSocket) -> None:
                 continue
             if isinstance(msg, UserMessageIn):
                 existing = app.state.running.get(session.id)
-                if busy["value"] or (existing is not None and not existing.done()):
+                turn_running = busy["value"] or (existing is not None and not existing.done())
+                if channel.pending:
+                    # The user typed a message INSTEAD of clicking Approve/Decline on an open
+                    # gate. Treat it as: decline the pending action(s) AND steer with this text.
+                    if turn_running:
+                        # A live turn is parked at the gate. Hand the typed text to the loop (it
+                        # drains it into the transcript right after the rejected tool result, so
+                        # the same turn continues and the model responds to the steer — possibly
+                        # re-proposing a fresh card), then reject the gate(s) to unpark the turn.
+                        # Capture the steer text ONCE even if several gates are open.
+                        session.ctx.steer_messages.append(msg.text)
+                        for rid in list(channel.pending):
+                            channel.resolve(rid, False)
+                        continue
+                    # No live turn owns the gate (e.g. a gate restored from disk after a restart,
+                    # with no parked turn to resume). Just clear the stale card(s) as declined and
+                    # fall through to start a fresh turn that handles this message normally.
+                    for rid in list(channel.pending):
+                        channel.resolve(rid, False)
+                if turn_running:
                     await channel.emit("error", {"message": "still working on the previous request — please wait."})
                     continue
                 # Mint a fresh correlation id at the WS boundary (one per connection/turn) and
