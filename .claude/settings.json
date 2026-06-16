@@ -4,7 +4,11 @@
       "Edit(/llm-d-benchmark/**)",
       "Edit(/llm-d/**)",
       "Write(/llm-d-benchmark/**)",
-      "Write(/llm-d/**)"
+      "Write(/llm-d/**)",
+      "Edit(**/llm-d/**)",
+      "Edit(**/llm-d-benchmark/**)",
+      "Write(**/llm-d/**)",
+      "Write(**/llm-d-benchmark/**)"
     ]
   },
   "hooks": {

@@ -2,8 +2,8 @@
 .claude/worktrees/
 
 # Local-only QA-fleet skill (machine-specific tooling; not shared). Other .claude/ content
-# (settings.json, workflows/) stays tracked.
-.claude/skills/
+# (settings.json, workflows/, and other skills/) stays tracked.
+.claude/skills/qa-fleet/
 
 # Nested upstream repos — managed by their own git, not this one
 /llm-d/

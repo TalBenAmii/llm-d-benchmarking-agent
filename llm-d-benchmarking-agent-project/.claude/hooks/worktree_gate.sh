@@ -15,6 +15,10 @@ set -u
 INPUT=$(cat)
 FILE=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("tool_input",{}).get("file_path",""))' 2>/dev/null) || exit 0
 
+# Harness config (anything under a `.claude/` dir — settings.json, hooks, skills, workflows) is
+# NOT project code; never gate it. This also stops the gate from blocking edits to itself or to
+# settings.json (which live under the project dir but are tooling, not application code).
+case "$FILE" in */.claude/*) exit 0 ;; esac
 # Only project files are gated; anything else (memory, /tmp, sibling repos) is none of our business.
 case "$FILE" in */llm-d-benchmarking-agent-project/*) : ;; *) exit 0 ;; esac
 # Already isolated in a worktree → allow.
