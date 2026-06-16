@@ -4,9 +4,10 @@
 # can warn before the same tool runs again. This is the recording half of the self-improving loop.
 #
 # Fail-open by design: it never blocks a tool and never errors out (a hook that breaks tools is
-# worse than no hook). Error detection is heuristic — `tool_response.is_error` when present, else a
-# conservative marker scan — and entries are de-duplicated by signature and capped, so noise
-# self-limits. Disable the whole loop: TOOL_LESSONS_OFF=1.
+# worse than no hook). It records ONLY when the harness set `tool_response.is_error` — scanning
+# response TEXT for error words is unreliable in a codebase (a successful Read/Grep whose CONTENT
+# contains "error:" etc. would be falsely flagged). Entries are de-duped by signature and capped.
+# Disable the whole loop: TOOL_LESSONS_OFF=1.
 set -u
 [ "${TOOL_LESSONS_OFF:-0}" = "1" ] && exit 0
 CTX="${CLAUDE_PROJECT_DIR:-$PWD}/context/tool_lessons"
@@ -22,16 +23,17 @@ tool = d.get("tool_name") or ""
 if not re.match(r'^[A-Za-z0-9_]+$', tool):
     sys.exit(0)
 resp = d.get("tool_response")
-text = resp if isinstance(resp, str) else json.dumps(resp, default=str)
-low = text.lower()
+# Trust ONLY the harness's authoritative failure flag. Scanning response TEXT for error words is
+# unreliable in a codebase: a successful Read/Grep whose CONTENT contains "error:" (etc.) would be
+# falsely recorded. is_error is set when the tool actually failed.
 is_err = isinstance(resp, dict) and resp.get("is_error") is True
-MARKERS = ("inputvalidationerror", "traceback (most recent call", "command not found",
-           "no such file or directory", "permission denied", "fatal:", "exception:",
-           "is not a valid", "error:")
-if not is_err and any(m in low for m in MARKERS):
-    is_err = True
 if not is_err:
     sys.exit(0)
+if isinstance(resp, dict):
+    src = resp.get("content") or resp.get("error") or resp.get("stderr") or json.dumps(resp, default=str)
+    text = src if isinstance(src, str) else json.dumps(src, default=str)
+else:
+    text = str(resp)
 ti = d.get("tool_input", {}) or {}
 inp = ti.get("command") or ti.get("file_path") or json.dumps(ti, default=str)
 inp = " ".join(str(inp).split())[:200]
