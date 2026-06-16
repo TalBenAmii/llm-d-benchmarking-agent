@@ -1,6 +1,10 @@
 # Claude Code worktrees — transient, per-session; never commit these
 .claude/worktrees/
 
+# Local-only QA-fleet skill (machine-specific tooling; not shared). Other .claude/ content
+# (settings.json, workflows/) stays tracked.
+.claude/skills/
+
 # Nested upstream repos — managed by their own git, not this one
 /llm-d/
 /llm-d-benchmark/

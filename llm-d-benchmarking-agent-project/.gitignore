@@ -16,6 +16,9 @@ docs/AGENT_FINDINGS.md
 docs/AGENT_FINDINGS_ALL.md
 docs/AGENT_FINDINGS_REAL.md
 
+# Local-only QA-fleet durable source (machine-specific absolute paths; kept out of shared history).
+tools/qa-fleet/
+
 # Python
 __pycache__/
 *.py[cod]
