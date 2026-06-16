@@ -436,7 +436,7 @@ function handle(msg) {
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "results_card": renderResultsCard(data.card); break;
-    case "approval_request": addApprovalCard(data); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // now waiting on the user, not the model
+    case "approval_request": addApprovalCard(data); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); setEnabled(true); break;  // now waiting on the user: they can click Approve/Decline OR type a message to steer (which declines + redirects)
     case "error": resetStreamBubble(); addBubble("error", data.message); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
     case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
@@ -2487,13 +2487,18 @@ function addApprovalCard(data) {
   actions.appendChild(approve);
   actions.appendChild(reject);
   card.appendChild(actions);
+  // The user can also just TYPE a message instead of clicking — that declines this action and
+  // steers the agent with what they said (see sendUserMessage). Tell them so the composer being
+  // enabled under an open card reads as intentional, not a glitch.
+  card.appendChild(el("div", "hint", "…or type a message to change something — that declines this and tells me what you want instead."));
   activePane.appendChild(card);
   if (cur) cur.pendingApprovals[request_id] = card;
 
   const resolve = (ok) => {
     ws.send(JSON.stringify({ type: "approval", request_id, approved: ok }));
     if (cur) { cur.running = true; delete cur.pendingApprovals[request_id]; }
-    startWorking();   // the turn resumes after the user decides (approve or reject), until "done"
+    setEnabled(false);  // re-lock the composer: clicking resumes the turn (working), not parked
+    startWorking();     // the turn resumes after the user decides (approve or reject), until "done"
     approve.disabled = reject.disabled = true;
     card.appendChild(el("div", "resolved", ok ? "✓ approved" : "✗ rejected"));
   };
@@ -2632,6 +2637,20 @@ function sendUserMessage(text) {
   text = (text || "").trim();
   if (!text || busy || !ws || ws.readyState !== WebSocket.OPEN) return;
   removeWelcomeCard();              // the conversation has started — clear any suggestion chips
+  // If a turn is parked at an approval gate and the user typed instead of clicking, this message
+  // means "decline the pending action(s) and do THIS instead". The server resolves those gates as
+  // rejected and threads this text into the same turn; reflect it in the open cards immediately so
+  // the UI doesn't leave live Approve/Decline buttons under a message that already superseded them.
+  if (cur && cur.pendingApprovals) {
+    for (const rid of Object.keys(cur.pendingApprovals)) {
+      const card = cur.pendingApprovals[rid];
+      if (card) {
+        card.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+        card.appendChild(el("div", "resolved", "✗ declined — you replied instead"));
+      }
+      delete cur.pendingApprovals[rid];
+    }
+  }
   addBubble("user", text);
   ws.send(JSON.stringify({ type: "user_message", text }));
   setEnabled(false);

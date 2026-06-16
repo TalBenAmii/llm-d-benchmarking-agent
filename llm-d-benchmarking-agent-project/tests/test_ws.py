@@ -85,6 +85,69 @@ def test_ws_approval_roundtrip():
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_typing_instead_of_approving_steers_the_turn():
+    """Type-instead-of-approve: while a turn is parked at an approval gate, a free-text
+    user_message must NOT be rejected with "please wait". Instead the gate is declined AND
+    the typed text is threaded into the SAME turn as a user message right after the rejected
+    tool result, so the model continues and responds to the steer (here: re-proposing)."""
+    from app.main import app
+
+    turns = [
+        # Turn 1: propose a plan -> parks at the approval gate.
+        AssistantTurn(text="Here's the plan:", tool_calls=[ToolCall("c1", "propose_session_plan", {
+            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+        })]),
+        # Turn 2: after the user typed a steer instead of approving, the model sees the rejected
+        # plan + their message and acknowledges (could re-propose; a plain text close is enough
+        # to prove the turn CONTINUED rather than being blocked).
+        AssistantTurn(text="Got it — switching to 1000 concurrent users.", tool_calls=[]),
+    ]
+
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider(turns)
+
+        with client.websocket_connect("/ws") as ws:
+            ready = ws.receive_json()
+            assert ready["type"] == "ready"
+            sid = ready["data"]["session_id"]
+            ws.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
+
+            seen: list[str] = []
+            steered = False
+            for _ in range(80):
+                ev = ws.receive_json()
+                seen.append(ev["type"])
+                if ev["type"] == "approval_request" and not steered:
+                    # Do NOT click Approve/Decline — type a steering message instead.
+                    ws.send_json({"type": "user_message",
+                                  "text": "actually make it 1000 concurrent users"})
+                    steered = True
+                if ev["type"] == "done":
+                    break
+
+        # The steer must not have been swallowed by the in-flight guard.
+        assert "error" not in seen, f"typing while parked produced an error frame: {seen}"
+        # The turn CONTINUED past the gate (a second LLM turn ran -> its text + done).
+        assert seen[-1] == "done"
+        assert "tool_result" in seen and "assistant_text" in seen
+
+        s = app.state.sessions.get(sid)
+        # The plan gate was recorded as DECLINED (the typed message implies decline).
+        by_tc = {a["tool_call_id"]: a for a in s.approvals}
+        assert by_tc.get("c1", {}).get("approved") is False
+
+        # The typed steer landed in the transcript as a user message AFTER a tool_results block
+        # (i.e. threaded into the same turn, not dropped) — tool-call/result pairing intact.
+        roles = [m.get("role") for m in s.messages]
+        steer_idx = next(i for i, m in enumerate(s.messages)
+                         if m.get("role") == "user"
+                         and m.get("content") == "actually make it 1000 concurrent users")
+        assert "tool_results" in roles[:steer_idx], \
+            "steer message must follow the rejected tool result, in the same turn"
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_ws_approval_decisions_persist_and_replay():
     """A decided approval (Approve/Reject) is persisted and replayed as an `approval_decision`
     item — tied to its tool call — when the chat is reopened, so it doesn't vanish on a chat

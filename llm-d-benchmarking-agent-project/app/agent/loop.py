@@ -269,6 +269,19 @@ class AgentLoop:
                     trace.event("tool_result", tool=tc.name, id=tc.id, result=clamped)
 
                 session.messages.append({"role": "tool_results", "results": tool_result_msgs})
+
+                # Mid-turn user steer (type-instead-of-approve). If the user typed a message
+                # while a tool was parked at an approval gate, the WS handler declined the gate
+                # (so the tool result above is a rejection) AND captured the typed text on the
+                # ctx. Surface each captured message as a real user turn right after the tool
+                # results, so this SAME turn continues and the model responds to the steer —
+                # adjusting and (if appropriate) re-proposing a fresh approval card — instead of
+                # the message being dropped with a "please wait". Appended AFTER the tool_results
+                # block so tool-call/result pairing is never broken. Persisted with the turn.
+                if ctx.steer_messages:
+                    for steer in ctx.steer_messages:
+                        session.messages.append({"role": "user", "content": steer})
+                    ctx.steer_messages = []
             else:
                 await emit(events.ERROR, {"message": f"reached the step limit ({MAX_STEPS}); pausing."})
                 log.warning("turn.step_limit", extra={"max_steps": MAX_STEPS})
@@ -283,7 +296,11 @@ class AgentLoop:
             return await dispatch(ctx, name, raw_input)
         except ApprovalRejected as exc:
             return {"rejected": True, "reason": str(exc),
-                    "note": "the user declined this action; ask what they want to do instead"}
+                    "note": "the user declined this action. If a user message follows this "
+                            "result, they typed it INSTEAD of approving — treat it as their new "
+                            "instruction: adjust accordingly and, if a mutating step is still the "
+                            "right next move, propose it again by calling the tool (a fresh "
+                            "Approve/Decline card). Otherwise ask what they want to do instead."}
         except QuotaError as exc:
             # Over an allowlist-declared usage quota — refused pre-execution. Surface the
             # caps so the agent can explain the limit instead of silently failing.
