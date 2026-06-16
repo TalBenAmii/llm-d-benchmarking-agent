@@ -163,7 +163,25 @@ if git -C "$MAIN_ROOT" merge --no-ff -m "merge $BRANCH into $TARGET_BRANCH (auto
   # --force: the tree holds untracked bits (empty nested sibling-repo gitlinks, local markers) that
   # would otherwise make `worktree remove` refuse. The branch ref is left in place — it's now in main.
   elif git -C "$MAIN_ROOT" worktree remove --force "$WT_ROOT" >/dev/null 2>&1; then
-    echo "auto-merge: merged '$BRANCH' into '$TARGET_BRANCH' (local, --no-ff) and removed the worktree at $WT_ROOT (branch ref kept)." >&2
+    # The worktree we just deleted is THIS still-live session's working directory. Removing it out
+    # from under the running Claude process leaves its cwd dangling, and the harness spawns every
+    # hook with cwd=<that dir> — so the NEXT UserPromptSubmit (and every later hook) dies with
+    # `ENOENT: posix_spawn '/bin/sh'` even though /bin/sh is fine (Node reports the bad-cwd spawn
+    # failure against the executable). A subprocess can't chdir its parent, so we restore a VALID
+    # cwd the only way we can from here: recreate the exact session dir as an inert empty stub.
+    # Cleanup intent is preserved — the git worktree is gone; only a harmless empty dir remains.
+    if [ -n "$CWD" ] && [ ! -d "$CWD" ]; then
+      if mkdir -p "$CWD" 2>/dev/null; then
+        printf '%s\n' \
+          "Inert stub left by auto_merge_worktree.sh after it merged this session's branch and" \
+          "removed the git worktree that lived here. It exists ONLY so the still-running Claude" \
+          "session keeps a valid working directory — without it, every hook fails with" \
+          "  Error occurred while executing hook command: ENOENT ... posix_spawn '/bin/sh'" \
+          "because the harness spawns hooks with cwd set to this (now-deleted) path. Safe to" \
+          "delete once the session ends." > "$CWD/README.worktree-removed" 2>/dev/null || true
+      fi
+    fi
+    echo "auto-merge: merged '$BRANCH' into '$TARGET_BRANCH' (local, --no-ff) and removed the worktree at $WT_ROOT (branch ref kept; recreated an empty stub at the live session's cwd so its hooks keep working — safe to delete)." >&2
   else
     echo "auto-merge: merged '$BRANCH' into '$TARGET_BRANCH' (local, --no-ff), but could NOT remove the worktree at $WT_ROOT — remove it manually: git worktree remove --force '$WT_ROOT'." >&2
   fi

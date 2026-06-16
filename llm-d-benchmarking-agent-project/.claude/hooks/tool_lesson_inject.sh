@@ -25,7 +25,23 @@ blocks = [b.strip() for b in re.split(r'(?=^- \[)', content, flags=re.M) if b.st
 if not blocks:
     sys.exit(0)
 msg = "Past %s failures in this project (avoid repeating these mistakes):\n%s" % (tool, "\n".join(blocks[-6:]))
-out = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": msg[:1200]}}
+msg = msg[:1200]
+# Maintenance nudge (self-triggering): when raw auto-captured errors pile up across ALL tools,
+# remind the user to have them DEBLOATED & GENERALIZED into guardrails — i.e. turn raw error text
+# into solution-bearing lessons, merge duplicates, drop stale ones. Tied to the actual condition
+# (volume of accumulated lessons), not an arbitrary clock.
+import glob
+total = 0
+for f in glob.glob(os.path.join(ctx, "*.md")):
+    try:
+        total += len(re.findall(r'^- \[', open(f, encoding="utf-8", errors="replace").read(), flags=re.M))
+    except Exception:
+        pass
+if total >= 12:
+    msg += ("\n\n[maintenance] %d raw tool-error lessons have accumulated across tools. Surface this to "
+            "the user: suggest they ask you to DEBLOAT & GENERALIZE the captured errors into guardrails "
+            "(capture the fix/solution, merge duplicates, drop stale ones)." % total)
+out = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": msg}}
 print(json.dumps(out))
 PY
 exit 0
