@@ -95,12 +95,15 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   explicitly names a different workload.
 - Live resource stats (the CPU/memory panel) need the in-cluster metrics-server, which kind and
   the `cicd/kind` spec do NOT install. probe_environment reports it as `metrics_server`
-  (`available`/`installed`/`ready_replicas`). On a local kind cluster, BEFORE the first benchmark
-  `run`, if `metrics_server.available` is false make a SINGLE one-line offer to install it with
-  run_command(["install_metrics_server.sh","--kubelet-insecure-tls"]) and let the user approve it
-  BEFORE you run — it is a per-cluster add-on, so one install covers every later run. SKIP the
-  offer if it is already available, the user already declined, or it is a managed cluster that
-  ships metrics (GKE/OpenShift). Do NOT defer this to a mid-run action. See
+  (`available`/`installed`/`ready_replicas`). On a local kind cluster, if `metrics_server.available`
+  is false, OFFER to install it as its OWN approval-gated step —
+  run_command(["install_metrics_server.sh","--kubelet-insecure-tls"]) — and surface that offer
+  BEFORE you offer to deploy/standup or submit a benchmark `run`, never after. Make it a real,
+  actionable offer the user can approve THEN: do NOT frame it as optional "I can install it after"
+  / "for future runs", and do NOT submit the deploy or the run in the SAME turn — STOP and wait for
+  the user's choice on the install first. It is a per-cluster add-on, so one install covers every
+  later run. SKIP the offer only if it is already available, the user already declined, or it is a
+  managed cluster that ships metrics (GKE/OpenShift). Never defer it to a mid-run action. See
   read_knowledge('observability').
 """
 
