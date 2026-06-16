@@ -8,6 +8,35 @@
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/worktree_gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/git_add_guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/tool_lesson_inject.sh"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
@@ -15,6 +44,25 @@
           {
             "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/ruff_autofix.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/tool_error_capture.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/gpu_context.sh"
           }
         ]
       }
@@ -36,6 +84,10 @@
           {
             "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/reflect_session_end.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/context_sync.sh"
           }
         ]
       }
