@@ -323,6 +323,25 @@ def test_debug_view_renders_commands_inline_in_chat():
     assert 'type: "command"' in _ui("preview.html")
 
 
+def test_resume_catchup_note_is_deferred_below_history():
+    """Switching back to a still-running chat does a full rebuild: `ready` (running=true, non-
+    incremental) is immediately followed by a `history` event that renders the restored transcript.
+    The 'catching up to live…' note must land at the BOTTOM of that transcript (the seam before the
+    live tail replay) — NOT be added eagerly in the `ready` handler, where it would be stranded at
+    the very top, above the rebuilt history (the reported bug). So `ready` only FLAGS it and
+    renderHistory emits it after the replay loop."""
+    js = _ui("app.js")
+    # The `ready` handler must not add the note directly — it sets a deferred flag instead.
+    assert "cur.pendingResumeNote = true" in js
+    ready_block = js.split('case "ready":')[1].split('case "history":')[0]
+    assert 'addNote("⏳ Picking up a benchmark already running' not in ready_block, \
+        "the catch-up note must be deferred, not added in the ready handler (it strands at the top)"
+    # renderHistory consumes the flag and emits the note AFTER rebuilding the transcript.
+    rh_block = js.split("function renderHistory(items)")[1].split("function addHistoryTool")[0]
+    assert "cur.pendingResumeNote" in rh_block and "pendingResumeNote = false" in rh_block
+    assert 'addNote("⏳ Picking up a benchmark already running' in rh_block
+
+
 def test_markdown_table_rendering_is_wired():
     """The assistant bubble's markdown renderer must turn GFM pipe-tables into real <table>
     markup (was: raw `| … |` text). Wiring-level guard; the rendered table is eyeballed via
