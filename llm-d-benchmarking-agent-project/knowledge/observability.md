@@ -70,8 +70,12 @@ any llm-d guide, so on a fresh kind cluster live stats are unavailable until you
 
 When the up-front `probe_environment` `metrics_server` fact (or `observe_run_metrics` / the live
 sparklines mid-run) reports `available: false` AND the user wants live resource stats, OFFER to
-install it BEFORE the run — proactively, not as a mid-run action — don't do it silently (it is
-mutating and approval-gated). The vetted installer is a project script run via `run_command`:
+install it as its OWN approval-gated step, and surface that offer BEFORE you offer to deploy/standup
+or submit the `run` — never after, never as a mid-run action. It is a real, actionable offer the
+user approves THEN: do not frame it as optional "I'll do it after" / "for future runs", do not do it
+silently (it is mutating and approval-gated), and do not submit the deploy or the run in the same
+turn — STOP and let the user decide on the install first. The vetted installer is a project script
+run via `run_command`:
 
 - **kind / any self-signed-kubelet cluster** (the quickstart path):
   `run_command(argv=["install_metrics_server.sh", "--kubelet-insecure-tls"])`
@@ -82,8 +86,9 @@ mutating and approval-gated). The vetted installer is a project script run via `
 
 The script applies the pinned metrics-server manifest into `kube-system`, waits for the rollout,
 and verifies `kubectl top` responds. It is idempotent (safe to re-run). Best timing: right after
-the cluster is created, and in any case BEFORE the first benchmark `run`, so the run already has
-live stats — keyed off the `probe_environment` `metrics_server.available == false` fact.
+the cluster is created — and in any case BEFORE you offer to deploy/standup or submit the first
+`run`, so the run already has live stats — keyed off the `probe_environment`
+`metrics_server.available == false` fact.
 
 **When to SKIP installing it (judgment, probe first):** some clusters already serve the Metrics
 API — managed Kubernetes like **GKE** ships metrics-server by default, and **OpenShift** has its

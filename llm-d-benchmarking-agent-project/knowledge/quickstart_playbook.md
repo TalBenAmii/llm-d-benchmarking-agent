@@ -42,18 +42,19 @@ the steps/flags come from the real procedure rather than memory.
 5. **Stand up** — `execute_llmdbenchmark subcommand=standup spec=cicd/kind
    namespace=llmd-quickstart flags={skip_smoketest:true}`. This can take a few minutes;
    the output streams live.
-5b. **Live resource stats — OFFER the metrics-server install BEFORE the run (don't wait to be
-   asked, don't defer to mid-run).** kind does NOT ship the in-cluster **metrics-server**, so the
-   live CPU/mem panel during a run reads `live resource stats unavailable (no metrics-server)`.
-   `probe_environment` reports this up front as `metrics_server.available`. On a fresh kind
-   cluster where `metrics_server.available == false`, make a single one-line offer to install it
-   (approval-gated, idempotent) BEFORE you start the benchmark `run`:
+5b. **Live resource stats — OFFER the metrics-server install as its OWN step BEFORE you deploy or
+   run (don't wait to be asked, don't defer to mid-run, don't bundle it into the run turn).** kind
+   does NOT ship the in-cluster **metrics-server**, so the live CPU/mem panel during a run reads
+   `live resource stats unavailable (no metrics-server)`. `probe_environment` reports this up front
+   as `metrics_server.available`. On a fresh kind cluster where `metrics_server.available == false`,
+   make a single one-line, approval-gated offer to install it:
    `run_command argv=["install_metrics_server.sh","--kubelet-insecure-tls"]`
-   — `--kubelet-insecure-tls` is REQUIRED on kind (self-signed kubelet certs). It's a
-   PER-CLUSTER add-on: install once and every run on this cluster gets stats. Best right after the
-   cluster is up; at the latest, before the first run. SKIP if `metrics_server.available` is
-   already true (e.g. GKE/OpenShift); the full judgment + SKIP cases are in
-   `read_knowledge('observability')`.
+   — and surface that offer BEFORE you offer to standup/deploy or submit the `run`. STOP and wait
+   for the user's choice on the install — do NOT phrase it as optional ("I can do it after" / "for
+   future runs") and do NOT submit the deploy or run in the same turn. `--kubelet-insecure-tls` is
+   REQUIRED on kind (self-signed kubelet certs). It's a PER-CLUSTER add-on: install once and every
+   run on this cluster gets stats. SKIP if `metrics_server.available` is already true (e.g.
+   GKE/OpenShift); the full judgment + SKIP cases are in `read_knowledge('observability')`.
 6. **Smoketest** — `execute_llmdbenchmark subcommand=smoketest spec=cicd/kind
    namespace=llmd-quickstart`. Confirms the endpoint answers.
 7. **Benchmark** — `execute_llmdbenchmark subcommand=run spec=cicd/kind
