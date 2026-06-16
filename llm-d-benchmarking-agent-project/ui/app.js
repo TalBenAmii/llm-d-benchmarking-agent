@@ -2673,16 +2673,47 @@ if (jumpBtn) {
   });
 }
 
-// Mobile sidebar: off-canvas under a media-query breakpoint, toggled by the header hamburger.
-// On desktop the body class is inert (CSS only acts on it within the breakpoint), so toggling is
-// harmless there. Selecting a chat closes the drawer (see switchTo).
-function setSidebar(open) {
+// Sidebar toggle (ChatGPT-style). The single header button is context-aware:
+//   • Desktop (> mobile breakpoint): collapse/expand the persistent sidebar in place. The
+//     collapsed state is remembered across reloads in localStorage.
+//   • Mobile (≤ breakpoint): drive the off-canvas drawer + tap-scrim.
+// The button itself sits in the main header, so it stays visible whether the sidebar is open
+// or collapsed. Selecting a chat closes the mobile drawer (see switchTo).
+const sidebarMql = window.matchMedia("(max-width: 760px)");
+
+function setSidebar(open) {                         // mobile off-canvas drawer
   document.body.classList.toggle("sidebar-open", open);
-  if (sidebarToggle) sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
   if (sidebarScrim) sidebarScrim.hidden = !open;
+  syncSidebarToggleState();
 }
-if (sidebarToggle) sidebarToggle.addEventListener("click", () => setSidebar(!document.body.classList.contains("sidebar-open")));
+function setSidebarCollapsed(collapsed) {           // desktop in-place collapse
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  try { localStorage.setItem("llmd-sidebar-collapsed", collapsed ? "1" : "0"); } catch (e) {}
+  syncSidebarToggleState();
+}
+function syncSidebarToggleState() {
+  if (!sidebarToggle) return;
+  // aria-expanded reflects whichever mechanism is live at the current breakpoint.
+  const open = sidebarMql.matches
+    ? document.body.classList.contains("sidebar-open")
+    : !document.body.classList.contains("sidebar-collapsed");
+  sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+// Restore the persisted desktop collapse state on load.
+try {
+  if (localStorage.getItem("llmd-sidebar-collapsed") === "1") {
+    document.body.classList.add("sidebar-collapsed");
+  }
+} catch (e) {}
+syncSidebarToggleState();
+
+if (sidebarToggle) sidebarToggle.addEventListener("click", () => {
+  if (sidebarMql.matches) setSidebar(!document.body.classList.contains("sidebar-open"));
+  else setSidebarCollapsed(!document.body.classList.contains("sidebar-collapsed"));
+});
 if (sidebarScrim) sidebarScrim.addEventListener("click", () => setSidebar(false));
+// Keep aria-expanded honest when the viewport crosses the mobile breakpoint.
+sidebarMql.addEventListener("change", syncSidebarToggleState);
 
 // Manual collapse of the split view; the next `resource_stats` tick of a still-running run reopens it.
 if (resourceSideClose) resourceSideClose.addEventListener("click", clearResourceStats);

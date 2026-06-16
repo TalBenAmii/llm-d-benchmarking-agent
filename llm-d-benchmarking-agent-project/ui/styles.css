@@ -85,6 +85,16 @@ body {
   display: flex; flex-direction: column;
   background: linear-gradient(180deg, var(--panel), color-mix(in srgb, var(--panel) 60%, var(--bg)));
   border-right: 1px solid var(--border);
+  transition: width .22s ease, border-color .22s ease;
+}
+/* Desktop collapse (ChatGPT-style): the toggle in the header slides the persistent sidebar
+   away to zero width. The toggle itself lives in the main header, so it stays visible in both
+   the expanded and collapsed states. overflow:hidden clips the inner content during the slide.
+   Scoped to the desktop breakpoint so it never fights the mobile off-canvas drawer below. */
+@media (min-width: 761px) {
+  body.sidebar-collapsed .sidebar {
+    width: 0; min-width: 0; border-right-color: transparent; overflow: hidden;
+  }
 }
 .sidebar-head { padding: 14px 12px 8px; }
 .new-chat {
@@ -221,14 +231,18 @@ body {
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
 
-/* Hamburger toggle + drawer scrim are desktop-inert: hidden until the mobile breakpoint. */
-.sidebar-toggle { display: none; }
+/* The sidebar toggle is now visible on every breakpoint (ChatGPT-style): on desktop it
+   collapses/expands the persistent sidebar; on mobile it drives the off-canvas drawer. The
+   drawer scrim stays desktop-inert (only meaningful for the mobile overlay). */
+.sidebar-toggle { display: inline-flex; }
 .sidebar-scrim { display: none; }
+/* Mirror the collapsed state on the icon: when the sidebar is hidden the panel-line nudges so
+   the glyph reads as "closed", and a subtle tint marks it active — but it never disappears. */
+body.sidebar-collapsed .sidebar-toggle line { transform: translateX(-2px); }
 
 @media (max-width: 760px) {
   /* Off-canvas sidebar: it slides over the chat (which now spans full width) and a tap-scrim
-     dismisses it. The header hamburger toggles body.sidebar-open. */
-  .sidebar-toggle { display: inline-flex; }
+     dismisses it. The header toggle drives body.sidebar-open. */
   .sidebar {
     position: fixed; top: 0; left: 0; z-index: 60; width: min(280px, 84vw);
     transform: translateX(-100%); transition: transform .22s ease;
@@ -869,13 +883,19 @@ input[type="range"].slider:focus { box-shadow: 0 0 0 3px rgba(165, 64, 165, .18)
 .lightbox .close:hover { background: var(--accent-strong); color: var(--on-accent); }
 
 /* ── Scrollbars ───────────────────────────────────────────────────────── */
-main::-webkit-scrollbar, pre::-webkit-scrollbar, #input::-webkit-scrollbar { width: 10px; height: 10px; }
-main::-webkit-scrollbar-thumb, pre::-webkit-scrollbar-thumb, #input::-webkit-scrollbar-thumb {
+/* The sidebar scroll regions (recent-chats list + stored-results list) share the chat
+   transcript's slider so the whole app scrolls with one consistent look. */
+main::-webkit-scrollbar, pre::-webkit-scrollbar, #input::-webkit-scrollbar,
+.conv-list::-webkit-scrollbar, .history-list::-webkit-scrollbar { width: 10px; height: 10px; }
+main::-webkit-scrollbar-thumb, pre::-webkit-scrollbar-thumb, #input::-webkit-scrollbar-thumb,
+.conv-list::-webkit-scrollbar-thumb, .history-list::-webkit-scrollbar-thumb {
   background: var(--border-strong); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box;
 }
-main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input::-webkit-scrollbar-thumb:hover { background: var(--accent); background-clip: padding-box; }
-/* Firefox: thin themed scrollbar for the composer (it ignores ::-webkit-scrollbar). */
-#input { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input::-webkit-scrollbar-thumb:hover,
+.conv-list::-webkit-scrollbar-thumb:hover, .history-list::-webkit-scrollbar-thumb:hover { background: var(--accent); background-clip: padding-box; }
+/* Firefox: thin themed scrollbar (it ignores ::-webkit-scrollbar) — same treatment for the
+   composer and the sidebar lists. */
+#input, .conv-list, .history-list { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 
 /* ── "Working" indicator (spinning llm-d hexagon + live status) ───────────
    Pinned just above the composer while a turn is in flight. The hexagon mesh

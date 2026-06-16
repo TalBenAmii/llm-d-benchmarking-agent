@@ -1,36 +1,37 @@
 #!/usr/bin/env bash
-# Stop hook — auto-merge a finished worktree branch into `main`, GATED BY A SENTINEL FILE.
+# Stop hook — auto-merge a FINISHED worktree branch into `main`. The AGENT is the decider, and
+# COMMITTING the work IS the "done" signal — there is no sentinel file to touch.
 #
-# WHY a sentinel and not "merge on every Stop": the Stop hook fires after EVERY turn, not when a
-# feature is actually done. Merging unconditionally would push half-finished work to main on every
-# reply. So this is opt-in PER FEATURE: when the work is genuinely complete, drop a marker —
-#     touch .ready-to-merge          (from the worktree root)
-# — and the next time Claude stops, this hook merges the branch into main (--no-ff, so it's one
-# revertable commit), removes the marker, and removes the now-merged worktree. No marker => this
-# hook is a silent no-op.
+# WHY commit-as-signal: the Stop hook fires after EVERY turn, not when a feature is actually done.
+# We can't ask the model from a hook, so we use the one deliberate "I'm done" act the agent already
+# performs — a commit. A clean, committed, ahead-of-`main` worktree means the agent decided it's
+# done; anything uncommitted means it's still mid-flight.
 #
-# Guards (all must hold, else it reports to stderr and skips — never leaves main half-merged):
-#   • we're inside a managed worktree under .claude/worktrees/  (normal sessions are skipped)
-#   • the sentinel .ready-to-merge exists in the worktree root
-#   • the worktree tree is CLEAN (everything committed — it won't auto-commit your work for you)
-#   • the main checkout is actually on `main` (won't merge into some other checked-out branch)
-#   • the merge applies without conflicts (on conflict: `git merge --abort`, report, drop sentinel)
+# Behaviour on Stop, only inside a managed worktree under .claude/worktrees/ (normal main-checkout
+# sessions are always skipped):
+#   • Clean tree + branch ahead of `main`  → agent committed = done. Reconcile-gate, test-gate,
+#     then merge (--no-ff, local) into `main` and remove the worktree.
+#   • Uncommitted changes present          → still mid-flight. ONE-TIME per worktree, block the stop
+#     (exit 2, fed back to the model) with a short note: "commit when done → I'll merge; not done →
+#     stop again." A `.merge-nudged` marker makes it fire exactly once (no nagging, no loop).
+#   • Clean but not ahead of `main`        → nothing to merge → silent no-op.
+#   • `.hold` file in the worktree root    → silent no-op (opt-out: commit progress but keep working
+#     across turns without merging; delete the file to re-enable).
 #
-# Test gate (two modes):
-#   • Set AUTO_MERGE_TEST_CMD to a command (run from the worktree root) that must exit 0 → runs on
-#     EVERY merge, e.g.  export AUTO_MERGE_TEST_CMD="make -C llm-d-benchmarking-agent-project test"
-#   • Otherwise, a worktree-aware project-suite run fires automatically ONLY when the reconciliation
-#     gate found overlap (concurrent work was reconciled) — cheap on disjoint merges, a safety net
-#     exactly when concurrent sessions touched shared ground. Built with the right PYTHONPATH /
-#     REPOS_DIR / .venv so the empty nested repos in a worktree don't false-fail. Disable: RECON_TEST_OFF=1.
-# Disable everything: set AUTO_MERGE_OFF=1, or remove the Stop block from .claude/settings.json.
+# This whole instruction set lives ONLY here, surfaced via the hook exactly when relevant, so it
+# never bloats the agent's standing context/memory.
 #
-# Note: merges LOCALLY only (no push), then removes the now-merged worktree (the branch ref is
-# kept — it's already in main). Keep the worktree after merge instead: set AUTO_MERGE_KEEP_WORKTREE=1.
+# Reconcile gate: BEFORE merging, if concurrent sessions (other worktree branches, or commits that
+# landed on `main` while this was in flight) touched the same ground, HOLD and dispatch the
+# reconcile-before-merge skill; merge only once reconciliation is recorded. Disable: RECON_OFF=1.
+# Test gate: AUTO_MERGE_TEST_CMD (if set) runs on every merge; otherwise the project suite runs only
+# when overlap was just reconciled. Disable: RECON_TEST_OFF=1.
+#
+# Merges LOCALLY only (no push), then removes the merged worktree (branch ref kept — it's in main).
+# Keep the worktree: AUTO_MERGE_KEEP_WORKTREE=1. Disable everything: AUTO_MERGE_OFF=1.
 set -u
 [ "${AUTO_MERGE_OFF:-0}" = "1" ] && exit 0
 
-SENTINEL_NAME=".ready-to-merge"
 TARGET_BRANCH="main"
 
 # Where are we? Resolve the worktree root from the Stop hook's cwd (falls back to PWD).
@@ -43,19 +44,42 @@ WT_ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || exit 0
 # Only act inside a managed worktree — normal (main-checkout) sessions must be untouched.
 case "$WT_ROOT" in */.claude/worktrees/*) : ;; *) exit 0 ;; esac
 
-# Sentinel present? If not, nothing to do (the common case — silent no-op).
-[ -f "$WT_ROOT/$SENTINEL_NAME" ] || exit 0
+# Opt-out: agent committed but wants to keep working without merging yet.
+[ -f "$WT_ROOT/.hold" ] && exit 0
 
 BRANCH=$(git -C "$WT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)
 [ -n "$BRANCH" ] && [ "$BRANCH" != "HEAD" ] || { echo "auto-merge: worktree is in a detached HEAD — skipping." >&2; exit 0; }
 
-# Refuse to merge uncommitted work — the sentinel says "done", but only committed work is "done".
-if [ -n "$(git -C "$WT_ROOT" status --porcelain --untracked-files=no)" ]; then
-  echo "auto-merge: '$BRANCH' has uncommitted changes — commit them, then re-touch $SENTINEL_NAME." >&2
-  exit 0
+# State: is there uncommitted tracked work, and is the branch ahead of main?
+DIRTY=0; [ -n "$(git -C "$WT_ROOT" status --porcelain --untracked-files=no)" ] && DIRTY=1
+AHEAD=$(git -C "$WT_ROOT" rev-list --count "$TARGET_BRANCH..HEAD" 2>/dev/null || echo 0)
+
+# Uncommitted work → still mid-flight. The agent is the decider: nudge it ONCE to commit when done.
+# The `.merge-nudged` marker (untracked; ignored by the DIRTY check) guarantees exactly one prompt
+# per worktree — no per-turn nagging, no stop loop.
+if [ "$DIRTY" = "1" ]; then
+  NUDGE_MARK="$WT_ROOT/.merge-nudged"
+  [ -f "$NUDGE_MARK" ] && exit 0
+  : > "$NUDGE_MARK" 2>/dev/null || true
+  cat >&2 <<EOF
+auto-merge (one-time note for worktree '$BRANCH'): this branch merges into '$TARGET_BRANCH'
+automatically when you COMMIT — committing is your "done" signal, there is no sentinel to touch.
+  • When the user's request is COMPLETE → commit everything on this branch (stage the project paths,
+    then git commit with a clear message). On your next stop I reconcile + merge into '$TARGET_BRANCH'
+    and remove the worktree.
+  • Not done yet, or pausing to ask the user something → just respond and stop again; you won't see
+    this note again.
+  • Want to commit progress but keep working across turns without merging → touch '$WT_ROOT/.hold'
+    (delete it to re-enable auto-merge).
+EOF
+  exit 2
 fi
 
-# Locate the MAIN working tree (the first entry of `git worktree list`, i.e. not a .claude worktree).
+# Clean tree but nothing ahead of main → nothing to merge (silent no-op).
+[ "${AHEAD:-0}" -gt 0 ] 2>/dev/null || exit 0
+
+# ── Clean + ahead of main: the agent committed = done. Reconcile-gate → test-gate → merge. ──
+# Locate the MAIN working tree (first entry of `git worktree list`, i.e. not a .claude worktree).
 MAIN_ROOT=$(git -C "$WT_ROOT" worktree list --porcelain 2>/dev/null \
   | awk '/^worktree /{print substr($0,10); exit}')
 [ -n "$MAIN_ROOT" ] && [ -d "$MAIN_ROOT" ] || { echo "auto-merge: could not locate the main checkout — skipping." >&2; exit 0; }
@@ -67,15 +91,9 @@ if [ "$MAIN_BRANCH" != "$TARGET_BRANCH" ]; then
   exit 0
 fi
 
-# Reconciliation gate — BEFORE merging, check whether concurrent sessions (other worktree
-# branches, or commits that landed on the target while this feature was in flight) touched the
-# same ground. If so, HOLD the merge and dispatch the agent to reconcile first: pull those
-# changes into this worktree, resolve conflicts, and validate that what each session promised
-# was actually delivered. Only once reconciliation is recorded (signature matches current
-# concurrent state) does the merge proceed. No overlap detected ⇒ this gate is a no-op.
-# Disable the gate (old behaviour: merge straight away): RECON_OFF=1.
+# Reconciliation gate — see header. Empty detect ⇒ no-op. Disable: RECON_OFF=1.
 RECON_LIB="$(dirname "$0")/recon_lib.sh"
-HAD_OVERLAP=0   # set when the reconciliation gate sees concurrent overlap — drives the test gate below
+HAD_OVERLAP=0   # set when overlap is detected — drives the test gate below
 if [ "${RECON_OFF:-0}" != "1" ] && [ -f "$RECON_LIB" ]; then
   SIGNALS=$(bash "$RECON_LIB" detect "$WT_ROOT" "$TARGET_BRANCH" "$BRANCH" 2>/dev/null)
   if [ -n "$SIGNALS" ]; then
@@ -95,11 +113,10 @@ overlapping sibling branches' changes) into THIS worktree, resolve every conflic
 that each session actually delivered what it promised in its chat — read the relevant session
 transcripts under
   /home/roots/.claude/projects/-home-roots-llm-d-benchmarking-agent/*.jsonl
-if a change's intent is unclear. Commit your resolution ON THIS BRANCH ('$TARGET_BRANCH' stays
-untouched), then record reconciliation and re-arm the merge:
+if a change's intent is unclear. Then record reconciliation and COMMIT your resolution on this
+branch ('$TARGET_BRANCH' stays untouched):
     bash "$RECON_LIB" mark "$WT_ROOT" "$TARGET_BRANCH" "$BRANCH"
-    touch "$WT_ROOT/$SENTINEL_NAME"
-The next time you stop, this hook will merge cleanly and remove the worktree.
+On your next stop the merge proceeds automatically (the commit is your done-signal).
 EOF
       exit 2
     fi
@@ -107,7 +124,7 @@ EOF
 fi
 
 # Test gate. AUTO_MERGE_TEST_CMD (if set) runs on every merge. Otherwise the project suite runs
-# ONLY when overlap was just reconciled (HAD_OVERLAP) — built with the worktree-aware env so the
+# ONLY when overlap was just reconciled (HAD_OVERLAP), built with the worktree-aware env so the
 # empty nested repos in a worktree don't false-fail. See the header note for the rationale.
 PROJ_SUBDIR="llm-d-benchmarking-agent-project"
 WT_PROJ="$WT_ROOT/$PROJ_SUBDIR"
@@ -132,19 +149,19 @@ if [ -n "$TEST_KIND" ]; then
     ( cd "$WT_PROJ" && PYTHONPATH="$WT_PROJ" REPOS_DIR="$MAIN_ROOT" "$VENV_PY" -m pytest tests/ -q ) >/dev/null 2>&1 || rc=$?
   fi
   if [ "$rc" -ne 0 ]; then
-    echo "auto-merge: TEST GATE FAILED for '$BRANCH' (rc=$rc) — NOT merging; '$TARGET_BRANCH' untouched, sentinel kept. The reconciled tree doesn't pass the suite: fix the failing tests, commit on this branch, then stop again. (Bypass once: RECON_TEST_OFF=1.)" >&2
+    echo "auto-merge: TEST GATE FAILED for '$BRANCH' (rc=$rc) — NOT merging; '$TARGET_BRANCH' untouched. The reconciled tree doesn't pass the suite: fix the failing tests, commit on this branch, then stop again. (Bypass once: RECON_TEST_OFF=1.)" >&2
     exit 0
   fi
 fi
 
 # Merge. --no-ff keeps it as a single revertable merge commit. Abort cleanly on conflict.
-rm -f "$WT_ROOT/$SENTINEL_NAME" "$WT_ROOT/.reconciled"   # consume markers first, so a conflict can't cause a retry loop
+rm -f "$WT_ROOT/.reconciled" "$WT_ROOT/.merge-nudged"   # consume markers first (no retry loop)
 if git -C "$MAIN_ROOT" merge --no-ff -m "merge $BRANCH into $TARGET_BRANCH (auto-merge on Stop)" "$BRANCH" >/dev/null 2>&1; then
   if [ "${AUTO_MERGE_KEEP_WORKTREE:-0}" = "1" ]; then
     echo "auto-merge: merged '$BRANCH' into '$TARGET_BRANCH' (local, --no-ff). Worktree kept (AUTO_MERGE_KEEP_WORKTREE=1) — ExitWorktree to remove it." >&2
   # Remove the merged worktree. Driven from MAIN_ROOT (never from inside the dir we're deleting).
-  # --force: the tree holds untracked bits (the empty nested sibling-repo gitlinks) that would
-  # otherwise make `worktree remove` refuse. The branch ref is left in place — it's now in main.
+  # --force: the tree holds untracked bits (empty nested sibling-repo gitlinks, local markers) that
+  # would otherwise make `worktree remove` refuse. The branch ref is left in place — it's now in main.
   elif git -C "$MAIN_ROOT" worktree remove --force "$WT_ROOT" >/dev/null 2>&1; then
     echo "auto-merge: merged '$BRANCH' into '$TARGET_BRANCH' (local, --no-ff) and removed the worktree at $WT_ROOT (branch ref kept)." >&2
   else
@@ -152,6 +169,6 @@ if git -C "$MAIN_ROOT" merge --no-ff -m "merge $BRANCH into $TARGET_BRANCH (auto
   fi
 else
   git -C "$MAIN_ROOT" merge --abort >/dev/null 2>&1
-  echo "auto-merge: '$BRANCH' CONFLICTS with '$TARGET_BRANCH' — aborted, main untouched. Resolve, then re-touch $SENTINEL_NAME." >&2
+  echo "auto-merge: '$BRANCH' CONFLICTS with '$TARGET_BRANCH' — aborted, main untouched. Resolve on this branch, commit, then stop again." >&2
 fi
 exit 0

@@ -37,5 +37,13 @@ for seg in re.split(r'&&|\|\||;|\|', cmd):
 sys.exit(0)
 PY
 )
-[ $? -eq 7 ] && { printf '%s\n' "$MSG" >&2; exit 2; }
+if [ $? -eq 7 ]; then
+  # Record the block so the inject hook warns before the next blanket add (PreToolUse denials
+  # never reach the PostToolUse capture path).
+  LTOOL="Bash" LINPUT="git add (blanket, at monorepo root)" \
+  LERROR="git add guard: a blanket 'git add -A/--all/.' at the monorepo root is refused (it stages .claude/worktrees/* gitlinks). Stage specific paths, e.g. git add llm-d-benchmarking-agent-project/<path>." \
+    bash "$(dirname "$0")/record_lesson.sh" 2>/dev/null || true
+  printf '%s\n' "$MSG" >&2
+  exit 2
+fi
 exit 0

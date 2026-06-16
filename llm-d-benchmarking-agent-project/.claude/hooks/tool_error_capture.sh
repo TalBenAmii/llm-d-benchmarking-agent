@@ -38,7 +38,10 @@ ti = d.get("tool_input", {}) or {}
 inp = ti.get("command") or ti.get("file_path") or json.dumps(ti, default=str)
 inp = " ".join(str(inp).split())[:200]
 err = " ".join(text.split())[:240]
-sig = hashlib.sha1(("%s|%s|%s" % (tool, inp, err[:80])).encode()).hexdigest()[:10]
+# argument-independent: dedup on (tool, error) only — the input is shown for context but is NOT
+# part of the identity, so the same failure MODE is recorded once per tool regardless of which
+# file/command triggered it (matches record_lesson.sh).
+sig = hashlib.sha1(("%s|%s" % (tool, err[:80])).encode()).hexdigest()[:10]
 os.makedirs(ctx, exist_ok=True)
 path = os.path.join(ctx, tool + ".md")
 existing = open(path, encoding="utf-8", errors="replace").read() if os.path.exists(path) else ""
