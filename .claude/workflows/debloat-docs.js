@@ -15,7 +15,7 @@ export const meta = {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const MONO = '/home/tal/kind-quickstart-guide'
+const MONO = '/home/tal/llm-d-benchmarking-agent'
 const PROJ = 'llm-d-benchmarking-agent-project'
 const SRC = MONO + '/' + PROJ                       // populated main checkout (read current truth)
 const HOME = '/home/tal/kqg-debloat-home'           // isolated worktree

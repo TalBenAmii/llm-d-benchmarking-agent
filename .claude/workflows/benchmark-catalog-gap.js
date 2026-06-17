@@ -15,7 +15,7 @@ export const meta = {
 // ----------------------------------------------------------------------------
 // Constants (verified against on-disk state)
 // ----------------------------------------------------------------------------
-const MONO  = '/home/tal/kind-quickstart-guide'          // main checkout: has the POPULATED read-only sibling repos
+const MONO  = '/home/tal/llm-d-benchmarking-agent'          // main checkout: has the POPULATED read-only sibling repos
 const BENCH = MONO + '/llm-d-benchmark'                   // benchmark repo (READ-ONLY source) — read docs from HERE (worktree siblings are EMPTY)
 const PROJ  = 'llm-d-benchmarking-agent-project'
 const SRC   = MONO + '/' + PROJ                           // our project as it exists on main (POPULATED) — read coverage truth from HERE

@@ -14,7 +14,7 @@ export const meta = {
 // ----------------------------------------------------------------------------
 // Constants (verified against on-disk state: 57 .md in llm-d-benchmark, 132 in llm-d)
 // ----------------------------------------------------------------------------
-const MONO  = '/home/tal/kind-quickstart-guide'      // main checkout: has the POPULATED read-only sibling repos
+const MONO  = '/home/tal/llm-d-benchmarking-agent'      // main checkout: has the POPULATED read-only sibling repos
 const BENCH = MONO + '/llm-d-benchmark'               // benchmark repo (READ-ONLY source) — read docs from HERE (worktree siblings are EMPTY)
 const GUIDE = MONO + '/llm-d'                         // llm-d guide repo (READ-ONLY source) — read docs from HERE
 const PROJ  = 'llm-d-benchmarking-agent-project'
