@@ -8,10 +8,10 @@
 # and if it's CPU-only does it meet the CPU-inferencing floor?".
 #
 # NO feasibility logic lives in Python — every threshold/judgment below is the agent's to apply.
-# Transcribed from upstream llm-d/docs/accelerators/README.md (read it live with
-# read_repo_doc path='llm-d/docs/accelerators/README.md' if you need the source of truth).
+# Transcribed from upstream llm-d/docs/getting-started/accelerators.md (read it live with
+# read_repo_doc path='llm-d/docs/getting-started/accelerators.md' if you need the source of truth).
 
-source: "llm-d/docs/accelerators/README.md"
+source: "llm-d/docs/getting-started/accelerators.md"
 
 # ---------------------------------------------------------------------------
 # (1) CUDA runtime + NVIDIA driver minimums.
@@ -61,11 +61,48 @@ accelerator_resources:
     resource_key: "google.com/tpu"
     note: "TPU v6e/v7 on GKE; see the GKE infra-providers docs for cluster setup."
   - vendor: "Intel"
-    model_family: "XPU (Data Center GPU Max / BMG)"
+    model_family: "XPU (Intel Data Center GPU Max 1550 + BMG / Battlemage G21)"
     resource_keys: ["gpu.intel.com/i915", "gpu.intel.com/xe"]
     note: >-
       XPU uses DRA with a unified accelerator type that auto-selects the i915 vs xe driver.
       The exact advertised key depends on the Intel resource driver / device plugin in use.
+      RDMA caveat: XPU P/D disaggregation with RDMA KV-transfer needs an RDMA DRA driver
+      exposing the `rdma-dranet` device class and UCX configured with `ib,rc,ze_copy` (the
+      `modelserver/xpu/vllm-rdma/` overlay) — defer to getting-started/accelerators.md for the
+      exact prerequisites.
+  # Rebellions NPU appears in the upstream Support table but has no documented llm-d extended
+  # resource_key yet — exposure depends on the Rebellions NPU operator / device plugin, so this
+  # is a lower-maturity entry. No resource_key is set; advise_accelerators won't auto-name it.
+  - vendor: "Rebellions"
+    model_family: "NPU"
+    maturity: "lower (no documented llm-d resource_key; depends on the Rebellions NPU operator/device plugin)"
+    note: >-
+      Listed in the upstream accelerator Support table. There is no concrete extended-resource
+      key documented for llm-d; the device is exposed by the Rebellions NPU operator / device
+      plugin (see resource_management.mechanisms.vendor_plugins.rebellions_npu). Treat as
+      lower-maturity — confirm against getting-started/accelerators.md before relying on it.
+
+# ---------------------------------------------------------------------------
+# (2b) Supported accelerator GENERATIONS + the HOST floor. llm-d tests on recent-generation
+# datacenter accelerators; older cards may function but are best-effort. The host floor is the
+# per-machine CPU/RAM/PCIe llm-d tests against. Source: llm-d/docs/infrastructure/README.md
+# ("llm-d infrastructure" section). These are upstream-stated tested configs, not hard limits.
+supported_generations:
+  source: "llm-d/docs/infrastructure/README.md"
+  nvidia: "L4, A100, H100, H200, B200, and newer"
+  amd: "MI250X or newer"
+  google_tpu: "TPU v5e, v6e, and newer"
+  note: >-
+    Recent-generation datacenter-class accelerators. Older configurations may function
+    (especially slightly older accelerators) but testing is best-effort.
+host_floor:
+  source: "llm-d/docs/infrastructure/README.md"
+  cpu_cores_per_machine_min: 80          # 80+ x86 or ARM cores per machine
+  memory_per_machine_min: "500GiB+"
+  pcie: "PCIe 5+"
+  note: >-
+    The per-MACHINE host floor llm-d tests against: 80+ x86/ARM cores, 500GiB+ RAM, PCIe 5+.
+    Distinct from the CPU-INFERENCING floor below (64 cores/64GB per real CPU-only replica).
 
 # ---------------------------------------------------------------------------
 # (3) Device-Plugin vs DRA: the two Kubernetes mechanisms that expose accelerator devices to

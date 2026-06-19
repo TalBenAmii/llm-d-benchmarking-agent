@@ -53,6 +53,9 @@ table. To learn the steps of a phase, read the upstream registry at runtime:
   (phase dirs: `standup`, `smoketests`, `run`, `teardown`). The `NN` prefix IS the step number;
   the suffix names what it does (e.g. `run/steps/step_00_preflight.py`,
   `run/steps/step_04_verify_model.py`).
+  - **smoketest gotcha:** the smoketest phase's steps dir is `smoketests/steps/` (PLURAL) even
+    though the subcommand is `smoketest` (singular). Don't look for `smoketest/steps/` — it
+    doesn't exist; the dir is `smoketests/steps/`.
 - The ordered list per phase is `llmdbenchmark/<phase>/steps/__init__.py`.
 - The interface README (`llmdbenchmark/interface/README.md`) tabulates the flags per subcommand.
 

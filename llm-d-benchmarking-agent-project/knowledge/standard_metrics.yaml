@@ -64,7 +64,43 @@ metrics:
     direction: higher
     unit_hint: percent
     standardized: [gpu_utilization]
-    native: [vllm_gpu_utilization, dcgm_gpu_utilization]
+    # GPU COMPUTE utilization is DCGM-exporter-only: vLLM exposes cache/memory occupancy
+    # and queue gauges, NOT a compute-utilization metric (there is no real vllm_gpu_utilization
+    # key). Without a DCGM exporter scraped into the report this metric stays None.
+    native: [dcgm_gpu_utilization, DCGM_FI_DEV_GPU_UTIL]
+
+# ---- NOTE on `native:` keys ---------------------------------------------------
+# The `native:` candidates are the BR report's TOP-LEVEL observability KEY names
+# (results.observability.<key>) as emitted by the harness — NOT the raw vLLM Prometheus
+# metric names (which are colon-prefixed, e.g. vllm:prefix_cache_hit_rate /
+# vllm:kv_cache_usage_perc / vllm:num_requests_waiting). report.py reads observability.get(key)
+# by EXACT string, so the underscore keys above are what match a real report. A colon-form
+# may be APPENDED as an additional candidate for robustness, but never replace the underscore keys.
+
+  # ---- KV-cache usage (occupancy) and preemptions — NOT catalogued here ----
+  # The BR v0.2 ResourceMetrics object DOES carry `kv_cache_usage` (occupancy) and
+  # `preemptions` (and the real BR example surfaces both, plus the native
+  # vllm_kv_cache_usage_perc / vllm_num_preemptions_total keys). They are deliberately
+  # NOT added as catalog entries above: extract_standard_metrics intentionally surfaces
+  # only the three §3.4 "standard metrics" (kv_cache_hit_rate, schedule_delay,
+  # gpu_utilization) — widening that set is a code/contract change, not a knowledge edit.
+  # Read them DIRECTLY off the report when diagnosing memory pressure:
+  #   * kv_cache_usage = OCCUPANCY (cache fill), DISTINCT from kv_cache_hit_rate (reuse).
+  #     >90% (~0.9) => cache near-full => preemption / request-rejection risk
+  #     (per llm-d/docs/operations/observability/metrics.md, vllm:kv_cache_usage_perc).
+  #   * preemptions = in-flight requests the engine evicted+re-queued under memory pressure
+  #     (lower is better; native key vllm_num_preemptions_total) — a direct KV-exhaustion symptom.
+
+  # ---- GPU power consumption ---------------------------------------------
+  # GPU power draw (Watts), typically from the DCGM exporter — a cost/efficiency signal.
+  # Informational (direction none). Standardized field name exact per the BR v0.2
+  # ResourceMetrics schema; absent => None, never fabricated.
+  power_consumption:
+    label: GPU power
+    direction: none
+    unit_hint: Watts
+    standardized: [power_consumption]
+    native: [dcgm_power_usage, DCGM_FI_DEV_POWER_USAGE]
 
 
 # ---- session-level metrics (multi-turn workloads) ------------------------ DATA, not code.

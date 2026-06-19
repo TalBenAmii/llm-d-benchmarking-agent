@@ -40,8 +40,12 @@ before using it; the on-disk catalog is the source of truth, the advisor files a
 ## 3. Author the WORKLOAD
 
 `-w`/`--workload` accepts a **stock profile NAME from the catalog only** — there is no
-workspace-path route for a hand-authored `-w` file. So "a custom workload" is expressed one of
-these supported ways (pick by what the user is customizing):
+workspace-path route for a hand-authored `-w` file. **That catalog-only constraint is an
+AGENT-side `build_argv` choice, NOT a CLI limitation:** upstream `-w`/`--workload` itself accepts a
+profile *path* under `workload/profiles/<harness>/` (when the full path is omitted the CLI assumes
+the file lives there). The agent narrows that to a stock name for safety; the supported agent route
+for *custom* load params stays the run-config round-trip (`-c`, below). So "a custom workload" is
+expressed one of these supported ways (pick by what the user is customizing):
 
 - **A different stock profile** that fits the use case → `-w <name>` (confirm via `list_catalog`).
 - **Customize the load PARAMETERS** (concurrency, rates, in/out token lengths, num prompts) →

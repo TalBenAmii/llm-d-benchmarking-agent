@@ -13,11 +13,11 @@
 # NO which-CLI / which-toleration / which-known-issue branch lives in Python. Every decision
 # below is the agent's to apply from this table.
 #
-# Transcribed from upstream llm-d/docs/infra-providers/{openshift,gke,digitalocean,aks}/README.md
-# (read them live with read_repo_doc path='llm-d/docs/infra-providers/openshift/README.md' etc.
-# if you need the source of truth). Cross-linked from knowledge/preconditions.md.
+# Transcribed from upstream llm-d/docs/infrastructure/providers/{openshift,gke,digitalocean,aks}/README.md
+# (read them live with read_repo_doc path='llm-d/docs/infrastructure/providers/openshift/README.md'
+# etc. if you need the source of truth). Cross-linked from knowledge/preconditions.md.
 
-source: "llm-d/docs/infra-providers/openshift/README.md (+ gke/digitalocean/aks siblings)"
+source: "llm-d/docs/infrastructure/providers/openshift/README.md (+ gke/digitalocean/aks siblings)"
 
 # ---------------------------------------------------------------------------
 # (0) HOW THE PROBE DETECTS THE PROVIDER. The probe maps a node-label PREFIX to a provider
@@ -192,6 +192,14 @@ known_issues:
       title: "GPU drivers are DOKS-managed"
       note: "DOKS auto-installs the NVIDIA device plugin + drivers + DCGM metrics — no manual driver step."
   openshift:
+    - id: "ocp-vs-rosa"
+      title: "Self-managed OCP vs ROSA (OpenShift on AWS) — both detect as openshift"
+      note: >-
+        OpenShift may be self-managed OCP or ROSA (Red Hat OpenShift Service on AWS); both
+        detect as `openshift` here. On ROSA, GPU worker nodes are added via a MachineSet using
+        GPU AWS instance types (rosa CLI / OpenShift console), and NFD + the NVIDIA GPU Operator
+        remain prerequisites (see gpu-operator-prereq). Source:
+        llm-d/docs/infrastructure/providers/openshift-aws/README.md.
     - id: "servicemesh-istio-conflict"
       title: "ServiceMesh/Istio CRD conflict with the llm-d gateway"
       note: "Ensure no OSSM/Istio install exists before standup (see gateway.openshift_servicemesh_conflict)."

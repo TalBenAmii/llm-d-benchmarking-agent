@@ -28,7 +28,8 @@ GPUs, not enough CPU/RAM for the default sizes.
 
 ### Deploying a published llm-d GUIDE (optimized-baseline as the reference)
 `guides/optimized-baseline` is the reference well-lit-path guide — load-aware + prefix-cache-aware
-scheduling, the closest catalog spec to the upstream "inference-scheduling" guide. Two ways to
+scheduling, the renamed inference-scheduling guide (the benchmark README lists `guides/optimized-baseline`
+as "formerly inference-scheduling"). Two ways to
 drive it (BOTH go through `execute_llmdbenchmark` / `run_command` — code is mechanism only):
 - **Through the benchmark CLI** — `execute_llmdbenchmark subcommand=standup flags={spec:"guides/optimized-baseline", ...}`
   (after `propose_session_plan` + `check_capacity`; standup is mutating → user Approves).
@@ -64,6 +65,8 @@ scenario/guide with the SIGNALS that select it:
 - long-context RAG / large models → `guides/pd-disaggregation` (P/D)
 - high-throughput / batch → `guides/optimized-baseline` (intelligent scheduling baseline)
 - agentic / multi-turn → `guides/agentic-tests`
+- multimodal (image+text) chat → `guides/multimodal-serving` (profile `guide_multimodal-serving_1.yaml`, inference-perf; advisor-deferred)
+- bursty / elastic load, SLO-aware autoscaling → `guides/workload-autoscaling` (profile `guide_workload-autoscaling_1.yaml.in`, guidellm)
 - default / local sanity → `cicd/kind` (this playbook's path 1)
 
 The advisor is loaded into your context; consult it (and confirm names with `list_catalog`)

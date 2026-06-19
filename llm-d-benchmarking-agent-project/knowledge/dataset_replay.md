@@ -41,9 +41,19 @@ If unsure, ask the user whether they want *representative* (their data) or *cont
 - You pass a **URL or path**. Accepted forms: `http(s)://…`, `hf://…` (HuggingFace),
   `gs://…` (GCS), `s3://…` (S3), or a workspace/cluster filesystem path. Example trace URL:
   `https://github.com/alibaba-edu/qwen-bailian-usagetraces-anon/raw/refs/heads/main/qwen_traceA_blksz_16.jsonl`.
-- The **workload profile still matters**: a dataset-aware profile (e.g. vllm-benchmark's
-  `sharegpt` / `fixed_dataset`) maps the replayed dataset into requests. Pick a profile that
-  consumes a dataset when you replay one — a purely synthetic profile won't read it.
+- The **workload profile still matters**: a dataset-aware profile maps the replayed dataset
+  into requests. Pick a profile that consumes a dataset when you replay one — a purely
+  synthetic profile won't read it. The dataset-/trace-aware profiles on disk (verbatim names +
+  their `data.type`):
+  - **vllm-benchmark** `sharegpt.yaml` (`dataset-name sharegpt`) and `fixed_dataset.yaml` — a
+    fixed request set.
+  - **aiperf** `dataset.yaml` (`custom-dataset-type mooncake_trace`) — a Mooncake trace replay.
+  - **inference-perf** `chatbot_sharegpt.yaml` (`data.type shareGPT`),
+    `agentic_code_generation.yaml` (`data.type conversation_replay`), and `otel_traces.yaml`
+    (`data.type otel_trace_replay`, `load.type trace_session_replay`).
+  Trace formats (otel / mooncake) carry real ARRIVAL timing, not just prompt content, so they
+  reproduce bursty production arrival patterns. NOTE: `guide_wide-ep-lws_1.yaml` is NOT a replay
+  — its `data.type` is `random` (synthetic), so don't reach for it when the user wants a trace.
 - **No env var to set.** The CLI itself derives `LLMDBENCH_RUN_DATASET_DIR` and
   `LLMDBENCH_RUN_DATASET_FILE` from the URL during profile rendering (a trailing `/` means a
   directory replay; otherwise it splits the URL into dir + filename). Those `RUN_DATASET_*`

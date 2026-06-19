@@ -33,6 +33,93 @@ docs:
     task: optimized_baseline
     why: The benchmark-side spec that targets the optimized-baseline guide stack.
 
+  # Non-default well-lit-path guides. Each pairs the llm-d guide README (the model/gateway/
+  # prerequisite facts) with the matching benchmark spec .yaml.j2 (the --spec the CLI takes).
+  # The advisor (welllit_path_advisor.yaml) decides WHICH to reach for; these GROUND it.
+  - path: llm-d/guides/pd-disaggregation/README.md
+    task: pd_disaggregation
+    why: >
+      Prefill/Decode disaggregation — separate prefill and decode pools so heavy prefill never
+      stalls decode. The guide deploys openai/gpt-oss-120b (NOT Qwen3-32B); read it for the real
+      model/parallelism. For long-context RAG / large models.
+  - path: llm-d-benchmark/config/specification/guides/pd-disaggregation.yaml.j2
+    task: pd_disaggregation
+    why: The benchmark spec targeting the pd-disaggregation guide stack (--spec guides/pd-disaggregation).
+  - path: llm-d/guides/precise-prefix-cache-routing/README.md
+    task: precise_prefix_cache_routing
+    why: >
+      Precise prefix-cache routing — indexes per-pod KV block-hash events and routes to the pod
+      holding the request's resident prefix (kvEvents-driven). For prefix-heavy chat where TTFT
+      is the SLO. Read the guide for its model/gateway.
+  - path: llm-d-benchmark/config/specification/guides/precise-prefix-cache-routing.yaml.j2
+    task: precise_prefix_cache_routing
+    why: The benchmark spec for precise-prefix-cache-routing (--spec guides/precise-prefix-cache-routing).
+  - path: llm-d/guides/predicted-latency-routing/README.md
+    task: predicted_latency_routing
+    why: >
+      Predicted latency-based routing — a live-trained predictor routes each request to the
+      server predicted fastest and can enforce per-request TTFT/TPOT SLOs (x-llm-d-slo-* headers).
+      For high-variance prompt/completion length; the predictor assumes ONE pod shape (skip on
+      heterogeneous pools).
+  - path: llm-d-benchmark/config/specification/guides/predicted-latency-routing.yaml.j2
+    task: predicted_latency_routing
+    why: The benchmark spec for predicted-latency-routing (--spec guides/predicted-latency-routing).
+  - path: llm-d/guides/tiered-prefix-cache/README.md
+    task: tiered_prefix_cache
+    why: >
+      Tiered prefix cache — offloads evicted KV blocks from HBM to CPU RAM / filesystem and
+      restores them instead of recomputing prefill. For long multi-turn / agentic working sets
+      that exceed accelerator memory. Read for the offloading connector choice.
+  - path: llm-d-benchmark/config/specification/guides/tiered-prefix-cache.yaml.j2
+    task: tiered_prefix_cache
+    why: The benchmark spec for tiered-prefix-cache (--spec guides/tiered-prefix-cache).
+  - path: llm-d/guides/wide-ep-lws/README.md
+    task: wide_ep_lws
+    why: >
+      Wide expert parallelism — deploys a 500GB+ MoE (DeepSeek-R1-0528) with P/D + NIXL across a
+      multi-node LeaderWorkerSet (validated on 32xH200/B200, InfiniBand/RoCE). For very large MoE
+      throughput-at-scale. Needs RDMA networking.
+  - path: llm-d-benchmark/config/specification/guides/wide-ep-lws.yaml.j2
+    task: wide_ep_lws
+    why: The benchmark spec for wide-ep-lws (--spec guides/wide-ep-lws).
+  - path: llm-d/guides/flow-control/README.md
+    task: flow_control
+    why: >
+      Flow control — multi-tenant request fairness / admission control across competing
+      workloads sharing one pool. (Has a benchmark spec on disk but is ABSENT from the frozen
+      catalog snapshot, so it is deploy-path guidance, not yet a runnable --spec here.)
+  - path: llm-d-benchmark/config/specification/guides/flow-control.yaml.j2
+    task: flow_control
+    why: The benchmark spec for flow-control (on disk; confirm presence with list_catalog).
+  - path: llm-d/guides/workload-autoscaling/README.md
+    task: workload_autoscaling
+    why: >
+      Workload autoscaling — HPA/KEDA scaling from PROACTIVE SLO-aware signals (EPP queue depth,
+      in-flight requests, KV pressure), not lagging GPU utilization. HPA+EPP for a homogeneous
+      pool; the Workload Variant Autoscaler (WVA) for heterogeneous GPU types — NOT OpenShift-only.
+  - path: llm-d-benchmark/config/specification/guides/workload-autoscaling.yaml.j2
+    task: workload_autoscaling
+    why: The benchmark spec for workload-autoscaling (--spec guides/workload-autoscaling).
+
+  # Agentic + multimodal — name mismatches that would otherwise waste a discovery loop.
+  - path: llm-d/guides/agentic-serving/README.md
+    task: agentic_serving
+    why: >
+      NAME MISMATCH (record as-is): the agentic-serving WORKLOAD guide's benchmark spec is named
+      agentic-tests, NOT agentic-serving — use --spec guides/agentic-tests (scenario stack
+      agentic-tests, model Qwen/Qwen3-30B-A3B-Thinking-2507, harness inference-perf,
+      experimentProfile otel_traces.yaml / OTel-trace replay). gpu-only.
+  - path: llm-d-benchmark/config/specification/guides/agentic-tests.yaml.j2
+    task: agentic_serving
+    why: The benchmark spec for the agentic-serving guide — note the file is agentic-tests, not agentic-serving.
+  - path: llm-d/guides/multimodal-serving/optimized-baseline/README.md
+    task: multimodal_serving
+    why: >
+      multimodal-serving has NO top-level README — the canonical guide is the optimized-baseline
+      SUBDIR (this path). Image+text serving (Qwen3-VL). Workload profile guide_multimodal-serving_1.yaml
+      (inference-perf, data.type shared_prefix, 4 images/request, api type=chat). No dedicated
+      multimodal .yaml.j2 spec exists on disk.
+
   # Observability / benchmark metrics collection. Read these before enabling --monitoring
   # so the producer activation is grounded in the real procedure (ROADMAP_V4 Phase 27).
   # The agent already parses results.observability (Phase 25); these docs are the missing
@@ -49,6 +136,15 @@ docs:
       The metrics-collection configuration (metricsScrapeEnabled /
       LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED, DCGM/cAdvisor/EPP sources) and the
       report-integration mapping into results.observability that report.py consumes.
+  - path: llm-d/docs/operations/observability/metrics.md
+    task: observability
+    why: >
+      Verbatim vLLM/EPP metric names + saturation signals: vllm:num_requests_waiting non-zero =
+      pods saturated; vllm:kv_cache_usage_perc >0.9 = preemption risk. (EPP prefix differs across
+      docs — metrics.md uses llm_d_epp_*, promql.md uses llm_d_router_epp_*; don't over-specify one.)
+  - path: llm-d/docs/operations/observability/promql.md
+    task: observability
+    why: Tier-1 saturation/failure PromQL queries for the activated vLLM/EPP metrics.
 
 # ---------------------------------------------------------------------------
 # CANONICAL workload-profile file locations — so you NEVER path-guess for sanity_random.yaml.
@@ -83,4 +179,23 @@ workload_profiles:
     - path: llm-d-benchmark/workload/profiles/inference-perf/shared_prefix_synthetic.yaml.in
       harness: inference-perf
     - path: llm-d-benchmark/workload/profiles/inference-perf/summarization_synthetic.yaml.in
+      harness: inference-perf
+    # Per-guide workload profiles. NOTE the MIXED suffix — most are `.yaml.in` templates, but
+    # guide_predicted-latency-routing_1 and guide_multimodal-serving_1 are PLAIN `.yaml` on disk
+    # (no `.in`). Record exactly to avoid a wrong-suffix path-guess.
+    - path: llm-d-benchmark/workload/profiles/inference-perf/guide_optimized-baseline_1.yaml.in
+      harness: inference-perf
+    - path: llm-d-benchmark/workload/profiles/inference-perf/guide_pd-disaggregation_1.yaml.in
+      harness: inference-perf
+    - path: llm-d-benchmark/workload/profiles/inference-perf/guide_pd-disaggregation_2.yaml.in
+      harness: inference-perf
+    - path: llm-d-benchmark/workload/profiles/inference-perf/guide_precise-prefix-cache-routing_1.yaml.in
+      harness: inference-perf
+    - path: llm-d-benchmark/workload/profiles/inference-perf/guide_predicted-latency-routing_1.yaml
+      harness: inference-perf
+    - path: llm-d-benchmark/workload/profiles/inference-perf/guide_tiered-prefix-cache_1.yaml.in
+      harness: inference-perf
+    - path: llm-d-benchmark/workload/profiles/inference-perf/guide_wide-ep-lws_1.yaml.in
+      harness: inference-perf
+    - path: llm-d-benchmark/workload/profiles/inference-perf/guide_multimodal-serving_1.yaml
       harness: inference-perf
