@@ -252,7 +252,7 @@ function setContextEstimate(est) {
   if (!contextChip) return;
   if (!est || !est.total_tokens_est) { contextChip.hidden = true; return; }
   contextChip.hidden = false;
-  contextChip.textContent = "⛶ ~" + fmtTokens(est.total_tokens_est) + " ctx";
+  contextChip.textContent = "~" + fmtTokens(est.total_tokens_est) + " ctx";
   contextChip.title =
     "Estimated current context window (≈ chars/4): " +
     "system ~" + fmtTokens(est.system_tokens_est) + " · " +
@@ -262,7 +262,7 @@ function setContextEstimate(est) {
 
 // The REAL current context-window meter — the number Claude Code shows as "context used".
 // `cw.tokens` is the provider's total_input (fresh + cache_read + cache_write) for the most
-// recent call. Renders "⛶ N ctx" — the raw count, no model limit/percentage: the active model
+// recent call. Renders "N ctx" — the raw count, no model limit/percentage: the active model
 // can change (and may be a remote API), so a fixed denominator would be unreliable. The optional
 // char/4 `est` (when present) enriches the hover breakdown; falls back to the estimate chip when
 // there's no real number yet (pre-feature backend).
@@ -273,7 +273,7 @@ function setContextWindow(cw, est) {
     return;
   }
   contextChip.hidden = false;
-  contextChip.textContent = "⛶ " + fmtTokens(cw.tokens) + " ctx";
+  contextChip.textContent = fmtTokens(cw.tokens) + " ctx";
   let tip =
     "Current context window: " + fmtTokens(cw.tokens) + " tokens — real provider count\n" +
     "fresh input " + fmtTokens(cw.input || 0) +

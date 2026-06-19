@@ -119,11 +119,13 @@
     </div>
     <form id="composer" autocomplete="off">
       <textarea id="input" rows="1" placeholder="e.g. Benchmark a small chat model on my laptop" disabled></textarea>
-      <button id="send" type="submit" disabled>Send</button>
+      <div class="composer-tools">
+        <div id="context-window" class="ctx-meter" title="Current context-window usage sent to the model (real provider token count)" hidden>0 ctx</div>
+        <button id="send" type="submit" disabled>Send</button>
+      </div>
     </form>
     <div class="composer-foot">
       <p class="hint">Read-only checks run automatically. Anything that changes your system waits for your approval.</p>
-      <div id="context-window" class="token-chip" title="Current context-window usage sent to the model (real provider token count)" hidden>⛶ 0 ctx</div>
     </div>
   </footer>
   <button id="jump-latest" class="jump-latest" type="button" title="Jump to the latest message" hidden>↓ Latest</button>
