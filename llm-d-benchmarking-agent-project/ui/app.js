@@ -43,6 +43,29 @@ const builderClose = document.getElementById("builder-close");
 const builderCancel = document.getElementById("builder-cancel");
 const builderSend = document.getElementById("builder-send");
 const builderPreview = document.getElementById("builder-preview");
+// The header shows the ACTIVE conversation's title (the brand mark/name lives in the sidebar now).
+// renderConvRow sets it authoritatively for the active chat; switchTo updates it optimistically from
+// this cache the moment a row is clicked; the shared viewer sets it to the snapshot's title.
+const headerTitle = document.getElementById("header-title");
+const convTitles = {};
+function setHeaderTitle(t) { if (headerTitle) headerTitle.textContent = t || "New chat"; }
+// Whether any MUTATING command streamed under the currently-open live tool — drives its READ-ONLY
+// vs MUTATING badge at finish (history tools carry a backend-derived `mutating` flag instead).
+let activeToolMutating = false;
+// Right-aligned meta on a collapsed tool row: a read-only/mutating badge + (live only) its run time.
+function toolMetaSpan(mutating, durText) {
+  const meta = el("span", "tool-meta");
+  meta.appendChild(el("span", "badge " + (mutating ? "mut" : "ro"), mutating ? "mutating" : "read-only"));
+  if (durText) meta.appendChild(el("span", "tool-dur", durText));
+  return meta;
+}
+function fmtDurShort(sec) {
+  if (sec == null || !isFinite(sec)) return "";
+  if (sec < 10) return sec.toFixed(1) + "s";
+  if (sec < 60) return Math.round(sec) + "s";
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return s ? `${m}m ${s}s` : `${m}m`;
+}
 // Share-a-chat-via-link controls (the 🔗 header button + its modal dialog).
 const shareBtn = document.getElementById("share-chat");
 const shareDlg = document.getElementById("share-dialog");
@@ -343,6 +366,7 @@ function switchTo(sid) {
   rec.order = ++viewClock;
   activate(rec);                                      // attach its pane + restore its working-set
   currentSession = sid || null;
+  setHeaderTitle(sid ? convTitles[sid] : "New chat"); // optimistic; renderConvRow confirms it
   evictPanes();
   connect(sid || null, cacheHit ? rec.lastSeq : null);
   setSidebar(false);                                  // close the mobile drawer once a chat is chosen
@@ -532,6 +556,8 @@ function renderFolder(ns, items) {
 
 function renderConvRow(s) {
   const row = el("div", "conv" + (s.id === currentSession ? " active" : ""));
+  convTitles[s.id] = s.title || "";
+  if (s.id === currentSession) setHeaderTitle(s.title);   // keep the header in sync with the active chat
   row.title = s.title || "New chat";
   const main = el("div", "conv-main");
   main.appendChild(el("div", "conv-title", s.title || "New chat"));
@@ -1398,7 +1424,12 @@ function renderResultsCard(card) {
   removeWelcomeCard();
   const root = el("div", "results-card");
   addCardCopy(root, resultsCardMarkdown(card));
-  root.appendChild(el("div", "results-head", card.kind === "sweep" ? "Sweep results" : "Benchmark results"));
+  const isBench = card.kind !== "sweep";
+  const headRow = el("div", "results-head-row");
+  headRow.appendChild(el("div", "results-head", isBench ? "Benchmark report" : "Sweep results"));
+  // The card only exists because a Benchmark Report was parsed against its schema and validated.
+  if (isBench) headRow.appendChild(el("span", "results-schema", `${card.schema_version || "v0.2"} · validated`));
+  root.appendChild(headRow);
   metaRow(card, root);
 
   // Single-run metric table (from the validated report summary).
@@ -2055,7 +2086,7 @@ function addHistoryTool(it) {
   const d = el("details", "tool");
   const sum = el("summary");
   sum.appendChild(el("span", "tname", it.name || "tool"));
-  sum.appendChild(el("span", null, "earlier"));
+  sum.appendChild(toolMetaSpan(!!it.mutating, null));   // backend-derived mode; no run time on replay
   d.appendChild(sum);
   const body = el("div", "body");
   if (it.input && Object.keys(it.input).length) body.appendChild(prettyJson(it.input));
@@ -2067,9 +2098,11 @@ function addHistoryTool(it) {
 function startTool(data) {
   const d = el("details", "tool");
   d.open = true;
+  d._t0 = Date.now();              // start time → run duration shown when the tool finishes
+  activeToolMutating = false;      // reset; onCommand flips it if a mutating command streams under it
   const sum = el("summary");
   sum.appendChild(el("span", "tname", data.name));
-  sum.appendChild(el("span", null, "running…"));
+  sum.appendChild(el("span", "tool-status", "running…"));
   d.appendChild(sum);
   const body = el("div", "body");
   if (data.input && Object.keys(data.input).length) {
@@ -2097,6 +2130,7 @@ function appendConsole(line) { consoleLine(line, null); }
 // at this exact point in execution order. The inline row is the debug view: CSS-hidden until
 // debug mode is on, so toggling the >_ button reveals/hides the command trail in place.
 function onCommand(data) {
+  if (data.mode && data.mode !== "read_only") activeToolMutating = true;   // → MUTATING badge on the tool
   consoleLine("$ " + (data.text || (data.argv || []).join(" ")), "cmd-line");
   addInlineCommand(data);
 }
@@ -2117,12 +2151,15 @@ function addInlineCommand(data) {
 function finishTool(data) {
   const d = toolEls[data.id];
   if (d) {
-    const sum = d.querySelector("summary span:last-child");
-    if (sum) sum.textContent = "done";
+    const status = d.querySelector("summary .tool-status");
+    const meta = toolMetaSpan(activeToolMutating, fmtDurShort(d._t0 ? (Date.now() - d._t0) / 1000 : null));
+    if (status) status.replaceWith(meta);
+    else d.querySelector("summary").appendChild(meta);
     d.open = false;
   }
   renderToolResultCards(data, d ? d.querySelector(".body") : null);
   activeConsole = null;
+  activeToolMutating = false;
 }
 
 // Draw the prominent, friendly card(s) for a tool result. Shared by the LIVE `tool_result`
@@ -2481,7 +2518,10 @@ function prettyJson(obj) {
 // resolved decision card replayed from history. `heading` is the card's title text.
 function approvalCardBody(card, kind, payload, heading) {
   if (kind === "session_plan") {
-    card.appendChild(el("h3", null, heading));
+    const h = el("h3");
+    h.appendChild(el("span", null, heading));
+    h.appendChild(el("span", "badge mut", "mutating"));
+    card.appendChild(h);
     const dl = el("dl", "plan");
     const row = (k, v) => { if (v == null || v === "") return; dl.appendChild(el("dt", null, k)); dl.appendChild(el("dd", null, typeof v === "object" ? JSON.stringify(v) : String(v))); };
     row("use case", payload.use_case_summary);
@@ -2518,7 +2558,7 @@ function addApprovalCard(data) {
     delete cur.pendingApprovals[request_id];   // stale ref: card is gone from the DOM — re-render
   }
   const card = el("div", "card");
-  approvalCardBody(card, kind, payload, kind === "session_plan" ? "Review the plan before we start" : "Approve this command ");
+  approvalCardBody(card, kind, payload, kind === "session_plan" ? "Session plan" : "Approve this command ");
   const actions = el("div", "actions");
   const approve = el("button", "approve", "Approve");
   const reject = el("button", "reject", "Reject");
@@ -2538,7 +2578,8 @@ function addApprovalCard(data) {
     setEnabled(false);  // re-lock the composer: clicking resumes the turn (working), not parked
     startWorking();     // the turn resumes after the user decides (approve or reject), until "done"
     approve.disabled = reject.disabled = true;
-    card.appendChild(el("div", "resolved", ok ? "✓ approved" : "✗ rejected"));
+    const at = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    card.appendChild(el("div", "resolved", ok ? `✓ Approved · ${at}` : "✗ Rejected"));
   };
   approve.onclick = () => resolve(true);
   reject.onclick = () => resolve(false);
@@ -2548,8 +2589,8 @@ function addApprovalCard(data) {
 function addDecisionCard(it) {
   const { kind, payload, approved } = it;
   const card = el("div", "card");
-  approvalCardBody(card, kind || "command", payload || {}, kind === "session_plan" ? "Plan" : "Command ");
-  card.appendChild(el("div", "resolved", approved ? "✓ approved" : "✗ rejected"));
+  approvalCardBody(card, kind || "command", payload || {}, kind === "session_plan" ? "Session plan" : "Command ");
+  card.appendChild(el("div", "resolved", approved ? "✓ Approved" : "✗ Rejected"));
   activePane.appendChild(card);
 }
 
@@ -3017,6 +3058,7 @@ if (shareDlg) shareDlg.addEventListener("click", (e) => { if (e.target === share
 function renderSharedSnapshot(data) {
   data = data || {};
   document.title = (data.title ? data.title + " · " : "") + "Shared conversation";
+  setHeaderTitle(data.title || "Shared conversation");   // the header bar shows the snapshot's title
   // A small header line: the conversation title + when it was shared.
   const meta = el("div", "share-meta");
   meta.appendChild(el("div", "share-meta-title", data.title || "Shared conversation"));

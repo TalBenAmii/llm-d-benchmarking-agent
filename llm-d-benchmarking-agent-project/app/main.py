@@ -384,7 +384,14 @@ def _history_items(session) -> list[dict[str, Any]]:
                 items.append({"role": "assistant", "text": m["content"]})
             for tc in m.get("tool_calls") or []:
                 tc_id = tc.get("id")
-                items.append({"role": "tool_call", "name": tc.get("name"), "input": tc.get("input")})
+                # The UI badges a replayed tool row READ-ONLY/MUTATING; derive it from the modes of the
+                # commands that ran under this call (old sessions without tool_call ids → read-only).
+                tc_mutating = any(
+                    (c.get("mode") or "read_only") != "read_only"
+                    for c in commands_by_tc.get(tc_id, [])
+                )
+                items.append({"role": "tool_call", "name": tc.get("name"),
+                              "input": tc.get("input"), "mutating": tc_mutating})
                 for a in approvals_by_tc.get(tc_id, []):
                     items.append({"role": "approval_decision", "kind": a.get("kind"),
                                   "payload": a.get("payload"), "approved": a.get("approved")})
