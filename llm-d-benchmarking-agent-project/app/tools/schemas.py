@@ -968,3 +968,34 @@ class CompareHarnessRunsInput(BaseModel):
                     "['inference-perf SLO','guidellm sweep']). If omitted, the harness "
                     "name + run dir is used.",
     )
+
+
+class InspectWorkloadProfileInput(BaseModel):
+    workload: str = Field(
+        ...,
+        description="The workload profile name as the agent uses it elsewhere, e.g. "
+                    "'chatbot_synthetic.yaml', 'sanity_random.yaml', "
+                    "'guide_pd-disaggregation_1.yaml' (the '.yaml'/'.yaml.in' suffix is "
+                    "optional). Must be one of the profiles that actually exist on disk for "
+                    "the harness — list_catalog enumerates them.",
+    )
+    harness: str | None = Field(
+        default=None,
+        description="Optional harness whose profiles dir to look in (inference-perf, guidellm, "
+                    "vllm-benchmark, aiperf, inferencemax, nop). If omitted, every harness dir "
+                    "is searched (inference-perf first).",
+    )
+
+
+class EstimateRunDurationInput(BaseModel):
+    workload: str = Field(
+        ...,
+        description="The workload profile name to estimate a wall-clock duration for (same "
+                    "naming as inspect_workload_profile / list_catalog), e.g. "
+                    "'chatbot_synthetic.yaml'.",
+    )
+    harness: str | None = Field(
+        default=None,
+        description="Optional harness whose profiles dir to look in. If omitted, every harness "
+                    "dir is searched (inference-perf first).",
+    )
