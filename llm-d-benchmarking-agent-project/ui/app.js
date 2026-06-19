@@ -2005,6 +2005,9 @@ function renderAutotuneCard(card) {
 }
 
 function renderHistory(items) {
+  // The tool panel body of the most recently replayed tool_call, so its interleaved
+  // tool_result can drop the raw JSON into the same panel (mirroring the live finishTool).
+  let lastToolBody = null;
   for (const it of items) {
     if (it.role === "user") addBubble("user", it.text);
     else if (it.role === "assistant") addBubble("assistant", it.text);
@@ -2014,7 +2017,14 @@ function renderHistory(items) {
     // though the chat clearly reached a phase: clearActivePane() reset phaseReached to -1 just
     // before this replay, and only advancePhase re-derives it. (Cache-hit switches keep the rail
     // because the record's phaseReached survives; this is the missing other half.)
-    else if (it.role === "tool_call") { addHistoryTool(it); advancePhase(it.name, it.input); }
+    else if (it.role === "tool_call") { lastToolBody = addHistoryTool(it); advancePhase(it.name, it.input); }
+    // A persisted card-rendering tool result, interleaved by the server right after its tool_call:
+    // re-draw the report summary + clickable charts (and other rich cards) exactly as the live
+    // `tool_result` event does, so they SURVIVE a chat switch / reload — not just the live run.
+    else if (it.role === "tool_result") { renderToolResultCards(it, lastToolBody); lastToolBody = null; }
+    // The deterministic analyzer card, re-derived server-side from the same result and emitted
+    // right after its tool_result — mirrors the live `results_card` event.
+    else if (it.role === "results_card") renderResultsCard(it.card);
     // Executed commands are interleaved into `items` by the server in their original transcript
     // position (right after the tool call that ran them), so they restore inline in the chat —
     // hidden until debug view is on, exactly like a live run (see addInlineCommand).
@@ -2051,6 +2061,7 @@ function addHistoryTool(it) {
   if (it.input && Object.keys(it.input).length) body.appendChild(prettyJson(it.input));
   d.appendChild(body);
   activePane.appendChild(d);
+  return body;  // so the interleaved tool_result can drop its raw JSON into this same panel
 }
 
 function startTool(data) {
@@ -2110,9 +2121,17 @@ function finishTool(data) {
     if (sum) sum.textContent = "done";
     d.open = false;
   }
-  // Prominent, friendly renders for the data-rich analysis tools. The raw JSON still lands in
-  // the (collapsed) tool panel below for the curious; each card renderer no-ops on a shape it
-  // can't draw, so the JSON is always the graceful fallback.
+  renderToolResultCards(data, d ? d.querySelector(".body") : null);
+  activeConsole = null;
+}
+
+// Draw the prominent, friendly card(s) for a tool result. Shared by the LIVE `tool_result`
+// event (finishTool) and the history REPLAY of a persisted card result (renderHistory), so a
+// resumed/reloaded chat rebuilds the report summary + clickable charts identically. The raw
+// JSON still lands in the (collapsed) tool panel `bodyEl` for the curious when one is present;
+// each card renderer no-ops on a shape it can't draw, so the JSON is always the graceful
+// fallback. (The report card IS the friendly view, so it skips the JSON dump.)
+function renderToolResultCards(data, bodyEl) {
   const r = data.result;
   if (data.name === "locate_and_parse_report" && r && r.summary) {
     renderReportSummary(r);                 // (no JSON dump — the summary IS the friendly view)
@@ -2129,9 +2148,8 @@ function finishTool(data) {
     else if (data.name === "run_resilience_drill") renderResilienceCard(r);  // chaos / resilience drill
     else if (data.name === "autotune_search") renderAutotuneCard(_card_from_autotune_status(r));  // goal-seeking convergence
     else if (data.name === "export_run_bundle") renderReproducibilityCard(r);  // provenance bundle
-    if (d) d.querySelector(".body").appendChild(prettyJson(r));
+    if (bodyEl) bodyEl.appendChild(prettyJson(r));
   }
-  activeConsole = null;
 }
 
 // ---- report number formatting -------------------------------------------
