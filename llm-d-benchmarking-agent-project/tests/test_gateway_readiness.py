@@ -19,10 +19,10 @@ import pytest
 import yaml
 
 from app.config import Settings
-from app.orchestrator.readiness import analyze_gateway
+from app.readiness.diagnostics import analyze_gateway
+from app.readiness.probes import check_endpoint_readiness
 from app.security.allowlist import MUTATING, Allowlist
 from app.tools.context import ToolContext
-from app.tools.readiness import check_endpoint_readiness
 from app.tools.registry import dispatch
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
@@ -229,7 +229,7 @@ def _kubectl_present(monkeypatch):
             return "/usr/bin/kubectl"
         return real_which(name, *a, **k)
 
-    monkeypatch.setattr("app.tools.readiness.shutil.which", fake_which)
+    monkeypatch.setattr("app.readiness.probes.shutil.which", fake_which)
 
 
 # Distinct canned keys (substring match): "get gateway -n" must NOT also catch "get gatewayclass".

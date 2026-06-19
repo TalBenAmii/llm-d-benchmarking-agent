@@ -28,16 +28,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.config import Settings
-from app.orchestrator.readiness import (
+from app.readiness.diagnostics import (
     EndpointReadiness,
     ServingReadiness,
     analyze_endpoints,
     classify_serving_readiness,
 )
+from app.readiness.probes import _probe_status, check_endpoint_readiness
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.security.runner import RunResult
 from app.tools.context import ToolContext
-from app.tools.readiness import _probe_status, check_endpoint_readiness
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 
@@ -251,7 +251,7 @@ def _kubectl_present(monkeypatch):
     def fake_which(name, *a, **k):
         return "/usr/bin/kubectl" if name == "kubectl" else real_which(name, *a, **k)
 
-    monkeypatch.setattr("app.tools.readiness.shutil.which", fake_which)
+    monkeypatch.setattr("app.readiness.probes.shutil.which", fake_which)
 
 
 class _ProbeRunner(CaptureRunner):

@@ -31,7 +31,7 @@ import re
 import shutil
 from typing import Any
 
-from app.orchestrator.readiness import (
+from app.readiness.diagnostics import (
     EndpointReadiness,
     GatewayReadiness,
     ServingReadiness,

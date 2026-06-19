@@ -16,8 +16,8 @@ from app.observability.resource_poller import resource_stats_poller
 from app.orchestrator.controller import BenchmarkOrchestrator, RunOutcome
 from app.orchestrator.job import JobSpec, Scheduling
 from app.orchestrator.kube import RealKubeClient
+from app.readiness import check_endpoint_readiness
 from app.tools.context import ToolContext, ToolError
-from app.tools.readiness import check_endpoint_readiness
 
 
 def _live_log_sink(ctx: ToolContext) -> Callable[[str], Awaitable[None]] | None:
@@ -111,7 +111,7 @@ async def orchestrate_benchmark_run(
 
     # Phase 24: GATE on a real inference-endpoint readiness check before submitting — don't
     # benchmark an unready stack. This goes BEYOND pod presence: it verifies a Service has a
-    # READY backing endpoint (see app/orchestrator/readiness.py). When not ready we submit
+    # READY backing endpoint (see app/readiness/diagnostics.py). When not ready we submit
     # NOTHING and return a structured not-ready outcome carrying a standup suggestion the agent
     # can OFFER (approval-gated). The DECISION to stand up is the agent's/user's judgment; this
     # is just the mechanism. Skipped in simulate mode (the synthetic walk deploys nothing) and

@@ -12,7 +12,7 @@ benchmark CLI's own ``run --list-endpoints`` output) into facts. WHETHER to stan
 when none is ready — and the (approval-gated) decision to do so — is the agent's judgment
 (``knowledge/orchestrator.md`` / ``knowledge/preconditions.md``); this never mutates anything.
 
-Pure functions, no I/O — the tool layer (:mod:`app.tools.readiness`) feeds it live output.
+Pure functions, no I/O — the tool layer (:mod:`app.readiness.probes`) feeds it live output.
 """
 from __future__ import annotations
 
