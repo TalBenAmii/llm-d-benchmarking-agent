@@ -80,7 +80,7 @@ The MVP — drive the `llm-d-benchmark` quickstart end-to-end on a local kind cl
 project has grown well past it: a **Kubernetes-native orchestrator** (`app/orchestrator/`),
 a **results analyzer** (goodput/SLO/Pareto/DoE), **multi-harness comparison**, a **capacity
 pre-flight**, **cross-session trends**, **Prometheus/Grafana observability**, and a hardened
-**Helm/Kustomize deploy**, exposing **32 tools** (`app/tools/registry.py` is authoritative).
+**Helm/Kustomize deploy**, exposing **35 tools** (`app/tools/registry.py` is authoritative).
 The agent owns host bootstrap (Docker daemon + kind binary via `scripts/install_prereqs.sh`,
 cluster create/delete), all approval-gated and widened purely via `security/allowlist.yaml`
 (no per-command Python). All of it obeys the thin-code/thick-agent + determinism-gate rules

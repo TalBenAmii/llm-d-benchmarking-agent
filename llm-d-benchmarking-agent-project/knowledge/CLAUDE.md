@@ -22,7 +22,7 @@ for *you* editing these files; it is deliberately excluded from the runtime know
   old stem before renaming. Cross-file cueing convention: a file says `read_knowledge('other')` to defer.
 - **Test-pinned content** — keep these or hermetic tests fail:
   `epp_headers.yaml` (`dropped_reason_enum` incl. `rejected-saturated`, `evicted-priority`, each with
-  `cause`/`remedy`/`capacity_not_breakage`), `welllit_path_advisor.yaml` (6 archetypes + required fields),
+  `cause`/`remedy`/`capacity_not_breakage`), `welllit_path_advisor.yaml` (10 archetypes + required fields),
   `readiness_probes.md` (startup-judgment phrases).
 - **`CLAUDE.md` / `README.md` here are NOT knowledge** — they're filtered out of the glob in
   `app/agent/prompt.py::_knowledge_sections` and `app/tools/knowledge_access.py::_knowledge_files`
