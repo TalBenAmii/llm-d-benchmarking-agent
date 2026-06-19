@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from app.readiness import check_endpoint_readiness
 from app.tools import (
     aggregate_runs as aggregate_runs_tool,
 )
@@ -36,7 +37,6 @@ from app.tools import (
     orchestrate,
     plan,
     probe,
-    readiness,
     report_locate,
     repos,
     reproducibility,
@@ -534,7 +534,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("check_capacity", _DESCRIPTIONS["check_capacity"], CheckCapacityInput, capacity.check_capacity),
         ToolSpec("aggregate_runs", _DESCRIPTIONS["aggregate_runs"], AggregateRunsInput, aggregate_runs_tool.aggregate_runs),
         ToolSpec("provision_hf_secret", _DESCRIPTIONS["provision_hf_secret"], ProvisionHfSecretInput, hf_secret.provision_hf_secret),
-        ToolSpec("check_endpoint_readiness", _DESCRIPTIONS["check_endpoint_readiness"], CheckEndpointReadinessInput, readiness.check_endpoint_readiness),
+        ToolSpec("check_endpoint_readiness", _DESCRIPTIONS["check_endpoint_readiness"], CheckEndpointReadinessInput, check_endpoint_readiness),
         ToolSpec("discover_stack", _DESCRIPTIONS["discover_stack"], DiscoverStackInput, discover.discover_stack),
         ToolSpec("ensure_repos", _DESCRIPTIONS["ensure_repos"], EnsureReposInput, repos.ensure_repos),
         ToolSpec("run_setup", _DESCRIPTIONS["run_setup"], RunSetupInput, repos.run_setup),

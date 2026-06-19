@@ -16,10 +16,10 @@ import json
 import pytest
 
 from app.config import Settings
-from app.orchestrator.readiness import analyze_endpoints
+from app.readiness.diagnostics import analyze_endpoints
+from app.readiness.probes import check_endpoint_readiness
 from app.security.allowlist import MUTATING, Allowlist
 from app.tools.context import ToolContext, ToolError
-from app.tools.readiness import check_endpoint_readiness
 from app.tools.registry import dispatch
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
@@ -82,7 +82,7 @@ def _kubectl_present(monkeypatch):
             return "/usr/bin/kubectl"
         return real_which(name, *a, **k)
 
-    monkeypatch.setattr("app.tools.readiness.shutil.which", fake_which)
+    monkeypatch.setattr("app.readiness.probes.shutil.which", fake_which)
 
 
 # ----------------------------------------------------------------------------
@@ -188,7 +188,7 @@ async def test_tool_cluster_unreachable_is_structured_not_ready(tmp_path):
 
 
 async def test_tool_requires_kubectl(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.tools.readiness.shutil.which", lambda name, *a, **k: None)
+    monkeypatch.setattr("app.readiness.probes.shutil.which", lambda name, *a, **k: None)
     ctx, _runner, _ = _ctx(tmp_path)
     with pytest.raises(ToolError):
         await check_endpoint_readiness(ctx, namespace="bench")

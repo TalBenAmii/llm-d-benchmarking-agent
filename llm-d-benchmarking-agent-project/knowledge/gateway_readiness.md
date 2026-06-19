@@ -5,7 +5,7 @@ deploy) and especially when it carries `gateway_readiness_guidance` — i.e. the
 Ready, but the Gateway-API control plane is **not wired** yet, so *traffic cannot reach the pods*.
 Source: `llm-d/guides/prereq/gateways/gke.md` (GKE), plus the Istio / agentgateway sibling guides.
 
-This is the **judgment layer**. The Python analyzer (`app/orchestrator/readiness.py:analyze_gateway`)
+This is the **judgment layer**. The Python analyzer (`app/readiness/diagnostics.py:analyze_gateway`)
 only extracts conditions into facts; it never decides wait-vs-stand-up-vs-config-error. YOU make that
 call here, by reading the facts the tool gives you.
 
