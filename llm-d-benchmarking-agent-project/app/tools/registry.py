@@ -41,6 +41,7 @@ from app.tools import (
     repos,
     reproducibility,
     resilience,
+    shell,
 )
 from app.tools.context import ToolContext
 from app.tools.schemas import (
@@ -73,6 +74,7 @@ from app.tools.schemas import (
     RunCommandInput,
     RunResilienceDrillInput,
     RunSetupInput,
+    RunShellInput,
     SearchKnowledgeInput,
     WriteConfigInput,
 )
@@ -166,6 +168,15 @@ _DESCRIPTIONS = {
         "deploy (see knowledge/preconditions.md + deploy_path_playbook.md for which installer "
         "to offer when). Prefer the dedicated tools (execute_llmdbenchmark, "
         "ensure_repos, run_setup) when one fits."
+    ),
+    "run_shell": (
+        "Run an ARBITRARY shell command verbatim via `bash -lc` (pipes, redirects, globs, and "
+        "env expansion all work) — this BYPASSES the allowlist, so use it only when no dedicated "
+        "tool and no allowlisted run_command argv fits. Read-only commands (ls/cat/grep/kubectl "
+        "get/git log/…) auto-run; anything that writes or isn't recognized as read-only requires "
+        "the user's Approve before it executes — so do not also ask in prose, just call this and "
+        "let the card collect the decision. Available only when the operator enabled "
+        "UNRESTRICTED_TOOLS."
     ),
     "propose_session_plan": (
         "Propose a structured SessionPlan (use case, spec, namespace, harness, workload, "
@@ -521,7 +532,10 @@ _DESCRIPTIONS = {
 }
 
 
-def build_registry() -> dict[str, ToolSpec]:
+def build_registry(*, unrestricted: bool = False) -> dict[str, ToolSpec]:
+    """Build the name→ToolSpec map. When ``unrestricted`` is True (UNRESTRICTED_TOOLS), the
+    allowlist-bypassing ``run_shell`` tool is added; otherwise it is NOT registered at all, so
+    the default tool surface is unchanged."""
     specs = [
         ToolSpec("probe_environment", _DESCRIPTIONS["probe_environment"], ProbeEnvironmentInput, probe.probe_environment),
         ToolSpec("list_catalog", _DESCRIPTIONS["list_catalog"], ListCatalogInput, probe.list_catalog),
@@ -556,10 +570,24 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("cancel_run", _DESCRIPTIONS["cancel_run"], CancelRunInput, cancel.cancel_run),
         ToolSpec("run_resilience_drill", _DESCRIPTIONS["run_resilience_drill"], RunResilienceDrillInput, resilience.run_resilience_drill),
     ]
+    if unrestricted:
+        # Opt-in only: the allowlist-bypassing shell tool is appended (and exposed to the LLM)
+        # ONLY when the operator set UNRESTRICTED_TOOLS — see app/tools/shell.py.
+        specs.append(ToolSpec("run_shell", _DESCRIPTIONS["run_shell"], RunShellInput, shell.run_shell))
     return {s.name: s for s in specs}
 
 
+# The DEFAULT registry (UNRESTRICTED_TOOLS off) — used at import for the stable tool surface.
 REGISTRY = build_registry()
+
+
+def _registry_for(ctx: ToolContext | None) -> dict[str, ToolSpec]:
+    """The tool surface for this context: the default REGISTRY, or one that additionally
+    includes ``run_shell`` when the context's settings enable UNRESTRICTED_TOOLS. Falls back to
+    the default registry when no context is supplied (e.g. callers with no settings)."""
+    if ctx is not None and ctx.settings.unrestricted_tools:
+        return build_registry(unrestricted=True)
+    return REGISTRY
 
 
 def _strip_titles(node: Any) -> Any:
@@ -575,10 +603,11 @@ def _strip_titles(node: Any) -> Any:
     return node
 
 
-def tool_definitions() -> list[dict[str, Any]]:
-    """Export {name, description, input_schema} for the LLM providers."""
+def tool_definitions(ctx: ToolContext | None = None) -> list[dict[str, Any]]:
+    """Export {name, description, input_schema} for the LLM providers. Pass the per-session
+    ``ctx`` so UNRESTRICTED_TOOLS adds ``run_shell`` to the exposed surface (default: off)."""
     out = []
-    for spec in REGISTRY.values():
+    for spec in _registry_for(ctx).values():
         schema = _strip_titles(spec.input_model.model_json_schema())
         out.append({"name": spec.name, "description": spec.description, "input_schema": schema})
     return out
@@ -587,9 +616,10 @@ def tool_definitions() -> list[dict[str, Any]]:
 async def dispatch(ctx: ToolContext, name: str, raw_input: dict[str, Any]) -> dict[str, Any]:
     """Validate args against the tool's schema, then run the handler. Validation errors
     are returned (not raised) so the agent can self-correct and retry."""
-    spec = REGISTRY.get(name)
+    registry = _registry_for(ctx)
+    spec = registry.get(name)
     if spec is None:
-        return {"error": f"unknown tool {name!r}", "valid_tools": sorted(REGISTRY)}
+        return {"error": f"unknown tool {name!r}", "valid_tools": sorted(registry)}
 
     try:
         model = spec.input_model.model_validate(raw_input or {})

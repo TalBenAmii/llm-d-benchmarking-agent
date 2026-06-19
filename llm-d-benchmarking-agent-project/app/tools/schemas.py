@@ -124,6 +124,18 @@ class RunCommandInput(BaseModel):
     timeout: float | None = Field(default=None, description="Optional timeout in seconds")
 
 
+class RunShellInput(BaseModel):
+    command: str = Field(
+        ...,
+        description="An arbitrary shell command, run verbatim via `bash -lc` (so pipes, "
+                    "redirects, globs, and env expansion work). Read-only commands auto-run; "
+                    "commands that write/mutate anything (or that aren't recognized as read-only) "
+                    "require the user's Approve before they execute.",
+        min_length=1,
+    )
+    timeout: float | None = Field(default=None, description="Optional timeout in seconds")
+
+
 class LocateReportInput(BaseModel):
     results_dir: str | None = Field(default=None, description="Explicit results directory, if known")
     session_id: str | None = None
