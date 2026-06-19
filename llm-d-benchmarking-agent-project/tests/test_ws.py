@@ -473,6 +473,71 @@ def test_ws_reconnect_does_not_double_send_approval():
                     break
 
 
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_incremental_resume_resurfaces_pending_approval():
+    """Chat-switch-back guard: a client that kept its cached pane reconnects on the INCREMENTAL
+    path (``?after_seq=<cursor>``). On that path the server does NOT resend full history — it
+    patches the missed tail and relies on ``reemit_pending`` to re-surface the open gate. Assert
+    that a still-parked approval IS re-surfaced for cursors at/below the gate's own seq, so the
+    user who navigated away and came back always gets the Approve/Decline control back (the card
+    must never be silently dropped just because the resume was incremental rather than a rebuild)."""
+    from app.main import app
+
+    plan = {
+        "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+        "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+    }
+    # Re-park the SAME session at the gate for each cursor offset (a fresh provider per run so the
+    # first turn always proposes the plan). offset 0 = client had rendered the gate before leaving;
+    # negative = it left mid-stream and the gate opened while away.
+    for offset in (0, -1, -3):
+        turns = [
+            AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", plan)]),
+            AssistantTurn(text="Plan approved.", tool_calls=[]),
+        ]
+        with TestClient(app) as client:
+            app.state.provider = FakeProvider(turns)
+            with client.websocket_connect("/ws") as ws1:
+                sid = ws1.receive_json()["data"]["session_id"]
+                ws1.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
+                max_seq = 0
+                for _ in range(60):
+                    ev = ws1.receive_json()
+                    if ev.get("seq") is not None:
+                        max_seq = max(max_seq, ev["seq"])
+                    if ev["type"] == "approval_request":
+                        break
+                else:
+                    raise AssertionError("never reached the approval gate")
+
+            # The turn is still parked at the gate (no concurrency slot held), not finished.
+            running = app.state.running.get(sid)
+            assert running is not None and not running.done(), "turn should still be parked"
+
+            after_seq = max(0, max_seq + offset)
+            url = f"/ws?session={sid}&after_seq={after_seq}"
+            with client.websocket_connect(url) as ws2:
+                incremental = None
+                rid = None
+                for _ in range(60):
+                    ev = ws2.receive_json()
+                    if ev["type"] == "ready":
+                        incremental = ev["data"]["resume"]["incremental"]
+                    if ev["type"] == "approval_request":
+                        rid = ev["data"]["request_id"]
+                        break
+                assert incremental is True, f"offset {offset}: expected the incremental resume path"
+                assert rid is not None, (
+                    f"offset {offset}: pending approval was NOT re-surfaced on incremental resume "
+                    "— the chat-switch-back would strand the user with no Approve/Decline control"
+                )
+                # Resolve so no background turn is left parked into the next iteration / shutdown.
+                ws2.send_json({"type": "approval", "request_id": rid, "approved": True})
+                for _ in range(40):
+                    if ws2.receive_json()["type"] == "done":
+                        break
+
+
 def test_channel_live_buffer_is_bounded():
     """The per-turn live buffer is a BOUNDED ring: appending more events than its cap keeps
     only the most recent `buffer_max`, so a long, chatty turn can't grow memory without limit.

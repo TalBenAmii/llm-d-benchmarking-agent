@@ -2486,10 +2486,19 @@ function approvalCardBody(card, kind, payload, heading) {
 
 function addApprovalCard(data) {
   const { request_id, kind, payload } = data;
-  // De-dup: on reconnect the server re-surfaces every still-undecided approval, but our cached
-  // pane may already show this card. Skip re-adding (the existing card's buttons still work — its
-  // resolve closure reads the current global `ws`, which is the freshly-reconnected socket).
-  if (cur && cur.pendingApprovals[request_id]) return;
+  // De-dup vs. SELF-HEAL: on reconnect the server (via reemit_pending) re-surfaces every
+  // still-undecided approval — it is the source of truth that this gate is STILL OPEN. If our
+  // cached pane already shows the card, skip re-adding (the existing card's buttons still work —
+  // its resolve closure reads the current global `ws`, the freshly-reconnected socket). But trust
+  // the re-emit over a STALE dedup key: if we hold a request_id but its card is no longer in the
+  // live DOM (the pane was rebuilt/evicted/detached, or an older build mis-tracked it), the card
+  // was silently lost — drop the dead ref and fall through to re-render, so a parked gate can
+  // never strand the user with no Approve/Decline control after a chat switch.
+  const existing = cur && cur.pendingApprovals[request_id];
+  if (existing) {
+    if (existing.isConnected) return;          // genuinely already shown live — true dedup
+    delete cur.pendingApprovals[request_id];   // stale ref: card is gone from the DOM — re-render
+  }
   const card = el("div", "card");
   approvalCardBody(card, kind, payload, kind === "session_plan" ? "Review the plan before we start" : "Approve this command ");
   const actions = el("div", "actions");
