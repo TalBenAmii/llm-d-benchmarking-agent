@@ -342,6 +342,22 @@ def test_resume_catchup_note_is_deferred_below_history():
     assert 'addNote("⏳ Picking up a benchmark already running' in rh_block
 
 
+def test_approval_card_dedup_self_heals_on_detached_card():
+    """Chat-switch-back guard (client side): on reconnect the server re-emits every still-open gate
+    (reemit_pending) as the source of truth that it is STILL pending. addApprovalCard must dedup
+    against the cached card ONLY when that card is still in the live DOM — if the dedup key survived
+    but its card did not (pane rebuilt/evicted/detached, or an older build), it must drop the stale
+    ref and re-render, never `return` early and strand the user with no Approve/Decline control."""
+    js = _ui("app.js")
+    body = js.split("function addApprovalCard(data)")[1].split("function ")[0]
+    # The dedup must be GATED on the cached card still being connected to the document...
+    assert ".isConnected" in body, \
+        "addApprovalCard dedup must verify the cached card is still in the DOM (self-heal)"
+    # ...and a stale (disconnected) ref must be cleared so we fall through to re-render it.
+    assert "delete cur.pendingApprovals[request_id]" in body, \
+        "a stale/disconnected approval card ref must be dropped so the re-emit re-renders it"
+
+
 def test_markdown_table_rendering_is_wired():
     """The assistant bubble's markdown renderer must turn GFM pipe-tables into real <table>
     markup (was: raw `| … |` text). Wiring-level guard; the rendered table is eyeballed via
