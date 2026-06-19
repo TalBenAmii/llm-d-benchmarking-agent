@@ -20,6 +20,10 @@ user's benchmark results to a cloud bucket.
   Don't fabricate a bucket name; only emit a URI the user actually gave you.
 - **Scope: `run` only (for the MVP).** A cloud sink is wired for `execute_llmdbenchmark` `run`.
   `experiment` (DoE sweeps) and `results` stay LOCAL here — don't try to point those at a bucket.
+  Upstream `experiment` *itself* also declares a `-r`/`--output` accepting `local`/`gs://`/`s3://`,
+  so this is an AGENT-side scope, not a CLI gap: the allowlist's `results_sink` value-constraint only
+  permits the cloud sink on `run`'s `-r`/`--output` for now. So for a sweep, results stay local here
+  until the allowlist is widened — don't imply the agent can send an `experiment` to a bucket.
 
 ## How to set it (mechanism — for grounding, not decisions)
 

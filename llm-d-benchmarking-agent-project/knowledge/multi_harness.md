@@ -37,6 +37,13 @@ Confirm both harness names + their workload profiles exist in the **live catalog
 (`list_catalog`) before planning — never invent them. Both `inference-perf` and `guidellm`
 ship a `sanity_random.yaml` and several shared synthetic profiles; match the workload to the
 question (a chat profile for the SLO run, a throughput/concurrency profile for the sweep).
+Concrete catalog names: the **SLO / inference-perf** leg → `chatbot_synthetic.yaml` or
+`shared_prefix_synthetic.yaml`; the **guidellm sweep** leg → `shared_prefix_synthetic.yaml`
+(rate ladder `[2,5,8,10,12,15,20]`, `max_seconds 50`) or the higher-load
+`guide_workload-autoscaling_1.yaml` (rate `[4,8,16,24]`, 300s). (guidellm's
+`shared_prefix_synthetic` is the lighter ladder — not a high-rate sweep — so reach for
+`guide_workload-autoscaling_1.yaml` when you want heavier load.) Confirm via `list_catalog`
+before planning.
 
 **Don't claim a "live"/"just-checked" catalog you didn't look at.** The authoritative catalog
 arrives as an in-context "[live catalog snapshot …]" message and is re-enumerable with

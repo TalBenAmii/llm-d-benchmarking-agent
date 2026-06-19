@@ -94,8 +94,11 @@ well_lit_paths:
     also_consider:
       - guides/wide-ep-lws  # very large Mixture-of-Experts models needing multi-node EP/DP
     benchmark_workloads:
+      # guide_pd-disaggregation_* exercise the P/D deploy (FIXED-shape P/D stress, not retrieved-context RAG)
       - guide_pd-disaggregation_1.yaml
       - guide_pd-disaggregation_2.yaml
+      - random_concurrent.yaml       # long-context shape (input mean ~10000) for retrieved-context RAG
+      - sonnet_concurrent.yaml        # long input with a large shared prefix
       - summarization_synthetic.yaml
 
   - archetype: high_throughput_batch
@@ -112,16 +115,19 @@ well_lit_paths:
       For pushing aggregate throughput at acceptable (not tight) latency, the optimized
       baseline — load-aware AND prefix-cache-aware request balancing via the llm-d EPP /
       inference scheduler — is the recommended out-of-the-box config for most vLLM/SGLang
-      deployments. It is the closest catalog spec to the upstream "inference-scheduling"
-      guide (intelligent request scheduling). Sweep load on it with guidellm to find the
-      max sustainable throughput before SLOs break.
+      deployments. It is the renamed "inference-scheduling" guide (intelligent request
+      scheduling). Sweep load with guidellm to find the max sustainable throughput before SLOs
+      break; the inference-perf guide_optimized-baseline_1.yaml is the throughput-sweep profile
+      (the same-stem guidellm variant is a 50/50 smoke).
     notes: >
-      The upstream llm-d-benchmark README also documents `--spec inference-scheduling` (and
-      `inference-scheduling-wva`) as the intelligent-scheduling guide; in the frozen catalog
-      snapshot the present spec is `guides/optimized-baseline`. Verify the exact name with
-      list_catalog. For true latency-insensitive batch, the llm-d `batch-gateway` and
-      `asynchronous-processing` EXPERIMENTAL guides exist (deploy-path only; not in the
-      benchmark catalog).
+      `inference-scheduling` is the FORMER name of this spec — the benchmark README lists
+      `guides/optimized-baseline` as "formerly inference-scheduling", so map a user's
+      "inference-scheduling" request straight to `guides/optimized-baseline`. The inner stack
+      name `inference-scheduling-wva` is NOT a usable `--spec` (the README does not mention it);
+      the WVA / SLO-aware-autoscaling variant is the `guides/workload-autoscaling` spec. Verify
+      the exact name with list_catalog. For true latency-insensitive batch, the llm-d
+      `batch-gateway` and `asynchronous-processing` EXPERIMENTAL guides exist (deploy-path only;
+      not in the benchmark catalog).
     also_consider:
       - guides/workload-autoscaling  # when load is bursty and you want SLO-aware autoscaling
     benchmark_workloads:
@@ -152,7 +158,7 @@ well_lit_paths:
   - archetype: agentic
     title: Agentic / tool-using workloads (multi-turn, growing context, tool loops)
     scenario: guides/agentic-tests
-    guide: llm-d/guides/asynchronous-processing
+    guide: llm-d/guides/agentic-serving
     deploy_path: gpu-only
     signals:
       prefix_reuse_ratio: high (each agent step re-sends the accumulated trajectory)
@@ -162,12 +168,16 @@ well_lit_paths:
     rationale: >
       Agentic loops re-send a large, growing conversation/tool context every step, so prefix
       reuse is very high and the KV working set grows — caching and cache-aware routing pay
-      off heavily, and offloading helps when the working set outgrows GPU memory. Benchmark
-      with the `guides/agentic-tests` spec, which is built for these multi-turn patterns.
+      off heavily, and offloading helps when the working set outgrows GPU memory. The
+      agentic-serving guide is a workload umbrella that composes the optimized baseline,
+      tiered KV offloading, precise prefix-cache routing, and P/D disaggregation (prefill-heavy /
+      decode-light, high reusable locality, bursty/stateful arrivals). Benchmark with the
+      `guides/agentic-tests` spec, which is built for these multi-turn patterns.
     also_consider:
       - guides/tiered-prefix-cache           # offload the growing KV working set beyond GPU memory
       - guides/precise-prefix-cache-routing  # route on the precise resident-prefix fraction
     benchmark_workloads:
+      - otel_traces.yaml                      # the agentic-tests experimentProfile (data.type otel_trace_replay / load.type trace_session_replay)
       - shared_prefix_multi_turn_chat.yaml
       - shared_prefix_synthetic.yaml
 
@@ -188,4 +198,89 @@ well_lit_paths:
       GPU well-lit path that matches the real workload shape. See deploy_path_playbook.md.
     benchmark_workloads:
       - sanity_random.yaml
-      - sanity_concurrent.yaml
+      - sanity_concurrent.yaml   # guidellm-harness sanity variant (needs -l guidellm); the cicd/kind default is sanity_random.yaml on inference-perf
+
+  - archetype: slo_aware_routing
+    title: SLO-aware / predicted-latency routing (per-request TTFT/TPOT SLOs)
+    scenario: guides/predicted-latency-routing
+    guide: llm-d/guides/predicted-latency-routing
+    deploy_path: gpu-only
+    signals:
+      prefix_reuse_ratio: any (routing on predicted latency, not just resident prefix)
+      context_length: high-variance prompt AND completion length (queue depth is a poor load proxy)
+      concurrency: medium-to-high, mixed interactive + batch traffic in one pool
+      slo_emphasis: ttft and tpot enforced as PER-REQUEST SLOs (interactive vs batch)
+    rationale: >
+      When prompt and completion lengths vary widely, queue depth alone is a poor proxy for
+      true load. A live-trained latency predictor routes each request to the server predicted
+      to serve it fastest and can refuse servers predicted to miss the request's TTFT/TPOT SLO
+      (clients express per-request SLOs via x-llm-d-slo-* headers). Benchmark this when load is
+      high-variance and clients need enforced interactive-vs-batch latency targets. Note the
+      predictor assumes a single pod shape — skip it for heterogeneous (mixed-GPU/model) pools.
+    also_consider:
+      - guides/optimized-baseline  # the load-aware + prefix-cache-aware baseline this builds on
+    benchmark_workloads:
+      - shared_prefix_synthetic.yaml   # the guide's own profile is absent from the catalog snapshot
+
+  - archetype: autoscaling_bursty
+    title: Bursty / spiky load needing SLO-aware autoscaling
+    scenario: guides/workload-autoscaling
+    guide: llm-d/guides/workload-autoscaling
+    deploy_path: gpu-only
+    signals:
+      prefix_reuse_ratio: any
+      context_length: any
+      concurrency: bursty / spiky, with idle troughs between peaks (elastic capacity needed)
+      slo_emphasis: throughput / cost under an SLO, scaling capacity up and down with demand
+    rationale: >
+      Bursty traffic with idle troughs wastes capacity when statically provisioned and breaks
+      SLOs when peaks outrun it. Workload autoscaling scales replicas from EPP queue-depth /
+      running-request signals — HPA + EPP for a homogeneous pool, or the Workload Variant
+      Autoscaler (WVA) aggregating wva_desired_replicas across heterogeneous GPU types — so
+      capacity tracks demand proactively rather than lagging GPU utilization. Benchmark this
+      when load is spiky and you want SLO-aware elastic scaling. WVA is NOT OpenShift-only.
+    also_consider:
+      - guides/optimized-baseline  # the steady-state routing foundation autoscaling sits on
+    benchmark_workloads:
+      - guide_workload-autoscaling_1.yaml   # guidellm rate ladder [4,8,16,24] over 300s
+
+  - archetype: wide_ep_moe
+    title: Very large MoE serving (wide expert/data parallelism, multi-node)
+    scenario: guides/wide-ep-lws
+    guide: llm-d/guides/wide-ep-lws
+    deploy_path: gpu-only
+    signals:
+      prefix_reuse_ratio: any
+      context_length: long (large models with substantial context per request)
+      concurrency: high, sustained production session traffic to saturate the pool
+      slo_emphasis: throughput / cost at scale (tokens per GPU-hour across many nodes)
+    rationale: >
+      Very large Mixture-of-Experts models (500GB+, e.g. DeepSeek-R1) do not fit one node and
+      need wide data/expert parallelism: DeepEP All-to-All over RDMA spreads experts across a
+      multi-node LeaderWorkerSet so the whole model serves as one logical replica. Benchmark
+      this when serving a giant MoE model where multi-node EP/DP throughput per GPU is the goal.
+      The guide_wide-ep-lws_1.yaml profile is a high-concurrency RANDOM saturation workload
+      (load.type concurrent, concurrency_level 2048, num_requests 8192, in/out ~2000), not a trace replay.
+    benchmark_workloads:
+      - guide_wide-ep-lws_1.yaml
+
+  - archetype: tiered_kv_offload
+    title: Tiered KV-cache offload (working set exceeds accelerator memory)
+    scenario: guides/tiered-prefix-cache
+    guide: llm-d/guides/tiered-prefix-cache
+    deploy_path: gpu-only
+    signals:
+      prefix_reuse_ratio: high (reused prefixes worth keeping resident across turns)
+      context_length: long multi-turn; the reused KV working set EXCEEDS accelerator (HBM) memory
+      concurrency: many sessions, some idle/restorable between turns
+      slo_emphasis: ttft plus cost per effective cache size (keep more KV resident cheaply)
+    rationale: >
+      When the reused KV working set outgrows accelerator memory, vLLM would normally evict and
+      recompute prefill on the next turn. Tiered prefix cache offloads evicted KV blocks to CPU
+      RAM or the filesystem and restores them instead of recomputing — cutting TTFT for idle
+      sessions that resume and raising the effective cache size per GPU-dollar. Benchmark this
+      when prefix reuse is high but the working set no longer fits in HBM.
+    also_consider:
+      - guides/precise-prefix-cache-routing  # pair exact cache state with KV offload/retention
+    benchmark_workloads:
+      - shared_prefix_multi_turn_chat.yaml   # the guide's own profile is absent from the catalog snapshot

@@ -11,10 +11,11 @@
 # that opaque post-standup stall into an honest go/no-go: "on K8s 1.27 the sidecar P/D guide
 # won't init — upgrade to 1.33+ or pick a non-sidecar path."
 #
-# Source of truth: llm-d/docs/infrastructure.md ("Supported infrastructure" / vLLM image
-# section). Re-read it (fetch_key_docs / read_repo_doc) if you need the latest wording.
+# Source of truth: llm-d/docs/infrastructure/README.md ("Infrastructure & Environments" →
+# "llm-d infrastructure" / vLLM image section). Re-read it (fetch_key_docs / read_repo_doc) if
+# you need the latest wording.
 
-source: "llm-d/docs/infrastructure.md"
+source: "llm-d/docs/infrastructure/README.md"
 
 # ---------------------------------------------------------------------------
 # Kubernetes server version thresholds (compare against cluster_preconditions.server_version)

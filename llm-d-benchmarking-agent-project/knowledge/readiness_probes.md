@@ -12,7 +12,7 @@ user to wait or to stop, and BEFORE any benchmark is submitted against that name
 ## Why presence is not readiness
 
 A vLLM inference container has three distinct lifecycle stages (see
-`llm-d/docs/readiness-probes.md`):
+`llm-d/docs/operations/readiness-probes.md`):
 
 1. **Container Running** — the Kubernetes container started. Says nothing about serving.
 2. **API server alive** — the OpenAI-compatible server process accepts connections. This is

@@ -21,7 +21,7 @@ two — and choosing to generate-then-reuse at all — is judgment, not a defaul
    - Upstream both flags are **`run`-ONLY** (not standup/plan/smoketest/teardown/experiment).
      The README round-trip is:
      ```
-     llmdbenchmark --spec guides/inference-scheduling run -p NS -l inference-perf \
+     llmdbenchmark --spec guides/optimized-baseline run -p NS -l inference-perf \
        -w sanity_random.yaml --generate-config        # writes run-config.yaml, exits
      llmdbenchmark run -c /path/to/run-config.yaml      # replays it
      ```

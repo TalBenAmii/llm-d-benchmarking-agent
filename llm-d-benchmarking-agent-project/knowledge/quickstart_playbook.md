@@ -39,9 +39,15 @@ the steps/flags come from the real procedure rather than memory.
    (no `llmd-quickstart`), create one:
    `run_command argv=["kind","create","cluster","--name","llmd-quickstart"]`. This is
    mutating (it prompts) and can take a while on first run (it pulls the kind node image).
+   cicd/kind deploys ~7 pods needing ~2.5 CPU total; the container runtime needs >=4 CPUs /
+   8 GiB RAM (the Docker/Colima/Podman 2-CPU default makes the harness/gateway pod Pending with
+   `Insufficient cpu`). If a pod stalls Pending, raise the runtime to 4 CPUs and RECREATE the
+   kind cluster (the kubelet captures allocatable at node boot).
 5. **Stand up** — `execute_llmdbenchmark subcommand=standup spec=cicd/kind
    namespace=llmd-quickstart flags={skip_smoketest:true}`. This can take a few minutes;
-   the output streams live.
+   the output streams live. (We pass `skip_smoketest:true` so standup does NOT auto-chain its
+   smoketest — upstream standup auto-runs the smoketest unless `--skip-smoketest`; we run it as
+   the explicit step 6 instead. Do NOT drop `skip_smoketest` — it is the real upstream override.)
 5b. **Live resource stats — OFFER the metrics-server install as its OWN step BEFORE you deploy or
    run (don't wait to be asked, don't defer to mid-run, don't bundle it into the run turn).** kind
    does NOT ship the in-cluster **metrics-server**, so the live CPU/mem panel during a run reads
@@ -61,7 +67,10 @@ the steps/flags come from the real procedure rather than memory.
    namespace=llmd-quickstart harness=inference-perf workload=sanity_random.yaml`.
    (Results are written into the session workspace automatically.)
 8. **Report** — `locate_and_parse_report`. Summarize the metrics in plain language
-   (see `results_interpretation.md`), tied to the user's goal.
+   (see `results_interpretation.md`), tied to the user's goal. cicd/kind uses the
+   llm-d-inference-sim engine on CPU — its latency/throughput/GPU numbers are MEANINGLESS as
+   performance data (a plumbing / SLO-wiring sanity check only). When reporting, say so and
+   steer the user to a GPU spec (examples/gpu or a guides/* path) for real numbers.
 9. **Offer teardown** — ask before running `execute_llmdbenchmark subcommand=teardown`
    (removes the llm-d stack but keeps the cluster). For the deeper cleanup of the whole
    cluster, you can also run `run_command argv=["kind","delete","cluster","--name","llmd-quickstart"]`

@@ -53,6 +53,9 @@ Reuse the sweep playbook's knob taxonomy (`read_knowledge('sweep_playbook')`):
 - **Run/workload knobs — PREFER these (esp. on kind/CPU-sim): one stack, re-benchmarked per
   trial.** `max-concurrency`, `rate`/QPS, prompt/output token lengths,
   `data.shared_prefix.num_groups`. Cheapest closed loop — stand up once, run N times.
+  (`max-concurrency` is a **vllm-benchmark** profile field; on the default **inference-perf**
+  harness tune its concurrency/rate knob instead — the load stage's `concurrency_level` /
+  `rate` — or switch the harness. Same steer as `sweep_playbook`.)
 - **Deployment knobs — expensive (each trial re-deploys).** `decode.replicas`,
   `prefill.replicas`, `decode.parallelism.tensor`, model, prefill/decode split. Only when a
   run-knob can't express the goal; keep the budget small.

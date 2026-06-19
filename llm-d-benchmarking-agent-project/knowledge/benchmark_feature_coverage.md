@@ -37,7 +37,17 @@ merged DONE (57 & 58 deferred).
 ## Optional to surface to users (offer when their context calls for it)
 - Model override `-m/--models` · cluster access `-k`/URL/token · HuggingFace gated-model
   secret · gateway class `--gateway-class` · multi-stack `--stack`/`--parallel` · WVA
-  `-u/--wva` (OpenShift-only, 🟡) · cloud results sink `-r gs://`/`s3://` · local `--analyze`
-  plot families · kustomize `kustomize.*` config block · distributed tracing `tracing:` block.
+  `-u/--wva` (Workload Variant Autoscaler — for multi-variant deployments across heterogeneous
+  GPU types; HPA+WVA path, not OpenShift-only, 🟡) · cloud results sink `-r gs://`/`s3://` ·
+  local `--analyze` plot families · kustomize `kustomize.*` config block · distributed tracing
+  `tracing:` block.
+
+## Harnesses (Area C)
+Six workload harnesses ship on disk under `workload/profiles/`: **inference-perf** (the
+default, SLO/latency), **guidellm** (throughput sweeps), **vllm-benchmark** (dataset replay /
+max-concurrency), **aiperf**, **inferencemax**, **nop**. The agent primarily surfaces
+inference-perf + guidellm + vllm-benchmark (and nop for plumbing); aiperf/inferencemax are
+present but rarely surfaced. For the live, harness-scoped workload set, see
+`usecase_to_profile.yaml` / `list_catalog` — that is the source of truth for what's runnable.
 
 Full catalog: docs/BENCHMARK_FEATURE_COVERAGE.md

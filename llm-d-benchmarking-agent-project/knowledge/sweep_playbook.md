@@ -31,10 +31,28 @@ aren't attributable.
 Before writing one, read the authoritative format and examples (they are read-only refs):
 - `read_repo_doc(path="llm-d-benchmark/docs/doe.md")` and
   `read_repo_doc(path="llm-d-benchmark/llmdbenchmark/experiment/README.md")`.
-- Ready-made examples: `workload/experiments/max-concurrency-sweep.yaml` (a run-parameter
+- Ready-made examples: `experiments/max-concurrency-sweep.yaml` (a run-parameter
   sweep — top-level `treatments:` list, each a name + a workload override) and
   `docs/tutorials/kubecon/experiments/smoke.yaml` (full DoE — `setup.factors`/`treatments`
-  + `run.factors`/`treatments`).
+  + `run.factors`/`treatments`). The ready-made experiment YAMLs live at the repo-ROOT
+  `experiments/` dir, NOT `workload/experiments/`.
+
+### Reuse-first: use-case → ready-made experiment file (all at repo-root `experiments/`)
+Match the user's goal to one of these before authoring a custom grid (reach them via the
+`--experiments` flag to `execute_llmdbenchmark`); author a new one only if none fits:
+- **P/D prefill/decode ratio** → `experiments/pd-disaggregation.yaml`
+- **Tiered KV cache (CPU/disk offload)** → `experiments/tiered-prefix-cache.yaml`
+- **Optimized-baseline load ladder** → `experiments/optimized-baseline.yaml`
+- **Agentic / RAG session-rate sweep** → `experiments/otel-session-rate-sweep.yaml`
+  (inference-perf + `otel_traces.yaml`; the swept key is `load.stages.0.session_rate`)
+- **Precise prefix-cache** → `experiments/precise-prefix-cache-aware.yaml` (NOTE: the
+  experiment file is `precise-prefix-cache-aware`, while the deploy spec/scenario is
+  `guides/precise-prefix-cache-routing` — the two names differ).
+
+The experiment YAML's top-level `experiment:` block tunes the run: `experiment: {name (defaults
+to the filename), harness (OVERRIDES the scenario harness — use `vllm-benchmark` when sweeping
+max-concurrency so the experiment doesn't inherit the scenario's inference-perf harness),
+profile (overrides the scenario's workload profile)}`.
 
 If the user's grid maps onto an existing example, reuse it. If it needs a custom grid,
 **author it with `generate_doe_experiment`** (see "Generate the matrix" below) — it
@@ -55,8 +73,8 @@ Each factor is `{name, key, levels}`:
 - `name` — a short token used to build treatment names (e.g. `tp`, `rep`, `numCpuBlocks`).
 - `key` — the **dotted override key** the level sets. **Read the repo's experiment examples
   first** (`read_repo_doc(path="llm-d-benchmark/llmdbenchmark/experiment/README.md")`,
-  `read_repo_doc(path="llm-d-benchmark/docs/doe.md")`, and the files under
-  `workload/experiments/`) to pick keys that actually exist. Setup-phase keys override the
+  `read_repo_doc(path="llm-d-benchmark/docs/doe.md")`, and the files under the repo-root
+  `experiments/` dir) to pick keys that actually exist. Setup-phase keys override the
   scenario config (e.g. `decode.parallelism.tensor`, `vllmCommon.flags.numCpuBlocks`); run-phase
   keys override the workload profile (e.g. `data.shared_prefix.num_groups`, `rate`).
 - `levels` — the scalar values to sweep, e.g. `[2, 4, 8]`.

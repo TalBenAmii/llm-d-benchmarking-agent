@@ -52,8 +52,17 @@ See `knowledge/analysis.md` for the same authority/absent-metric constraints app
   (tail latency — the slow requests).
 - **TPOT / ITL (time per output token / inter-token latency)** — the pace of streaming
   after the first token. Lower = text appears faster. Drives "tokens/sec per user".
+- **NTPOT (normalized_time_per_output_token)** — per-output-token latency that **INCLUDES** the
+  first token (TTFT amortized across the whole output), as opposed to TPOT which **excludes** the
+  first token. Units `ms/token` or `s/token`; lower is better. NTPOT lives in the Benchmark Report
+  (`AggregateLatency.normalized_time_per_output_token`) but is **NOT** surfaced by
+  `summarize_report` / `_COMPARE_METRICS`, so it only appears when explicitly catalogued/added —
+  don't expect it in the default summary.
 - **request_latency** — end-to-end time for a whole request.
 - **throughput.total_token_rate** — total tokens/sec the system pushed (capacity).
+- **throughput.output_token_rate** — decode-side tokens/sec (generation capacity); this one is
+  **already surfaced** by the summary. `throughput.input_token_rate` also exists for
+  prefill-heavy workloads (prompt-token ingest rate).
 - **throughput.request_rate** — requests/sec completed.
 - **success_rate_pct** — fraction of requests that succeeded; flag anything below ~100%.
 
@@ -70,19 +79,36 @@ set-headers (`x-llm-d-slo-ttft-ms`/`x-llm-d-slo-tpot-ms`, `x-llm-d-inference-obj
 `x-llm-d-inference-fairness-id`) when present. The full enum→cause→remedy table lives in
 `epp_headers.yaml` — this section only routes you there.
 
+When the report carries `results.observability.drop_rate` (a `Statistics` value), it is the
+**structured, harness/router-measured** fraction of dropped requests — the same capacity-shedding
+story as the 429/EPP headers above, just measured rather than header-derived: a non-zero
+`drop_rate` is **capacity shedding, not breakage**. Pair it with `success_rate_pct` (drops explain
+a sub-100% success rate as admission/eviction, not failure). **Prose only — it is not catalogued
+as a standard metric:** `drop_rate` lives directly under `results.observability` (a sibling of
+`components` / `pod_startup_times` / `replica_status`), NOT under `components[].aggregate`, so
+`extract_standard_metric`'s per-component loop never reaches it. Quote it only when it is actually
+present in a validated report.
+
 ## Units — read them off the report, never guess
 
 Every latency/throughput entry in the summary carries an explicit `units` field. **Read it and
 trust it. Never infer a unit from how big or small a number looks.**
 
-- BR v0.2 reports latency in **seconds**: TTFT and `request_latency` are `units: s`; TPOT and
-  ITL are `units: s/token`. A `mean` of `0.13` with `units: s` is **0.13 seconds = 130 ms**, not
-  130 ns and not 130 ms-raw.
-- When you narrate latency to a non-expert, **convert seconds → milliseconds** (×1000) and label
-  it `ms` (e.g. `ttft.mean = 0.13 s` → "first token in ~130 ms"; a `tpot` of `0.021 s/token` →
-  "~21 ms per token"). Milliseconds are the canonical unit users expect.
+- BR v0.2 does **NOT** fix one latency unit. The schema's `Units` enum allows **`ms` OR `s`** for
+  TTFT / `request_latency`, and **`ms/token` OR `s/token`** for TPOT / ITL — harnesses differ
+  (e.g. `run.md` tabulates TTFT in **ms**). So you MUST read the per-entry `units` and convert
+  from **that**, never from an assumed unit. (Source: `br_v0_2_json_schema.json` `$defs/Units`
+  enum; `llm-d-benchmark/docs/run.md`; `app/validation/analysis.py` `_TO_MS` maps **both** `ms`→1
+  and `s`→1000.)
+- **Convert to milliseconds from the entry's own `units` — two worked cases:**
+  - `units: s` (or `s/token`) → **×1000**: a `mean` of `0.13` with `units: s` is
+    **0.13 s = 130 ms**; a `tpot` of `0.021 s/token` → **~21 ms per token**.
+  - `units: ms` (or `ms/token`) → **already ms, do NOT multiply**: a `mean` of `130` with
+    `units: ms` is **130 ms** (×1000 would wrongly give 130 000 ms).
+  Milliseconds are the canonical unit users expect; arrive at them from the stated `units`, not
+  from the number's magnitude.
 - **Never report nanoseconds or microseconds.** BR v0.2 carries no ns/µs latency — if you find
-  yourself writing "nanoseconds", you misread a `units: s` value. There is no nanosecond field.
+  yourself writing "nanoseconds", you misread a `units: s`/`ms` value. There is no nanosecond field.
 - Throughput is `tokens/s` / `queries/s` (requests/s) — quote those as-is; do not convert.
 - If an entry's `units` is missing or unfamiliar, say the raw number with whatever `units` is
   present and flag the ambiguity — do not assume a unit.

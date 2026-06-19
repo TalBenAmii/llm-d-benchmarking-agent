@@ -13,7 +13,7 @@ Counts: 52 ⭐⭐⭐ · 56 ⭐⭐ · 63 ⭐ · 24 — across 195 files (58 llm-d
 
 1. `llm-d-benchmark/README.md` — every `llmdbenchmark` subcommand/flag/`LLMDBENCH_*` var + the spec/scenario/harness/profile vocabulary.
 2. `llm-d-benchmark/llmdbenchmark/interface/README.md` — per-subcommand flag + env-var enumeration that backs our allowlist + `build_argv`.
-3. `llm-d-benchmark/llmdbenchmark/README.md` — package map of the CLI: six subcommands + the standup→smoketest→run→teardown lifecycle.
+3. `llm-d-benchmark/llmdbenchmark/README.md` — package map of the CLI: seven subcommands (plan, standup, smoketest, run, teardown, experiment, results) + the standup→smoketest→run→teardown lifecycle.
 4. `llm-d-benchmark/docs/developer-guide.md` — best single map of how scenarios/experiments/harnesses/profiles/lifecycle fit together.
 5. `llm-d-benchmark/config/README.md` — config override chain + every scenario knob (model/replicas/namespace/monitoring/vLLM).
 6. `llm-d-benchmark/docs/standup.md` — scenario-parameter vocabulary to set/validate when deploying (model, TP, max-model-len, accelerator, gateway class).
@@ -26,8 +26,8 @@ Counts: 52 ⭐⭐⭐ · 56 ⭐⭐ · 63 ⭐ · 24 — across 195 files (58 llm-d
 13. `llm-d/docs/well-lit-paths/README.md` — catalog of every deploy path we might stand up (optimized-baseline vs pd-disaggregation vs autoscaling).
 14. `llm-d/guides/optimized-baseline/README.md` — THE primary guide we deploy: env vars, helm/kubectl, monitoring toggle, `run_only.sh` flow.
 15. `llm-d/helpers/benchmark.md` — the `run_only.sh` `config.yaml` schema (endpoint/harness/workload) + the standardized report we mirror.
-16. `llm-d/docs/resources/observability/metrics.md` — the exact vLLM/EPP metric names we read/explain + how to enable monitoring.
-17. `llm-d/docs/readiness-probes.md` — deploy-and-wait logic: poll `/v1/models` (not `/health`) to know a server is truly Ready.
+16. `llm-d/docs/operations/observability/metrics.md` — the exact vLLM/EPP metric names we read/explain + how to enable monitoring.
+17. `llm-d/docs/operations/readiness-probes.md` — deploy-and-wait logic: poll `/v1/models` (not `/health`) to know a server is truly Ready.
 
 ## Other high-value docs (⭐⭐⭐) by topic
 
@@ -37,9 +37,10 @@ Counts: 52 ⭐⭐⭐ · 56 ⭐⭐ · 63 ⭐ · 24 — across 195 files (58 llm-d
 **llm-d-benchmark — observability:** `docs/observability.md` (`--monitoring`/`--no-monitoring`, metric catalog).
 **llm-d-benchmark — resources:** `docs/resource_requirements.md` (`LLMDBENCH_HARNESS_CPU_NR`, default 16; lower for kind).
 **llm-d-benchmark — config/convert-guide:** `skills/convert-guide/SKILL.md` (guide→config playbook) · `skills/convert-guide/references/patterns.md` (correctness rules: keep env vars, MULTINODE for LWS, pd-config for P/D) · `skills/convert-guide/references/templates.md` (output shape).
-**llm-d — deploy guides:** `README.md` (entry map) · `guides/README.md` · `docs/getting-started/quickstart.md` · `docs/well-lit-paths/optimized-baseline.md` · `guides/pd-disaggregation/README.md` · `guides/precise-prefix-cache-routing/README.md` · `guides/predicted-latency-routing/README.md` (SLO headers) · `guides/tiered-prefix-cache/README.md` · `guides/wide-ep-lws/README.md` (carries v0.2 report schema).
-**llm-d — helpers/preconditions:** `helpers/smoke-test/README.md` (healthcheck.sh) · `helpers/hf-token.md` (`llm-d-hf-token` secret) · `helpers/client-setup/README.md` (tool + min-version checklist) · `docs/infrastructure.md` (K8s ≥1.29; host/accel sizing).
-**llm-d — observability resources:** `docs/resources/observability/promql.md` (PromQL idioms) · `docs/resources/observability/setup.md` (install Prometheus/Grafana/OTel).
+**llm-d — deploy guides:** `README.md` (entry map) · `guides/README.md` · `docs/getting-started/quickstart.md` · `llm-d/docs/well-lit-paths/capabilities/optimized-baseline.md` · `guides/pd-disaggregation/README.md` · `guides/precise-prefix-cache-routing/README.md` · `guides/predicted-latency-routing/README.md` (SLO headers) · `guides/tiered-prefix-cache/README.md` · `guides/wide-ep-lws/README.md` (carries v0.2 report schema).
+**llm-d — well-lit-path CONCEPT docs (the capability/traffic-control explainers behind the guides):** `llm-d/docs/well-lit-paths/capabilities/optimized-baseline.md` · `llm-d/docs/well-lit-paths/capabilities/pd-disaggregation.md` · `llm-d/docs/well-lit-paths/capabilities/precise-prefix-cache-routing.md` · `llm-d/docs/well-lit-paths/capabilities/predicted-latency.md` · `llm-d/docs/well-lit-paths/capabilities/tiered-prefix-cache.md` · `llm-d/docs/well-lit-paths/capabilities/wide-expert-parallelism.md` · `llm-d/docs/well-lit-paths/traffic-control/flow-control.md` · `llm-d/docs/well-lit-paths/traffic-control/workload-autoscaling.md`.
+**llm-d — helpers/preconditions:** `helpers/smoke-test/README.md` (healthcheck.sh) · `helpers/hf-token.md` (`llm-d-hf-token` secret) · `helpers/client-setup/README.md` (tool + min-version checklist) · `llm-d/docs/infrastructure/README.md` (K8s ≥1.29; host/accel sizing).
+**llm-d — observability resources:** `llm-d/docs/operations/observability/promql.md` (PromQL idioms) · `llm-d/docs/operations/observability/setup.md` (install Prometheus/Grafana/OTel).
 
 ## Reference points & everything else
 

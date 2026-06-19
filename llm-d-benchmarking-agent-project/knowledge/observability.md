@@ -130,6 +130,12 @@ Under the hood `--monitoring` sets `monitoring.podmonitor.enabled: true` +
 disables the GAIE Prometheus ServiceMonitor. The same effect can be reached scenario-side via
 `monitoring.podmonitor.enabled` / `monitoring.installPrometheusCrds`.
 
+The vLLM Prometheus `/metrics` endpoint is on port **8200** (modelservice) / **8000**
+(standalone); the **EPP (inference-scheduler)** endpoint is a SEPARATE scrape on port **9090**
+with **bearer-token auth** (Source: `llm-d-benchmark/docs/metrics_collection.md` → "EPP Prometheus
+Metrics"). So two distinct PodMonitors/scrapes feed Prometheus — the vLLM serving metrics and the
+EPP scheduling metrics — not one.
+
 ### The decision (default ON, with a knowledge-driven opt-out)
 
 **Default: enable monitoring** so the report carries real KV-cache/GPU/queue metrics — these are
@@ -167,6 +173,18 @@ proxy; lower = less admission queueing), and **GPU utilization**. Interpret them
 `knowledge/results_interpretation.md`. If they are `None` after a run, the usual cause is that
 monitoring was off / the CRDs were missing — say so; never fabricate a value the report lacks.
 
+Upstream-grounded saturation thresholds to flag (Source:
+`llm-d/docs/operations/observability/metrics.md`; keep the field names consistent with
+`knowledge/standard_metrics.yaml`):
+
+- **KV-cache utilization > 0.9 (~90%)** (`vllm:kv_cache_usage_perc`, 0.0–1.0) = near-full — GPU
+  memory is nearly full and requests may be **preempted or rejected**. (This is cache
+  *occupancy*, not the *hit rate* above.)
+- **Non-zero waiting/queued requests** (`vllm:num_requests_waiting`) = pods are **saturated** —
+  the primary autoscaling signal; a rising value means admission queueing.
+- *(optional)* **error rate > 5%** (`llm_d_epp_request_error_total`, per flow-id/priority) =
+  backend failures worth alerting on.
+
 This monitoring is about **metrics** (Prometheus time-series). It is *separate* from
 **distributed tracing** (per-request OpenTelemetry spans), which the next section covers — and
 which the benchmark can only **configure**, never collect.
@@ -183,7 +201,7 @@ the limitation first, because it shapes everything you tell the user:
 > analyze traces — there is no tracing data in the **Benchmark Report**. *Collection is the
 > user's own external OTel backend.*
 > (Source: `llm-d-benchmark/docs/observability.md` → "Distributed Tracing"; backend setup is
-> `llm-d/docs/resources/observability/tracing.md` — OTel Collector + Jaeger.)
+> `llm-d/docs/operations/observability/tracing.md` — OTel Collector + Jaeger.)
 
 So be explicit with the user: **the agent cannot SHOW traces.** Authoring this block makes the
 pods *emit* spans; the user views them in their **own** Jaeger/Tempo UI. Without a reachable

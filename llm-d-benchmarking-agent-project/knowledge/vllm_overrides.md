@@ -90,9 +90,19 @@ For prefill/decode **disaggregation** and **prefix-cache-aware routing**:
 - `vllmCommon.kvTransfer.enabled: true` + `.connector` (e.g. `NixlConnector`) + `.role`
   (`kv_both`/`kv_producer`/`kv_consumer`) — wires the cross-pod KV cache transfer. Set this
   when the user wants P/D disaggregation benefits in the numbers.
-- `vllmCommon.kvEvents.enabled: true` (+ `.publisher`, `.port`, `.topicPrefix`) — emits KV
-  cache events so the router can do precise prefix-cache-aware routing. Pair with a routing
-  connector that consumes them.
+  - `vllmCommon.kvTransfer.extraConfig` is rendered into `kv_connector_extra_config` inside the
+    generated `--kv-transfer-config` JSON — this is the knob for **`guides/tiered-prefix-cache`**
+    CPU/disk **offloading** (connector `OffloadingConnector`, `kv_role: kv_both`, with
+    `{num_cpu_blocks, cpu_bytes_to_use}`). Grounded in
+    `config/scenarios/guides/tiered-prefix-cache.yaml` (it renders
+    `--kv-transfer-config '{"kv_connector":"OffloadingConnector","kv_role":"kv_both","kv_connector_extra_config":{"cpu_bytes_to_use":$(CPU_BYTES_TO_USE)}}'`).
+- `vllmCommon.kvEvents.enabled: true` (+ `.publisher`, `.port`, `.topicPrefix`) — renders the
+  `--kv-events-config` flag on the `vllm serve` command (defaults `publisher: zmq`, `port: 5557`,
+  `topicPrefix: kv` per `config/templates/values/defaults.yaml`), emitting KV-cache events so the
+  router can do precise prefix-cache-aware routing. This is what the
+  **`guides/precise-prefix-cache-routing`** scenario turns on (read
+  `config/scenarios/guides/precise-prefix-cache-routing.yaml`). Pair with a routing connector
+  that consumes them.
 These only matter on a real multi-pod stack; on the single-pod kind/CPU-sim quickstart they
 add config noise without changing the measurement — don't set them there.
 

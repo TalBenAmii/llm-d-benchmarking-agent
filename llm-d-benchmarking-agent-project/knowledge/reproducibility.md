@@ -13,6 +13,13 @@ result reproducible and shareable:
 This is judgment for WHEN and HOW; the Python is pure mechanism (it captures, hashes, renders, and
 refuses an invalid report — it makes no decision).
 
+> **Upstream provenance, for grounding.** The bench repo's own `docs/reproducibility.md` says that
+> everything collected under `LLMDBENCH_CONTROL_WORK_DIR` — `environment/variables` (all applied
+> `LLMDBENCH_*` params), `setup/` yamls, results, workload/profiles, analysis — is sufficient for
+> someone else to reproduce the run with the same parameters. The agent's bundle captures the same
+> provenance (repo SHAs + the resolved run-config + an env snapshot), so a user can regenerate the
+> run without needing that work-dir.
+
 ## When to OFFER a bundle
 
 Offer one **after** you've parsed and analyzed a run the user cares about — a baseline they'll

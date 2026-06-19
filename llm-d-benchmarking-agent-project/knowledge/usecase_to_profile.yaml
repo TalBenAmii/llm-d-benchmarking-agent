@@ -28,25 +28,39 @@ use_cases:
     description: Retrieval-augmented, long shared prefixes; benefits from prefix caching.
     prefer_harness: inference-perf
     candidate_workloads: [shared_prefix_synthetic.yaml, shared_prefix_multi_turn_chat.yaml]
-    emphasize_metrics: [ttft, throughput]
+    emphasize_metrics: [ttft, total_token_rate]
 
   summarization_batch:
     description: Long inputs, throughput-oriented, latency-tolerant.
     prefer_harness: inference-perf
     candidate_workloads: [summarization_synthetic.yaml]
-    emphasize_metrics: [throughput, total_token_rate]
+    emphasize_metrics: [output_token_rate, total_token_rate]
 
   throughput_discovery:
-    description: "Find max sustainable throughput / sweep load."
+    description: "Find max sustainable throughput / sweep load (incl. bursty / autoscaling)."
     prefer_harness: guidellm
-    candidate_workloads: [shared_prefix_synthetic.yaml, chatbot_synthetic.yaml]
+    candidate_workloads: [shared_prefix_synthetic.yaml, chatbot_synthetic.yaml, guide_workload-autoscaling_1.yaml]
     emphasize_metrics: [total_token_rate, request_rate]
 
   smoke_or_sanity:
     description: Quick correctness/plumbing check (the quickstart default).
     prefer_harness: inference-perf
     candidate_workloads: [sanity_random.yaml]
-    emphasize_metrics: [success_rate, ttft]
+    emphasize_metrics: [success_rate_pct, ttft]
+
+  agentic:
+    description: Long multi-turn, tool-using agentic programs; huge shared/system prefix,
+      deep sessions, bursty arrivals — cache hit rate (not FLOPs) sets throughput.
+    prefer_harness: inference-perf
+    candidate_workloads: [agentic_code_generation.yaml, otel_traces.yaml]
+    emphasize_metrics: [ttft, total_token_rate, request_latency]
+
+  multimodal:
+    description: Image+text (multimodal) serving — text+image chat with multimodal
+      prefix-/load-aware routing.
+    prefer_harness: inference-perf
+    candidate_workloads: [guide_multimodal-serving_1.yaml]
+    emphasize_metrics: [ttft, request_latency, total_token_rate]
 
 # Translating scale words to load shape (advisory; the workload profile defines actual rates):
 concurrency_hints:

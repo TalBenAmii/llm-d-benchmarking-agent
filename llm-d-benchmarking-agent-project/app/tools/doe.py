@@ -28,7 +28,7 @@ from app.validation.doe import DoEError, build_doe_experiment
 # files (see ``_reference_structure``): each runtime treatment is a mapping carrying a
 # ``name`` plus one-or-more dotted-key overrides. We re-derive this from the repo at runtime
 # rather than hardcoding it, so it can't drift from the upstream format.
-_EXPERIMENTS_SUBDIR = ("workload", "experiments")
+_EXPERIMENTS_SUBDIR = ("experiments",)
 
 
 def _reference_structure(bench_repo: Path) -> dict[str, Any]:
