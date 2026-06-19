@@ -1169,9 +1169,60 @@ PROVISION_HF_SECRET = Flow(
 )
 
 
+INSPECT_WORKLOAD_PROFILE = Flow(
+    name="inspect-workload-profile",
+    title="preview what a workload profile actually sends",
+    description="The workload-preview path: before running, the user wants to see what a named "
+                "workload profile actually sends (token shape, load shape, dataset source). The "
+                "agent reads the on-disk profile with inspect_workload_profile (read-only; "
+                "auto-runs) and explains it — no run is started. Scored on choosing "
+                "inspect_workload_profile.",
+    repo_state="present_with_venv",
+    mock_user_input="Before I run anything, can you show me what the inference-perf "
+                    "chatbot_synthetic workload actually sends — the input/output token lengths "
+                    "and the request rate it ramps through? I don't want to kick off a benchmark "
+                    "yet, just preview it.",
+    turns=[
+        _turn("Reading the chatbot_synthetic profile off disk so I can show you exactly what it "
+              "sends before we run anything.",
+              _tc("inspect_workload_profile", workload="chatbot_synthetic.yaml",
+                  harness="inference-perf")),
+        _turn("That profile sends synthetic prompts (mean ~4096 input / ~1024 output tokens) and "
+              "ramps the request rate through 1→2→4→8 req/s over four 120s stages — all read "
+              "straight from the profile YAML. Want me to estimate how long that run would take, "
+              "or go ahead and run it?"),
+    ],
+    required_tools=["inspect_workload_profile"],
+)
+
+ESTIMATE_RUN_DURATION = Flow(
+    name="estimate-run-duration",
+    title="estimate how long a workload run will take",
+    description="The pre-run wall-clock estimate path: the user asks roughly how long a workload "
+                "would take before committing to it. The agent reads the same profile and returns "
+                "a clearly-labeled HEURISTIC estimate with estimate_run_duration (read-only; "
+                "auto-runs) — stating its assumption, never a fabricated number. Scored on "
+                "choosing estimate_run_duration.",
+    repo_state="present_with_venv",
+    mock_user_input="Roughly how long would the inference-perf chatbot_synthetic benchmark take "
+                    "to run? I want a ballpark wall-clock estimate before I commit to it.",
+    turns=[
+        _turn("Estimating the wall-clock from the profile's configured load stages (approximate; "
+              "excludes standup/teardown).",
+              _tc("estimate_run_duration", workload="chatbot_synthetic.yaml",
+                  harness="inference-perf")),
+        _turn("The four sweep stages run 120s each, so the benchmark itself is roughly 8 minutes "
+              "of wall-clock — a heuristic from the profile's stage durations, not counting "
+              "standup/warmup/teardown. Want me to start it?"),
+    ],
+    required_tools=["estimate_run_duration"],
+)
+
+
 FEATURE_FLOWS = [
     ADVISE_ACCELERATORS, AGGREGATE_REPEATS, DISCOVER_STACK,
     CONVERT_GUIDE, WRITE_VALIDATE_CONFIG, PROVISION_HF_SECRET,
+    INSPECT_WORKLOAD_PROFILE, ESTIMATE_RUN_DURATION,
 ]
 
 

@@ -42,6 +42,7 @@ from app.tools import (
     reproducibility,
     resilience,
     shell,
+    workload_profile,
 )
 from app.tools.context import ToolContext
 from app.tools.schemas import (
@@ -57,10 +58,12 @@ from app.tools.schemas import (
     ConvertGuideInput,
     DiscoverStackInput,
     EnsureReposInput,
+    EstimateRunDurationInput,
     ExecuteInput,
     ExportRunBundleInput,
     FetchKeyDocsInput,
     GenerateDoeInput,
+    InspectWorkloadProfileInput,
     ListCatalogInput,
     LocateReportInput,
     ObserveRunMetricsInput,
@@ -102,6 +105,31 @@ _DESCRIPTIONS = {
         "Enumerate the valid specs, harnesses, workload profiles, and scenarios that "
         "actually exist in the llm-d-benchmark repo on disk. Use this to ground every "
         "choice — never invent a spec/harness/workload name."
+    ),
+    "inspect_workload_profile": (
+        "PREVIEW what a workload profile actually SENDS, before running it, so a non-expert "
+        "can see what they're about to benchmark. Read-only; auto-runs. Pass the profile name "
+        "as the agent uses it (e.g. 'chatbot_synthetic.yaml', 'guide_pd-disaggregation_1.yaml') "
+        "and an optional harness (omitted = search every harness dir, inference-perf first). It "
+        "locates the profile under the read-only benchmark repo's workload/profiles/<harness>/, "
+        "parses the YAML, and returns a NORMALIZED, AUDITABLE factual summary across the differing "
+        "harness layouts: token shape (input/output length distribution; shared/system-prefix "
+        "reuse), load shape (request rate/concurrency/QPS, sweep stages, per-stage + total "
+        "duration), and the prompt/dataset source (synthetic vs a staged dataset, and whether one "
+        "is required) — each field tagged with the raw key it came from (`_from`). On a name that "
+        "doesn't exist it returns an error listing the profiles that DO exist for that harness "
+        "(via list_catalog's enumeration). FACTS ONLY — WHICH workload to pick is your judgment; "
+        "read_knowledge('welllit_path_advisor')/sweep_playbook, not this tool."
+    ),
+    "estimate_run_duration": (
+        "Rough PRE-RUN wall-clock estimate for a workload profile. Read-only; auto-runs. Reads "
+        "the same profile as inspect_workload_profile and computes a clearly-labeled HEURISTIC "
+        "estimate from the load shape (sum of inference-perf sweep-stage durations; or guidellm "
+        "max_seconds × number of rate stages; or request-count / mean rate), ALWAYS returning the "
+        "`basis`, the stated `assumption`, and `approximate=True` (it excludes standup/warmup/"
+        "teardown). If the profile has no duration/rate/request-count fields it returns "
+        "`estimable=False` and SAYS what's missing rather than inventing a number. The arithmetic "
+        "is all that lives here — whether the duration is acceptable is your judgment, not this tool."
     ),
     "advise_accelerators": (
         "Accelerator / CPU-inferencing PRE-FLIGHT: \"can my hardware actually run this?\" "
@@ -539,6 +567,8 @@ def build_registry(*, unrestricted: bool = False) -> dict[str, ToolSpec]:
     specs = [
         ToolSpec("probe_environment", _DESCRIPTIONS["probe_environment"], ProbeEnvironmentInput, probe.probe_environment),
         ToolSpec("list_catalog", _DESCRIPTIONS["list_catalog"], ListCatalogInput, probe.list_catalog),
+        ToolSpec("inspect_workload_profile", _DESCRIPTIONS["inspect_workload_profile"], InspectWorkloadProfileInput, workload_profile.inspect_workload_profile),
+        ToolSpec("estimate_run_duration", _DESCRIPTIONS["estimate_run_duration"], EstimateRunDurationInput, workload_profile.estimate_run_duration),
         ToolSpec("advise_accelerators", _DESCRIPTIONS["advise_accelerators"], AdviseAcceleratorsInput, probe.advise_accelerators),
         ToolSpec("read_knowledge", _DESCRIPTIONS["read_knowledge"], ReadKnowledgeInput, knowledge_access.read_knowledge),
         ToolSpec("search_knowledge", _DESCRIPTIONS["search_knowledge"], SearchKnowledgeInput, knowledge_access.search_knowledge),
