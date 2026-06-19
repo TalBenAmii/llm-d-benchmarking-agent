@@ -163,6 +163,16 @@ class Settings(BaseSettings):
     # CHAOS_ENABLED=true to allow a resilience drill.
     chaos_enabled: bool = False
 
+    # ---- Unrestricted shell tool (opt-in, allowlist-bypassing) ------------
+    # Gate for the dedicated `run_shell` tool, which runs ARBITRARY commands through a real
+    # `bash -lc` and BYPASSES the deny-by-default command allowlist. OFF by default: with it
+    # unset NOTHING changes (the tool is not even registered). When ON, the human-approval flow
+    # is still preserved — a heuristic classifies each command read-only (auto-run) vs
+    # mutating/unknown (parks for the user's Approve/Decline) before it executes. This is a
+    # power-user escape hatch for hosts you control; main.py logs a loud WARNING at startup when
+    # it is set. Set UNRESTRICTED_TOOLS=1 to enable it.
+    unrestricted_tools: bool = False
+
     # ---- Workspace lifecycle (Phase 18): retention/GC caps + startup self-check ----------
     # Bound the unbounded growth of per-session/run scratch and the history store. These are
     # DATA (the caps); the GC walk + counter in app/storage/retention.py is the MECHANISM —

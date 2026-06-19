@@ -77,6 +77,14 @@ async def lifespan(app: FastAPI):
     if settings.rate_limit_enabled:
         log.info("ratelimit.enabled", extra={"rps": settings.rate_limit_rps, "burst": settings.rate_limit_burst})
     app.state.allowlist = Allowlist.from_file(settings.allowlist_path)
+    # Unrestricted-tools mode (opt-in): the `run_shell` tool runs arbitrary `bash -lc` commands,
+    # bypassing the allowlist (human approval is still enforced for mutating/unknown commands).
+    # Announce it loudly at startup so it can never be on by accident.
+    if settings.unrestricted_tools:
+        log.warning(
+            "unrestricted_tools.enabled — the command allowlist is BYPASSED for the run_shell "
+            "tool (arbitrary `bash -lc`); mutating/unknown commands still require user approval"
+        )
     runner_cls = SimRunner if settings.simulate else CommandRunner
     app.state.runner = runner_cls(settings.repo_paths, extra_env=settings.extra_subprocess_env)
     # Cross-session cap on concurrent heavy runs (None = unlimited).

@@ -123,6 +123,16 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
 """
 
 
+UNRESTRICTED_TOOLS_NOTE = """\
+UNRESTRICTED TOOLS ARE ENABLED — you ALSO have a `run_shell(command)` tool that runs an
+ARBITRARY shell command verbatim via `bash -lc` (pipes, redirects, globs all work), bypassing
+the command allowlist. Use it only when no dedicated tool and no allowlisted run_command argv
+fits. The approval flow still applies: read-only commands auto-run, but anything that writes or
+mutates state requires the user's Approve — so just CALL run_shell and let the card collect the
+decision; never ask in prose.\
+"""
+
+
 SIMULATE_NOTE = """\
 SIMULATE MODE IS ON — this is a DRY SIMULATION. No command has any real effect: every
 command (probe/standup/smoketest/run/teardown, install scripts, git, kind, kubectl, …)
@@ -187,6 +197,9 @@ def build_system_prompt(ctx: ToolContext) -> str:
     parts = [ROLE, HARD_RULES]
     parts.extend(_knowledge_sections(ctx))
     parts.append(CATALOG_POINTER)
+    # Config-stable (constant for the whole process), so it does not perturb prefix caching.
+    if ctx.settings.unrestricted_tools:
+        parts.append(UNRESTRICTED_TOOLS_NOTE)
     if ctx.settings.simulate:
         parts.append(SIMULATE_NOTE)
     return "\n\n".join(parts)
