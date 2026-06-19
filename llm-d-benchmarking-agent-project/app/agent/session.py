@@ -65,6 +65,9 @@ def _effective_namespace(data: dict[str, Any]) -> str | None:
 
 # Keep the executed-command trail bounded so a long session's snapshot stays small.
 _COMMANDS_MAX = 500
+# Renderable tool results are richer than command rows (a full report summary + chart paths),
+# so bound them more tightly. A chat rarely produces more than a handful of card-bearing runs.
+_CARD_RESULTS_MAX = 100
 
 
 @dataclass
@@ -87,6 +90,13 @@ class Session:
     # replayed in its transcript position on reconnect — not just while the in-memory Channel
     # happens to be alive. Keyed to its tool call (like ``approvals``) for ordered replay.
     in_flight_approvals: list[dict[str, Any]] = field(default_factory=list)
+    # Full structured results of the tools whose result renders a rich UI card (the report
+    # summary + its clickable charts, the Pareto/comparison/env/etc. cards). NOT part of the
+    # LLM message stream — the LLM-facing copy in ``messages`` is budget-clamped (loop.py), so
+    # the un-truncated result the renderer needs is stored here separately, keyed to its tool
+    # call (like ``commands``/``approvals``) so a resumed chat can replay the card in its
+    # transcript position. Bounded to the most recent _CARD_RESULTS_MAX entries.
+    card_results: list[dict[str, Any]] = field(default_factory=list)
     title: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -140,6 +150,11 @@ class Session:
         if len(self.approvals) > _COMMANDS_MAX:
             del self.approvals[: len(self.approvals) - _COMMANDS_MAX]
 
+    def record_card_result(self, entry: dict[str, Any]) -> None:
+        self.card_results.append(entry)
+        if len(self.card_results) > _CARD_RESULTS_MAX:
+            del self.card_results[: len(self.card_results) - _CARD_RESULTS_MAX]
+
     def record_in_flight_approval(self, entry: dict[str, Any]) -> None:
         """Track a still-undecided approval gate (by ``request_id``). Idempotent — a re-emit of
         the same gate does not duplicate the entry."""
@@ -174,6 +189,7 @@ class Session:
                         "commands": self.commands[-_COMMANDS_MAX:],
                         "approvals": self.approvals[-_COMMANDS_MAX:],
                         "in_flight_approvals": self.in_flight_approvals,
+                        "card_results": self.card_results[-_CARD_RESULTS_MAX:],
                         "total_input_tokens": self.total_input_tokens,
                         "total_output_tokens": self.total_output_tokens,
                         "total_cache_read_tokens": self.total_cache_read_tokens,
@@ -255,6 +271,9 @@ class SessionManager:
             commands=data.get("commands", []),
             approvals=data.get("approvals", []),
             in_flight_approvals=data.get("in_flight_approvals", []),
+            # Default []: a pre-feature snapshot has no stored card results, so a resumed chat
+            # simply shows no cards for past runs (it never crashes); new runs persist them.
+            card_results=data.get("card_results", []),
             title=data.get("title", ""),
             created_at=data.get("created_at") or time.time(),
             updated_at=data.get("updated_at") or time.time(),

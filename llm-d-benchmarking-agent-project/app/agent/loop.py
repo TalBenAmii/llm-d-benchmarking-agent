@@ -24,6 +24,18 @@ log = logging.getLogger("app.agent.loop")
 MAX_STEPS = 24
 _TOOL_RESULT_BUDGET = 6_000  # chars of a tool result fed back to the model
 
+# Tools whose FULL result the UI re-renders as a rich card (report summary + clickable charts,
+# Pareto/comparison/env/capacity/etc.). Their un-clamped result is persisted to
+# ``session.card_results`` so a resumed/reloaded chat replays the card in its transcript
+# position — the LLM-facing copy in ``messages`` is budget-clamped and unusable for rendering.
+# Keep this in lock-step with the dispatch in ui/app.js `renderToolResultCards`.
+CARD_RESULT_TOOLS = frozenset({
+    "locate_and_parse_report", "analyze_results", "compare_reports", "compare_harness_runs",
+    "probe_environment", "check_capacity", "check_endpoint_readiness", "advise_accelerators",
+    "generate_doe_experiment", "orchestrate_benchmark_run", "run_resilience_drill",
+    "autotune_search", "export_run_bundle",
+})
+
 EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 ApproveFn = Callable[[str, dict[str, Any]], Awaitable[bool]]
 # Optional caller-supplied predicate the loop polls between steps to decide whether the
@@ -244,6 +256,13 @@ class AgentLoop:
                             "ok": not (isinstance(result, dict) and ("error" in result or result.get("rejected"))),
                         })
                         await emit(events.TOOL_RESULT, {"id": tc.id, "name": tc.name, "result": result})
+                        # Persist the full result of card-rendering tools (keyed to this tool
+                        # call) so a resumed/reloaded chat can replay the report summary + its
+                        # clickable charts in place — the budget-clamped LLM copy below can't
+                        # drive the renderer. _history_items interleaves these on resume.
+                        if tc.name in CARD_RESULT_TOOLS:
+                            session.record_card_result(
+                                {"tool_call_id": tc.id, "name": tc.name, "result": result})
                         # Deterministic structured results card (B2): right after an analyze_results
                         # tool result, emit a consistent card carrying the analyzer's exact SLO/Pareto
                         # verdicts (not free-form prose). The single-run report's metrics + charts are

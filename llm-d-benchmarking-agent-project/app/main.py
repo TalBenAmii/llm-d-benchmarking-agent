@@ -21,6 +21,7 @@ from app.agent import events as ws_events
 from app.agent.channel import Channel
 from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
+from app.agent.results_card import build_results_card
 from app.agent.session import SessionManager
 from app.agent.suggestions import load_suggestions
 from app.agent.welcome import build_welcome
@@ -349,6 +350,9 @@ def _history_items(session) -> list[dict[str, Any]]:
     commands_by_tc: dict[str | None, list[dict[str, Any]]] = {}
     for c in getattr(session, "commands", []) or []:
         commands_by_tc.setdefault(c.get("tool_call_id"), []).append(c)
+    card_results_by_tc: dict[str | None, list[dict[str, Any]]] = {}
+    for cr in getattr(session, "card_results", []) or []:
+        card_results_by_tc.setdefault(cr.get("tool_call_id"), []).append(cr)
 
     def _command_item(c: dict[str, Any]) -> dict[str, Any]:
         return {"role": "command", "text": c.get("text"), "argv": c.get("argv"),
@@ -390,6 +394,10 @@ def _history_items(session) -> list[dict[str, Any]]:
                 # The commands this tool call ran fire after its approval (mirroring live order).
                 for c in commands_by_tc.get(tc_id, []):
                     items.append(_command_item(c))
+                # Then its renderable result — the report summary + clickable charts, etc. — so
+                # the rich card is replayed in place (live order: tool_result, then results_card).
+                for cr in card_results_by_tc.get(tc_id, []):
+                    items.extend(_card_result_items(cr))
                 rendered_tcs.add(tc_id)
     # Don't lose commands whose owning tool call fell out of the replayed messages (compaction).
     for tc_id, cmds in commands_by_tc.items():
@@ -397,7 +405,26 @@ def _history_items(session) -> list[dict[str, Any]]:
             continue
         for c in cmds:
             items.append(_command_item(c))
+    # Likewise for card results whose owning tool call was compacted away — append at the end so
+    # the report card is never silently dropped from a long, compacted transcript.
+    for tc_id, crs in card_results_by_tc.items():
+        if tc_id in rendered_tcs:
+            continue
+        for cr in crs:
+            items.extend(_card_result_items(cr))
     return items
+
+
+def _card_result_items(cr: dict[str, Any]) -> list[dict[str, Any]]:
+    """Render items for one persisted card result: the ``tool_result`` (drives the report /
+    analysis / env / etc. card) plus, when the analyzer produced one, the deterministic
+    ``results_card`` — re-derived from the same result, exactly as the live stream emits it."""
+    name, result = cr.get("name"), cr.get("result")
+    out: list[dict[str, Any]] = [{"role": "tool_result", "name": name, "result": result}]
+    card = build_results_card(name, result)
+    if card is not None:
+        out.append({"role": "results_card", "card": card})
+    return out
 
 
 # Per-run chart images (e.g. the latency/throughput PNGs inference-perf renders into a

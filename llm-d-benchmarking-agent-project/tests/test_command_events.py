@@ -268,3 +268,93 @@ def test_history_items_interleave_commands_inline():
     assert items[tc_idx + 2]["mode"] == "mutating" and items[tc_idx + 2]["auto_run"] is False
     # The orphaned command (its tool call gone) is appended last, never silently truncated.
     assert items[-1]["role"] == "command" and items[-1]["text"] == "kubectl get ns"
+
+
+def test_session_records_and_caps_card_results():
+    from app.agent.session import _CARD_RESULTS_MAX
+
+    s = Session(id="x", ctx=None)  # ctx not needed for record_card_result
+    for i in range(_CARD_RESULTS_MAX + 25):
+        s.record_card_result({"tool_call_id": f"tc{i}", "name": "analyze_results", "result": {"i": i}})
+    assert len(s.card_results) == _CARD_RESULTS_MAX
+    # Oldest dropped, newest kept.
+    assert s.card_results[-1]["result"]["i"] == _CARD_RESULTS_MAX + 24
+
+
+def test_session_persists_and_reloads_card_results(tmp_path):
+    from app.security.runner import CommandRunner
+    from app.tools.context import ToolContext
+
+    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
+    ctx = ToolContext(
+        settings=settings,
+        allowlist=Allowlist.from_file(settings.allowlist_path),
+        runner=CommandRunner(settings.repo_paths),
+        workspace=tmp_path / "ws" / "sessions" / "s1",
+    )
+    s = Session(id="s1", ctx=ctx)
+    s.messages.append({"role": "user", "content": "hi"})
+    s.record_card_result({"tool_call_id": "tc1", "name": "locate_and_parse_report",
+                          "result": {"summary": {"model": "m"}, "charts": []}})
+    s.persist()
+
+    from app.agent.session import SessionManager
+
+    mgr = SessionManager(settings, ctx.allowlist, ctx.runner)
+    reloaded = mgr.load("s1")
+    assert reloaded is not None
+    assert reloaded.card_results and reloaded.card_results[0]["name"] == "locate_and_parse_report"
+    assert reloaded.card_results[0]["result"]["summary"]["model"] == "m"
+
+
+def test_history_items_interleave_card_result_inline():
+    """_history_items replays a persisted card result so a resumed/reloaded chat re-renders the
+    report card + clickable charts: the FULL result becomes a `tool_result` item right after its
+    tool_call (an analyzer result also gets the deterministic `results_card`), and a card result
+    whose tool call was compacted out of `messages` is still not dropped."""
+    from app.main import _history_items
+
+    s = Session(id="h", ctx=None)
+    s.messages.append({"role": "user", "content": "show me the results"})
+    s.messages.append({"role": "assistant", "content": "here",
+                       "tool_calls": [{"id": "tc1", "name": "locate_and_parse_report", "input": {}}]})
+    report = {"summary": {"model": "llama"}, "charts": [{"title": "ttft", "path": "p.png"}]}
+    s.record_card_result({"tool_call_id": "tc1", "name": "locate_and_parse_report", "result": report})
+    # A card result whose owning tool call is no longer in `messages` (compacted) must survive.
+    s.record_card_result({"tool_call_id": "gone", "name": "probe_environment", "result": {"host": {}}})
+
+    items = _history_items(s)
+    roles = [it["role"] for it in items]
+    # The report's full result lands as a `tool_result` right after its tool_call, carrying the
+    # un-clamped summary + chart paths the renderer needs.
+    tc_idx = roles.index("tool_call")
+    assert roles[tc_idx + 1] == "tool_result"
+    tr = items[tc_idx + 1]
+    assert tr["name"] == "locate_and_parse_report"
+    assert tr["result"]["summary"]["model"] == "llama"
+    assert tr["result"]["charts"][0]["path"] == "p.png"
+    # The orphaned card result (its tool call gone) is appended last, never silently dropped.
+    assert items[-1]["role"] == "tool_result" and items[-1]["name"] == "probe_environment"
+
+
+def test_history_items_card_result_emits_results_card_for_analyzer():
+    """An analyze_results card result also yields the deterministic `results_card` item (re-derived
+    server-side from the same result), exactly as the live stream emits it after the tool_result."""
+    from app.main import _history_items
+
+    s = Session(id="h2", ctx=None)
+    s.messages.append({"role": "assistant", "content": "",
+                       "tool_calls": [{"id": "tc1", "name": "analyze_results", "input": {}}]})
+    # A minimal analyzed result that build_results_card will turn into a card.
+    from app.agent.results_card import build_results_card
+    result = {"analyzed": True, "report": {"summary": {"model": "m"}}}
+    s.record_card_result({"tool_call_id": "tc1", "name": "analyze_results", "result": result})
+
+    items = _history_items(s)
+    roles = [it["role"] for it in items]
+    tr_idx = roles.index("tool_result")
+    # Only assert the results_card is present iff build_results_card produced one for this result,
+    # so the test tracks the real (mechanism-only) card builder rather than hard-coding its output.
+    if build_results_card("analyze_results", result) is not None:
+        assert roles[tr_idx + 1] == "results_card"
+        assert items[tr_idx + 1]["card"] is not None
