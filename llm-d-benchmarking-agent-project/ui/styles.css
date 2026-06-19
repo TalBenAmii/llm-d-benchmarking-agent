@@ -109,7 +109,13 @@ body {
     width: 0; min-width: 0; border-right-color: transparent; overflow: hidden;
   }
 }
-.sidebar-head { padding: 14px 12px 8px; }
+/* Brand block at the top of the sidebar (moved out of the header): hexagon mark + the app name
+   on two lines, aligned beside the icon. Reuses the global .logo stroke colours. */
+.sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 14px 16px 6px; }
+.sidebar-brand-text { display: flex; flex-direction: column; line-height: 1.12; min-width: 0; }
+.sb-name { font: 700 15px/1.15 var(--serif); letter-spacing: -.01em; color: var(--text); }
+.sb-sub { font: 500 11.5px/1.15 var(--serif); color: var(--muted); white-space: nowrap; }
+.sidebar-head { padding: 8px 12px 8px; }
 .new-chat {
   width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
   background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
@@ -288,11 +294,13 @@ header::after { /* brand accent hairline */
   background: linear-gradient(90deg, var(--brand-purple), var(--brand-purple-bright) 45%, transparent 80%);
   opacity: .9;
 }
-.brand { display: flex; gap: 13px; align-items: center; }
+.brand { display: flex; gap: 12px; align-items: center; min-width: 0; }
 .logo { display: inline-flex; line-height: 0; filter: drop-shadow(0 2px 6px rgba(127,49,127,.35)); }
 .logo .hx-p { stroke: var(--brand-purple-bright); }
 .logo .hx-g { stroke: #8c8c96; }
-header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+/* The header title is the ACTIVE conversation's title now — ellipsize when long. */
+header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin: 0;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; font-weight: 400; }
 
 .header-actions { display: flex; align-items: center; gap: 10px; }
@@ -475,8 +483,9 @@ h5.md-h { font-size: 13.5px; }
 
 /* ── Tool call (collapsible) ──────────────────────────────────────────── */
 .tool {
-  border: 1px solid var(--border); border-radius: var(--radius); margin: 0 0 14px;
-  background: var(--panel-2); overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius); margin: 0 0 14px;
+  background: color-mix(in srgb, var(--panel-2) 55%, var(--bg)); overflow: hidden;   /* quieter, recedes behind the chat */
 }
 .tool > summary {
   cursor: pointer; padding: 10px 15px; font-size: 13px; color: var(--muted);
@@ -489,6 +498,14 @@ h5.md-h { font-size: 13.5px; }
 .tool[open] > summary::before { transform: rotate(90deg); }
 .tool .tname { color: var(--accent); font-family: var(--mono); font-weight: 600; }
 .tool .body { padding: 0 15px 13px; }
+/* Right-aligned status meta on the collapsed tool row: a read-only/mutating badge + run time. */
+.tool .tool-status { margin-left: auto; font-size: 12px; color: var(--faint); }
+.tool .tool-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+.tool .tool-meta .badge {
+  font: 600 9.5px/1 var(--mono); padding: 2px 7px; border-radius: 999px; border: 1px solid;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.tool .tool-dur { font: 11px var(--mono); color: var(--faint); }
 
 pre.console {
   background: var(--code-bg); border: 1px solid var(--border); border-radius: 9px;
@@ -610,6 +627,10 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
   background: var(--panel); padding: 14px 18px; box-shadow: var(--shadow);
 }
 .results-head { font: 600 14px/1.4 var(--serif); color: var(--text); margin-bottom: 8px; }
+/* Header row: title on the left, a quiet "v0.2 · validated" schema tag on the right. */
+.results-head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.results-head-row .results-head { margin-bottom: 0; }
+.results-schema { font: 500 11px/1 var(--mono); color: var(--faint); white-space: nowrap; flex: none; }
 /* Hover-reveal "Copy summary" button on a results card (markdown to clipboard). */
 .card-copy {
   position: absolute; top: 12px; right: 14px; z-index: 1;

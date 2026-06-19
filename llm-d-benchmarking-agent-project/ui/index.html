@@ -29,6 +29,23 @@
 </head>
 <body>
   <aside id="sidebar" class="sidebar">
+    <!-- Brand moved here from the header (the header now shows the active conversation's title).
+         Hexagon mark + the app name on two lines, aligned beside the icon. -->
+    <div class="sidebar-brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 30 32" width="29" height="31" role="img" aria-label="llm-d">
+          <g fill="none" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
+            <path class="hx-p" d="M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z" />
+            <path class="hx-g" d="M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z" />
+            <path class="hx-p" d="M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z" />
+          </g>
+        </svg>
+      </span>
+      <span class="sidebar-brand-text">
+        <span class="sb-name">llm-d</span>
+        <span class="sb-sub">Benchmarking Assistant</span>
+      </span>
+    </div>
     <div class="sidebar-head">
       <button id="new-chat" class="new-chat" type="button"><span aria-hidden="true">+</span> New chat</button>
     </div>
@@ -68,18 +85,9 @@
           <line x1="9.5" y1="3" x2="9.5" y2="21" />
         </svg>
       </button>
-      <span class="logo" aria-hidden="true">
-        <svg viewBox="0 0 30 32" width="34" height="36" role="img" aria-label="llm-d">
-          <g fill="none" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
-            <path class="hx-p" d="M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z" />
-            <path class="hx-g" d="M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z" />
-            <path class="hx-p" d="M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z" />
-          </g>
-        </svg>
-      </span>
-      <div>
-        <h1>llm-d Benchmarking Assistant</h1>
-      </div>
+      <!-- The header now shows the ACTIVE conversation's title (set by app.js); the brand mark/name
+           lives in the sidebar. Falls back to "New chat" before a title exists. -->
+      <h1 id="header-title">New chat</h1>
     </div>
     <div class="header-actions">
       <button id="builder-toggle" type="button" class="icon-btn" title="Design a benchmark — guided builder" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span></button>
