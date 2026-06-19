@@ -101,6 +101,11 @@ without touching a cluster. Default `0` (real execution).
 - **North star / design** → `llm-d-benchmarking-agent-proposal.md`, `plan.md`, `ROADMAP_V4.md`.
 - **Agent brain** — `knowledge/*.md|*.yaml` hold all *judgment* (loaded at runtime; not docs to edit
   casually). See `knowledge/CLAUDE.md` before editing them.
+- **Domain glossary** → `CONTEXT.md` (project root): the canonical names for domain concepts (spec,
+  harness, workload, SessionPlan, goodput, dead-letter, …) + the wrong words to avoid. Use these terms
+  exactly; update it the moment a term is coined/sharpened (the `domain-modeling` skill maintains it).
+  For *architecture/refactor* vocabulary (module, interface, depth, seam, adapter, leverage, locality)
+  + finding refactor candidates, use the `codebase-design` / `improve-codebase-architecture` skills.
 
 ## Working in a worktree + running the suite (recurring setup — DON'T re-derive each task)
 Established facts; reuse them instead of re-investigating every session (the `tests/CLAUDE.md`
