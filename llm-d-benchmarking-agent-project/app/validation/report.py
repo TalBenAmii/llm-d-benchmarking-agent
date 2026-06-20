@@ -54,12 +54,25 @@ _PCTL_KEYS = (
 
 
 def load_report(path: str | Path) -> dict[str, Any]:
-    """Load a report from a .json or .yaml file."""
+    """Load a report from a .json or .yaml file.
+
+    A present-but-corrupt report (e.g. truncated because a benchmark run was OOM-killed mid-write)
+    must surface as a typed ``ReportError``, NOT a raw ``json.JSONDecodeError``/``yaml.YAMLError``/
+    ``OSError``. Every caller already treats ``ReportError`` as "this report is unusable" — the
+    multi-report tools (``compare_reports``/``analyze_results``) skip it into their ``skipped``
+    channel; the rest surface a clean, actionable message — whereas a raw parse exception escapes
+    the tool as an opaque ``tool '...' raised: ...`` string that names no file. (The earlier
+    corrupt-report hardening covered ``summarize_report``; the parse step runs before it.)
+    """
     p = Path(path)
-    text = p.read_text()
-    if p.suffix in (".yaml", ".yml"):
-        return yaml.load(text, Loader=_StrTimestampLoader)
-    return json.loads(text)
+    try:
+        text = p.read_text()
+        if p.suffix in (".yaml", ".yml"):
+            return yaml.load(text, Loader=_StrTimestampLoader)
+        return json.loads(text)
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        # json.JSONDecodeError is a ValueError subclass; OSError covers read failures.
+        raise ReportError(f"could not read benchmark report at {p}: {exc}") from exc
 
 
 def validate_report(report: dict[str, Any], schema_path: str | Path) -> ReportValidation:

@@ -47,6 +47,10 @@ bugs low/medium; none were crashes of the core flow.
 | 022 | app/storage/autotune.py | non-numeric trial `index` → `TypeError` crashes `load()` (whole autotune log) |
 | 023 | app/orchestrator/job.py | non-numeric Job count (`active`/`succeeded`/`failed`) → `int()` `ValueError` aborts the watch loop |
 | 024 | ui/app.js | `splitTableRow` unmatched backtick left `inCode` stuck → collapsed the rest of a table row into one cell |
+| 025 | ui/app.js | live `streamBubble` not snapshotted per chat → mid-stream chat switch appended deltas into the previous pane |
+| 026 | ui/app.js | approval `resolve` sent on the socket with no `readyState` guard → throws if clicked mid-reconnect |
+| 027 | app/validation/report.py | `load_report` raised raw parse exception → opaque tool error across 6 tools on a corrupt report |
+| 028 | app/tools/probe.py | `probe_environment(spec=…)` followed `..` traversal, parsing an arbitrary YAML file into image_tags |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -234,6 +238,84 @@ unchanged. Suggested hardening if desired: deny a small set of known-dangerous f
   their pipes; a stray backtick is now inert. (node sim: stray-backtick row `["a\` | b | c"]` →
   `["a\`","b","c"]`; the matched-pair `| \`a|b\` | c | d |` case is unchanged.)
 - **Regression test:** `tests/test_ui_frontend.py::test_table_row_split_pairs_backticks`.
+
+---
+
+## Round 6 (2026-06-21) — two fresh parallel hunts (backend tools/validation + new app.js), verified then fixed
+A second app.js hunter and a backend `app/tools/`+`app/validation/` hunter ran in parallel; every lead
+was re-verified against source before fixing (one was debunked, see the non-bug note). 4 fixed (BUG-025–028).
+
+## BUG-025 — live streaming bubble not snapshotted per chat → mid-stream switch writes into the wrong pane
+- **Status:** FIXED
+- **Severity:** medium (a destination chat's assistant reply silently vanishes after a chat switch)
+- **Where:** `ui/app.js` — `streamBubble`/`streamText` are module globals NOT saved in `snapshotActive`
+  / restored in `activate` / initialized in `makeRecord` (every other live-turn global is).
+- **Trigger:** switch away from a chat mid-stream (an `assistant_delta` created `streamBubble`) to another
+  running chat that is a cache-hit (its `ready` carries `resume.incremental=true`, so `clearActivePane()`
+  — the only place that calls `resetStreamBubble()` — is skipped). The destination's next `assistant_delta`
+  / `assistant_text` sees the stale truthy `streamBubble` (a node in the PREVIOUS, now-detached pane) and
+  appends/finalizes there; the destination pane never gets a fresh bubble.
+- **Root cause:** `streamBubble` is per-turn live state but was left out of the per-chat snapshot machinery,
+  so it leaked across switches (same class as BUG-019: turn state not bound to its owner).
+- **Fix:** snapshot/restore `streamBubble`+`streamText` per chat in `makeRecord`/`snapshotActive`/`activate`,
+  exactly like `toolEls`/`turnUsage`. A switch now restores the destination chat's own (or null) bubble;
+  returning to the original chat resumes its in-progress stream into its own node.
+- **Regression test:** `tests/test_ui_frontend.py::test_stream_bubble_is_snapshotted_per_chat`.
+
+## BUG-026 — approval `resolve` sends on the socket with no readyState guard (throws mid-reconnect)
+- **Status:** FIXED
+- **Severity:** low (clicking Approve/Reject during a brief reconnect throws; the click no-ops with no feedback)
+- **Where:** `ui/app.js` `addApprovalCard`'s `resolve` — `ws.send(...)` with no guard / try-catch, unlike
+  `cancelRun`/`sendUserMessage` which both check `ws.readyState === WebSocket.OPEN`.
+- **Trigger:** disconnect (the 1.5s auto-reconnect window) leaves the approval buttons clickable —
+  `setEnabled(false)` only disables the composer, not the card buttons — so clicking Approve/Reject calls
+  `ws.send` on a CLOSING/CLOSED socket → `InvalidStateError`.
+- **Fix:** guard `if (!ws || ws.readyState !== WebSocket.OPEN) return;` at the top of `resolve`, before any
+  state mutation / optimistic "✓ Approved" UI, so the gate stays clickable and the decision can be re-sent
+  once reconnected (mirrors `cancelRun`).
+- **Regression test:** `tests/test_ui_frontend.py::test_approval_resolve_guards_socket_before_send`.
+
+## BUG-027 — `load_report` raised a raw parse exception → opaque tool error across 6 tools
+- **Status:** FIXED
+- **Severity:** medium (a present-but-corrupt report makes 6 tools fail with an opaque `tool '...' raised`)
+- **Where:** `app/validation/report.py::load_report` — `json.loads`/`yaml.load` with NO error handling.
+  Unguarded callers: `compare.py`, `analyze.py`, `multiharness.py`, `reproducibility.py`, `history.py`,
+  `autotune.py`.
+- **Trigger (reproduced end-to-end):** `compare_reports`/`analyze_results`/… on a run dir whose
+  `benchmark_report_v0.2.{json,yaml}` is present but truncated/corrupt (e.g. an OOM-killed run) →
+  `json.JSONDecodeError`/`yaml.YAMLError` (NOT `ReportError`) escapes as `tool '...' raised: ...`. The
+  earlier corrupt-report hardening (BUG-011) covered `summarize_report`; the PARSE step runs before it.
+- **Fix:** harden `load_report` to catch `(OSError, ValueError, yaml.YAMLError)` and `raise ReportError`
+  (names the bad file) — fixes all 6 callers' error message at once. Then route it into the existing
+  `skipped` channel in `compare_reports` + `analyze_results` (`try load_report / except ReportError →
+  skipped`) so one corrupt report is skipped, not fatal for the whole comparison/analysis.
+- **Regression test:** `tests/test_report_validation.py::test_load_report_raises_reporterror_on_corrupt`.
+
+## BUG-028 — `probe_environment(spec=…)` followed `..` traversal out of the scenarios dir
+- **Status:** FIXED
+- **Severity:** low (read-only info disclosure: parse an arbitrary YAML-parseable host file into image_tags)
+- **Where:** `app/tools/probe.py::_parse_image_tags` — `bench_repo/config/scenarios/<spec>.yaml` joined with
+  no containment check; `spec` is a free-form `str | None`.
+- **Trigger:** `probe_environment(checks=["cluster_preconditions"], spec="../../../../etc/hosts")` →
+  the `..` segments escape the scenarios dir and the file is `yaml.safe_load`-ed into `image_tags`.
+- **Fix:** after resolving the path, require `path.resolve().is_relative_to((bench_repo/config/scenarios)
+  .resolve())`, else return `[]` (the same 'unknown' an absent file yields). Read-only, no write/crash.
+- **Regression test:** `tests/test_infra_preconditions.py::test_image_tags_spec_rejects_path_traversal`.
+
+### Verified NON-bug this round (debunked before fixing)
+- **Approval `resolve` calls `startWorking()` instead of `resumeWorking()`** (flagged "resets elapsed + wipes
+  token tally"). NOT a bug: the `approval_request` handler calls `stopWorking()` so the working indicator is
+  HIDDEN during the gate (no visible jump), and the backend emits CUMULATIVE turn usage so the next usage
+  event restores the full tally. `resumeWorking(Date.now()-workStart)` would be WORSE — it would count the
+  user's deliberation time at the gate as agent "working" seconds. `startWorking()` is correct. Left as-is.
+
+### Low-value backend candidates surfaced this round — NOT fixed (queued)
+- `probe_environment(checks=[…all-invalid…])` returns `{}` with no signal the check names were wrong
+  (`probe.py` `wanted=[c for c in checks if c in _ALL_CHECKS]`). Low value (agent supplies valid names);
+  fix would be `return {"error", "valid_checks"}` when `checks` non-empty but `wanted` empty.
+- `autotune_search(action="propose_next_config")` returns `ok:True` for an out-of-bounds candidate when
+  `knobs` is omitted (empty `bounds` → the unknown-key/type checks are skipped). Niche; fix: `if not bounds:
+  return {"ok": False, "reason": "needs the plan's knobs to validate"}`.
 
 ---
 

@@ -166,6 +166,10 @@ function makeRecord(sid) {
     welcomeCard: null, resourceData: null, resourceActive: false,
     workStart: 0, workActivity: null, workWordFixed: false, workWord: "Working", workingHidden: true,
     turnUsage: null,
+    // The live streaming bubble + its accumulated markdown belong to THIS chat's in-flight turn —
+    // snapshot/restore them like the other live-turn state so a mid-stream chat switch can't append
+    // one chat's deltas into another chat's (detached) pane.
+    streamBubble: null, streamText: "",
     lastSeq: 0, running: false, scrollTop: 0,
     pendingApprovals: {}, order: viewClock,
     // Run progress stepper: furthest workflow phase this chat has reached + the one currently
@@ -193,6 +197,7 @@ function snapshotActive() {
   cur.workStart = workStart; cur.workActivity = workActivity; cur.workWordFixed = workWordFixed;
   cur.workWord = workWordEl.textContent; cur.workingHidden = workingEl.hidden;
   cur.turnUsage = turnUsage;
+  cur.streamBubble = streamBubble; cur.streamText = streamText;  // live stream state stays with its chat
   // The executed-command trail now lives inline in the pane DOM, so detaching the pane
   // preserves it byte-for-byte — no separate cmdlog snapshot needed.
   if (cur.pane) { cur.scrollTop = transcript.scrollTop; cur.pane.remove(); }
@@ -214,6 +219,7 @@ function activate(rec) {
   readyNoteTimer = null;
   workStart = rec.workStart; workActivity = rec.workActivity; workWordFixed = rec.workWordFixed;
   turnUsage = rec.turnUsage;
+  streamBubble = rec.streamBubble; streamText = rec.streamText;  // restore THIS chat's live stream (or null)
   workWordEl.textContent = rec.workWord || WORK_WORDS[0];
   clearInterval(workTimer); clearInterval(wordTimer); workTimer = wordTimer = null;
   if (rec.running) {
@@ -2697,6 +2703,11 @@ function addApprovalCard(data) {
   if (cur) cur.pendingApprovals[request_id] = card;
 
   const resolve = (ok) => {
+    // The socket can be mid-reconnect when the gate is clicked — setEnabled(false) only disables the
+    // composer, not these buttons, so they stay clickable while disconnected. Sending on a
+    // CLOSING/CLOSED socket throws InvalidStateError; bail WITHOUT the optimistic "resolved" UI so
+    // the gate stays clickable and the decision can be re-sent once reconnected (mirrors cancelRun).
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ type: "approval", request_id, approved: ok }));
     if (cur) { cur.running = true; delete cur.pendingApprovals[request_id]; }
     setEnabled(false);  // re-lock the composer: clicking resumes the turn (working), not parked

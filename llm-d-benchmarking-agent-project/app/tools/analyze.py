@@ -24,6 +24,7 @@ from app.validation.analysis import (
     recommend_next_steps,
 )
 from app.validation.report import (
+    ReportError,
     find_reports,
     load_report,
     summarize_report,
@@ -114,7 +115,13 @@ async def analyze_results(
         if path is None:
             skipped.append({"label": label, "reason": "no benchmark report found"})
             continue
-        report = load_report(path)
+        try:
+            report = load_report(path)
+        except ReportError as exc:
+            # Present but corrupt/unreadable (e.g. truncated by an OOM-killed run) → skip this one
+            # report and keep analyzing the rest, instead of failing the whole analysis.
+            skipped.append({"label": label, "reason": "report unreadable", "errors": [str(exc)]})
+            continue
         validation = validate_report(report, schema_path)
         if not validation.valid:
             skipped.append({"label": label, "reason": "report failed schema validation",
