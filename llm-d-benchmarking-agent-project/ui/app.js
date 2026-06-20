@@ -125,12 +125,14 @@ debugBtn.addEventListener("click", () => {
   try { localStorage.setItem("llmd-debug", on ? "on" : "off"); } catch (e) {}
   applyDebug(on);
 });
-initDebug();
+// initDebug() is invoked AFTER currentSession is declared below — applyDebug -> updateDebugSession
+// reads currentSession, which is a `let` (temporal dead zone) until its declaration runs.
 
 let ws = null;
 let busy = false;
 let activeConsole = null;     // <pre> for the currently-running command's output
 let currentSession = null;    // id of the chat we're attached to (null until "ready")
+initDebug();                  // safe now that currentSession exists (updateDebugSession reads it)
 let switching = false;        // true while intentionally closing to switch chats
 let welcomeCard = null;       // the start-of-chat suggestion-chips card, removed once a turn starts
 let readyNoteTimer = null;    // defers the plain "Session ready" note so chips can supersede it
