@@ -11,5 +11,8 @@
       "Write(**/llm-d-benchmark/**)"
     ]
   },
-  "enabledPlugins": {}
+  "enabledPlugins": {},
+  "worktree": {
+    "baseRef": "head"
+  }
 }
