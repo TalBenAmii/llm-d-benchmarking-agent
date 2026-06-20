@@ -24,9 +24,9 @@
 /* ── Dark theme (default) ─────────────────────────────────────────────── */
 :root,
 [data-theme="dark"] {
-  --bg: #17141c;
-  --bg-grad: radial-gradient(1200px 520px at 82% -12%, rgba(127,49,127,.16), transparent 60%);
-  --sidebar-bg: #131017;   /* sidebar is now flat + slightly darker than canvas */
+  --bg: #100d15;
+  --bg-grad: radial-gradient(1200px 520px at 82% -12%, rgba(127,49,127,.14), transparent 60%);
+  --sidebar-bg: #0c0a11;   /* sidebar is now flat + slightly darker than canvas */
   --panel: #211c2a;
   --panel-2: #2a2433;
   --border: #322b3e;
@@ -265,12 +265,14 @@ body {
 .sidebar-scrim { display: none; }
 /* Header expand button: hidden by default (the in-sidebar control is the primary one); revealed
    when the desktop sidebar is collapsed so the user can always re-open it. */
-.sidebar-expand { display: none; }
-body.sidebar-collapsed .sidebar-expand { display: inline-flex; }
+/* Specificity must beat the later `.icon-btn { display: inline-flex }` rule, else the header
+   expand button leaks through while the sidebar is expanded (it'd look like a stray duplicate). */
+.icon-btn.sidebar-expand { display: none; }
+body.sidebar-collapsed .icon-btn.sidebar-expand { display: inline-flex; }
 @media (max-width: 760px) {
   /* On mobile the sidebar is an off-canvas drawer that starts hidden, so the header expand button
      is always the way in; the in-sidebar collapse control closes the open drawer. */
-  .sidebar-expand { display: inline-flex; }
+  .icon-btn.sidebar-expand { display: inline-flex; }
 }
 
 @media (max-width: 760px) {
@@ -810,8 +812,7 @@ button:disabled { opacity: .5; cursor: default; filter: none; }
 
 /* ── Composer ─────────────────────────────────────────────────────────── */
 footer {
-  border-top: 1px solid var(--border);
-  background: linear-gradient(0deg, var(--panel), color-mix(in srgb, var(--panel) 88%, transparent));
+  background: transparent;   /* behind the composer = the conversation/page bg (floaty, no panel strip) */
   padding: 10px 22px 12px;
 }
 /* The composer FLOATS: its background is the page/conversation background (transparent), so only
