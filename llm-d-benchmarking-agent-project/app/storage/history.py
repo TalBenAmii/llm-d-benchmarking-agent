@@ -223,7 +223,7 @@ class HistoryStore:
             if model is not None and rec.model != model:
                 continue
             out.append(rec)
-        out.sort(key=lambda r: r.stored_at, reverse=True)
+        out.sort(key=lambda r: _as_num(r.stored_at), reverse=True)
         return out
 
     def _read(self, path: Path) -> HistoryRecord | None:
@@ -246,6 +246,16 @@ def _safe_id(rid: str | None) -> bool:
     return isinstance(rid, str) and rid.isalnum() and 0 < len(rid) <= 64
 
 
+def _as_num(v: Any) -> float:
+    """A crash-proof sort key: the value if it's a real number, else 0.0. ``HistoryRecord`` is
+    reconstructed from on-disk JSON with NO per-field type-check (``_read``), so a corrupt record
+    with a non-numeric ``stored_at`` (null/string) would otherwise make ``sorted(...)`` raise
+    ``TypeError`` and break listing/trending for EVERY record. Coercing keeps the record visible
+    (sorted as oldest) instead of dropping it or crashing. ``bool`` is excluded — it's an ``int``
+    subclass but never a valid timestamp."""
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+
+
 # ---- trend math over a stored series ---------------------------------------
 
 
@@ -266,7 +276,7 @@ def trend(
             "available_metrics": available_metrics(),
         }
     dotted, direction = _TREND_METRICS[metric]
-    ordered = sorted(records, key=lambda r: r.stored_at)  # oldest -> newest
+    ordered = sorted(records, key=lambda r: _as_num(r.stored_at))  # oldest -> newest
 
     points: list[dict[str, Any]] = []
     stat_used: str | None = None

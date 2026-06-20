@@ -503,3 +503,25 @@ def test_api_history_trend(history_app):
         t = client.get("/api/history/trend", params={"metric": "ttft"}).json()
         assert t["n"] == 2 and t["better"] == "lower"
         assert t["first_to_last"]["delta_pct"] == 50.0
+
+
+def test_list_and_trend_survive_corrupt_stored_at(tmp_path):
+    """BUG-020: a record whose on-disk ``stored_at`` is non-numeric (null/string — it bypasses the
+    validated ``add()`` path) must not crash ``list()``/``trend()`` for EVERY record. The sort key
+    would otherwise raise ``TypeError: '<' not supported between NoneType and float``, breaking the
+    whole history list + all trends + the analyzer's history pull. The corrupt record stays listed,
+    sorted as oldest (coerced to 0.0)."""
+    hdir = tmp_path / "history"
+    hdir.mkdir()
+    (hdir / "aaaaaaaa.json").write_text(json.dumps(
+        {"summary": {"latency": {"ttft": {"units": "ms", "mean": 10.0}}},
+         "stored_at": 100.0, "label": "good", "tags": [], "model": "m"}))
+    (hdir / "bbbbbbbb.json").write_text(json.dumps(
+        {"summary": {"latency": {"ttft": {"units": "ms", "mean": 20.0}}},
+         "stored_at": None, "label": "corrupt", "tags": [], "model": "m"}))
+    store = HistoryStore(tmp_path)
+    recs = store.list()  # must not raise
+    assert {r.label for r in recs} == {"good", "corrupt"}
+    assert recs[0].label == "good"  # valid 100.0 newest-first; corrupt (-> 0.0) sorts last
+    # trend() sorts on the same key; it must complete (not raise) with the corrupt record present.
+    assert isinstance(trend(recs, "ttft"), dict)

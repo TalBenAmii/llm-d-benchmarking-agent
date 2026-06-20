@@ -42,6 +42,9 @@ bugs low/medium; none were crashes of the core flow.
 | 017 | ui/app.js | trend-metric dropdown was one-shot — metrics from later runs never appeared |
 | 018 | app/llm/openai_provider.py | OpenAI-compatible provider crashes on an empty `choices` array |
 | 019 | ui/app.js | WS `onclose`/`onmessage` not socket-bound → rapid chat switch spawns duplicate sockets |
+| 020 | app/storage/history.py | corrupt `stored_at` (null/string) → `TypeError` crashes the WHOLE history list + all trends |
+| 021 | app/storage/provenance.py | truthy non-numeric `created_at` → `TypeError` crashes the WHOLE bundle list |
+| 022 | app/storage/autotune.py | non-numeric trial `index` → `TypeError` crashes `load()` (whole autotune log) |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -164,23 +167,48 @@ unchanged. Suggested hardening if desired: deny a small set of known-dangerous f
 
 ---
 
-## Candidates surfaced 2026-06-20 (verified by source, NOT yet fixed — for the next increment)
+## BUG-020/021/022 — corrupt on-disk JSON crashes the WHOLE storage list/trend via a non-numeric sort key
+- **Status:** FIXED (these are CAND-A/B/C below, promoted from "queued" to fixed)
+- **Severity:** medium — ONE corrupt/forged file takes down an entire list view, not just its own row.
+- **Where + trigger (each reproduced before fixing → `TypeError: '<' not supported between …`):**
+  - **BUG-020 `app/storage/history.py`** — `HistoryStore.list` (`out.sort(key=r.stored_at, reverse=True)`)
+    AND `trend()` (`sorted(records, key=r.stored_at)`). `_read` reconstructs `HistoryRecord` from JSON
+    with no per-field type-check, so a record file with `"stored_at": null` (or a string) crashes BOTH
+    the history list and EVERY trend — and the analyzer's history pull — for ALL records, not just the
+    bad one.
+  - **BUG-021 `app/storage/provenance.py`** — `BundleStore.list` sorted on `b.get("created_at") or 0.0`,
+    which only neutralizes *falsy* values; a truthy non-numeric `created_at` (forged/corrupt string)
+    still crashed the whole bundle list.
+  - **BUG-022 `app/storage/autotune.py`** — `AutotuneStore.load` (`trials.sort(key=t.index)`). `Trial`'s
+    `index: int` annotation isn't enforced (built straight from JSON), so a `"index": null`/string trial
+    crashed `load()` — violating the class's documented "a corrupt log degrades to empty, never crashes".
+- **Root cause:** Python 3 raises `TypeError` when a `sorted`/`list.sort` key mixes `None`/`str` with
+  numbers. The on-disk record is reconstructed with NO type validation (same class as BUG-011/012/013).
+- **Fix:** a tiny local `_as_num(v)` helper in each module — returns the value when it's a real number
+  (`int`/`float`, `bool` excluded), else `0.0` — used as the sort key. A corrupt record now stays VISIBLE
+  (sorted as oldest) rather than crashing the list or being dropped. Minimal blast radius, no behavior
+  change for valid data.
+- **Reproduced first:** a standalone script confirmed all four call sites (`history.list`, `trend`,
+  `provenance.list`, `autotune.load`) raised `TypeError` on the crafted corrupt files, then returned
+  cleanly after the fix.
+- **Regression tests:** `tests/test_history.py::test_list_and_trend_survive_corrupt_stored_at`,
+  `tests/test_provenance.py::test_list_survives_non_numeric_created_at`,
+  `tests/test_autotune.py::test_load_survives_non_numeric_index`.
+
+---
+
+## Candidates surfaced 2026-06-20 (verified by source) — A/B/C now FIXED (2026-06-21), D/E still queued
 Two parallel hunters (orchestrator, storage) returned the findings below. Each was confirmed
-real against source, but is a missing-guard on **malformed/forged on-disk or kubectl JSON**, not
-reachable through the agent's normal flow — so they're queued, not yet patched (session paused to
-preserve user quota before starting them):
-- **CAND-A `app/storage/autotune.py:126`** — `AutotuneStore.load` does `trials.sort(key=lambda t: t.index)`
-  OUTSIDE the per-item try/except. A corrupt `<search_id>.json` with `"index": null`/string loads
-  (the dataclass does no type-validation) then the sort raises `TypeError`, violating the class's
-  documented "a corrupt log degrades to empty, never crashes" contract. Fix: skip non-int `index`
-  items, or `key=lambda t: t.index if isinstance(t.index, int) else 0`.
-- **CAND-B `app/storage/history.py:226` & `:269`** — `HistoryStore.list`/`trend` sort on `r.stored_at`,
-  which `_read` never type-checks. A history file with `"stored_at": null`/string crashes the sort,
-  breaking listing/trending + the analyzer's history pull for ALL records. Fix: reject non-numeric
-  `stored_at` in `_read`, or make the sort key defensive. (Same class as BUG-011/012/013.)
-- **CAND-C `app/storage/provenance.py:320`** — `BundleStore.list` sorts on `b.get("created_at") or 0.0`;
-  a truthy non-numeric `created_at` (string) mixed with the `0.0` fallback crashes the sort. Partially
-  mitigated (normal writer emits a float). Fix: coerce the key to a number.
+real against source — a missing-guard on **malformed/forged on-disk or kubectl JSON**, not
+reachable through the agent's normal flow. The three storage crashes (A/B/C) were fixed on
+2026-06-21 as BUG-020/021/022 (see above). The two orchestrator items (D/E) remain queued:
+- **CAND-A** ✅ **FIXED → BUG-022** (`app/storage/autotune.py`) — `AutotuneStore.load`'s
+  `trials.sort(key=t.index)` crashed on a non-numeric `index`. Fixed with the defensive `_as_num` key.
+- **CAND-B** ✅ **FIXED → BUG-020** (`app/storage/history.py`) — `HistoryStore.list`/`trend` sorts on
+  `r.stored_at` crashed on a null/string value, breaking listing/trending for ALL records. Fixed with
+  the defensive `_as_num` key (the record stays visible, sorted as oldest, rather than crashing/dropping).
+- **CAND-C** ✅ **FIXED → BUG-021** (`app/storage/provenance.py`) — `BundleStore.list`'s
+  `b.get("created_at") or 0.0` key still crashed on a truthy non-number. Fixed with the `_as_num` key.
 - **CAND-D `app/orchestrator/job.py:371-373`** — `classify_job_status` does `int(status.get("active",0) or 0)`;
   a non-numeric count in a forged `kubectl get -o json` raises `ValueError`, aborting the watch/reconstruct
   loop. Only reachable via corrupted/forged kubectl JSON. Fix: an `_as_int` helper returning 0.

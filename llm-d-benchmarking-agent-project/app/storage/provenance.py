@@ -266,6 +266,15 @@ def _safe_id(bid: str | None) -> bool:
     return isinstance(bid, str) and bid.isalnum() and 0 < len(bid) <= 64
 
 
+def _as_num(v: Any) -> float:
+    """Crash-proof sort key: the value if a real number, else 0.0. A bundle is read straight from
+    on-disk JSON with no per-field type-check, so a forged/corrupt ``created_at`` (a truthy string)
+    would make ``list()``'s ``sorted(...)`` raise ``TypeError`` and break the WHOLE bundle list.
+    The old ``b.get('created_at') or 0.0`` only handled falsy values, not a truthy non-number.
+    ``bool`` is excluded — an ``int`` subclass, never a valid timestamp."""
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+
+
 class BundleStore:
     """Write/read provenance bundles under ``<workspace>/bundles/<bundle_id>.json``.
 
@@ -317,7 +326,7 @@ class BundleStore:
             b = self.read(p.stem)
             if b is not None:
                 out.append(b)
-        out.sort(key=lambda b: b.get("created_at") or 0.0, reverse=True)
+        out.sort(key=lambda b: _as_num(b.get("created_at")), reverse=True)
         return out
 
 
