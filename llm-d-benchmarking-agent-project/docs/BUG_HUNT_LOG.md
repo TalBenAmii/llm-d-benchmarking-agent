@@ -54,6 +54,8 @@ bugs low/medium; none were crashes of the core flow.
 | 029 | app/orchestrator/faults.py | `classify_failure` crashed on a non-list `conditions`/`containerStatuses` or non-dict pod element |
 | 030 | app/capacity/planner.py | capacity verdict read `feasible:true` when KV-cache sizing never ran (count-summary mistaken for sizing proof) |
 | 031 | app/tools/multiharness.py | `compare_harness_runs` aborted the whole comparison on one corrupt report (sibling `compare_reports` skips it) |
+| 032 | app/main.py + app/agent/channel.py | reconnect mid-turn double-rendered events (buffer replay overlapped the live emit during attach) |
+| 033 | app/main.py | env pre-probe `create_task` untracked → GC-able mid-probe (lost reference) |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -448,6 +450,43 @@ schema, observe table parsing, agent-SDK streaming, execute argv all guarded). O
 - **Fix:** mirror `compare_reports` exactly — `try load_report / except ReportError → skipped.append(...);
   continue`. `ReportError` was already imported. One corrupt report is now skipped, the rest contrasted.
 - **Regression test:** `tests/test_multiharness.py::test_compare_harness_runs_skips_unreadable_report`.
+
+---
+
+## Round 11 (2026-06-21) — async/concurrency-class hunt: 2 fixed (BUG-032 high, BUG-033 low)
+A dedicated race-condition lens over the async backend (WS task mgmt, Channel futures/buffer,
+RunRegistry, sweep checkpoint lock). The scary paths re-verified correct (no double-concurrent-turn:
+the backstop `finally` is await-free; no double-resolve: a parked-gate Channel is never evicted so a
+`restored` future can't coexist with the original; sweep checkpoint RMW all inside `ck_lock`). Two real
+findings:
+
+## BUG-032 — reconnect mid-turn double-renders buffered events
+- **Status:** FIXED
+- **Severity:** high (duplicate assistant bubbles / tool rows / report cards on reopening a running chat)
+- **Where:** `app/main.py` (the `/ws` reconnect path: attach at `channel.ws = websocket`, then the
+  `ready`/`history` sends, then `replay_live`) + `app/agent/channel.py::replay_live`.
+- **Interleaving:** a turn task keeps running after the socket dropped (`channel.ws is None`). A new socket
+  W2 reconnects: the handler sets `channel.ws = W2` (sync), then `await channel.emit("ready", …)` and (full
+  path) `await channel.emit("history", …)` — a large transcript send that SUSPENDS. During that await the
+  background turn resumes and `channel.emit(<turn event>)` fans the frame out LIVE to W2 *and* appends it to
+  the buffer (new seq). The handler then calls `replay_live()`, which resends the WHOLE buffer — including
+  the frame W2 just received live. The client (`ui/app.js handle()`) renders every frame and only de-dupes
+  `approval_request` by id, so every other turn event double-renders. Both paths affected (full replays the
+  whole buffer; incremental replays all `seq > after_seq`, and the gap frame has `seq > after_seq` too).
+- **Fix:** capture `replay_cutoff = channel.cur_seq` at attach (BEFORE the ready/history awaits) and pass it
+  as `through_seq` to `replay_live`, which now skips frames with `seq > through_seq` — exactly the frames
+  emitted live after attach. Sends only what the socket genuinely missed; no double-render.
+- **Regression test:** `tests/test_ws.py::test_replay_live_skips_frames_emitted_after_attach`.
+
+## BUG-033 — env pre-probe task is fire-and-forget (untracked → GC-able)
+- **Status:** FIXED
+- **Severity:** low (best-effort probe; a dropped probe just means the first turn isn't pre-armed)
+- **Where:** `app/main.py` — `asyncio.create_task(_prewarm_env(...))` with the result discarded. CPython
+  holds only a weak ref to a bare task, so between the probe's subprocess awaits it can be GC'd and silently
+  cancelled (the documented "save a reference to the task" hazard).
+- **Fix:** store it in `app.state.background_tasks` + an `add_done_callback(...discard)` (the same pattern the
+  disconnect/backstop paths already use). (Finding-3, concurrent `env_snapshot`/`commands` writes by the
+  probe vs the first turn, is the accepted best-effort behavior — not changed.)
 
 ---
 

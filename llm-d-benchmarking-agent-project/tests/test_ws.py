@@ -1207,3 +1207,41 @@ def test_ws_fresh_channel_restores_pending_and_resolves():
         session = app.state.sessions.get(sid)
         assert session.in_flight_approvals == []
         assert any(a["request_id"] == rid and a["approved"] is True for a in session.approvals)
+
+
+async def test_replay_live_skips_frames_emitted_after_attach():
+    """BUG-032: when a socket (re)attaches mid-turn, frames a still-running background turn emits
+    DURING the handler's attach-time ready/history sends are delivered LIVE to the new socket AND
+    buffered. replay_live must cap at the attach-time seq head (through_seq) so it does NOT resend
+    them — otherwise they double-render (the client only de-dupes approval cards by request_id)."""
+    from app.agent.channel import Channel
+
+    class _Rec:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, frame):
+            self.sent.append(frame)
+
+    class _Sess:
+        def record_command(self, payload):
+            pass
+
+    ch = Channel(_Sess())
+    ch.begin_turn()
+    for i in range(3):                       # 3 frames buffered while NO socket is attached
+        await ch.emit("assistant_text", {"text": f"m{i}"})
+    cutoff = ch.cur_seq                       # seq head captured at "attach" (== 3)
+    rec = _Rec()
+    ch.ws = rec
+    await ch.emit("assistant_text", {"text": "live"})   # turn emits DURING attach -> delivered live once
+    assert [f["data"]["text"] for f in rec.sent] == ["live"]
+    await ch.replay_live(through_seq=cutoff)  # replay only the missed tail (seq <= cutoff)
+    texts = [f["data"]["text"] for f in rec.sent]
+    assert texts == ["live", "m0", "m1", "m2"]          # the live frame is NOT resent
+    assert texts.count("live") == 1
+    # Regression guard: WITHOUT the cap the live (seq>cutoff) frame WOULD be replayed (the old bug).
+    rec2 = _Rec()
+    ch.ws = rec2
+    await ch.replay_live()
+    assert "live" in [f["data"]["text"] for f in rec2.sent]

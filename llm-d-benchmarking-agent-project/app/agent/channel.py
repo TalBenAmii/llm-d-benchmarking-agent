@@ -143,7 +143,7 @@ class Channel:
             with contextlib.suppress(Exception):
                 await ws.send_json(frame)
 
-    async def replay_live(self, after_seq: int | None = None) -> None:
+    async def replay_live(self, after_seq: int | None = None, through_seq: int | None = None) -> None:
         """Replay the buffered live events for the in-flight turn to the current socket.
 
         Called when a socket (re)attaches while a turn is running, so a client that dropped
@@ -158,6 +158,13 @@ class Channel:
         rebuild. ``None`` replays the whole buffer (the original behavior, for a client that
         starts from a fresh/rebuilt transcript).
 
+        ``through_seq`` is the seq head captured at the instant THIS socket (re)attached
+        (``channel.cur_seq`` before the handler's ``ready``/``history`` sends). Frames with a
+        greater seq were emitted by a still-running background turn DURING those attach-time
+        awaits and were already delivered LIVE to this socket (``emit`` fans out to the now-attached
+        ``ws``), so replaying them too would double-render them on reconnect-mid-turn. Capping the
+        replay at ``through_seq`` skips exactly those live-delivered frames. ``None`` = no cap.
+
         Approval gates are deliberately SKIPPED here: they're stateful (an
         ``approval_request`` in the buffer may already be decided, or may be the one currently
         blocking the turn), so re-surfacing them is owned solely by :meth:`reemit_pending`,
@@ -170,8 +177,11 @@ class Channel:
         for frame in list(self._buffer):
             if frame.get("type") == events.APPROVAL_REQUEST:
                 continue
-            if after_seq is not None and frame.get("seq", 0) <= after_seq:
+            seq = frame.get("seq", 0)
+            if after_seq is not None and seq <= after_seq:
                 continue
+            if through_seq is not None and seq > through_seq:
+                continue  # emitted live AFTER attach -> already delivered, don't double-send
             with contextlib.suppress(Exception):
                 await ws.send_json(frame)
 
