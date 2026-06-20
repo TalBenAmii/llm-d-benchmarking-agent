@@ -18,7 +18,6 @@ Server -> client:
   output           {line}                  — a streamed line of command stdout/stderr
   approval_request {request_id, kind, payload}  — needs Approve/Reject
   tool_result      {id, name, result}      — a tool finished
-  session_plan     {plan}                  — a proposed plan (also an approval_request)
   error            {message[, kind]}        — a turn/agent error; kind="protocol_error" for a
                                             rejected malformed inbound frame (Phase 15)
   cancelled        {message}               — the in-flight run/turn was cancelled (Phase 16);
@@ -95,7 +94,6 @@ COMMAND = "command"
 OUTPUT = "output"
 APPROVAL_REQUEST = "approval_request"
 TOOL_RESULT = "tool_result"
-SESSION_PLAN = "session_plan"
 ERROR = "error"
 CANCELLED = "cancelled"
 USAGE = "usage"
