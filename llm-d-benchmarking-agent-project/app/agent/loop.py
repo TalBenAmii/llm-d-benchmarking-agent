@@ -35,6 +35,11 @@ CARD_RESULT_TOOLS = frozenset({
     "probe_environment", "check_capacity", "check_endpoint_readiness", "advise_accelerators",
     "generate_doe_experiment", "orchestrate_benchmark_run", "run_resilience_drill",
     "autotune_search", "export_run_bundle",
+    # suggest_next_steps carries no metrics card — its result is the {label,prompt} chip list the
+    # UI draws as clickable next-step buttons. Persisted here so the buttons replay on resume/reload
+    # exactly like the report/analysis cards (the chip payload is tiny, so the messages copy would
+    # also survive the feed-back clamp — but persisting keeps it on the same replay path).
+    "suggest_next_steps",
 })
 
 EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]

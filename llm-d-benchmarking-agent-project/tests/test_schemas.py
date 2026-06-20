@@ -22,7 +22,7 @@ def test_tool_definitions_complete():
         "run_command", "locate_and_parse_report", "compare_reports", "compare_harness_runs",
         "analyze_results", "orchestrate_benchmark_run", "observe_run_metrics",
         "result_history", "export_run_bundle", "reproduce_run", "cancel_run",
-        "run_resilience_drill", "autotune_search",
+        "run_resilience_drill", "autotune_search", "suggest_next_steps",
     }
     assert names == expected
     for d in defs:

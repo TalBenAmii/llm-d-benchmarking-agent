@@ -463,7 +463,10 @@ function handle(msg) {
       appendStreamDelta(data.text || "");
       if (!workingEl.hidden) resumeThinking();
       break;
-    case "tool_call": startTool(data); setWorkTool(data.name); advancePhase(data.name, data.input); break;
+    // suggest_next_steps is a UI-only tool: it has no command/phase and no technical action row —
+    // its result is the {label,prompt} chip list, drawn as floating buttons when the tool_result
+    // arrives (renderToolResultCards → renderAgentSuggestions). So skip the action-row + phase here.
+    case "tool_call": if (data.name === "suggest_next_steps") break; startTool(data); setWorkTool(data.name); advancePhase(data.name, data.input); break;
     // Clear the welcome card only when a real turn is running — NOT for the background environment
     // pre-probe's read-only `command` events (which fire before any user message), so the start-of-
     // chat welcome/capabilities card stays visible instead of being wiped the moment the probe runs.
@@ -1711,6 +1714,31 @@ function renderNextSteps(r) {
   scroll();
 }
 
+// ---- the agent's "what next?" suggestion buttons (from suggest_next_steps) -
+// Whenever the agent would offer next steps in prose ("want me to save this as a baseline?"), it
+// instead CALLS suggest_next_steps with {label, prompt} options. We draw them as the SAME floating
+// pills as the welcome chips (plain `.chip`, no arrow) under the agent's reply; clicking one sends
+// its `prompt` as the user's next message — so a non-expert advances with one tap. Rendered from the
+// tool RESULT, so it shows live AND replays on resume/reload (suggest_next_steps is a card tool).
+function renderAgentSuggestions(r) {
+  if (!r || !Array.isArray(r.suggestions) || !r.suggestions.length) return;
+  const row = el("div", "next-steps");
+  row.appendChild(el("div", "next-steps-label", "Suggested next steps"));
+  const chips = el("div", "next-steps-chips");
+  for (const s of r.suggestions.slice(0, 4)) {
+    if (!s || !s.label || !s.prompt) continue;
+    const btn = el("button", "chip", s.label);   // plain `.chip` → identical to the welcome chips
+    btn.type = "button";
+    btn.title = s.prompt;                          // hover shows the full message that will be sent
+    btn.onclick = () => sendUserMessage(s.prompt);
+    chips.appendChild(btn);
+  }
+  if (!chips.childNodes.length) return;
+  row.appendChild(chips);
+  activePane.appendChild(row);
+  scroll();
+}
+
 // ---- pre-flight / status cards (from read-only diagnostic tool_results) ---
 // The data-rich read-only tools (probe / capacity / readiness / accelerators / DoE / orchestrate)
 // emit no results_card event, so their output was only ever raw JSON in the collapsed tool panel.
@@ -2092,6 +2120,9 @@ function renderHistory(items) {
     // though the chat clearly reached a phase: clearActivePane() reset phaseReached to -1 just
     // before this replay, and only advancePhase re-derives it. (Cache-hit switches keep the rail
     // because the record's phaseReached survives; this is the missing other half.)
+    // suggest_next_steps is a UI-only tool (no technical action row / phase) — mirror the live
+    // path: skip its row so only the chips replay (rendered from its tool_result below).
+    else if (it.role === "tool_call" && it.name === "suggest_next_steps") { lastToolBody = null; }
     else if (it.role === "tool_call") { lastToolBody = addHistoryTool(it); advancePhase(it.name, it.input); }
     // A persisted card-rendering tool result, interleaved by the server right after its tool_call:
     // re-draw the report summary + clickable charts (and other rich cards) exactly as the live
@@ -2231,6 +2262,7 @@ function renderToolResultCards(data, bodyEl) {
     else if (data.name === "run_resilience_drill") renderResilienceCard(r);  // chaos / resilience drill
     else if (data.name === "autotune_search") renderAutotuneCard(_card_from_autotune_status(r));  // goal-seeking convergence
     else if (data.name === "export_run_bundle") renderReproducibilityCard(r);  // provenance bundle
+    else if (data.name === "suggest_next_steps") { renderAgentSuggestions(r); return; }  // the agent's "what next?" buttons (no JSON dump — bodyEl is null)
     if (bodyEl) bodyEl.appendChild(prettyJson(r));
   }
 }

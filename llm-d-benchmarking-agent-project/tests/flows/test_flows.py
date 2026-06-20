@@ -140,6 +140,10 @@ def test_every_feature_tool_has_live_coverage():
         "probe_environment", "list_catalog", "propose_session_plan", "ensure_repos", "run_setup",
         "locate_and_parse_report", "run_command",
         "read_knowledge", "search_knowledge", "read_repo_doc", "fetch_key_docs",
+        # UI-affordance mechanism: the agent calls suggest_next_steps to render its "what next?"
+        # offer as buttons (the structured analog of an approval card) — not a feature a user asks
+        # for by name. Exercised incidentally wherever the agent offers follow-ups.
+        "suggest_next_steps",
     }
     live_required_tools = {t for f in ALL_FLOWS if f.live_eval for t in f.required_tools}
     # execute_llmdbenchmark is asserted via required_subcommands (standup/run/teardown/plan), not

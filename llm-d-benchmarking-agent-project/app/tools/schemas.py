@@ -999,3 +999,38 @@ class EstimateRunDurationInput(BaseModel):
         description="Optional harness whose profiles dir to look in. If omitted, every harness "
                     "dir is searched (inference-perf first).",
     )
+
+
+class NextStepSuggestion(BaseModel):
+    """One clickable next-step button: a short `label` the user sees on the pill, and the
+    `prompt` that is sent AS-IF the user typed it when they click it."""
+
+    label: str = Field(
+        ...,
+        description="The short button text the user sees (≈2-5 words, e.g. 'Save as baseline', "
+                    "'Run a higher-load sweep', 'Tear down the stack'). Keep it tight — it must "
+                    "fit on a small pill.",
+        min_length=1,
+        max_length=48,
+    )
+    prompt: str = Field(
+        ...,
+        description="The message sent on the user's behalf when they click this button — phrase "
+                    "it in the FIRST PERSON as the user's own request (e.g. 'Save this run as my "
+                    "baseline so we can trend future runs against it'). On click it is submitted "
+                    "exactly as if the user typed it, so make it a complete, unambiguous instruction.",
+        min_length=1,
+    )
+
+
+class SuggestNextStepsInput(BaseModel):
+    suggestions: list[NextStepSuggestion] = Field(
+        ...,
+        description="2-4 next-step options to render as clickable buttons under your reply. "
+                    "Use this INSTEAD of asking 'want me to…?' in prose: each option is one "
+                    "concrete follow-up the user can take with a single click. Order them best "
+                    "first. Make them genuinely distinct and actionable in the CURRENT context "
+                    "(e.g. after a run: save baseline / compare / sweep / tear down).",
+        min_length=1,
+        max_length=4,
+    )
