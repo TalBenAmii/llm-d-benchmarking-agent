@@ -66,8 +66,10 @@ def test_to_sdk_messages_renders_history_as_user_assistant_text_turns():
     ]
     out = _to_sdk_messages(neutral)
     roles = [m["message"]["role"] for m in out]
-    # the tool_results turn is rendered as a USER text message (no native tool blocks)
-    assert roles == ["user", "assistant", "user", "user"]
+    # STRICTLY alternating: the trailing tool_results (rendered as user text) and the real user
+    # message that follows it are COALESCED into one user turn — the CLI's streaming input only
+    # reliably delivers alternating user/assistant turns (see _to_sdk_messages).
+    assert roles == ["user", "assistant", "user"]
     # REGRESSION: content MUST be a list of blocks, never a bare string. The CLI scans every
     # input message with content.some(...) for tool_use blocks; a string has no .some and
     # crashes the CLI on the first replayed turn ("H.message.content.some is not a function").
@@ -76,7 +78,30 @@ def test_to_sdk_messages_renders_history_as_user_assistant_text_turns():
         assert isinstance(content, list)
         assert content and all(b.get("type") == "text" and isinstance(b.get("text"), str) for b in content)
     assert "[called tool probe_environment" in out[1]["message"]["content"][0]["text"]
-    assert "[tool results]" in out[2]["message"]["content"][0]["text"]
+    # the coalesced final user turn carries BOTH the tool results AND the follow-up question.
+    merged_user = out[2]["message"]["content"][0]["text"]
+    assert "[tool results]" in merged_user and "is it ready?" in merged_user
+
+
+def test_to_sdk_messages_coalesces_turn1_user_run_so_task_survives():
+    """Regression (blank-message bug): on turn 1 the loop injects the env pre-probe snapshot, the
+    live-catalog snapshot, and the real user message as THREE back-to-back user turns. The CLI's
+    streaming input only surfaced the first, so the model saw the env snapshot but "no user
+    message" and replied "I received a blank message". They must coalesce into ONE user turn that
+    still carries the user's actual task."""
+    neutral = [
+        {"role": "user", "synthetic": True,
+         "content": "[environment pre-probe — read-only snapshot] docker: up; repos: present"},
+        {"role": "user", "content": "[live catalog snapshot] specs: cicd/kind, guides/optimized-baseline"},
+        {"role": "user", "content": "I want to benchmark a small chat model on the local quickstart."},
+    ]
+    out = _to_sdk_messages(neutral)
+    # all three user turns collapse to a single user message — not three the CLI would truncate.
+    assert [m["message"]["role"] for m in out] == ["user"]
+    text = out[0]["message"]["content"][0]["text"]
+    # the user's real task is NOT lost (the bug) — and the injected context rides along with it.
+    assert "I want to benchmark a small chat model on the local quickstart." in text
+    assert "environment pre-probe" in text and "live catalog snapshot" in text
 
 
 # ---- chat() orchestration via a monkeypatched query ----------------------------------------
