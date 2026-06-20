@@ -4,6 +4,7 @@ execution -> feed results back, until the model stops calling tools.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -239,7 +240,13 @@ class AgentLoop:
                         await emit(events.TOOL_CALL, {"id": tc.id, "name": tc.name, "input": tc.input})
                         # Tie any approval gate raised inside this dispatch back to its tool call.
                         ctx.current_tool_call_id = tc.id
+                        _t0 = time.monotonic()
                         result = await self._invoke(ctx, tc.name, tc.input)
+                        # Persist this tool call's wall-clock run time (keyed to its id) so a
+                        # resumed/reloaded chat shows the SAME duration badge on the action row a
+                        # live run does — not just the read-only/mutating badge. (Includes any
+                        # approval wait, mirroring the live client-side d._t0 elapsed.)
+                        session.record_tool_duration(tc.id, time.monotonic() - _t0)
                         ctx.current_tool_call_id = None
 
                         if tc.name == "propose_session_plan" and isinstance(result, dict) and result.get("approved"):
