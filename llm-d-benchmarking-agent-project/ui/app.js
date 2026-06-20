@@ -107,6 +107,13 @@ function applyDebug(on) {
   debugBtn.title = on
     ? "Hide the executed commands from the chat"
     : "Debug view — show the commands the agent ran inline in the chat";
+  updateDebugSession();
+}
+// Refresh the debug-only session-id chip from the active chat's id. Called on debug toggle and
+// whenever currentSession changes, so the chip is correct the moment debug mode is revealed.
+function updateDebugSession() {
+  const chip = document.getElementById("debug-session");
+  if (chip) chip.textContent = currentSession ? "session " + currentSession : "no session yet";
 }
 function initDebug() {
   let on = false;
@@ -367,6 +374,7 @@ function switchTo(sid) {
   rec.order = ++viewClock;
   activate(rec);                                      // attach its pane + restore its working-set
   currentSession = sid || null;
+  updateDebugSession();
   setHeaderTitle(sid ? convTitles[sid] : "New chat"); // optimistic; renderConvRow confirms it
   evictPanes();
   connect(sid || null, cacheHit ? rec.lastSeq : null);
@@ -410,6 +418,7 @@ function handle(msg) {
   switch (type) {
     case "ready": {
       currentSession = data.session_id;
+      updateDebugSession();
       // A brand-new chat learns its id here — register the active record under it.
       if (cur) { cur.id = data.session_id; sessions[data.session_id] = cur; }
       setEnabled(true);
