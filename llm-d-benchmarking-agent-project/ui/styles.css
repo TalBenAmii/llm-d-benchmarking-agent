@@ -24,9 +24,9 @@
 /* ── Dark theme (default) ─────────────────────────────────────────────── */
 :root,
 [data-theme="dark"] {
-  --bg: #100d15;
-  --bg-grad: radial-gradient(1200px 520px at 82% -12%, rgba(127,49,127,.14), transparent 60%);
-  --sidebar-bg: #0c0a11;   /* sidebar is now flat + slightly darker than canvas */
+  --bg: #17141c;
+  --bg-grad: radial-gradient(1200px 520px at 82% -12%, rgba(127,49,127,.16), transparent 60%);
+  --sidebar-bg: #131017;   /* sidebar is now flat + slightly darker than canvas */
   --panel: #211c2a;
   --panel-2: #2a2433;
   --border: #322b3e;
