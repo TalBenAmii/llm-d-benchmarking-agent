@@ -133,7 +133,6 @@ let busy = false;
 let activeConsole = null;     // <pre> for the currently-running command's output
 let currentSession = null;    // id of the chat we're attached to (null until "ready")
 initDebug();                  // safe now that currentSession exists (updateDebugSession reads it)
-let switching = false;        // true while intentionally closing to switch chats
 let welcomeCard = null;       // the start-of-chat suggestion-chips card, removed once a turn starts
 let readyNoteTimer = null;    // defers the plain "Session ready" note so chips can supersede it
 // Split view: the live resource view renders into a single shared right-hand panel (#resource-side),
@@ -350,11 +349,17 @@ function connect(sid, afterSeq) {
   // Resume cursor: when we already hold a cached pane for this chat, ask the server to replay
   // only the events past what we've rendered (it patches our view instead of resending history).
   if (sid && afterSeq != null && afterSeq > 0) qs += `${qs ? "&" : "?"}after_seq=${afterSeq}`;
-  ws = new WebSocket(`${proto}://${location.host}/ws${qs}`);
+  // Bind every handler to THIS socket instance and ignore events from a socket we've already
+  // replaced. A chat switch (or a reconnect) opens a fresh socket and reassigns `ws`; the old
+  // socket's close/message then arrive on a later tick when `sock !== ws`. Without this guard a
+  // superseded socket's `onclose` would fall through to the auto-reconnect below and spawn a
+  // duplicate connection to the now-active chat (and its `onmessage` would double-render events).
+  const sock = new WebSocket(`${proto}://${location.host}/ws${qs}`);
+  ws = sock;
 
-  ws.onopen = () => setStatus("connected", "ok");
-  ws.onclose = () => {
-    if (switching) { switching = false; return; }   // a deliberate switch opens its own socket
+  sock.onopen = () => { if (sock === ws) setStatus("connected", "ok"); };
+  sock.onclose = () => {
+    if (sock !== ws) return;                         // superseded socket (a switch/reconnect took over)
     setStatus("disconnected — retrying…", "down");
     setEnabled(false);
     stopWorking();                                   // don't keep spinning while disconnected; "ready".running restarts it
@@ -362,13 +367,14 @@ function connect(sid, afterSeq) {
     // the missed tail rather than rebuilding (no flash on a brief drop).
     setTimeout(() => connect(currentSession, cur ? cur.lastSeq : null), 1500);
   };
-  ws.onerror = () => setStatus("connection error", "down");
-  ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+  sock.onerror = () => { if (sock === ws) setStatus("connection error", "down"); };
+  sock.onmessage = (ev) => { if (sock === ws) handle(JSON.parse(ev.data)); };
 }
 
 function switchTo(sid) {
-  switching = true;
   snapshotActive();                                  // save + detach the chat we're leaving
+  // Close the socket we're leaving; connect() below reassigns `ws` to the new socket, so the
+  // old socket's deferred onclose sees `sock !== ws` and stays inert (no spurious reconnect).
   try { if (ws) ws.close(); } catch (e) {}
   let rec = sid ? sessions[sid] : null;
   const cacheHit = !!rec;                             // we've shown this chat before → patch it
@@ -387,8 +393,8 @@ function switchTo(sid) {
 function newChat() { switchTo(null); }
 function openSession(sid) { if (sid !== currentSession) switchTo(sid); }
 
-// Boot the first chat without going through switchTo (no prior socket to close, so the
-// `switching` flag must stay false or the first real disconnect wouldn't auto-reconnect).
+// Boot the first chat without going through switchTo (no prior socket to close). The socket
+// connect() opens becomes the current `ws`, so a later real disconnect auto-reconnects.
 function bootChat() {
   activate(makeRecord(null));
   connect(null, null);
