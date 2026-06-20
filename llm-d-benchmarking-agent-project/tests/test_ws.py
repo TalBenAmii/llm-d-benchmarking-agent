@@ -448,6 +448,118 @@ def test_ws_reconnect_midturn_replays_live_events():
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_disconnect_during_preplan_probe_still_reaches_gate():
+    """Regression (sessions 56d8663a25c1 / 4dd131482da9 / 3ba9ba587a40): a turn whose socket drops
+    DURING the pre-plan probe — before any approval gate has been proposed — must still run on to
+    its first gate and PARK there (not be abandoned), so the plan card is waiting when the chat is
+    reopened. This is the first-message AND mid-session bug: you send a message, switch chats while
+    the agent is still probing, and come back to find no plan to approve.
+
+    The abandoned-turn guard (sim-1 00:40) used to STOP such a turn at the step boundary right after
+    the probe (socket gone, nothing approved yet), so ``propose_session_plan`` was never reached and
+    ``session.in_flight_approvals`` stayed empty — nothing to re-surface on return. should_continue()
+    now keeps a turn alive until it surfaces its FIRST approval gate, so the turn reaches the gate
+    and the existing in-flight-approval machinery carries it across the reconnect.
+    """
+    import asyncio
+    import threading
+    import time
+
+    from app.main import app
+
+    turns = [
+        # Step 1: a read-only probe (auto-runs, no gate) — the loop then continues to step 2. This
+        # is the "still only probing" window the bug abandoned the turn in.
+        AssistantTurn(text="Checking the catalog.", tool_calls=[
+            ToolCall("c1", "list_catalog", {"kinds": ["harnesses"]})]),
+        # Step 2: propose the plan — the gate the user must come back to and approve.
+        AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c2", "propose_session_plan", {
+            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+        })]),
+        AssistantTurn(text="Plan approved — all set.", tool_calls=[]),
+    ]
+
+    class GatedProvider:
+        """Blocks the FIRST model call until the test releases it, so the test can GUARANTEE the
+        socket is already detached when the loop next evaluates should_continue() — i.e. the
+        disconnect lands squarely in the pre-gate window, making this a deterministic regression
+        test rather than a race (drop after the probe / before the plan)."""
+
+        def __init__(self, scripted):
+            self._turns = scripted
+            self.i = 0
+            self.loop = None
+            self.release = None
+            self.armed = threading.Event()  # set once loop + release are captured on the loop thread
+
+        async def chat(self, *, system, messages, tools, cache_key=None):
+            if self.loop is None:
+                # First call (step 1): capture the running loop + an Event created ON it, signal the
+                # test, then hold here until the test has dropped the socket.
+                self.loop = asyncio.get_running_loop()
+                self.release = asyncio.Event()
+                self.armed.set()
+                await self.release.wait()
+            turn = self._turns[self.i]
+            self.i += 1
+            return turn
+
+    with TestClient(app) as client:
+        provider = GatedProvider(turns)
+        app.state.provider = provider
+
+        with client.websocket_connect("/ws") as ws1:
+            ready = ws1.receive_json()
+            assert ready["type"] == "ready"
+            sid = ready["data"]["session_id"]
+            ws1.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
+            # Wait until the turn is blocked inside its FIRST model call (socket still attached).
+            assert provider.armed.wait(timeout=5), "turn never reached its first model call"
+        # ws1 is now closed. Wait for the server to process the disconnect (channel.ws -> None) so the
+        # NEXT should_continue() the loop evaluates sees a DETACHED socket — the exact pre-gate window
+        # the old guard abandoned the turn in.
+        channel = app.state.channels.get(sid)
+        assert channel is not None
+        for _ in range(200):
+            if channel.ws is None:
+                break
+            time.sleep(0.02)
+        assert channel.ws is None, "disconnect was not processed"
+
+        # Release the held first model call: the turn runs the probe and reaches the step-2 boundary
+        # with NO socket attached. Old guard -> abandon before the gate; fixed guard -> run on to the
+        # gate and park. call_soon_threadsafe because we're poking the loop from the test thread.
+        provider.loop.call_soon_threadsafe(provider.release.set)
+
+        # The turn must reach + park at the plan gate, persisting it to session.in_flight_approvals.
+        session = app.state.sessions.get(sid)
+        rid = None
+        for _ in range(250):
+            if session.in_flight_approvals:
+                rid = session.in_flight_approvals[0]["request_id"]
+                break
+            time.sleep(0.02)
+        assert rid is not None, "turn was abandoned before proposing the plan gate (the bug)"
+
+        # Reopen the chat: the parked gate is re-surfaced so the user can finally approve it.
+        with client.websocket_connect(f"/ws?session={sid}") as ws2:
+            saw_card = False
+            for _ in range(40):
+                ev = ws2.receive_json()
+                if ev["type"] == "approval_request" and ev["data"]["request_id"] == rid:
+                    saw_card = True
+                    break
+            assert saw_card, "the parked plan gate was not re-surfaced when the chat was reopened"
+
+            # Drain to done so no background task is left parked into shutdown.
+            ws2.send_json({"type": "approval", "request_id": rid, "approved": True})
+            for _ in range(40):
+                if ws2.receive_json()["type"] == "done":
+                    break
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_ws_reconnect_does_not_double_send_approval():
     """Regression for the buffer/pending interplay: on reconnect mid-turn the live replay must
     skip buffered approval_request frames (they're owned by reemit_pending), so the client sees
