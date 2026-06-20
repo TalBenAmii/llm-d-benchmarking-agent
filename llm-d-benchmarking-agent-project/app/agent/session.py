@@ -97,6 +97,10 @@ class Session:
     # call (like ``commands``/``approvals``) so a resumed chat can replay the card in its
     # transcript position. Bounded to the most recent _CARD_RESULTS_MAX entries.
     card_results: list[dict[str, Any]] = field(default_factory=list)
+    # Wall-clock run time (seconds) of each tool call, keyed by tool_call_id. Persisted so a
+    # resumed/reloaded chat shows the SAME duration badge on each action row that a live run does
+    # (the live time is computed client-side and lost on rebuild otherwise). Mechanism only.
+    tool_durations: dict[str, float] = field(default_factory=dict)
     title: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -155,6 +159,17 @@ class Session:
         if len(self.card_results) > _CARD_RESULTS_MAX:
             del self.card_results[: len(self.card_results) - _CARD_RESULTS_MAX]
 
+    def record_tool_duration(self, tool_call_id: str | None, seconds: float) -> None:
+        """Persist a tool call's wall-clock run time (seconds), keyed by id, for the replayed
+        action-row duration badge. No-op without an id; bounded with card_results' tool calls."""
+        if not tool_call_id:
+            return
+        self.tool_durations[tool_call_id] = round(seconds, 2)
+        if len(self.tool_durations) > _CARD_RESULTS_MAX:
+            # Drop the oldest entries (dict preserves insertion order) to stay bounded.
+            for k in list(self.tool_durations)[: len(self.tool_durations) - _CARD_RESULTS_MAX]:
+                del self.tool_durations[k]
+
     def record_in_flight_approval(self, entry: dict[str, Any]) -> None:
         """Track a still-undecided approval gate (by ``request_id``). Idempotent — a re-emit of
         the same gate does not duplicate the entry."""
@@ -190,6 +205,7 @@ class Session:
                         "approvals": self.approvals[-_COMMANDS_MAX:],
                         "in_flight_approvals": self.in_flight_approvals,
                         "card_results": self.card_results[-_CARD_RESULTS_MAX:],
+                        "tool_durations": self.tool_durations,
                         "total_input_tokens": self.total_input_tokens,
                         "total_output_tokens": self.total_output_tokens,
                         "total_cache_read_tokens": self.total_cache_read_tokens,
@@ -274,6 +290,9 @@ class SessionManager:
             # Default []: a pre-feature snapshot has no stored card results, so a resumed chat
             # simply shows no cards for past runs (it never crashes); new runs persist them.
             card_results=data.get("card_results", []),
+            # Default {}: pre-feature snapshots have no stored durations → action rows just omit
+            # the time badge on replay (never crash); new runs persist them.
+            tool_durations=data.get("tool_durations", {}),
             title=data.get("title", ""),
             created_at=data.get("created_at") or time.time(),
             updated_at=data.get("updated_at") or time.time(),

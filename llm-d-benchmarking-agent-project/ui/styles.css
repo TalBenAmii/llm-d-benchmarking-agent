@@ -159,8 +159,8 @@ body {
 }
 .conv-folder-head:hover { background: color-mix(in srgb, var(--accent) 10%, var(--panel-2)); border-color: var(--accent); }
 .conv-folder-caret {
-  flex: none; font-size: 12px; line-height: 1; color: var(--accent);
-  transition: transform .15s ease; display: inline-block;
+  flex: none; font-size: 16px; line-height: 1; color: var(--accent);
+  transition: transform .15s ease; display: inline-block; width: 14px; text-align: center;
 }
 .conv-folder.collapsed .conv-folder-caret { transform: rotate(-90deg); }
 .conv-folder-name {
@@ -204,7 +204,8 @@ body {
 }
 .results-toggle:hover { color: var(--text); }
 .results-caret {
-  font-size: 12px; line-height: 1; color: var(--accent); display: inline-block;
+  font-size: 16px; line-height: 1; color: var(--accent); display: inline-block;
+  width: 14px; text-align: center;
   transform: rotate(180deg); transition: transform .15s ease;   /* points up when collapsed → "expand up" */
 }
 .sidebar.results-open .results-caret { transform: rotate(0deg); }   /* points down when open → "collapse down" */
@@ -256,14 +257,21 @@ body {
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
 
-/* The sidebar toggle is now visible on every breakpoint (ChatGPT-style): on desktop it
-   collapses/expands the persistent sidebar; on mobile it drives the off-canvas drawer. The
-   drawer scrim stays desktop-inert (only meaningful for the mobile overlay). */
-.sidebar-toggle { display: inline-flex; }
+/* The collapse control lives INSIDE the sidebar (Claude.ai style): it sits at the right edge of
+   the brand row and collapses/expands the persistent sidebar (desktop) or closes the off-canvas
+   drawer (mobile). The header #sidebar-expand button is the re-open affordance, shown ONLY while
+   the sidebar is collapsed away (desktop) or always on mobile (where the sidebar is off-canvas). */
+.sidebar-toggle { display: inline-flex; flex: none; margin-left: auto; }
 .sidebar-scrim { display: none; }
-/* Mirror the collapsed state on the icon: when the sidebar is hidden the panel-line nudges so
-   the glyph reads as "closed", and a subtle tint marks it active — but it never disappears. */
-body.sidebar-collapsed .sidebar-toggle line { transform: translateX(-2px); }
+/* Header expand button: hidden by default (the in-sidebar control is the primary one); revealed
+   when the desktop sidebar is collapsed so the user can always re-open it. */
+.sidebar-expand { display: none; }
+body.sidebar-collapsed .sidebar-expand { display: inline-flex; }
+@media (max-width: 760px) {
+  /* On mobile the sidebar is an off-canvas drawer that starts hidden, so the header expand button
+     is always the way in; the in-sidebar collapse control closes the open drawer. */
+  .sidebar-expand { display: inline-flex; }
+}
 
 @media (max-width: 760px) {
   /* Off-canvas sidebar: it slides over the chat (which now spans full width) and a tap-scrim
@@ -366,7 +374,7 @@ header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin:
 /* ── Transcript ───────────────────────────────────────────────────────── */
 main {
   flex: 1; overflow-y: auto; padding: 36px 24px 40px;
-  max-width: 760px; width: 100%; margin: 0 auto;   /* was 900px / 26px 22px */
+  max-width: 900px; width: 100%; margin: 0 auto;   /* keep the 900px reading column (user override) */
 }
 
 /* One per chat: the cached transcript subtree. Detached (not destroyed) on switch and
@@ -380,17 +388,26 @@ main {
   letter-spacing: .06em; min-width: 60px; padding-top: 9px; text-align: right;
 }
 
-/* Assistant/report/provenance: replace the text "who" label with a hexagon avatar.
-   The label text is hidden; a brand hexagon is painted via mask so it auto-themes. */
+/* Assistant/report/provenance/error: the text "who" label is replaced by the real llm-d
+   3-hexagon mesh avatar (inline SVG built in app.js whoEl(); .logo colours its strokes), so it
+   matches the sidebar brand mark and auto-themes. The 30px rounded box frames it. */
 .msg.assistant .who, .msg.report .who, .msg.error .who {
   min-width: 0; width: 30px; height: 30px; flex: none; padding: 0; margin-top: 1px;
   font-size: 0; text-align: initial;
   border: 1px solid var(--border); border-radius: 9px; background: var(--panel);
   position: relative; color: var(--accent);
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.msg.assistant .who::after, .msg.report .who::after {
-  content: ""; position: absolute; inset: 6px;
-  background: var(--accent);
+.msg.assistant .who svg, .msg.report .who svg, .msg.error .who svg {
+  width: 22px; height: 23px; display: block; overflow: visible;
+}
+/* Fallback for any avatar slot still rendered WITHOUT the inline mesh svg (e.g. an older code
+   path): paint a single brand hexagon via mask so the box is never empty. Hidden the moment a
+   real <svg> mesh is present (the avatar SVG sits above this absolutely-positioned layer). */
+.msg.assistant .who:not(:has(svg))::after,
+.msg.report .who:not(:has(svg))::after,
+.msg.error .who:not(:has(svg))::after {
+  content: ""; position: absolute; inset: 6px; background: var(--accent);
   -webkit-mask: var(--hex-mask) center/contain no-repeat; mask: var(--hex-mask) center/contain no-repeat;
 }
 
@@ -538,7 +555,7 @@ pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wra
 
 /* ── Start-of-chat welcome card + suggestion chips ────────────────────── */
 .welcome-card {
-  max-width: 760px; width: 100%; margin: 8px auto 18px;
+  max-width: 900px; width: 100%; margin: 8px auto 18px;
   border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--panel); padding: 16px 18px; box-shadow: var(--shadow);
 }
@@ -548,12 +565,33 @@ pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wra
 .welcome-caps li { font: 400 13px/1.6 var(--serif); color: var(--text); margin: 2px 0; }
 .welcome-nudge { font: 400 13px/1.5 var(--serif); color: var(--muted); margin-top: 6px; }
 .welcome-chips { display: flex; flex-wrap: wrap; gap: 9px; }
-.chip {
-  font: 500 13px/1.2 var(--serif); padding: 8px 14px; border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+
+/* ── ONE shared clickable-suggestion style ────────────────────────────────
+   Every clickable suggestion in the chat — welcome chips, post-run next-step buttons, and the
+   inline report actions (e.g. "🔖 Save provenance bundle") — renders as this same floating pill,
+   matching the design mock's suggestion buttons, so they read as one consistent affordance. */
+.suggestion,
+.chip,
+.next-step-chip,
+.report-action {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 500 13px/1.2 var(--serif); padding: 8px 14px; border-radius: 999px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
   background: color-mix(in srgb, var(--accent) 8%, var(--panel-2)); color: var(--text);
+  transition: border-color .12s, background .12s, transform .1s, filter .12s;
 }
-.chip:hover { border-color: var(--accent); filter: brightness(1.06); }
+.suggestion:hover,
+.chip:hover,
+.next-step-chip:hover,
+.report-action:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel-2));
+  color: var(--text); filter: none;
+}
+.suggestion:active,
+.chip:active,
+.next-step-chip:active,
+.report-action:active { transform: scale(.97); }
 
 /* ── Split view: live resource side panel (backend-streamed during a run) ──
    While a run is active the chat column narrows and the live resource view slides
@@ -573,7 +611,7 @@ body.split .resource-side { width: 340px; }          /* slide open alongside a n
 body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up width to the side panel */
 .resource-side-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 14px 14px 10px; border-bottom: 1px solid var(--border);
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
 }
 .resource-side-title { font: 700 13px/1.2 var(--serif); color: var(--text); }
 .resource-side-body { flex: 1; overflow-y: auto; padding: 12px 14px; }
@@ -622,9 +660,9 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 
 /* ── Deterministic structured results card (B2) ───────────────────────── */
 .results-card {
-  max-width: 760px; width: 100%; margin: 8px auto 16px; position: relative;
+  max-width: 900px; width: 100%; margin: 8px auto 16px; position: relative;
   border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--panel); padding: 14px 18px; box-shadow: var(--shadow);
+  background: var(--panel); padding: 16px 18px; box-shadow: var(--shadow);
 }
 .results-head { font: 600 14px/1.4 var(--serif); color: var(--text); margin-bottom: 8px; }
 /* Header row: title on the left, a quiet "v0.2 · validated" schema tag on the right. */
@@ -748,18 +786,14 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 
 /* Actionable "next steps" chips under an analysis (clickable; sends the step as a message). */
 .next-steps {
-  max-width: 760px; width: 100%; margin: 0 auto 16px;
+  max-width: 900px; width: 100%; margin: 0 auto 16px;
 }
 .next-steps-label {
   font: 600 11px/1.4 var(--mono); color: var(--muted); text-transform: uppercase;
   letter-spacing: .05em; margin-bottom: 7px;
 }
 .next-steps-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.next-step-chip {
-  font-size: 12.5px; padding: 8px 14px; border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent-strong) 40%, var(--border));
-  background: color-mix(in srgb, var(--accent-strong) 8%, var(--panel-2));
-}
+/* Inherits the shared .suggestion look above; only the leading arrow is distinctive. */
 .next-step-chip::before { content: "→ "; color: var(--accent); }
 
 /* ── Buttons ──────────────────────────────────────────────────────────── */
@@ -780,10 +814,15 @@ footer {
   background: linear-gradient(0deg, var(--panel), color-mix(in srgb, var(--panel) 88%, transparent));
   padding: 10px 22px 12px;
 }
+/* The composer FLOATS: its background is the page/conversation background (transparent), so only
+   the rounded border + soft shadow define the box (user override #2 — no panel fill). The width
+   stays at the 900px reading column (user override #1). When a run is active the working/status
+   bar is slotted in as the FIRST child of this same box (see #working below), expanding the box
+   UPWARD inside the one rounded border with a hairline separator between the two rows. */
 #composer {
   display: flex; flex-direction: column; gap: 2px;
-  max-width: 760px; margin: 0 auto;
-  background: var(--panel); border: 1px solid var(--border);
+  max-width: 900px; margin: 0 auto;
+  background: transparent; border: 1px solid var(--border);
   border-radius: var(--radius-lg); box-shadow: var(--shadow);
   padding: 6px 6px 6px 4px;
 }
@@ -888,23 +927,26 @@ input[type="range"].slider:focus { box-shadow: 0 0 0 3px rgba(165, 64, 165, .18)
 /* Context subline (harness · load · duration) under the benchmark title. */
 .report-sub { margin-top: 4px; font: 12px var(--mono); color: var(--muted); }
 
-/* Reproducibility — provenance bundle affordances (report card + results sidebar). */
+/* Reproducibility — provenance bundle affordances (report card + results sidebar).
+   .report-action inherits the shared .suggestion pill look above so it matches the welcome
+   chips + next-step buttons (one consistent clickable-suggestion affordance). */
 .report-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.report-action {
-  font: 12px var(--sans); cursor: pointer; border: 1px solid var(--border);
-  background: var(--panel-2); color: var(--text); border-radius: 8px; padding: 5px 11px;
-}
-.report-action:hover { border-color: var(--accent); color: var(--accent); }
+/* Theme-token reds (was hardcoded #b04040/#ffb4b4 — illegible on the light theme). */
 .prov-dirty-banner {
   margin-top: 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px;
-  background: rgba(176, 64, 64, .15); border: 1px solid #b04040; color: #ffb4b4;
+  background: color-mix(in srgb, var(--red) 14%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--red) 55%, var(--border));
+  color: color-mix(in srgb, var(--red) 45%, var(--text));
 }
 .prov-repos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .prov-chip {
   font: 11px var(--mono); padding: 3px 10px; border-radius: 999px;
   background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
 }
-.prov-chip.prov-dirty { color: #ffb4b4; border-color: #7a2a2a; }
+.prov-chip.prov-dirty {
+  color: color-mix(in srgb, var(--red) 45%, var(--text));
+  border-color: color-mix(in srgb, var(--red) 50%, var(--border));
+}
 .prov-cmd { margin-top: 10px; }
 
 /* "All percentiles" drill-down — reuses the tool-card collapsible caret. */
@@ -971,12 +1013,16 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
 #input, .conv-list, .history-list { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 
 /* ── "Working" indicator (spinning llm-d hexagon + live status) ───────────
-   Pinned just above the composer while a turn is in flight. The hexagon mesh
-   spins and the three sub-hexes pulse on a staggered cadence; a gerund word
-   and the elapsed time / current activity sit alongside it. */
+   Slotted in as the FIRST row INSIDE the composer box while a turn is in flight: it expands the
+   composer's rounded-bordered box UPWARD so the bar sits within the same border, separated from
+   the input row by a hairline. The hexagon mesh spins and the three sub-hexes pulse on a
+   staggered cadence; a gerund word and the elapsed time / current activity sit alongside it. */
 .working {
   display: flex; align-items: center; gap: 9px;
-  max-width: 760px; margin: 0 auto 10px;
+  /* Negative side margins cancel the composer's side padding so the hairline separator runs
+     edge-to-edge across the rounded box; bottom margin offsets the composer's row gap. */
+  margin: 0 -6px 2px -4px; padding: 7px 14px 8px;
+  border-bottom: 1px solid var(--border);   /* hairline separator above the input row */
   font-size: 13px; color: var(--accent);
 }
 .working[hidden] { display: none; }
@@ -1008,7 +1054,7 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
 /* Per-turn token footer beneath an assistant turn — subtle, mono, small (matches .working-stats). */
 .turn-tokens {
   color: var(--muted); font: 11.5px var(--mono);
-  max-width: 760px; width: 100%; margin: -6px auto 10px; padding: 0 2px;
+  max-width: 900px; width: 100%; margin: -6px auto 10px; padding: 0 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1108,7 +1154,7 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
 .share-export-note { margin: 2px 18px 0; padding-top: 10px; border-top: 1px solid var(--border); }
 .share-export-note code { font: 500 11.5px/1 var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 5px; }
 .share-revoke { margin-right: auto; }   /* push Open/Done to the right, keep Delete on the left */
-.share-revoke:not(:disabled):hover { color: var(--danger, #e5484d); border-color: var(--danger, #e5484d); }
+.share-revoke:not(:disabled):hover { color: var(--red); border-color: var(--red); }
 .share-revoke:disabled { opacity: .45; cursor: default; }
 
 /* The conversation title + "shared when" line at the top of a shared transcript. */
@@ -1120,6 +1166,8 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
 body.share-view #sidebar,
 body.share-view footer,
 body.share-view #sidebar-toggle,
+body.share-view #sidebar-expand,
+body.share-view #header-title,
 body.share-view #share-chat,
 body.share-view #builder-toggle,
 body.share-view #context-window,
@@ -1128,6 +1176,15 @@ body.share-view #status,
 body.share-view #jump-latest,
 body.share-view #run-steps { display: none !important; }
 body.share-view .main-col { margin-left: 0; }   /* no sidebar to make room for */
+
+/* The header brand mark — hidden in the normal app (the sidebar carries the brand), shown ONLY on
+   the public /share/<token> viewer where the sidebar is gone, so a shared page still reads as
+   llm-d. Mirrors the .sidebar-brand layout. */
+.header-brand { display: none; align-items: center; gap: 10px; min-width: 0; }
+body.share-view .header-brand { display: inline-flex; }
+.header-brand .logo { line-height: 0; }
+.header-brand-name { font: 700 15.5px/1.15 var(--serif); letter-spacing: -.01em; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Prominent "Design a benchmark" CTA on the start-of-chat welcome card. */
 .welcome-build {

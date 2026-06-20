@@ -34,7 +34,8 @@ const resourceSide = document.getElementById("resource-side");
 const resourceSideBody = document.getElementById("resource-side-body");
 const resourceSideClose = document.getElementById("resource-side-close");
 const runSteps = document.getElementById("run-steps");
-const sidebarToggle = document.getElementById("sidebar-toggle");
+const sidebarToggle = document.getElementById("sidebar-toggle");   // collapse control INSIDE the sidebar
+const sidebarExpand = document.getElementById("sidebar-expand");    // header re-open affordance (collapsed only)
 const sidebarScrim = document.getElementById("sidebar-scrim");
 const jumpBtn = document.getElementById("jump-latest");
 const builderToggle = document.getElementById("builder-toggle");
@@ -860,9 +861,50 @@ function renderMarkdown(text) {
   return html;
 }
 
+// The assistant/report/provenance avatar: the real llm-d 3-hexagon mesh (same shape as the
+// sidebar brand logo), painted as an inline SVG into the .who box so it auto-themes (its strokes
+// use the brand-purple via the .logo CSS). Replaces the single masked hexagon for a crisper,
+// on-brand mark. The user role keeps a plain (hidden) label; everything else gets the mesh.
+function meshAvatarSvg() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 30 32");
+  svg.setAttribute("width", "22");
+  svg.setAttribute("height", "23");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "llm-d");
+  const g = document.createElementNS(SVG_NS, "g");
+  g.setAttribute("fill", "none");
+  g.setAttribute("stroke-width", "2.6");
+  g.setAttribute("stroke-linejoin", "round");
+  g.setAttribute("stroke-linecap", "round");
+  const paths = [
+    ["hx-p", "M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z"],
+    ["hx-g", "M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z"],
+    ["hx-p", "M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z"],
+  ];
+  for (const [cls, d] of paths) {
+    const p = document.createElementNS(SVG_NS, "path");
+    p.setAttribute("class", cls);
+    p.setAttribute("d", d);
+    g.appendChild(p);
+  }
+  svg.appendChild(g);
+  return svg;
+}
+
+// Build the .who avatar slot for a message role. Assistant/report/provenance/error → the 3-hex
+// mesh logo; user → the (CSS-hidden) "you" label. Shared by every bubble/card builder so the
+// avatar is identical everywhere.
+function whoEl(role) {
+  if (role === "user") return el("div", "who", "you");
+  const who = el("div", "who logo");   // .logo gives the hex strokes their brand colours
+  who.appendChild(meshAvatarSvg());
+  return who;
+}
+
 function addBubble(role, text) {
   const wrap = el("div", `msg ${role}`);
-  wrap.appendChild(el("div", "who", role === "user" ? "you" : role));
+  wrap.appendChild(whoEl(role));
   if (role === "assistant") {
     // The agent writes markdown; render it. User/error text stays literal (so a user's
     // own `**` is never interpreted and errors show raw).
@@ -891,7 +933,7 @@ let streamText = "";
 function appendStreamDelta(text) {
   if (!streamBubble) {
     const wrap = el("div", "msg assistant");
-    wrap.appendChild(el("div", "who", "assistant"));
+    wrap.appendChild(whoEl("assistant"));
     streamBubble = el("div", "bubble markdown");
     wrap.appendChild(streamBubble);
     activePane.appendChild(wrap);
@@ -1652,7 +1694,8 @@ function renderNextSteps(r) {
   const row = el("div", "next-steps");
   row.appendChild(el("div", "next-steps-label", "Suggested next steps"));
   const chips = el("div", "next-steps-chips");
-  for (const s of r.next_steps) {
+  // Surface AT MOST 4 follow-up suggestion buttons (the recommender ranks them; show the top few).
+  for (const s of r.next_steps.slice(0, 4)) {
     if (!s || !s.action) continue;
     const btn = el("button", "chip next-step-chip", NEXT_STEP_LABELS[s.action] || humanizeTool(s.action));
     btn.type = "button";
@@ -2086,7 +2129,9 @@ function addHistoryTool(it) {
   const d = el("details", "tool");
   const sum = el("summary");
   sum.appendChild(el("span", "tname", it.name || "tool"));
-  sum.appendChild(toolMetaSpan(!!it.mutating, null));   // backend-derived mode; no run time on replay
+  // Backend-derived mode + the PERSISTED run duration (seconds), so a replayed/reloaded action row
+  // shows the same time badge a live run does — not just the badge.
+  sum.appendChild(toolMetaSpan(!!it.mutating, fmtDurShort(typeof it.duration_s === "number" ? it.duration_s : null)));
   d.appendChild(sum);
   const body = el("div", "body");
   if (it.input && Object.keys(it.input).length) body.appendChild(prettyJson(it.input));
@@ -2253,8 +2298,8 @@ function fmtDuration(iso) {
 function renderReportSummary(result) {
   const s = result.summary;
   const L = s.latency || {}, T = s.throughput || {}, SM = s.standard_metrics || {};
-  const wrap = el("div", "msg assistant");
-  wrap.appendChild(el("div", "who", "report"));
+  const wrap = el("div", "msg report");
+  wrap.appendChild(whoEl("report"));
   const bubble = el("div", "bubble");
   bubble.appendChild(el("strong", null, `Benchmark results — ${s.model || "model"}`));
 
@@ -2334,8 +2379,8 @@ function reportActions(bundleId, sessionId) {
 // affordances wired to the new backend routes.
 function renderReproducibilityCard(r) {
   if (!r || !r.exported || !r.bundle_id) return;
-  const wrap = el("div", "msg assistant");
-  wrap.appendChild(el("div", "who", "provenance"));
+  const wrap = el("div", "msg report");
+  wrap.appendChild(whoEl("provenance"));
   const bubble = el("div", "bubble");
   bubble.appendChild(el("strong", null, "Provenance bundle captured"));
   bubble.appendChild(el("div", "report-sub", `bundle ${r.bundle_id}`));
@@ -2803,12 +2848,13 @@ function setSidebarCollapsed(collapsed) {           // desktop in-place collapse
   syncSidebarToggleState();
 }
 function syncSidebarToggleState() {
-  if (!sidebarToggle) return;
   // aria-expanded reflects whichever mechanism is live at the current breakpoint.
   const open = sidebarMql.matches
     ? document.body.classList.contains("sidebar-open")
     : !document.body.classList.contains("sidebar-collapsed");
-  sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (sidebarToggle) sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  // The header expand button mirrors the inverse — it's the "open me" affordance.
+  if (sidebarExpand) sidebarExpand.setAttribute("aria-expanded", open ? "true" : "false");
 }
 // Restore the persisted desktop collapse state on load.
 try {
@@ -2818,10 +2864,14 @@ try {
 } catch (e) {}
 syncSidebarToggleState();
 
-if (sidebarToggle) sidebarToggle.addEventListener("click", () => {
+// Both controls drive the same toggle: the in-sidebar button (primary collapse control) and the
+// header expand button (reachable when the sidebar is collapsed away). Mobile → off-canvas drawer.
+function toggleSidebar() {
   if (sidebarMql.matches) setSidebar(!document.body.classList.contains("sidebar-open"));
   else setSidebarCollapsed(!document.body.classList.contains("sidebar-collapsed"));
-});
+}
+if (sidebarToggle) sidebarToggle.addEventListener("click", toggleSidebar);
+if (sidebarExpand) sidebarExpand.addEventListener("click", toggleSidebar);
 if (sidebarScrim) sidebarScrim.addEventListener("click", () => setSidebar(false));
 // Keep aria-expanded honest when the viewport crosses the mobile breakpoint.
 sidebarMql.addEventListener("change", syncSidebarToggleState);

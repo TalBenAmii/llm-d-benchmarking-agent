@@ -45,6 +45,15 @@
         <span class="sb-name">llm-d</span>
         <span class="sb-sub">Benchmarking Assistant</span>
       </span>
+      <!-- Collapse/expand control anchored to the sidebar (Claude.ai style). Collapses the
+           persistent sidebar on desktop; closes the off-canvas drawer on mobile. When the sidebar
+           is collapsed away on desktop, the matching #sidebar-expand button in the header re-opens it. -->
+      <button id="sidebar-toggle" class="icon-btn sidebar-toggle" type="button" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2.4" />
+          <line x1="9.5" y1="3" x2="9.5" y2="21" />
+        </svg>
+      </button>
     </div>
     <div class="sidebar-head">
       <button id="new-chat" class="new-chat" type="button"><span aria-hidden="true">+</span> New chat</button>
@@ -79,12 +88,28 @@
   <div class="main-col">
   <header>
     <div class="brand">
-      <button id="sidebar-toggle" class="icon-btn sidebar-toggle" type="button" title="Show / hide sidebar" aria-label="Toggle sidebar" aria-expanded="true">
+      <!-- Expand affordance shown ONLY when the sidebar is collapsed (the primary collapse control
+           now lives inside the sidebar). On mobile it opens the off-canvas drawer. -->
+      <button id="sidebar-expand" class="icon-btn sidebar-expand" type="button" title="Show sidebar" aria-label="Show sidebar" aria-expanded="false">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="3" width="18" height="18" rx="2.4" />
           <line x1="9.5" y1="3" x2="9.5" y2="21" />
         </svg>
       </button>
+      <!-- Brand mark in the header — shown ONLY on the public /share/<token> viewer, where the
+           sidebar (which normally carries the brand) is hidden. CSS-gated to body.share-view. -->
+      <span class="header-brand" aria-hidden="false">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 30 32" width="27" height="29" role="img" aria-label="llm-d">
+            <g fill="none" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
+              <path class="hx-p" d="M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z" />
+              <path class="hx-g" d="M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z" />
+              <path class="hx-p" d="M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z" />
+            </g>
+          </svg>
+        </span>
+        <span class="header-brand-name">llm-d Benchmarking Assistant</span>
+      </span>
       <!-- The header now shows the ACTIVE conversation's title (set by app.js); the brand mark/name
            lives in the sidebar. Falls back to "New chat" before a title exists. -->
       <h1 id="header-title">New chat</h1>
@@ -110,21 +135,24 @@
   <main id="transcript" aria-live="polite"></main>
 
   <footer>
-    <div id="working" class="working" role="status" aria-live="polite" hidden>
-      <span class="working-logo" aria-hidden="true">
-        <svg viewBox="0 0 30 32" width="19" height="20" focusable="false">
-          <g class="working-hex" fill="none" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
-            <path class="hx1" d="M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z" />
-            <path class="hx2" d="M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z" />
-            <path class="hx3" d="M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z" />
-          </g>
-        </svg>
-      </span>
-      <span class="working-word">Thinking</span><span class="working-dots">…</span>
-      <span class="working-stats"></span>
-      <button id="stop-run" class="stop-run" type="button" title="Stop the current run" aria-label="Stop the current run">◼ Stop</button>
-    </div>
+    <!-- The composer is a single rounded, transparent (floating) box. While a run is active the
+         working/status bar (#working) sits as the FIRST row INSIDE this box — it expands the box
+         upward inside the one rounded border, with a hairline separator above the input row. -->
     <form id="composer" autocomplete="off">
+      <div id="working" class="working" role="status" aria-live="polite" hidden>
+        <span class="working-logo" aria-hidden="true">
+          <svg viewBox="0 0 30 32" width="19" height="20" focusable="false">
+            <g class="working-hex" fill="none" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
+              <path class="hx1" d="M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z" />
+              <path class="hx2" d="M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z" />
+              <path class="hx3" d="M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z" />
+            </g>
+          </svg>
+        </span>
+        <span class="working-word">Thinking</span><span class="working-dots">…</span>
+        <span class="working-stats"></span>
+        <button id="stop-run" class="stop-run" type="button" title="Stop the current run" aria-label="Stop the current run">◼ Stop</button>
+      </div>
       <textarea id="input" rows="1" placeholder="e.g. Benchmark a small chat model on my laptop" disabled></textarea>
       <div class="composer-tools">
         <div id="context-window" class="ctx-meter" title="Current context-window usage sent to the model (real provider token count)" hidden>0 ctx</div>
@@ -255,7 +283,7 @@
   <aside id="resource-side" class="resource-side" aria-label="Live resource usage" aria-live="polite" hidden>
     <div class="resource-side-head">
       <span class="resource-side-title">Live resources</span>
-      <button id="resource-side-close" class="icon-btn icon-btn-sm" type="button" title="Hide the live resource view" aria-label="Hide the live resource view">×</button>
+      <button id="resource-side-close" class="icon-btn icon-btn-sm" type="button" title="Hide the live resource view" aria-label="Hide the live resource view">✕</button>
     </div>
     <div id="resource-side-body" class="resource-side-body"></div>
   </aside>

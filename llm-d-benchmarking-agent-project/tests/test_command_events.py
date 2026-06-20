@@ -8,6 +8,8 @@ can replay the debug view.
 """
 from __future__ import annotations
 
+import json
+
 from app.agent.session import _COMMANDS_MAX, Session
 from app.config import Settings
 from app.security.allowlist import Allowlist
@@ -307,6 +309,49 @@ def test_session_persists_and_reloads_card_results(tmp_path):
     assert reloaded.card_results[0]["result"]["summary"]["model"] == "m"
 
 
+def test_session_persists_and_reloads_tool_durations(tmp_path):
+    """A tool call's wall-clock run time is persisted (keyed by tool_call_id) and reloaded, so a
+    resumed/reloaded chat can show the SAME duration badge on its action rows a live run does."""
+    from app.security.runner import CommandRunner
+    from app.tools.context import ToolContext
+
+    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
+    ctx = ToolContext(
+        settings=settings,
+        allowlist=Allowlist.from_file(settings.allowlist_path),
+        runner=CommandRunner(settings.repo_paths),
+        workspace=tmp_path / "ws" / "sessions" / "s1",
+    )
+    s = Session(id="s1", ctx=ctx)
+    s.messages.append({"role": "user", "content": "hi"})
+    s.record_tool_duration("tc1", 42.137)
+    s.record_tool_duration(None, 9.9)   # no id → no-op (never crashes)
+    s.persist()
+
+    from app.agent.session import SessionManager
+
+    mgr = SessionManager(settings, ctx.allowlist, ctx.runner)
+    reloaded = mgr.load("s1")
+    assert reloaded is not None
+    assert reloaded.tool_durations.get("tc1") == 42.14   # rounded to 2dp on record
+    assert None not in reloaded.tool_durations
+
+
+def test_history_items_tool_call_carries_persisted_duration():
+    """_history_items stamps each replayed tool_call with its persisted duration_s so the action
+    row shows the time badge on resume (None when no duration was captured)."""
+    from app.main import _history_items
+
+    s = Session(id="x", ctx=None)
+    s.messages.append({"role": "user", "content": "go"})
+    s.messages.append({"role": "assistant", "content": "",
+                       "tool_calls": [{"id": "tc1", "name": "probe_environment", "input": {}}]})
+    s.tool_durations = {"tc1": 12.5}
+    items = _history_items(s)
+    tcs = [it for it in items if it["role"] == "tool_call"]
+    assert tcs and tcs[0]["duration_s"] == 12.5
+
+
 def test_history_items_interleave_card_result_inline():
     """_history_items replays a persisted card result so a resumed/reloaded chat re-renders the
     report card + clickable charts: the FULL result becomes a `tool_result` item right after its
@@ -358,3 +403,71 @@ def test_history_items_card_result_emits_results_card_for_analyzer():
     if build_results_card("analyze_results", result) is not None:
         assert roles[tr_idx + 1] == "results_card"
         assert items[tr_idx + 1]["card"] is not None
+
+
+def test_history_items_fallback_rederives_report_card_when_card_results_empty():
+    """Regression: a run with NO persisted ``card_results`` (e.g. it predated the persist-card-
+    results fix, or its server wasn't restarted onto it) must STILL replay the rich report card +
+    its clickable charts — re-derived from the ``tool_result`` kept in ``messages`` — instead of
+    degrading to bare metric tiles. Before the fallback, _history_items emitted only the tool_call
+    (no tool_result), so the charts vanished on chat-switch / reload."""
+    from app.main import _history_items
+
+    s = Session(id="fb", ctx=None)
+    s.messages.append({"role": "user", "content": "show me the results"})
+    s.messages.append({"role": "assistant", "content": "here",
+                       "tool_calls": [{"id": "tc1", "name": "locate_and_parse_report", "input": {}}]})
+    report = {"found": True, "summary": {"model": "llama"},
+              "charts": [{"title": "ttft", "path": "p.png", "session_id": "fb"}]}
+    # The LLM-facing copy in messages (JSON string, as persisted) — but card_results stays EMPTY.
+    s.messages.append({"role": "tool_results", "results": [
+        {"tool_call_id": "tc1", "name": "locate_and_parse_report", "content": json.dumps(report)}]})
+    assert s.card_results == []
+
+    items = _history_items(s)
+    roles = [it["role"] for it in items]
+    tc_idx = roles.index("tool_call")
+    assert roles[tc_idx + 1] == "tool_result"
+    tr = items[tc_idx + 1]
+    assert tr["name"] == "locate_and_parse_report"
+    assert tr["result"]["summary"]["model"] == "llama"
+    assert tr["result"]["charts"][0]["path"] == "p.png"
+
+
+def test_history_items_fallback_rediscovers_charts_from_disk(tmp_path):
+    """When the stored report copy lost its ``charts`` (e.g. budget-clamped on a huge result) but
+    its ``report_path`` still points at a workspace holding the harness-rendered PNGs, the fallback
+    re-discovers the charts from disk so the clickable thumbnails survive a reload."""
+    from types import SimpleNamespace
+
+    from app.main import _history_items
+
+    # Lay out a per-session workspace: <sessions>/<sid>/<run>/results/report + analysis/*.png
+    sid = "discd"
+    sessions_root = tmp_path / "sessions"
+    run = sessions_root / sid / "run1"
+    (run / "results").mkdir(parents=True)
+    (run / "analysis").mkdir(parents=True)
+    report_path = run / "results" / "benchmark_report_v0.2.json.yaml"
+    report_path.write_text("found: true\n")
+    (run / "analysis" / "latency_vs_qps.png").write_bytes(b"\x89PNG")
+
+    # Stored copy carries report_path but NO charts (the clamp dropped them), and no card_results.
+    report = {"found": True, "summary": {"model": "m"}, "report_path": str(report_path)}
+    sess = SimpleNamespace(
+        messages=[
+            {"role": "assistant", "content": "",
+             "tool_calls": [{"id": "tc1", "name": "locate_and_parse_report", "input": {}}]},
+            {"role": "tool_results", "results": [
+                {"tool_call_id": "tc1", "name": "locate_and_parse_report",
+                 "content": json.dumps(report)}]},
+        ],
+        approvals=[], in_flight_approvals=[], commands=[], card_results=[],
+        ctx=SimpleNamespace(workspace=sessions_root / sid),
+    )
+
+    items = _history_items(sess)
+    tr = next(it for it in items if it["role"] == "tool_result")
+    charts = tr["result"]["charts"]
+    assert charts and charts[0]["path"].endswith("latency_vs_qps.png")
+    assert charts[0]["session_id"] == sid
