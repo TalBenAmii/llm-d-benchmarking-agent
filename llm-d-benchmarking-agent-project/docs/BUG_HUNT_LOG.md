@@ -6,6 +6,32 @@ fix → status.
 
 Started 2026-06-20.
 
+## Summary (session of 2026-06-20)
+**10 bugs found → verified → fixed → tested → merged** to local `main` across 4 fast-forward
+batches (`2970975`, `8820510`, `5699f3c`, `f4d46d9`); full suite green (2011 passed / 41 skipped),
+ruff + mypy clean. Method: fan out read-only subagents over disjoint areas, **verify every lead
+against source before fixing** (~70% of "high-confidence" agent leads were debunked), then drive the
+live app adversarially. The two highest-value bugs (009, 010 — unhandled `OSError`/`ValueError`
+→ 500 on the artifact/bundle routes) were found by **adversarial HTTP fuzzing**, not static review.
+
+Dynamic end-to-end checks that passed clean (no bugs): a live WS chat turn, the malformed-frame WS
+fuzz (socket survived every bad frame), and a **full SIMULATE=1 benchmark flow**
+(probe → plan → approve → standup → smoketest → run → report → summary, no errors). Severity: most
+bugs low/medium; none were crashes of the core flow.
+
+| # | Where | One-liner |
+|---|-------|-----------|
+| 001 | ui/app.js | dead duplicate `fmtNum` (hoist shadow) |
+| 002 | ui/app.js | resilience card `undefined/N classified correctly` |
+| 003 | app/storage/share.py | non-atomic snapshot write |
+| 004 | app/main.py | `/ws?after_seq=²` crashed the handshake |
+| 005 | app/main.py | `revoke_share` hit FS + `gh` with unvalidated token |
+| 006 | ui/styles.css | share dialog clipped its buttons (short viewport) |
+| 007 | deploy/helm | Prometheus scrape annotation wrong port |
+| 008 | run.sh | `read_env` deleted internal spaces/quotes |
+| 009 | app/main.py | over-long id → 500 (ENAMETOOLONG) on artifact/bundle |
+| 010 | app/main.py | NUL byte → 500 (ValueError) on artifact/bundle |
+
 ---
 
 ## BUG-001 — Dead duplicate `fmtNum` in `ui/app.js` (latent)
