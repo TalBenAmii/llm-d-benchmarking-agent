@@ -10,6 +10,7 @@ import contextlib
 import json
 import logging
 import signal
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
@@ -20,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from app.agent import events as ws_events
 from app.agent.channel import Channel
 from app.agent.lifecycle import RunRegistry
-from app.agent.loop import AgentLoop
+from app.agent.loop import CARD_RESULT_TOOLS, AgentLoop
 from app.agent.results_card import build_results_card
 from app.agent.session import SessionManager
 from app.agent.suggestions import load_suggestions
@@ -51,6 +52,8 @@ from app.storage.history import HistoryStore, available_metrics, trend
 from app.storage.provenance import BundleStore
 from app.storage.retention import readiness, run_gc, self_check
 from app.storage.share import ShareStore
+from app.tools import report_locate
+from app.tools.json_tail import find_last_json
 from app.tools.probe import probe_environment
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
@@ -353,6 +356,18 @@ def _history_items(session) -> list[dict[str, Any]]:
     card_results_by_tc: dict[str | None, list[dict[str, Any]]] = {}
     for cr in getattr(session, "card_results", []) or []:
         card_results_by_tc.setdefault(cr.get("tool_call_id"), []).append(cr)
+    # Defensive fallback source for the report/analysis CARDS: the LLM-facing ``tool_results``
+    # already carry each card tool's result in ``messages``. When ``card_results`` has NO entry
+    # for a card-rendering tool call (e.g. the run predated the persist-card-results fix, or the
+    # server that ran it wasn't restarted onto that fix), we re-derive a ``tool_result`` item from
+    # this message copy so the rich card + its clickable charts still replay instead of degrading
+    # to bare metric tiles. Keyed by tool_call_id; the value is the (possibly clamped) result.
+    tool_results_by_tc: dict[str | None, dict[str, Any]] = {}
+    for m in session.messages:
+        if m.get("role") != "tool_results":
+            continue
+        for r in m.get("results", []) or []:
+            tool_results_by_tc[r.get("tool_call_id")] = r
 
     def _command_item(c: dict[str, Any]) -> dict[str, Any]:
         return {"role": "command", "text": c.get("text"), "argv": c.get("argv"),
@@ -390,8 +405,12 @@ def _history_items(session) -> list[dict[str, Any]]:
                     (c.get("mode") or "read_only") != "read_only"
                     for c in commands_by_tc.get(tc_id, [])
                 )
+                # The persisted wall-clock run time → the replayed action row shows the SAME
+                # duration badge a live run does (None when absent on a pre-feature snapshot).
+                tc_dur = (getattr(session, "tool_durations", None) or {}).get(tc_id)
                 items.append({"role": "tool_call", "name": tc.get("name"),
-                              "input": tc.get("input"), "mutating": tc_mutating})
+                              "input": tc.get("input"), "mutating": tc_mutating,
+                              "duration_s": tc_dur})
                 for a in approvals_by_tc.get(tc_id, []):
                     items.append({"role": "approval_decision", "kind": a.get("kind"),
                                   "payload": a.get("payload"), "approved": a.get("approved")})
@@ -403,8 +422,17 @@ def _history_items(session) -> list[dict[str, Any]]:
                     items.append(_command_item(c))
                 # Then its renderable result — the report summary + clickable charts, etc. — so
                 # the rich card is replayed in place (live order: tool_result, then results_card).
-                for cr in card_results_by_tc.get(tc_id, []):
-                    items.extend(_card_result_items(cr))
+                crs = card_results_by_tc.get(tc_id, [])
+                if crs:
+                    for cr in crs:
+                        items.extend(_card_result_items(cr))
+                # Fallback: no persisted card result for a card-rendering tool call → re-derive
+                # the card (+ its charts) from the tool_result kept in ``messages`` so it doesn't
+                # degrade to bare tiles (see ``tool_results_by_tc`` above).
+                elif tc.get("name") in CARD_RESULT_TOOLS:
+                    fb = _fallback_card_items(
+                        tc.get("name"), tool_results_by_tc.get(tc_id), session)
+                    items.extend(fb)
                 rendered_tcs.add(tc_id)
     # Don't lose commands whose owning tool call fell out of the replayed messages (compaction).
     for tc_id, cmds in commands_by_tc.items():
@@ -428,10 +456,37 @@ def _card_result_items(cr: dict[str, Any]) -> list[dict[str, Any]]:
     ``results_card`` — re-derived from the same result, exactly as the live stream emits it."""
     name, result = cr.get("name"), cr.get("result")
     out: list[dict[str, Any]] = [{"role": "tool_result", "name": name, "result": result}]
-    card = build_results_card(name, result)
+    card = build_results_card(name or "", result)
     if card is not None:
         out.append({"role": "results_card", "card": card})
     return out
+
+
+def _fallback_card_items(name: str | None, tr: dict[str, Any] | None, session) -> list[dict[str, Any]]:
+    """Re-derive a card-rendering tool's replay items from the LLM-facing ``tool_result`` kept in
+    ``messages`` when no entry exists in ``session.card_results`` (e.g. the run predated the
+    persist-card-results fix, or its server wasn't restarted onto it). The message copy carries
+    the same result the live stream rendered from — so the rich card replays instead of degrading
+    to bare metric tiles. For a report whose stored copy lost its ``charts`` (budget-clamped on a
+    huge result), the charts are re-discovered from the run's workspace via the report_path, so the
+    clickable thumbnails survive. Returns [] when there is no usable result to render."""
+    if not tr:
+        return []
+    content = tr.get("content")
+    result = find_last_json(content, "{") if isinstance(content, str) else content
+    if not isinstance(result, dict):
+        return []
+    # A report card with no charts in the stored copy → re-discover them from disk (the PNGs the
+    # harness rendered still live under the per-session workspace). Pure mechanism, no judgment.
+    if name == "locate_and_parse_report" and not result.get("charts") and result.get("report_path"):
+        try:
+            charts = report_locate._discover_charts(
+                Path(result["report_path"]), session.ctx.workspace.parent)
+        except (OSError, ValueError, AttributeError):
+            charts = []
+        if charts:
+            result = {**result, "charts": charts}
+    return _card_result_items({"name": name, "result": result})
 
 
 # Per-run chart images (e.g. the latency/throughput PNGs inference-perf renders into a
