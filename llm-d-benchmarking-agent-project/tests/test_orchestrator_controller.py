@@ -72,6 +72,12 @@ def test_classify_edge_cases():
     # a Failed condition with status "False" must NOT count as failed.
     notfailed = {"metadata": {}, "status": {"active": 1, "conditions": [{"type": "Failed", "status": "False"}]}}
     assert classify_job_status(notfailed).phase == ACTIVE
+    # BUG-023: a forged/corrupt status with NON-NUMERIC counts must not raise ValueError out of
+    # classify (which would abort the whole watch/reconstruct loop). Non-numeric counts read as 0,
+    # so a status with only bogus counts and no terminal signal is PENDING — never a crash.
+    forged = {"metadata": {"name": "j"}, "status": {"active": "lots", "succeeded": "x", "failed": None}}
+    st = classify_job_status(forged)
+    assert st.phase == PENDING and st.active == 0 and st.succeeded == 0 and st.failed == 0
 
 
 # ---- submit ---------------------------------------------------------------

@@ -361,6 +361,18 @@ class JobStatus:
         return self.phase in (SUCCEEDED, FAILED)
 
 
+def _as_int(v: Any) -> int:
+    """Coerce a Job-status count to int, never crashing. ``kubectl get -o json`` normally yields
+    integer ``active``/``succeeded``/``failed`` counts, but a forged or corrupt status object can
+    carry a non-numeric value; a bare ``int("garbage")`` would then raise ``ValueError`` straight
+    out of ``classify_job_status`` and abort the whole watch/reconstruct loop (which the cluster is
+    the source of truth for). Anything not cleanly int-convertible reads as 0."""
+    try:
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def classify_job_status(job_obj: dict[str, Any]) -> JobStatus:
     """Map a Job object (from ``kubectl get job -o json``) to a stable phase. A Complete
     condition → succeeded; a Failed condition → failed (carrying its reason/message, e.g.
@@ -368,9 +380,9 @@ def classify_job_status(job_obj: dict[str, Any]) -> JobStatus:
     meta = job_obj.get("metadata", {}) or {}
     status = job_obj.get("status", {}) or {}
     conditions = status.get("conditions", []) or []
-    active = int(status.get("active", 0) or 0)
-    succeeded = int(status.get("succeeded", 0) or 0)
-    failed = int(status.get("failed", 0) or 0)
+    active = _as_int(status.get("active", 0))
+    succeeded = _as_int(status.get("succeeded", 0))
+    failed = _as_int(status.get("failed", 0))
 
     def _cond(kind: str) -> dict[str, Any] | None:
         for c in conditions:

@@ -45,6 +45,7 @@ bugs low/medium; none were crashes of the core flow.
 | 020 | app/storage/history.py | corrupt `stored_at` (null/string) → `TypeError` crashes the WHOLE history list + all trends |
 | 021 | app/storage/provenance.py | truthy non-numeric `created_at` → `TypeError` crashes the WHOLE bundle list |
 | 022 | app/storage/autotune.py | non-numeric trial `index` → `TypeError` crashes `load()` (whole autotune log) |
+| 023 | app/orchestrator/job.py | non-numeric Job count (`active`/`succeeded`/`failed`) → `int()` `ValueError` aborts the watch loop |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -197,7 +198,26 @@ unchanged. Suggested hardening if desired: deny a small set of known-dangerous f
 
 ---
 
-## Candidates surfaced 2026-06-20 (verified by source) — A/B/C now FIXED (2026-06-21), D/E still queued
+## BUG-023 — non-numeric Job count crashes `classify_job_status` (ValueError) → aborts the watch loop
+- **Status:** FIXED (this is CAND-D below)
+- **Severity:** medium (a forged/corrupt `kubectl get -o json` aborts the whole watch/reconstruct loop)
+- **Where:** `app/orchestrator/job.py::classify_job_status` —
+  `active = int(status.get("active", 0) or 0)` (and the same for `succeeded`/`failed`).
+- **Trigger (reproduced):** a Job status with a non-numeric count, e.g. `{"status": {"active": "lots"}}`
+  → `int("lots")` raises `ValueError: invalid literal for int()`. `kubectl` normally emits integer
+  counts, but a corrupt/forged status object propagates the `ValueError` straight out of classify,
+  aborting `watch()`/`reconstruct()` (the cluster is the source of truth those loops read).
+- **Fix:** an `_as_int(v)` helper (`int(v or 0)` guarded by `except (TypeError, ValueError) -> 0`)
+  used for all three counts — a non-numeric count reads as 0, so a Job with only bogus counts and no
+  terminal signal classifies as PENDING instead of crashing. Same hardening class as BUG-020/021/022.
+- **Regression test:** extended `tests/test_orchestrator_controller.py::test_classify_edge_cases`
+  with a forged non-numeric-count status (asserts PENDING + zeroed counts, no raise).
+- **CAND-E (the sibling success-heuristic edge) deliberately NOT changed** — see the candidates note
+  below for the regression reasoning.
+
+---
+
+## Candidates surfaced 2026-06-20 (verified by source) — A/B/C+D now FIXED (2026-06-21), E deliberately declined
 Two parallel hunters (orchestrator, storage) returned the findings below. Each was confirmed
 real against source — a missing-guard on **malformed/forged on-disk or kubectl JSON**, not
 reachable through the agent's normal flow. The three storage crashes (A/B/C) were fixed on
@@ -209,13 +229,17 @@ reachable through the agent's normal flow. The three storage crashes (A/B/C) wer
   the defensive `_as_num` key (the record stays visible, sorted as oldest, rather than crashing/dropping).
 - **CAND-C** ✅ **FIXED → BUG-021** (`app/storage/provenance.py`) — `BundleStore.list`'s
   `b.get("created_at") or 0.0` key still crashed on a truthy non-number. Fixed with the `_as_num` key.
-- **CAND-D `app/orchestrator/job.py:371-373`** — `classify_job_status` does `int(status.get("active",0) or 0)`;
-  a non-numeric count in a forged `kubectl get -o json` raises `ValueError`, aborting the watch/reconstruct
-  loop. Only reachable via corrupted/forged kubectl JSON. Fix: an `_as_int` helper returning 0.
-- **CAND-E `app/orchestrator/job.py:382`** — the `succeeded>0 and active==0 and not _cond("Failed")`
-  success heuristic ignores `failed`, so a multi-pod managed Job with `succeeded=1, failed=1` could be
-  mis-reported SUCCEEDED. Not reachable for agent-authored Jobs (all single-pod, `backoffLimit:0`), only
-  a hand-applied/future multi-pod managed Job. Fix: also require `failed == 0` in that branch.
+- **CAND-D** ✅ **FIXED → BUG-023** (`app/orchestrator/job.py`) — `classify_job_status`'s
+  `int(status.get(...))` crashed on a non-numeric count. Fixed with the `_as_int` helper.
+- **CAND-E `app/orchestrator/job.py`** — ⛔ **deliberately NOT fixed** (declined 2026-06-21). The
+  proposed `failed == 0` guard on the `succeeded>0 and active==0 and not _cond("Failed")` fallback
+  would introduce a **regression**: a `backoffLimit>0` Job that failed-then-succeeded has
+  `succeeded>0, failed>0`, and in the brief K8s window *before* the `Complete` condition is written it
+  relies on exactly this fallback — the guard would misclassify that genuinely-succeeded Job as FAILED.
+  The original mis-report (succeeded=1/failed=1 → SUCCEEDED) is **not reachable for agent Jobs** (all
+  single-pod `backoffLimit:0`, where succeeded and failed can't co-occur — see `orchestrator/CLAUDE.md`);
+  it only affects hand-applied multi-pod Jobs the agent never creates. Fixing an unreachable theoretical
+  edge at the cost of a real retry-path regression is the wrong trade — left as-is.
 
 ---
 
