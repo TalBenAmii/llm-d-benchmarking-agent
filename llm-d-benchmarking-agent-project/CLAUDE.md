@@ -106,23 +106,27 @@ approval is kept), a synthetic report produced. Default `0` (real execution).
   other sessions commit to it). Verify `merge-base == main HEAD` before merging; re-check SHA ancestry
   AFTER merging (concurrent-session hazard). Never `git add -A` at the monorepo root (grabs
   `.claude/worktrees/*` gitlinks) — add specific paths.
-- **Run the suite from a worktree** (exercises *your* worktree code against the *populated* primary
-  sibling repos; the primary `.venv` is an editable install → `PYTHONPATH` required; `conftest.py`
-  resolves the bench repo via `get_settings().bench_repo`, honoring `REPOS_DIR`):
+- **You don't run the suite or lint as a gate — the git hook does, at merge-to-main.** A local
+  `.git/hooks/{pre-commit,pre-merge-commit}` runs `ruff check .` **and** `pytest tests/` on every
+  commit/merge to `main` and blocks it if either is red (main-only; feature/worktree branches are
+  **not** gated). So there is **no need to establish a "green baseline" when you branch out** —
+  green is verified when the feature lands on `main`. Finish loop: commit on the branch → `--no-ff`
+  merge into main (the hook verifies green) → `git worktree remove`. Don't run the suite yourself
+  or record "ran it, green" notes. Bypass once with `--no-verify`. Hooks live in `.git/hooks` (not
+  version-controlled) — recreate on a fresh clone, and keep `core.hooksPath` **empty** (a stale
+  value silently disables every hook; it once pointed at a deleted dir → no hooks ran at all).
+- **To run the suite manually** (debugging a specific failure, *not* as a gate): point it at the
+  *populated* primary sibling repos — worktree siblings are EMPTY; the primary `.venv` is an
+  editable install → `PYTHONPATH` required; `conftest.py` resolves the bench repo via
+  `get_settings().bench_repo`, honoring `REPOS_DIR`. Healthy ≈ 1598 passed / 20 skipped in ~15–20s:
   ```bash
   cd <worktree>/llm-d-benchmarking-agent-project
   PYTHONPATH=<worktree>/llm-d-benchmarking-agent-project \
   REPOS_DIR=<repo-root> \
   <repo-root>/llm-d-benchmarking-agent-project/.venv/bin/python -m pytest tests/
   ```
-- **Healthy baseline ≈ 1598 passed / 20 skipped in ~15–20s.** Establish green BEFORE changing anything.
 - Don't auto-run live-LLM eval (`LLM_EVAL_LIVE=1`, `test_flows_live.py`, `make validate-live`) — spends
-  Max-plan quota; only on explicit user request. Plain `pytest` is safe.
-- **Lint gate (ruff):** there is **no per-edit autofix hook anymore** — run `make lint` (`ruff check .`)
-  yourself while iterating and fix issues before committing. A local `.git/hooks/{pre-commit,
-  pre-merge-commit}` runs `ruff check` and **blocks any commit/merge to `main`** if it fails (main-only;
-  feature/worktree branches are not gated). These live in `.git/hooks` (not version-controlled) — recreate
-  them on a fresh clone; keep `main` lint-clean so the gate never blocks a merge.
+  Max-plan quota; only on explicit user request. The hook runs plain `pytest` (never live eval).
 
 ## graphify (dev code-nav)
 A knowledge graph at `graphify-out/` backs code navigation: prefer `graphify query/explain/path`
