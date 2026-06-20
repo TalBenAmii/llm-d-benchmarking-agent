@@ -359,6 +359,42 @@ was re-verified against source before fixing (one was debunked, see the non-bug 
 
 ---
 
+## Round 8 (2026-06-21) — security hunt (`app/security/`): boundary confirmed hardened; 1 LATENT defect surfaced
+A focused hunt over `allowlist.py` / `auth.py` / `runner.py` found **no exploitable** allowlist/approval/
+auth bypass, env-leak, or path-escape — the metachar screen, fail-closed default, env scrub, `(?!.*\.\.)`
+path constraints, `re.fullmatch` anchoring, quota-before-approval ordering, constant-time token compare, and
+the GET-only/`/healthz`/`/readyz` auth exemptions all hold under adversarial probing. One latent defect:
+
+### SECURITY OBSERVATION (latent, NOT exploitable today; NEEDS MAINTAINER DECISION — not patched)
+- **What:** a `read_only_trigger` flag in the **leading global region** downgrades an otherwise-MUTATING
+  subcommand to `read_only` → **auto-run, no approval, no quota**. Reproduced:
+  `validate(["llmdbenchmark","--version","standup","-p","myns"])` → `mode=read_only,
+  requires_approval=False` (vs `standup` alone → `mutating`/approval; `--bogus standup` correctly stays
+  `mutating`).
+- **Where:** `app/security/allowlist.py:379` (`read_only_triggered = _has_read_only_trigger(pre_tokens, flags)`)
+  + `:443-444`, reached from `:248` (`pre_tokens=pre` carries the global region into the subcommand walk).
+- **Why it's NOT exploitable now:** the only executable-level `read_only_trigger` is `--version`
+  (`security/allowlist.yaml:781`), which upstream `llmdbenchmark` registers as argparse
+  `action="version"` (`llm-d-benchmark/llmdbenchmark/cli.py:1650`) — it prints and `sys.exit(0)` during
+  `parse_args`, so `llmdbenchmark --version standup` exits before `standup` ever deploys. The validator's
+  correctness here rests on that upstream early-exit ACCIDENT, not on its own invariant.
+- **The latent danger:** the day anyone adds a SECOND executable-level `read_only_trigger` that does NOT
+  early-exit (e.g. a future global `--explain`/`--show`), EVERY mutating subcommand on that executable
+  becomes auto-runnable with the approval gate AND the per-session quota both silently bypassed.
+- **Why NOT patched here:** the fix touches the security validator, where `pre_tokens` trigger-propagation
+  is INTENTIONAL for nested subcommands (`allowlist.py:338`, comment "read_only_triggers from the global /
+  outer region matter too") — a naive "don't downgrade from the global region" change risks breaking that
+  intended nested-command behavior. The correct fix is a design decision for the maintainer.
+- **Recommended fix:** add an explicit `exits_before_action: true` (or `neutralizes_command: true`) flag
+  annotation; only allow a trigger found in the global/outer `pre_tokens` region to downgrade a matched
+  mutating subcommand when it carries that annotation (mark `--version` with it). Subcommand-OWN-region
+  triggers (e.g. `run --dry-run`) keep downgrading as today. Add a `tests/test_allowlist.py` case asserting
+  a non-annotated global trigger does NOT downgrade a mutating subcommand.
+- **Related:** the previously-documented relaxed-flag `--as` impersonation observation (a separate,
+  deliberate design trade-off) — see the security observation near the top of this log.
+
+---
+
 ## Candidates surfaced 2026-06-20 (verified by source) — A/B/C+D now FIXED (2026-06-21), E deliberately declined
 Two parallel hunters (orchestrator, storage) returned the findings below. Each was confirmed
 real against source — a missing-guard on **malformed/forged on-disk or kubectl JSON**, not
