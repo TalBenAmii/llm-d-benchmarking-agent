@@ -506,15 +506,21 @@ _ARTIFACT_MEDIA = {
 async def session_artifact(sid: str, path: str) -> FileResponse:
     """Serve one image artifact from a session's workspace dir (read-only, image-only)."""
     sessions_root = (get_settings().resolved_workspace_dir / "sessions").resolve()
-    base = (sessions_root / sid).resolve()
-    candidate = (base / path).resolve()
-    # `base` must be a real session dir directly under sessions_root, and `candidate` must not
-    # escape it — together these reject ../ traversal in either `sid` or `path`.
-    if base.parent != sessions_root or not base.is_dir() or not candidate.is_relative_to(base):
-        raise HTTPException(status_code=404, detail="artifact not found")
-    suffix = candidate.suffix.lower()
-    if suffix not in _ARTIFACT_SUFFIXES or not candidate.is_file():
-        raise HTTPException(status_code=404, detail="artifact not found")
+    try:
+        base = (sessions_root / sid).resolve()
+        candidate = (base / path).resolve()
+        # `base` must be a real session dir directly under sessions_root, and `candidate` must not
+        # escape it — together these reject ../ traversal in either `sid` or `path`.
+        if base.parent != sessions_root or not base.is_dir() or not candidate.is_relative_to(base):
+            raise HTTPException(status_code=404, detail="artifact not found")
+        suffix = candidate.suffix.lower()
+        if suffix not in _ARTIFACT_SUFFIXES or not candidate.is_file():
+            raise HTTPException(status_code=404, detail="artifact not found")
+    except OSError:
+        # An over-long `sid`/`path` component (ENAMETOOLONG) or any other filesystem error during
+        # resolution must read as a clean 404 — never a 500. (HTTPException is not an OSError, so
+        # the explicit 404s above propagate untouched.)
+        raise HTTPException(status_code=404, detail="artifact not found") from None
     return FileResponse(candidate, media_type=_ARTIFACT_MEDIA[suffix])
 
 
@@ -542,9 +548,13 @@ def _resolve_bundle(sid: str, bundle_id: str) -> dict[str, Any]:
     ``is_relative_to``) PLUS the BundleStore's own ``_safe_id`` guard on the bundle id. A 404 for
     a bad ``sid`` / ``bundle_id`` / missing bundle (never an info leak)."""
     sessions_root = (get_settings().resolved_workspace_dir / "sessions").resolve()
-    base = (sessions_root / sid).resolve()
-    if base.parent != sessions_root or not base.is_dir():
-        raise HTTPException(status_code=404, detail="bundle not found")
+    try:
+        base = (sessions_root / sid).resolve()
+        if base.parent != sessions_root or not base.is_dir():
+            raise HTTPException(status_code=404, detail="bundle not found")
+    except OSError:
+        # Over-long `sid` (ENAMETOOLONG) or other filesystem error → clean 404, never a 500.
+        raise HTTPException(status_code=404, detail="bundle not found") from None
     bundle = BundleStore(base).read(bundle_id)  # _safe_id inside rejects ../ and a/b ids
     if bundle is None:
         raise HTTPException(status_code=404, detail="bundle not found")

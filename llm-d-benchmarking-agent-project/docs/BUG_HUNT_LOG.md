@@ -99,6 +99,32 @@ Started 2026-06-20.
 - **Fix:** strip only SURROUNDING whitespace/quotes via `sed -E "s/^[[:space:]'\"]+//; s/...$//"`.
   Verified: `HOST="my host"` → `my host`, padded `LLM_PROVIDER` trimmed, `PORT=8000` unchanged.
 
+## BUG-009 — Over-long session id 500s the artifact + bundle routes (ENAMETOOLONG)
+- **Status:** FIXED
+- **Severity:** medium (unhandled server error / 500 on adversarial-but-trivial input; scanners hit it)
+- **Where:** `app/main.py` `session_artifact` and `_resolve_bundle` (→ `/bundle/{id}` and
+  `/bundle/{id}/report-card.html`).
+- **Trigger:** `GET /api/sessions/<2000-char-id>/artifact?path=x.png` (or the same long id on either
+  bundle route) → **500**. Found by adversarial HTTP fuzzing.
+- **Root cause:** `base.is_dir()` (and, with a real session, `candidate.is_file()`) call `stat()` on a
+  path whose component exceeds `NAME_MAX` (255 bytes). When `sessions_root` exists, that raises
+  `OSError(errno 36, ENAMETOOLONG)`, which propagates uncaught → 500. (Reproduced: `is_dir()` raises;
+  the route had no `except OSError`.) Other routes were clean — `delete`/`share`/`namespace` validate
+  the id shape before any filesystem stat.
+- **Fix:** wrap the path-resolution/stat block in `try/except OSError -> HTTPException(404) from None`
+  in both routes — a malformed/over-long id now reads as a clean 404 (consistent with traversal),
+  never a 500. HTTPException isn't an OSError, so the explicit 404s still propagate.
+- **Tests:** `tests/test_artifacts.py` — long sid + long path (artifact), long sid (both bundle routes).
+
+## Round 3 — turn-lifecycle deep audit + HTTP fuzzing (verified sound)
+- A focused deep read of the race-prone live-turn lifecycle (`app/agent/loop.py`, `channel.py`,
+  `lifecycle.py`, `ws_schemas.py`) found **no actionable bugs**: the resume-cursor window math, the
+  approval park/resume bookkeeping, steer-drain (no `await` between read and reset), cancellation/slot
+  accounting, and the busy/persist-on-exception `finally` paths all have correct, test-backed guards.
+- Adversarial HTTP fuzzing (long/unicode/traversal/oversized inputs across every endpoint) was clean
+  except BUG-009 above. A live WS chat turn was driven end-to-end (probes → streaming `assistant_delta`
+  → `assistant_text` → `done`) with no errors.
+
 ## Round-2 minor items (fixture-only, not fixed)
 - `ui/preview.html` uses a stale `class="builder-btn"` (no CSS rule) and lacks the `#share-chat`
   button/dialog that `index.html` has. preview.html is a dev fixture, not the served app (app.js

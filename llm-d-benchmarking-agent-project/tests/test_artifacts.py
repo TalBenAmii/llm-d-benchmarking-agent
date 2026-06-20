@@ -158,6 +158,21 @@ def test_artifact_route_404_for_unknown_session(client_with_workspace):
     assert r.status_code == 404
 
 
+def test_artifact_route_404_for_overlong_ids(client_with_workspace):
+    """Regression: an over-long `sid` or `path` component (> NAME_MAX) makes a filesystem stat
+    raise OSError(ENAMETOOLONG); the route must catch it and 404, NOT 500."""
+    client, sessions_root = client_with_workspace
+    _make_run(sessions_root, "sessABC")
+    # Over-long sid → is_dir() on sessions_root/<sid> raises ENAMETOOLONG.
+    assert client.get(
+        "/api/sessions/" + "a" * 2000 + "/artifact", params={"path": "x.png"}
+    ).status_code == 404
+    # Real session + over-long path → is_file() on the resolved candidate raises ENAMETOOLONG.
+    assert client.get(
+        "/api/sessions/sessABC/artifact", params={"path": "a" * 2000 + ".png"}
+    ).status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # Reproducibility — the provenance-bundle JSON + report-card.html routes.
 # Same tmp-workspace TestClient pattern; the bundle JSON is planted under
@@ -233,3 +248,12 @@ def test_bundle_route_blocks_traversal_in_sid_and_bundle_id(client_with_workspac
     # Traversal in the bundle_id (rejected by _safe_id) and the sid (rejected by base.parent check).
     assert client.get("/api/sessions/sessZ/bundle/..%2f..%2fsecret").status_code in (404, 400)
     assert client.get("/api/sessions/..%2f..%2fsecret/bundle/bundle0123abcd").status_code in (404, 400)
+
+
+def test_bundle_route_404_for_overlong_sid(client_with_workspace):
+    """Regression: an over-long `sid` makes is_dir() raise OSError(ENAMETOOLONG); both the JSON and
+    the report-card.html bundle routes must 404, NOT 500."""
+    client, _ = client_with_workspace
+    long_sid = "a" * 2000
+    assert client.get(f"/api/sessions/{long_sid}/bundle/x").status_code == 404
+    assert client.get(f"/api/sessions/{long_sid}/bundle/x/report-card.html").status_code == 404
