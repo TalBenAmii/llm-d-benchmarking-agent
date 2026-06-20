@@ -813,17 +813,17 @@ button:disabled { opacity: .5; cursor: default; filter: none; }
 /* ── Composer ─────────────────────────────────────────────────────────── */
 footer {
   background: transparent;   /* behind the composer = the conversation/page bg (floaty, no panel strip) */
-  padding: 10px 22px 12px;
+  padding: 10px 22px 30px;   /* extra bottom gap lifts the composer up off the viewport edge (matches mock) */
 }
-/* The composer FLOATS: its background is the page/conversation background (transparent), so only
-   the rounded border + soft shadow define the box (user override #2 — no panel fill). The width
+/* The composer is a filled, slightly-elevated card: a --panel fill + rounded border + soft shadow
+   define the box (matches the design mock). The width
    stays at the 900px reading column (user override #1). When a run is active the working/status
    bar is slotted in as the FIRST child of this same box (see #working below), expanding the box
    UPWARD inside the one rounded border with a hairline separator between the two rows. */
 #composer {
   display: flex; flex-direction: column; gap: 2px;
   max-width: 900px; margin: 0 auto;
-  background: transparent; border: 1px solid var(--border);
+  background: var(--panel); border: 1px solid var(--border);   /* filled, slightly-elevated card (matches mock) */
   border-radius: var(--radius-lg); box-shadow: var(--shadow);
   padding: 6px 6px 6px 4px;
 }
