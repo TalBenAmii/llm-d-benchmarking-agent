@@ -107,6 +107,13 @@ function applyDebug(on) {
   debugBtn.title = on
     ? "Hide the executed commands from the chat"
     : "Debug view — show the commands the agent ran inline in the chat";
+  updateDebugSession();
+}
+// Refresh the debug-only session-id chip from the active chat's id. Called on debug toggle and
+// whenever currentSession changes, so the chip is correct the moment debug mode is revealed.
+function updateDebugSession() {
+  const chip = document.getElementById("debug-session");
+  if (chip) chip.textContent = currentSession ? "session " + currentSession : "no session yet";
 }
 function initDebug() {
   let on = false;
@@ -118,12 +125,14 @@ debugBtn.addEventListener("click", () => {
   try { localStorage.setItem("llmd-debug", on ? "on" : "off"); } catch (e) {}
   applyDebug(on);
 });
-initDebug();
+// initDebug() is invoked AFTER currentSession is declared below — applyDebug -> updateDebugSession
+// reads currentSession, which is a `let` (temporal dead zone) until its declaration runs.
 
 let ws = null;
 let busy = false;
 let activeConsole = null;     // <pre> for the currently-running command's output
 let currentSession = null;    // id of the chat we're attached to (null until "ready")
+initDebug();                  // safe now that currentSession exists (updateDebugSession reads it)
 let switching = false;        // true while intentionally closing to switch chats
 let welcomeCard = null;       // the start-of-chat suggestion-chips card, removed once a turn starts
 let readyNoteTimer = null;    // defers the plain "Session ready" note so chips can supersede it
@@ -367,6 +376,7 @@ function switchTo(sid) {
   rec.order = ++viewClock;
   activate(rec);                                      // attach its pane + restore its working-set
   currentSession = sid || null;
+  updateDebugSession();
   setHeaderTitle(sid ? convTitles[sid] : "New chat"); // optimistic; renderConvRow confirms it
   evictPanes();
   connect(sid || null, cacheHit ? rec.lastSeq : null);
@@ -410,6 +420,7 @@ function handle(msg) {
   switch (type) {
     case "ready": {
       currentSession = data.session_id;
+      updateDebugSession();
       // A brand-new chat learns its id here — register the active record under it.
       if (cur) { cur.id = data.session_id; sessions[data.session_id] = cur; }
       setEnabled(true);
