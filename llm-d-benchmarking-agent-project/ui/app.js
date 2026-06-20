@@ -476,7 +476,7 @@ function handle(msg) {
     case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
-    case "done": resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); loadSessions(); loadHistory(); stopWorking(); break;
+    case "done": resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); if (cur) cur.resourceRunEnded = true; loadSessions(); loadHistory(); stopWorking(); break;
     case "pong": break;
   }
   // Advance this chat's resume cursor for every turn event we rendered (live or replayed); the
@@ -608,8 +608,6 @@ function relTime(ts) {
 // backend returns facts only (values + the metric's better-direction); we render
 // them — the regression verdict is the agent's job in chat.
 
-let trendMetricsLoaded = false;
-
 async function loadHistory() {
   try {
     const r = await fetch("/api/history");
@@ -621,14 +619,18 @@ async function loadHistory() {
 }
 
 function populateTrendMetrics(metrics) {
-  if (!trendMetric || trendMetricsLoaded || !metrics.length) return;
+  if (!trendMetric || !metrics.length) return;
+  // Reconcile against the CURRENT options rather than a one-shot flag: a later run can introduce a
+  // metric absent from history at first load, and the user must be able to trend it without a page
+  // reload. Append only metrics not already present; never disturb the current selection.
+  const have = new Set(Array.from(trendMetric.options).map((o) => o.value));
   for (const m of metrics) {
+    if (have.has(m)) continue;
     const opt = document.createElement("option");
     opt.value = m;
     opt.textContent = m;
     trendMetric.appendChild(opt);
   }
-  trendMetricsLoaded = true;
 }
 
 function renderHistory_(records) {
@@ -1047,6 +1049,11 @@ function removeWelcomeCard() {
 function renderResourceStats(data) {
   resourceData = data;
   resourceActive = true;
+  // A new run's FIRST tick after a previous run finished (`done` sets resourceRunEnded) starts a
+  // FRESH per-pod history, so the sparkline trends don't graft the prior run's pods/samples onto
+  // the new run. Keyed off the `done`-set flag, NOT the resourceActive transition — a manual
+  // mid-run collapse also flips resourceActive and must never wipe the running run's history.
+  if (cur && cur.resourceRunEnded) { cur.resourceHistory = {}; cur.resourceRunEnded = false; }
   if (cur) { cur.resourceData = data; cur.resourceActive = true; }
   accumulateResourceHistory(data);
   renderResourceSide();

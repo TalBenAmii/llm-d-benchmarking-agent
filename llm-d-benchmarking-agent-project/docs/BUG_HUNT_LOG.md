@@ -7,7 +7,7 @@ fix → status.
 Started 2026-06-20.
 
 ## Summary (session of 2026-06-20)
-**15 bugs found → verified → fixed → tested → merged** to local `main` across 5+ fast-forward
+**17 bugs found → verified → fixed → tested → merged** to local `main` across 6 fast-forward
 batches; full suite green (2014 passed / 41 skipped), ruff + mypy clean. Method: fan out read-only
 subagents over disjoint areas, **verify every lead against source before fixing** (~70% of
 "high-confidence" agent leads were debunked), then drive the live app adversarially. The
@@ -38,6 +38,8 @@ bugs low/medium; none were crashes of the core flow.
 | 013 | app/tools/discover.py | `discover_stack` crashes on a non-dict component element |
 | 014 | ui/app.js | Builder "Send" refused to steer + clobbered the composer draft mid-turn |
 | 015 | ui/styles.css | dead next-steps/report-action controls in the read-only shared viewer |
+| 016 | ui/app.js | per-pod resource sparklines grafted the previous run's pods onto a 2nd run (same chat) |
+| 017 | ui/app.js | trend-metric dropdown was one-shot — metrics from later runs never appeared |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -101,6 +103,22 @@ unchanged. Suggested hardening if desired: deny a small set of known-dangerous f
   Export opens an API URL that 404s for a recipient with no backend).
 - **Fix:** add `.next-steps` + `.report-actions` to the `body.share-view { display:none }` rule (the
   approval-card sibling concern from an earlier pass was already covered by the mint-time strip).
+
+## BUG-016 — Per-pod resource sparklines graft the previous run's pods onto a second run
+- **Status:** FIXED
+- **Severity:** low (cosmetic trend staleness — two runs in one chat, no reload)
+- **Where:** `ui/app.js` — `cur.resourceHistory` was only reset on new-chat / full pane rebuild, never
+  between two runs in the same chat. `clearResourceStats` (on `done`) only collapses the panel.
+- **Fix:** set a `cur.resourceRunEnded` flag on `done`; on the next run's first `resource_stats` tick,
+  reset `cur.resourceHistory`. Keyed off the `done` flag (NOT the `resourceActive` transition, which a
+  manual mid-run collapse also flips and must not wipe a running run's history).
+
+## BUG-017 — Trend-metric dropdown was one-shot; later runs' metrics never appeared
+- **Status:** FIXED
+- **Severity:** low-medium (a metric introduced by a later run couldn't be trended without a reload)
+- **Where:** `ui/app.js::populateTrendMetrics` — short-circuited forever on a `trendMetricsLoaded` flag.
+- **Fix:** drop the one-shot flag; reconcile the incoming metrics against the dropdown's CURRENT
+  options and append only the new ones (selection preserved).
 
 ---
 
