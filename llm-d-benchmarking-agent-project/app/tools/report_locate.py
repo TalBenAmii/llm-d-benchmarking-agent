@@ -11,7 +11,7 @@ compatibility; new code should import them from here.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -116,7 +116,7 @@ def _report_generated_at(report: dict[str, Any], report_path: Path) -> tuple[str
         mtime = report_path.stat().st_mtime
     except OSError:
         return None, "unavailable"
-    iso = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+    iso = datetime.fromtimestamp(mtime, tz=UTC).isoformat()
     return iso, "report file mtime (report carried no run.time — may be a stale leftover)"
 
 

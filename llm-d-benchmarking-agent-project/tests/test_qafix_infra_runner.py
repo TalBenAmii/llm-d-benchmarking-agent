@@ -9,10 +9,6 @@ TIMEOUT_MARKER line to the captured output so even ``.output``-only readers can 
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-
 from app.config import get_settings
 from app.security.runner import TIMEOUT_MARKER, CommandRunner, RunResult, SimRunner
 
