@@ -11,6 +11,9 @@
       "Write(**/llm-d-benchmark/**)"
     ]
   },
+  "env": {
+    "TOOL_LESSONS_OFF": "1"
+  },
   "hooks": {
     "PreToolUse": [
       {
