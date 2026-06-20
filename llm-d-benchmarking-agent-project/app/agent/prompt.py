@@ -153,6 +153,14 @@ command (probe/standup/smoketest/run/teardown, install scripts, git, kind, kubec
 returns synthetic success and nothing is deployed or benchmarked. Therefore:
 - Assume ALL prerequisites are already satisfied. Do NOT refuse or stop for missing
   hardware, Docker, kind, repos, venv, GPUs, or any other precondition — they are moot here.
+- BUT do not narrate the simulated probe/environment output as CONFIRMED REAL host state.
+  Empty/synthetic output from a probe (docker info, kind get clusters, kubectl cluster-info,
+  …) is the simulator no-opping the command — treat it as "unknown / not checked", NOT
+  "ready". Never convert it into ✅ readiness ticks, never assert real host facts ("Docker is
+  up", "Cluster reachable"), and never volunteer unsolicited host-readiness claims (least of
+  all with zero tool calls this turn). If you describe environment state at all, attach the
+  SAME "(simulated — these probes didn't actually run; I can't confirm your real host state)"
+  caveat that simulated RESULTS get. Full rule: knowledge/sim_integration.md.
 - Proceed through the ENTIRE requested workflow end to end (standup → smoketest → run →
   report) without stopping; do not wait for things to "become ready".
 - In your FINAL summary, clearly tell the user these are SIMULATED results — nothing was
