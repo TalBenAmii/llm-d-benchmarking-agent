@@ -1288,12 +1288,6 @@ function renderRunSteps() {
 // Benchmark Report v0.2 summary + the analyzer's exact SLO/Pareto verdicts (not LLM prose), so
 // the post-run summary looks the same every run. The agent's plain-language explanation still
 // rides alongside it as a normal assistant bubble.
-function fmtNum(v) {
-  if (typeof v !== "number") return String(v);
-  if (Number.isInteger(v)) return String(v);
-  return (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(2)).replace(/\.?0+$/, "");
-}
-
 function metaRow(card, parent) {
   const meta = el("div", "results-meta");
   const add = (label, val) => { if (val != null && val !== "") meta.appendChild(el("span", "results-tag", `${label}: ${val}`)); };
@@ -1994,8 +1988,8 @@ function renderResilienceCard(card) {
   const vc = card.verdict_counts || {};
   if (Object.keys(vc).length) {
     const parts = [];
-    if (vc.faults_injected != null) parts.push(`${vc.classified_correctly}/${vc.faults_injected} classified correctly`);
-    if (vc.faults_injected != null) parts.push(`${vc.recovered_as_designed}/${vc.faults_injected} recovered as designed`);
+    if (vc.faults_injected != null && vc.classified_correctly != null) parts.push(`${vc.classified_correctly}/${vc.faults_injected} classified correctly`);
+    if (vc.faults_injected != null && vc.recovered_as_designed != null) parts.push(`${vc.recovered_as_designed}/${vc.faults_injected} recovered as designed`);
     if (vc.restart_survived != null) parts.push(`restart ${vc.restart_survived ? "survived" : "failed"}`);
     root.appendChild(el("div", "results-note", "Verdict: " + parts.join("; ") + "."));
   }

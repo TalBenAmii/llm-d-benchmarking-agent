@@ -69,6 +69,18 @@ def test_each_create_mints_a_fresh_token(tmp_path):
     assert t1 != t2
 
 
+def test_create_writes_atomically_leaving_no_tmp(tmp_path):
+    """Regression: create() must write via temp-then-replace (like the sibling stores), so a
+    concurrent reader never sees a half-written file and no ``.tmp`` is left behind."""
+    store = ShareStore(tmp_path)
+    token = store.create(items=[{"role": "assistant", "text": "hi"}], title="t",
+                         created_at=0.0, source_session_id="s")
+    shares = tmp_path / "shares"
+    assert (shares / f"{token}.json").is_file()
+    assert list(shares.glob("*.tmp")) == []          # no leftover temp file
+    assert store.read(token)["items"][0]["text"] == "hi"
+
+
 # ---------------------------------------------------------------------------
 # HTTP surface over the real app, pointed at a tmp workspace.
 # ---------------------------------------------------------------------------
@@ -116,6 +128,14 @@ def test_create_then_public_read_then_revoke(client_with_share):
     assert _is_valid_token(token)
     # Default (SHARE_BASE_URL unset): a relative path — the browser prepends its own origin.
     assert body["url"] == f"/share/{token}"
+
+
+def test_revoke_rejects_malformed_token_cleanly(client_with_share):
+    """Regression: a malformed (non-32-hex) token must 404 cleanly, never reaching the
+    gist-mapping filesystem lookup or the ``gh`` subprocess argv (validated up front)."""
+    client, _ = client_with_share
+    assert client.delete("/api/share/not-a-valid-token").status_code == 404
+    assert client.delete("/api/share/" + "Z" * 32).status_code == 404   # right length, wrong alphabet
 
 
 def test_share_base_url_mints_absolute_public_link(tmp_path, monkeypatch):

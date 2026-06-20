@@ -43,6 +43,13 @@ def _is_valid_token(token: str | None) -> bool:
     return isinstance(token, str) and bool(_TOKEN_RE.match(token))
 
 
+def is_valid_token(token: str | None) -> bool:
+    """Public shape-check for a share token (32 lowercase hex chars). HTTP routes that touch the
+    filesystem or a ``gh`` subprocess for a token (publish/revoke) call this to reject a malformed
+    token BEFORE it reaches disk/argv — the read/delete paths already guard internally."""
+    return _is_valid_token(token)
+
+
 class ShareStore:
     """Disk-backed store of read-only conversation snapshots, rooted at ``<workspace>/shares``.
 
@@ -80,7 +87,13 @@ class ShareStore:
             "items": items,
             "usage": usage,
         }
-        (self._root / f"{token}.json").write_text(json.dumps(payload, indent=2))
+        # Atomic write (temp + replace), matching HistoryStore / BundleStore / autotune: a
+        # concurrent reader of /share/<token> never observes a half-written file, and a crash
+        # mid-write can't leave a corrupt snapshot — it honors the docstring's "durable write".
+        path = self._root / f"{token}.json"
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, indent=2))
+        tmp.replace(path)
         return token
 
     def read(self, token: str | None) -> dict[str, Any] | None:

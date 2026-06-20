@@ -51,7 +51,7 @@ from app.security.runner import CommandRunner, SimRunner
 from app.storage.history import HistoryStore, available_metrics, trend
 from app.storage.provenance import BundleStore
 from app.storage.retention import readiness, run_gc, self_check
-from app.storage.share import ShareStore
+from app.storage.share import ShareStore, is_valid_token
 from app.tools import report_locate
 from app.tools.json_tail import find_last_json
 from app.tools.probe import probe_environment
@@ -692,6 +692,10 @@ def revoke_share(token: str) -> JSONResponse:
     already gone. Gist deletion is best-effort: a gh/network failure still revokes the snapshot (the
     gist mapping survives under ``<workspace>/shares`` to be cleaned later via the script). Sync for
     the same threadpool reason as publish."""
+    # Reject a malformed token BEFORE it reaches the filesystem (gist-mapping lookup) or the ``gh``
+    # subprocess argv — the read/delete store paths guard internally, but the gist-revoke runs first.
+    if not is_valid_token(token):
+        raise HTTPException(status_code=404, detail="shared conversation not found")
     settings = get_settings()
     gist_revoked = False
     if gist_publish.mapping_path(settings.resolved_workspace_dir, token).exists():
@@ -747,7 +751,10 @@ async def ws(websocket: WebSocket) -> None:
     # rendered so we can replay ONLY the tail it missed onto that cached view instead of
     # resending the whole history (no flash, no duplicate rendering). Absent/garbage => full path.
     after_raw = websocket.query_params.get("after_seq")
-    after_seq = int(after_raw) if (after_raw and after_raw.isdigit()) else None
+    # ``str.isdigit()`` is broader than ``int()`` accepts (it's True for unicode digits like the
+    # superscript ``²``, which ``int()`` then rejects with ValueError) — so require ASCII digits
+    # too, else a crafted ``?after_seq=²`` would raise out of the handshake. Garbage => full path.
+    after_seq = int(after_raw) if (after_raw and after_raw.isascii() and after_raw.isdigit()) else None
     session = app.state.sessions.get_or_load(requested) if requested else None
     resumed = session is not None
     if session is None:

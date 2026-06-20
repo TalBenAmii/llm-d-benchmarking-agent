@@ -85,6 +85,20 @@ def test_ws_approval_roundtrip():
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_unicode_digit_after_seq_does_not_crash():
+    """Regression: ``?after_seq=²`` — ``str.isdigit()`` is True for the superscript digit, but
+    ``int("²")`` raises ``ValueError``. The cursor parse runs AFTER ``accept()`` and BEFORE the
+    handler's try-block, so an unguarded ``int()`` tore down the already-accepted handshake. The
+    ASCII guard must drop the bad cursor to the full-history path and still emit ``ready``."""
+    from app.main import app
+
+    with TestClient(app) as client:
+        app.state.provider = FakeProvider([])
+        with client.websocket_connect("/ws?after_seq=²") as ws:
+            assert _next_protocol(ws)["type"] == "ready"
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_ws_typing_instead_of_approving_steers_the_turn():
     """Type-instead-of-approve: while a turn is parked at an approval gate, a free-text
     user_message must NOT be rejected with "please wait". Instead the gate is declined AND
