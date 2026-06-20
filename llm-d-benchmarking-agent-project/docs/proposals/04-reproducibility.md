@@ -4,7 +4,7 @@
 > shipped code. The capability now lives in `app/storage/provenance.py`, `app/tools/reproducibility.py`
 > (tools `export_run_bundle` + `reproduce_run`), `app/packaging/report_card.py`, and
 > `knowledge/reproducibility.md`. File-level details below reflect the original design intent and may
-> differ slightly from the final code (e.g. the agent now exposes **32 tools**, not the 28→30 noted
+> differ slightly from the final code (e.g. the agent now exposes **35 tools**, not the 28→30 noted
 > in §4.4/§6.4).
 
 ## 0. Confirmation of invariants
@@ -109,7 +109,7 @@ New `app/packaging/report_card.py` (`app/packaging/` exists) holds `render_repor
 Add `ExportRunBundleInput` + `ReproduceRunInput` (gate 2). Field descriptions cue `read_knowledge('reproducibility')`.
 
 ### 4.4 Changed: `app/tools/registry.py`
-Import `reproducibility`; two `_DESCRIPTIONS` entries (cue `read_knowledge('reproducibility')` + the dry-run-first sequence); two `ToolSpec` rows. (These two tools landed; the registry now exposes **32 tools** total. As built, count refs were updated in `CLAUDE.md`, `app/tools/CLAUDE.md`, `docs/API.md`, `FEATURES.md`.)
+Import `reproducibility`; two `_DESCRIPTIONS` entries (cue `read_knowledge('reproducibility')` + the dry-run-first sequence); two `ToolSpec` rows. (These two tools landed; the registry now exposes **35 tools** total. As built, count refs were updated in `CLAUDE.md`, `app/tools/CLAUDE.md`, `docs/API.md`, `FEATURES.md`.)
 
 ### 4.5 New knowledge: `knowledge/reproducibility.md` (judgment, on-demand)
 When to offer a bundle; how to explain dirty-repo caveats to non-experts; the exact reproduce sequence (generate-config → bundle → for replay: propose_session_plan → dry-run → approve `-c`); env-drift caveats; the boundary that `-c` is run-only (needs a live stack — cross-ref `read_knowledge('runconfig_roundtrip')`). On-demand only — NOT CORE.
@@ -182,7 +182,7 @@ Extend: `test_schemas.py` (two new models), `test_new_tools.py` (registry + desc
 ### 6.4 Risks & open questions
 - **`run --generate-config` needs the bench venv + a coherent run context.** If no config this session, `export_run_bundle` instructs the agent to run it first. Open: auto-trigger `--generate-config`, or only when absent? (Recommend: report "no run-config found; generate one" — keeps the tool thin.)
 - **`env_snapshot` plumbing.** `session.env_snapshot` is runtime-only (`session.py:109-112`). The tool gets it from the agent passing the last `probe_environment` result, or re-probing read-only at capture. (Recommend re-probe for freshness + hermetic testability.)
-- **Tool-count doc drift.** Several docs hard-code a tool count; grep + update so doc-consistency tests don't fail. (Resolved as built — the registry is now at **32 tools**.)
+- **Tool-count doc drift.** Several docs hard-code a tool count; grep + update so doc-consistency tests don't fail. (Resolved as built — the registry is now at **35 tools**.)
 - **HTML size.** Inlining chart PNGs as base64 could bloat; v1 embeds numeric tables + percentile ladder, lists chart filenames rather than embedding images.
 - **Knowledge-hash sensitivity.** Any knowledge edit bumps the version even if behavior-neutral — acceptable (coarse provenance signal); document in the knowledge file.
 

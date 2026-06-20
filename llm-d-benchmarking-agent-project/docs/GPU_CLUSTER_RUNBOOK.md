@@ -200,7 +200,7 @@ Notes:
 
 ## 5. Feature coverage — what is real vs simulated on one GPU
 
-Most of the agent's 32 tools never needed a GPU; the GPU upgrade specifically makes the
+Most of the agent's 35 tools never needed a GPU; the GPU upgrade specifically makes the
 **deploy / serve / benchmark / observe** loop real. The table is the authoritative checklist for
 "check all features."
 

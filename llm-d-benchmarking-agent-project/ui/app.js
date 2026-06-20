@@ -1226,11 +1226,13 @@ const RUN_PHASES = [
   { key: "benchmark", label: "Benchmark" },
   { key: "analyze", label: "Analyze" },
 ];
-// Tool name -> phase index. The 28 tools are a fixed enum, so this mapping is exhaustive and
-// stable. Tools that run alongside any phase (observe_run_metrics, run_command, cancel_run) are
-// intentionally absent → they don't move the rail.
+// Tool name -> phase index for the progress rail. Tools NOT in this map deliberately don't move
+// the rail (phaseForTool returns -1 → advancePhase no-ops): the meta / UX / alongside-any-phase
+// tools — observe_run_metrics, run_command, cancel_run, autotune_search, export_run_bundle,
+// reproduce_run, run_resilience_drill, suggest_next_steps (and run_shell when UNRESTRICTED_TOOLS).
 const TOOL_PHASE = {
-  probe_environment: 0, list_catalog: 0, advise_accelerators: 0, check_capacity: 0,
+  probe_environment: 0, list_catalog: 0, inspect_workload_profile: 0, estimate_run_duration: 0,
+  advise_accelerators: 0, check_capacity: 0, discover_stack: 0,
   check_endpoint_readiness: 0, read_knowledge: 0, search_knowledge: 0, read_repo_doc: 0, fetch_key_docs: 0,
   propose_session_plan: 1,
   ensure_repos: 2, run_setup: 2, provision_hf_secret: 2,

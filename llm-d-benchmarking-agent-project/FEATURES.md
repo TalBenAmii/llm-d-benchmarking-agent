@@ -93,15 +93,16 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 
 ---
 
-## 4. The 32 agent tools (authoritative list — `app/tools/registry.py`)
+## 4. The 35 agent tools (authoritative list — `app/tools/registry.py`)
 
-> Note: the registry defines **32** tools (matches `CLAUDE.md`). Verify by reading
-> `app/tools/registry.py:build_registry`.
+> Note: the registry defines **35** tools (matches `CLAUDE.md`). Verify by reading
+> `app/tools/registry.py:build_registry`. (A 36th, `run_shell`, is registered ONLY when the
+> operator sets `UNRESTRICTED_TOOLS` — off by default, so the stable surface is 35.)
 
 **Sensing / grounding (read-only, auto-run):** `probe_environment`, `list_catalog`,
-`read_knowledge`, `search_knowledge`, `read_repo_doc`, `fetch_key_docs`, `check_capacity`,
-`check_endpoint_readiness`, `locate_and_parse_report`, `observe_run_metrics`,
-`discover_stack`, `advise_accelerators`.
+`inspect_workload_profile`, `estimate_run_duration`, `read_knowledge`, `search_knowledge`,
+`read_repo_doc`, `fetch_key_docs`, `check_capacity`, `check_endpoint_readiness`,
+`locate_and_parse_report`, `observe_run_metrics`, `discover_stack`, `advise_accelerators`.
 
 **Planning / authoring:** `propose_session_plan`, `write_and_validate_config`,
 `generate_doe_experiment`, `convert_guide_to_scenario`.
@@ -127,6 +128,11 @@ approval.
 **Reproducibility (read-only):** `export_run_bundle` (capture a provenance bundle — repo
 SHAs + resolved config + validated report digest), `reproduce_run` (re-derive a rerun
 proposal that goes back through the SessionPlan-approval + `--dry-run` gates).
+
+**Conversation / UX (read-only, auto-run):** `suggest_next_steps` — offer 2-4 concrete
+follow-ups as clickable buttons instead of a prose "want me to…?"; the agent's turn-ending
+discretionary offer (NOT an approval gate — mutations still go through their own gates). See
+`knowledge/conversation_style.md`.
 
 *How to verify each tool:* every tool has a focused test in `tests/` (e.g.
 `tests/test_new_tools.py`, `tests/test_analyze.py`, `tests/test_capacity.py`,
@@ -299,8 +305,8 @@ No open caveats. Five early findings (orphaned harness PNG charts behind `/stati
 sparkline until a result is stored; `/healthz`+`/readyz` wrongly auth-gated; `CLAUDE.md` tool-count
 drift; ambiguous latency units) were all **fixed on 2026-06-02** (`1515959`, merged `3363496`) — done.
 
-**Counts (current).** Verified against the running app: **32 agent tools** (matches `CLAUDE.md` /
-`registry.py:build_registry`), **11 trendable history metrics** (incl. `kv_cache_hit_rate`,
+**Counts (current).** Verified against the running app: **35 agent tools** (matches `CLAUDE.md` /
+`registry.py:build_registry`; a 36th, `run_shell`, only with `UNRESTRICTED_TOOLS`), **11 trendable history metrics** (incl. `kv_cache_hit_rate`,
 `gpu_utilization`, `schedule_delay`), **15 allowlisted executables**, **7 `/metrics` families**.
 All ROADMAP_V4 active phases (27–66) are merged; 7 are explicitly deferred (34/43/44/47/52/57/58 —
 see `ROADMAP_V4.md`).

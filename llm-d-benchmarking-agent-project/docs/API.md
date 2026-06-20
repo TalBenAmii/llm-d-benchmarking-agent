@@ -1,7 +1,7 @@
 # API & Tool Reference
 
 Two interfaces: the **HTTP/WebSocket API** the browser (or any client) speaks to the
-backend, and the **agent tool surface** — the 32 schema-validated tools that are the LLM's
+backend, and the **agent tool surface** — the 35 schema-validated tools that are the LLM's
 *entire* set of actions. The tool input schemas are defined in
 [`app/tools/schemas.py`](../app/tools/schemas.py) (the single source of truth, emitted to
 the LLM as JSON Schema); the registry + descriptions live in
@@ -118,6 +118,8 @@ Every tool call is validated against its Pydantic input model before the handler
 | Tool | Class | Key inputs | What it does |
 |---|---|---|---|
 | `propose_session_plan` | approve | the `SessionPlan` (below) | Propose the structured, user-approved contract before any mutation. Enum fields checked against the live catalog. |
+| `inspect_workload_profile` | read-only | `profile`, `harness` | **Preview what a workload profile actually sends** before running it: locates the profile under the read-only benchmark repo, parses the YAML, and returns a normalized, auditable summary across the differing harness layouts — token shape (input/output length distribution; prefix reuse), load shape (rate/concurrency/QPS, sweep stages, durations), and prompt/dataset source — each field tagged with the raw key it came from. Facts only; *which* workload to pick is the LLM's judgment (`knowledge/welllit_path_advisor`/`sweep_playbook`). |
+| `estimate_run_duration` | read-only | `profile`, `harness` | Rough **pre-run wall-clock estimate** for a workload profile, computed from its load shape (sum of inference-perf sweep-stage durations; or guidellm `max_seconds` × rate stages; or request-count / mean rate). Always returns the `basis`, the stated `assumption`, and `approximate=True` (excludes standup/warmup/teardown); returns `estimable=False` and says what's missing rather than inventing a number. |
 | `check_capacity` | read-only | `spec`, `overrides`, `enforce` | Capacity pre-flight ("will this fit?") via the benchmark repo's own planner. `enforce=True` tags shortfalls as deployment-halting errors. Interpreted with `knowledge/capacity.md`. |
 | `check_endpoint_readiness` | read-only | `namespace`, `spec`, `probe_cli_endpoints` | Endpoint-readiness pre-flight before benchmarking: reads `kubectl get endpoints` for a *ready backing endpoint* (corroborated by the CLI's read-only `run --list-endpoints`). The orchestrator gates on this so it never benchmarks an unready stack. Interpreted with `knowledge/orchestrator.md`. |
 | `generate_doe_experiment` | read-only | `name`, `run_factors`, `setup_factors`, `run_constants`, `setup_constants`, `harness`, `profile`, `target_filename` | Author a DoE experiment YAML: cross-products agent-chosen *factors × levels* into the full treatments matrix, writes it into the session workspace (never the read-only repos), and validates it structurally against the repo's experiment-example format. *Which* factors/levels to sweep is the LLM's judgment, grounded in `knowledge/sweep_playbook.md`. |
@@ -176,6 +178,12 @@ Every tool call is validated against its Pydantic input model before the handler
 | Tool | Key inputs | What it does |
 |---|---|---|
 | `cancel_run` | `session_id` | Cancel a still-running background run/turn in **another** chat by its session id — frees the concurrency-cap slot it holds and reaps its subprocess (no orphaned process / leaked Job). Idempotent; refuses to cancel the run it is called from. Judgment on **when** to cancel is in `knowledge/run_lifecycle.md`. |
+
+### Conversation / UX (read-only — renders chat UI, no cluster/repo access)
+
+| Tool | Key inputs | What it does |
+|---|---|---|
+| `suggest_next_steps` | `options` (each `{label, prompt}`), optional lead-in | Offer 2-4 concrete next steps as **clickable buttons** instead of a prose "want me to…?". The UI renders them as floating suggestion pills; clicking one submits its `prompt` as the user's next message. The agent's **turn-ending** discretionary follow-up — **not** an approval gate (mutations still go through `propose_session_plan`/`run_command`). Offer cadence: `knowledge/conversation_style.md`. |
 
 ---
 
