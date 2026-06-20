@@ -462,12 +462,14 @@ def test_chat_reading_column_stays_900px():
             assert "@media" in line, f"a 760px content container slipped through: {line.strip()}"
 
 
-def test_composer_is_floating_transparent():
-    """User override #2: the composer floats (transparent bg, rounded border), no panel fill."""
+def test_composer_is_filled_panel_card():
+    """The composer is a filled, slightly-elevated card (matches the design mock): a --panel fill
+    plus rounded border + soft shadow define the box. (Supersedes the earlier 'floating transparent'
+    look — see commit b744da1 'give it the mock panel fill'.)"""
     css = _ui("styles.css")
-    # Find the #composer rule block and assert it uses a transparent background.
+    # Find the #composer rule block and assert it uses the --panel fill (filled card, not transparent).
     block = css.split("#composer {", 1)[1].split("}", 1)[0]
-    assert "background: transparent" in block, "composer must be transparent (floating), not a panel"
+    assert "background: var(--panel)" in block, "composer must be a filled --panel card (matches mock)"
     assert "border-radius: var(--radius-lg)" in block
 
 
