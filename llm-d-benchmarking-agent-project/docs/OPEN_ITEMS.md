@@ -4,6 +4,13 @@
 > (the proposal-vs-built audit) and the [`llm-d-benchmarking-agent-proposal.md`](../llm-d-benchmarking-agent-proposal.md)
 > (the "north star").
 >
+> **✅ TRIAGED 2026-06-20.** Every item below now carries a dated **Decision** banner, and the
+> at-a-glance [Summary](#summary--the-whole-not-done-list-at-a-glance) records each outcome. Outcomes:
+> A1/A2/A4 accepted-and-closed (divergent by design); A3 left open; A5 split (orchestration demo now
+> covered locally by the mock-GPU harness, real-silicon + upstream-PR still open); B1 kept deferred;
+> Part C reviewed (intentional gates); **Part D — 2 dead spots removed, 2 mischaracterized
+> load-bearing pieces corrected, the rest kept/deferred**; Part E all 7 stay precondition-blocked.
+>
 > **What this file is.** The gap report answers *"what's missing?"* in a dense table. This file
 > takes every item from that report that is **still not done today** and, for each one, answers
 > three questions the table doesn't:
@@ -46,6 +53,10 @@ These five are the proposal line-items that are still divergent, partial, or abs
 
 ## A1 · G2 — Kubernetes **Watch API** for event-driven job monitoring
 **Verdict:** 🔀 DIVERGENT-BY-DESIGN · **Lineage:** PROPOSAL
+**Decision (2026-06-20): ✅ ACCEPTED & CLOSED** — keep polling. A Watch stream would either break
+the "one argv → one bounded result → exit" allowlist contract (long-lived `--watch` subprocess) or
+require the Python K8s client (A2), bypassing the allowlist entirely — weakening the security model
+for sub-second latency that minute-long benchmark jobs never need. Resolved by design, not pending.
 
 ### Where it came from
 This is one of the most explicit phrases in the proposal. Three sections demand it by name:
@@ -99,6 +110,10 @@ on** — low value to revisit.
 
 ## A2 · G3 — Official **Kubernetes Python client** (`kubernetes` / `kr8s`)
 **Verdict:** 🔀 DIVERGENT-BY-DESIGN · **Lineage:** PROPOSAL
+**Decision (2026-06-20): ✅ ACCEPTED & CLOSED** — keep `kubectl`-argv. A Python client issues calls
+in-process, outside the deny-by-default allowlist, the per-action approval gate, and the subprocess
+env-scrub; adopting it means re-implementing all three in a wrapper (the "decision logic in Python"
+rule #3 forbids). Gap report §6 is blunt: "Don't — it breaks the security model. Keep kubectl."
 
 ### Where it came from
 - **§7 (Technology Stack → Kubernetes Client):** *"**kubernetes Python client (official) or kr8s**
@@ -142,6 +157,10 @@ security model. Keep kubectl."** This is High-effort *and* risky for negative va
 
 ## A3 · G4 — **Configuration Explorer** Pareto-visualization integration
 **Verdict:** 🟡 PARTIAL · **Lineage:** PROPOSAL
+**Decision (2026-06-20): ⏸️ LEFT OPEN / DEFERRED** — not resolved, not yet scheduled. The Capacity
+Planner half ships and our own native interactive Pareto sweep card (inline in chat) already covers
+the user need; the specific upstream-viz reuse stays on the backlog rather than being closed out.
+Revisit if/when reusing the upstream Configuration Explorer's plotting earns its coupling cost.
 
 ### Where it came from
 - **§3.4 (Results Analyzer → DOE analysis):** *"identifies Pareto-optimal configurations across the
@@ -187,6 +206,10 @@ coupling and redundancy for no new user-visible capability. Classified as **opti
 
 ## A4 · G1 (residual) — A **mutating** orchestrator REST API (`POST /api/jobs`)
 **Verdict:** 🔀 DIVERGENT-BY-DESIGN (read half shipped; write half intentionally not) · **Lineage:** PROPOSAL
+**Decision (2026-06-20): ✅ ACCEPTED & CLOSED** — read mirror (`GET /api/jobs`) shipped; the write API
+stays out of scope by thesis. A raw `POST /api/jobs` would let a client submit a cluster-mutating GPU
+job while bypassing the chat approval gate + SessionPlan validation, and needs its own authn/z story
+("who may spend GPU?") the project deliberately hasn't taken on. Mutations stay chat-only. Resolved.
 
 ### Where it came from
 - **§3.3** frames the orchestrator as a service that **submits / monitors / manages** jobs.
@@ -235,6 +258,17 @@ the write API out of scope.
 
 ## A5 · G5 — **Upstream contribution PR** + **final live GPU demo**
 **Verdict:** ⬜ / 🟡 NOT DONE (mostly out-of-scope for *code*) · **Lineage:** PROPOSAL
+**Decision (2026-06-20): 🟢 SPLIT — orchestration demo COVERED locally; real-silicon numbers + the
+upstream PR stay open.** The **mock-GPU cluster harness** (`testing/local-cluster/`, commit `5fde2b3`)
+stands up a real K8s cluster that *advertises* fake `nvidia.com/gpu` (kind node-PATCH, or kwok at
+scale). Because the agent learns about GPUs **only from what the cluster advertises** (it never runs
+`nvidia-smi`), a fake-GPU node is indistinguishable from a real one to every scheduling code path —
+so the **multi-GPU orchestration/scheduling demo** (`gpu_count`, affinity, tolerations, anti-affinity,
+topology spread, `orchestrate_sweep` fan-out, retry/dead-letter, checkpoint, multi-replica) is now
+**exercisable end-to-end, free, on a laptop**; kind mode even produces a real BR-v0.2 report
+(sim-valued). What it does **not** give: **real performance numbers** (true TTFT/TPOT/throughput, real
+KV-cache + GPU-utilization) — it fakes the *advertisement*, not the silicon — and it does nothing for
+**(a) the upstream PR**. Those two are the only parts of A5 that remain open (see sub-items below).
 
 ### Where it came from
 - **§5.3 (Final Deliverables):** *"**If quality is sufficient**: upstream contribution to
@@ -252,7 +286,11 @@ if applicable."*
 
 **(b) The live GPU demo.** Eight GPU-only well-lit paths are catalogued in
 `knowledge/welllit_path_advisor.yaml` and *would* submit to a real GPU cluster if one were
-configured — but only the `cicd/kind` **CPU-sim** path is actually exercised today.
+configured. The `cicd/kind` **CPU-sim** path is exercised continuously, and as of `5fde2b3` the
+**mock-GPU harness** (`testing/local-cluster/`) now exercises the **multi-GPU orchestration/scheduling
+shape** of those paths for free (fake `nvidia.com/gpu` advertised to a real K8s scheduler). What is
+*still* unexercised is the part that needs silicon: **real GPU performance numbers** on a real
+multi-GPU cluster.
 
 ### Why it's hard — and why it's mostly *not a code problem*
 1. **(a) is a process + politics gap, not an engineering one.** Contributing upstream means
@@ -260,10 +298,13 @@ configured — but only the `cicd/kind` **CPU-sim** path is actually exercised t
    to us by rule #1 — we literally cannot edit it from here), reconciling our packaging/CI with
    theirs, and going through a **maintainer review cycle** on an external project's timeline. None of
    that is blocked by missing code; it's blocked by ownership and a review queue we don't control.
-2. **(b) is hardware-gated.** A "live demo on a lab GPU cluster" needs an actual multi-GPU cluster.
-   The dev box is **WSL2 + a single 8 GB Blackwell laptop GPU** (see `docs/GPU_CLUSTER_RUNBOOK.md`).
-   The eight GPU paths stay **advisory** until real hardware lands — the code to drive them exists,
-   but it has never been *exercised end-to-end on GPUs*.
+2. **(b) is hardware-gated — but only for the *numbers*, no longer for the orchestration shape.** A
+   "live demo on a lab GPU cluster" that produces *real* TTFT/TPOT/throughput needs an actual
+   multi-GPU cluster; the dev box is **WSL2 + a single 8 GB Blackwell laptop GPU** (see
+   `docs/GPU_CLUSTER_RUNBOOK.md`). The mock-GPU harness (`testing/local-cluster/`) removed the
+   *orchestration* half of this gap — the eight GPU paths' scheduling/placement/fan-out **can now be
+   driven end-to-end locally**, free — leaving only the real-silicon performance measurement
+   genuinely blocked on hardware.
 
 ### Why it's hard to *test*
 - You cannot hermetically test "a live GPU demo" — by definition it needs the GPU cluster the dev
@@ -289,6 +330,12 @@ This is the one item that genuinely *exists as working code* but a user can't re
 
 ## B1 · T1 — `graph_query`, a graphify-backed **code-navigation tool**: built + tested, never merged
 **Verdict:** ⬜ NOT REACHABLE (complete on a branch) · **Lineage:** DERIVED (not a proposal item)
+**Decision (2026-06-20): ⏸️ KEEP DEFERRED** — branch `worktree-graphify-runtime-tool` (`6e8321b`,
+a single commit) is now **187 commits behind `main`**. It's finished, but landing it is a non-trivial
+rebase (registry churned 34→37 tools, schemas moved) **plus** a security re-check of a new allowlisted
+`graphify` executable and keeping the graph-index test fixture hermetic — for a **dev convenience, not
+a user-facing capability**. Not worth that cost now; the agent uses grep/Explore for code-nav today.
+Path forward when revisited stays: **rebase and merge, do not re-author.** (Branch retained, not deleted.)
 
 ### What it is
 A complete tool that lets the agent answer structured "where is X defined / what calls Y / path
@@ -329,6 +376,11 @@ user-facing requirement, so it lost every prioritization contest. The path forwa
 
 # Part C — Implemented but gated OFF by default (not really "undone" — listed for honesty)
 
+**Decision (2026-06-20): ✅ REVIEWED — intentional, no change.** All three gates (`CHAOS_ENABLED`,
+`UNRESTRICTED_TOOLS`, empty-`ORCHESTRATOR_IMAGE` refusal) are correct fail-loud design and stay as-is.
+⚠️ Host caveat (not a doc gap): on the current dev host `UNRESTRICTED_TOOLS` is enabled in `.env`, so
+`run_shell` runs arbitrary bash with no allowlist — a deliberate local POC state, not the shipped default.
+
 These are **complete and tested**, but a user can't *trigger* them without flipping an env flag.
 They're included so the inventory is honest, but **none is a missing capability** — each gate is
 intentional, fail-loud behavior, not abandonment.
@@ -349,28 +401,35 @@ are **DERIVED** (project-added robustness/escape-hatch features the proposal nev
 # Part D — Dead / orphaned code (cleanups, not features)
 **Verdict:** ⬜ (orphaned) · **Lineage:** DERIVED — none of these is a proposal item; they're **code hygiene**
 
-None of these is "a feature we owe the user." They're **started-then-abandoned fragments** the
-internal reachability audit (gap report §7.3) surfaced. We list them because "not done" honestly
-includes "we left some dead ends in the tree." Each needs **removal or wiring**, and the reason none
-is done yet is the same: **low user impact, so it never out-prioritized real work** — and removing
-code carries its own small risk (you must prove nothing reaches it before deleting).
+**Decision (2026-06-20): TRIAGED — 2 removed, 2 mischaracterizations corrected, 3 kept, 1 deferred.**
+Each row was re-verified against current code (the line numbers in the original audit were stale).
+Two items turned out **not to be dead** on inspection and were re-filed; two genuinely-dead items were
+removed (104 scoped tests green); the rest are kept by design with the one correctness item deferred.
 
-| Orphan | Where | Problem · why it lingers |
+| Item | Where (verified) | Disposition · why |
 |---|---|---|
-| **Dead tool input fields** | `export_run_bundle.session_id` (`schemas.py:828`); `advise_accelerators.namespace` (`schemas.py:43`) | The LLM can *set* these, but nothing consumes them (`build_bundle()` has no `session_id` param; the namespace field's own description says "unused… reserved"). *Risk in fixing:* either wire them through (real behavior change) or remove them (schema change the prompt/knowledge may reference). Testing the removal means proving no prompt path emits them. |
-| **Dead route** | `GET /api/sessions/{sid}/bundle/{bundle_id}` raw-JSON (`main.py:569`) | The UI only ever fetches the `.html` sibling, so the raw-JSON route is unreached despite its docstring. *Why it lingers:* harmless, and deleting a route needs a check that no external client depends on it. |
-| **Dead module** | `app/packaging/assets.py:58-77` (`required_rbac_rules`, `deploy_dir`, `helm_chart_dir`, `kustomize_base_dir`) | Only its own unit test imports it; no route/tool/prompt reaches it. *Why it lingers:* it *looks* load-bearing (RBAC/deploy paths), so deleting it safely needs confidence it's truly orphaned — exactly the kind of verification that gets deprioritized. |
-| **Dead event constant** | `SESSION_PLAN = "session_plan"` (`app/agent/events.py:98`) | Never emitted — the SessionPlan rides the `approval_request` event's `kind` field instead. Trivial to remove; just never urgent. |
-| **Orphan knowledge** | `knowledge/sim_integration.md`; `knowledge/benchmark_feature_coverage.md` | Loadable via the generic index but **never deliberately cued**. The sim-honesty rule *should* be injected with the `SIMULATE_NOTE` (`prompt.py:150`) but isn't — so it's missing **exactly when it matters** (a real correctness edge, not just cleanup). Nothing routes capability questions to the coverage doc. *Why it lingers:* fixing the cue means touching prompt-assembly, which is byte-stability-sensitive (prompt-cache). |
-| **Orphan dev file** | `ui/preview.html` (served at `/static/preview.html`) | A card-layout fixture driven by `window.__LLMD_PREVIEW__`, **linked from nowhere**. Intentional dev fixture, not a user feature — kept on purpose, flagged so it's not mistaken for reachable UI. |
+| **D1a — dead tool input field** | `export_run_bundle.session_id` (`schemas.py`, handler `reproducibility.py`) | ✅ **REMOVED** — handler accepted it but never passed it to `build_bundle()`; no test set it. Field dropped from schema + handler. |
+| **D1b — reserved tool field** | `advise_accelerators.namespace` (`schemas.py:43`) | 🔒 **KEPT** — not abandoned; the field's own description says "unused… reserved for future per-namespace scoping." Self-documented, harmless. |
+| **D2 — bundle JSON route** | `GET /api/sessions/{sid}/bundle/{bundle_id}` (`main.py:612`) | 🔒 **KEPT (re-filed — not dead)** — unreached by *our UI* but a **deliberately security-hardened read-only API surface** with a dedicated passing test (`test_artifacts.py::test_bundle_json_route_returns_metadata`) + path-traversal/overlong-sid/NUL-byte coverage. Same "programmatic read mirror" rationale as A4's `GET /api/jobs`. |
+| **D3 — packaging assets funcs** | `app/packaging/assets.py` (`required_rbac_rules`, `deploy_dir`, `helm_chart_dir`, `kustomize_base_dir`) | 🔒 **KEPT (re-filed — not dead)** — these are the **single source of truth for the orchestrator's least-privilege RBAC**, and four tests assert the shipped **Helm + Kustomize chart Role rules equal this contract** (the chart-vs-app **drift guard**). "Only its own test imports it" was true but misleading: a test-only contract that powers a drift guard is load-bearing. |
+| **D4 — dead event constant** | `SESSION_PLAN = "session_plan"` (`app/agent/events.py:98`) | ✅ **REMOVED** — the symbol was never referenced (the plan rides `approval_request.kind`; the live string is set in `plan.py`, not via this constant). Constant + its stale docstring line dropped. |
+| **D5 — orphan knowledge cue** | `knowledge/sim_integration.md`; `knowledge/benchmark_feature_coverage.md` | ⏸️ **DEFERRED (tracked — the one correctness item)** — the SIMULATE-honesty rule in `sim_integration.md` *should* be injected alongside `SIMULATE_NOTE` (`prompt.py:150/218`) but isn't, so it's missing exactly when it matters. Fixing it touches **byte-stability-sensitive prompt assembly** (prompt-cache), so it's scheduled separately rather than done mid-triage. Cue must be config-stable like `SIMULATE_NOTE`. |
+| **D6 — orphan dev file** | `ui/preview.html` (served at `/static/preview.html`) | 🔒 **KEPT** — intentional card-layout dev fixture driven by `window.__LLMD_PREVIEW__` (referenced by `app.js`); kept on purpose, flagged so it's not mistaken for reachable UI. |
 
-The only one with **user-facing correctness weight** is the `sim_integration.md` cue (a SIMULATE-mode
-honesty rule that never surfaces); the rest are pure tidy-ups.
+**Net:** the audit's "6 dead spots" were really **2 dead (now removed)**, **1 reserved field**, **1 dev
+fixture**, **1 correctness gap (D5, deferred)**, and **2 mischaracterized load-bearing pieces (D2 route,
+D3 drift guard) now corrected**. The only remaining open item with **user-facing correctness weight** is
+the **D5** `sim_integration.md` cue.
 
 ---
 
 # Part E — Deferred ROADMAP_V4 phases (7 of them)
 **Verdict:** ⬜ DEFERRED · **Lineage:** DERIVED — **not** proposal line-items
+**Decision (2026-06-20): ✅ REVIEWED — all 7 remain precondition-blocked, stay deferred.** Each is gated
+on something the dev env can't satisfy (OpenShift for 34, a shared cluster for 43, cloud creds+bucket
+for 47, an explicit opt-in for 44) or on upstream not being ready (52 experimental; 57/58 empty stubs).
+Nothing landed since (incl. the mock-GPU harness, which fakes GPU *scheduling*, not these) unblocks any.
+Each auto-promotes onto the active line the moment its precondition lands. No build work today.
 
 ### Where these came from (since they're *not* in the proposal)
 The proposal describes the *agent*; these seven phases come from a **separate exercise**: mining the
@@ -400,20 +459,27 @@ precondition lands.
 
 # Summary — the whole "not done" list at a glance
 
-| # | Item | Verdict | Lineage | Why it's still open (one line) |
-|---|---|---|---|---|
-| A1 | G2 — Watch API | 🔀 Divergent | Proposal §3.3/§5.1/§4 | Polling meets the need + is trivially testable; Watch fights the allowlist/approval model. |
-| A2 | G3 — K8s Python client | 🔀 Divergent | Proposal §7 | A library bypasses the deny-by-default allowlist + approval + env-scrub. **Don't.** |
-| A3 | G4 — Config Explorer Pareto viz | 🟡 Partial | Proposal §3.4/§5.2 | Capacity Planner *is* reused; our own Pareto cards already cover the user need. |
-| A4 | G1 — mutating REST API | 🔀 Divergent | Proposal §3.3/§7/§4 | Read mirror shipped; a write API would bypass the chat approval gate (agent-first thesis). |
-| A5 | G5 — upstream PR + GPU demo | ⬜/🟡 | Proposal §5.3/§10/§6 | External review cycle + GPU-cluster hardware the dev box lacks; partly conditional in the proposal. |
-| B1 | T1 — `graph_query` dev tool | ⬜ (built, unmerged) | DERIVED | Done on a stale branch; needs a rebase onto a much-changed `main` + security re-check. |
-| C  | Gated features (chaos / `run_shell` / image-gated orchestrate) | ✅ but OFF | mixed | Complete + tested; intentionally gated, not undone. |
-| D  | Dead/orphan code (6 spots) | ⬜ orphan | DERIVED | Code hygiene; low impact so never prioritized (only the SIM-cue has correctness weight). |
-| E  | ROADMAP phases 34/43/44/47/52/57/58 | ⬜ deferred | DERIVED | Each blocked on a precondition the dev env can't satisfy, or on upstream not being ready. |
+> **Triaged 2026-06-20 — every item below has a recorded decision** (see each item's
+> **Decision** banner above). This table's last column is now the *outcome*, not just "why open."
 
-**Bottom line:** of everything "not done," only **B1 (graph_query)** is finished code waiting on a
-merge, and only **A3 / D's SIM-cue** are genuine (small) capability/correctness gaps worth closing
-for the agent's own users. Everything else is either **divergent-by-design** (A1, A2, A4 — undoing
-them would *weaken* the system), **external/hardware-gated** (A5, most of E), or **complete-but-gated**
-(C). That's why none was done until today — not oversight, but each one's cost vs. value, written out.
+| # | Item | Verdict | Decision (2026-06-20) |
+|---|---|---|---|
+| A1 | G2 — Watch API | 🔀 Divergent | ✅ **Accepted & closed** — keep polling; Watch fights the allowlist/approval model for no real gain. |
+| A2 | G3 — K8s Python client | 🔀 Divergent | ✅ **Accepted & closed** — keep `kubectl`; a library bypasses allowlist + approval + env-scrub. |
+| A3 | G4 — Config Explorer Pareto viz | 🟡 Partial | ⏸️ **Left open / deferred** — own interactive Pareto card covers the need; upstream-viz reuse stays on backlog. |
+| A4 | G1 — mutating REST API | 🔀 Divergent | ✅ **Accepted & closed** — read mirror shipped; write API stays chat-only (approval gate). |
+| A5 | G5 — upstream PR + GPU demo | 🟢 Split | 🟢 **Split** — multi-GPU *orchestration* demo COVERED locally (mock-GPU harness `5fde2b3`); real-silicon numbers + upstream PR remain open. |
+| B1 | T1 — `graph_query` dev tool | ⬜ (built, unmerged) | ⏸️ **Keep deferred** — branch 187 behind `main`; dev-convenience not worth the rebase + security re-check now. |
+| C  | Gated features (chaos / `run_shell` / image-gated orchestrate) | ✅ but OFF | ✅ **Reviewed — intentional, no change** (⚠️ `UNRESTRICTED_TOOLS` enabled on this dev host). |
+| D  | Code-hygiene spots (was "6 dead") | mixed | ✅ **2 removed** (D1a field, D4 constant); 🔒 **3 kept** (D1b reserved, D6 fixture, + D2/D3 **re-filed as load-bearing**); ⏸️ **D5 deferred** (the one correctness gap). |
+| E  | ROADMAP phases 34/43/44/47/52/57/58 | ⬜ deferred | ✅ **Reviewed — all 7 stay deferred** (each precondition-blocked; nothing landed unblocks them). |
+
+**Bottom line (post-triage):** the only **code changes** made were two genuinely-dead removals in
+Part D (`export_run_bundle.session_id`, the `SESSION_PLAN` constant — 104 scoped tests green). The
+triage's biggest *correction* was catching **two "dead" items that were actually load-bearing** (D2's
+security-hardened JSON route, D3's RBAC drift guard) before they were deleted. The genuine remaining
+gaps worth closing for the agent's own users are small and now explicitly tracked: **A3** (optional
+upstream-viz reuse) and **D5** (the SIMULATE-honesty cue, the only correctness-weight item). **A5**
+gained a free local multi-GPU orchestration demo via the mock harness; its real-silicon + upstream-PR
+halves stay open. Everything else is **divergent-by-design** (A1/A2/A4 — undoing weakens the system),
+**external/hardware-gated** (A5 residual, most of E), or **complete-but-gated** (C).

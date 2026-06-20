@@ -931,7 +931,6 @@ class ExportRunBundleInput(BaseModel):
                     "record (if one exists). The result is stored separately via result_history; "
                     "this just links them.",
     )
-    session_id: str | None = Field(default=None, description="Originating chat id (provenance).")
 
 
 class ReproduceRunInput(BaseModel):

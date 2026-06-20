@@ -79,7 +79,6 @@ async def export_run_bundle(
     slo: dict[str, Any] | None = None,
     label: str | None = None,
     attach_to_history: bool = False,
-    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Capture a provenance bundle for a validated run. Read-only (git reads + a workspace write)."""
     report_path = _resolve_report(source)
