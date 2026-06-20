@@ -52,6 +52,7 @@ bugs low/medium; none were crashes of the core flow.
 | 027 | app/validation/report.py | `load_report` raised raw parse exception → opaque tool error across 6 tools on a corrupt report |
 | 028 | app/tools/probe.py | `probe_environment(spec=…)` followed `..` traversal, parsing an arbitrary YAML file into image_tags |
 | 029 | app/orchestrator/faults.py | `classify_failure` crashed on a non-list `conditions`/`containerStatuses` or non-dict pod element |
+| 030 | app/capacity/planner.py | capacity verdict read `feasible:true` when KV-cache sizing never ran (count-summary mistaken for sizing proof) |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -392,6 +393,37 @@ the GET-only/`/healthz`/`/readyz` auth exemptions all hold under adversarial pro
   a non-annotated global trigger does NOT downgrade a mutating subcommand.
 - **Related:** the previously-documented relaxed-flag `--as` impersonation observation (a separate,
   deliberate design trade-off) — see the security observation near the top of this log.
+
+---
+
+## Round 9 (2026-06-21) — capacity/packaging/retention/compaction hunt: 1 fixed (BUG-030)
+The hunt confirmed retention GC, share store, gist_publish, and context_mgmt compaction are
+well-hardened (active-session bytes accounting, stub-length non-negative counter, tool-call/result
+pairing, stale-gist fall-through, token traversal all guarded). One solid HIGH-severity bug:
+
+## BUG-030 — capacity planner reports `feasible:true` when KV-cache sizing never actually ran
+- **Status:** FIXED
+- **Severity:** high (a confident WRONG "it fits" at the plan gate → user proceeds to a ~10-min standup
+  that then OOMs / fails to load — the exact failure capacity pre-flight exists to prevent)
+- **Where:** `app/capacity/planner.py` — `_SIZED_MARKER = "available gpu memory"` (the sizing-proof) +
+  `classify_diagnostics` (`any_sized`).
+- **Trigger (reproduced):** a `check_capacity` run (default `enforce=False` → `ignore_failures=True`) where
+  one method emits the GPU-COUNT summary but its KV-cache sizing THROWS (e.g. a HuggingFace 401/offline
+  config fetch for a large gated model → only a `WARNING:` line), while the other method is 0-replica
+  skipped. `classify_diagnostics` returned `feasible=True, sizing_evaluated=True`.
+- **Root cause:** `any_sized` keyed on `"available gpu memory"`, which matches the upstream GPU-COUNT
+  summary line (`capacity_validator.py:206-210`, `"...total available GPU memory = X GB"`) — emitted
+  BEFORE and INDEPENDENT of whether the KV-cache arithmetic ran. So `any_sized=True` cancelled the
+  `(replica_skip and not any_sized)` bypass, and the sizing-exception (`:305`, only a WARNING under
+  ignoreFailedValidation, so not `hard_infeasible`) read as feasible. The module's OWN comment already
+  noted "the '...available GPU memory' line is NOT a fit verdict" — the marker contradicted it.
+- **Fix:** key `any_sized` on the FIT-path KV-cache lines only — `_SIZED_MARKERS = ("allocatable kv cache
+  memory", "per-request kv cache", "max concurrent requests")` (`capacity_validator.py:280-302`) — and add
+  `_SIZE_FAILED_MARKER = "cannot estimate model memory or kv cache"` as a bypass signal so a thrown sizing
+  also downgrades to `feasible=None`. Won't-fit verdicts are still carried by `_FAIL_MARKER`. Safe
+  direction: the change can only turn a false `feasible:true` into the cautious `None`, never the reverse.
+- **Regression test:** `tests/test_qafix_tools_capacity_history_config_report.py::test_classify_sizing_exception_is_inconclusive_not_feasible`
+  (all 20 existing capacity tests still pass).
 
 ---
 

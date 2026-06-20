@@ -39,8 +39,20 @@ _WARNING_TAG = "WARNING:"
 #   * validate_vllm_params: "...skipping memory checks." (model architecture unavailable)
 _REPLICA_SKIP_MARKER = "0 replicas -- skipping"
 _GPU_SKIP_MARKERS = ("skipping gpu memory checks", "skipping memory checks")
-# The line that proves sizing actually ran for a method (KV-cache/VRAM arithmetic happened).
-_SIZED_MARKER = "available gpu memory"
+# The upstream sizing computation THREW for a method (e.g. a HuggingFace config fetch failed) —
+# under ignoreFailedValidation this surfaces only as a WARNING, but NO fit verdict was produced, so
+# feasibility was not evaluated (same effect as a skip). capacity_validator.py:305.
+_SIZE_FAILED_MARKER = "cannot estimate model memory or kv cache"
+# The lines that prove a method's KV-cache/VRAM arithmetic actually ran to a FIT verdict
+# (capacity_validator.py:280-302, the fits branch). The "...available GPU memory" line is ONLY the
+# GPU-COUNT summary, emitted BEFORE sizing and independent of whether it ran — keying sizing-proof
+# on it let an un-sized run (sizing threw → only a WARNING) read as feasible:true (BUG-030). A
+# won't-fit verdict is carried by _FAIL_MARKER instead, so these mark only the fits path.
+_SIZED_MARKERS = (
+    "allocatable kv cache memory",
+    "per-request kv cache",
+    "max concurrent requests",
+)
 
 # Plan-config keys an override may touch. Restricting the surface keeps overrides honest:
 # the agent expresses *what the user asked for* (a bigger model, longer context, a real
@@ -124,11 +136,12 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
         low = line.lower()
         if _FAIL_MARKER in line:
             will_fail = True
-        if _SIZED_MARKER in low:
+        if any(m in low for m in _SIZED_MARKERS):
             any_sized = True
         if _REPLICA_SKIP_MARKER in line:
             replica_skip = True
-        if any(m in low for m in _GPU_SKIP_MARKERS):
+        if any(m in low for m in _GPU_SKIP_MARKERS) or _SIZE_FAILED_MARKER in low:
+            # Sizing was bypassed (skipped) OR threw (cannot-estimate) — either way no fit verdict.
             gpu_skip = True
         if _ERROR_TAG in line:
             errors.append(line)
@@ -139,13 +152,16 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
 
     hard_infeasible = will_fail or bool(errors)
     # Sizing is treated as bypassed ONLY on POSITIVE evidence that the planner emitted a skip
-    # line — never merely from the absence of sizing facts (an empty or info/warning-only
-    # diagnostic list keeps the prior feasible reading). Two bypass signals, both faithful to
-    # the planner's own log strings:
+    # line / a sizing exception — never merely from the absence of sizing facts (an empty or
+    # info/warning-only diagnostic list keeps the prior feasible reading). Bypass signals, all
+    # faithful to the planner's own log strings:
     #   * a 0-replica / disabled method skip ("<method> ... 0 replicas -- skipping"); or
-    #   * the VRAM/KV-cache memory-fit check itself being skipped ("...skipping (gpu) memory
-    #     checks.") because the accelerator memory or model architecture was unknown — the
-    #     "...available GPU memory" line is only the GPU-COUNT summary, NOT a fit verdict.
+    #   * the VRAM/KV-cache memory-fit check being skipped ("...skipping (gpu) memory checks.")
+    #     because the accelerator memory or model architecture was unknown; or
+    #   * the sizing computation THROWING ("Cannot estimate model memory or KV cache ...") — under
+    #     ignoreFailedValidation that's only a WARNING, so without this it would read as feasible.
+    # `any_sized` keys on the FIT-path KV-cache lines (_SIZED_MARKERS), NOT the "...available GPU
+    # memory" GPU-COUNT summary (which is emitted before sizing and is NOT a fit verdict — BUG-030).
     # When a method was skipped for 0 replicas yet ANOTHER method DID size, that other method
     # carries the verdict, so a replica skip alone (with sizing elsewhere) is not a bypass.
     # A hard ERROR / will-fail is authoritative and wins below; we only downgrade an otherwise
