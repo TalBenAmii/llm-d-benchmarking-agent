@@ -135,6 +135,21 @@ def test_analyzer_next_steps_chips():
     assert ".next-step-chip" in css
 
 
+def test_agent_suggestion_buttons():
+    """The agent's mid-turn 'what next?' offer (suggest_next_steps) renders as clickable buttons
+    that send the option's prompt — instead of the agent asking in prose."""
+    js = _ui("app.js")
+    # The renderer + its dispatch off the suggest_next_steps tool_result.
+    assert "function renderAgentSuggestions" in js
+    assert 'data.name === "suggest_next_steps"' in js   # rendered from the tool result
+    assert "renderAgentSuggestions(r)" in js
+    # Clicking a button sends its prompt as the user's next message (same path as welcome chips).
+    assert "sendUserMessage(s.prompt)" in js
+    # The technical action row is suppressed for this UI-only tool, in BOTH live and replay paths.
+    assert js.count('data.name === "suggest_next_steps"') >= 1
+    assert 'it.name === "suggest_next_steps"' in js     # renderHistory skips the action row on replay
+
+
 def test_preflight_status_cards():
     """The read-only diagnostic tools render friendly status cards (not just raw JSON)."""
     js = _ui("app.js")

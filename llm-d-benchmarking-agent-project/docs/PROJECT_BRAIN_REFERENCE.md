@@ -66,7 +66,7 @@ pytest tests/
 ```
 
 ## graphify (dev code-nav) — full detail
-This project has a knowledge graph at `graphify-out/` with god nodes, community structure, and cross-file relationships. (A `PreToolUse` hook in `.claude/settings.json` already nudges you toward `graphify query` when you grep or read source, so the per-turn reminder is automatic — this is the full reference.)
+This project has a knowledge graph at `graphify-out/` with god nodes, community structure, and cross-file relationships — this is the full reference. (No Claude Code hook nudges graphify; prefer `graphify query` over raw grep by habit.)
 - For codebase questions, first run `graphify query "<question>"` when `graphify-out/graph.json` exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than `GRAPH_REPORT.md` or raw grep output.
 - If `graphify-out/wiki/index.md` exists, use it for broad navigation instead of raw source browsing.
 - Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when query/path/explain do not surface enough context.
@@ -87,3 +87,13 @@ workarounds built for old model limitations"):
   `rtx5070-gpu-cluster` memory into a keyword-gated `UserPromptSubmit` injection
   (`.claude/hooks/gpu_context.sh`). Goal: shrink the per-turn always-on prefix without losing the
   knowledge — it now loads on demand / on relevance instead of every turn.
+- **2026-06-20 — Claude Code hook teardown (Claude Code = Opus 4.8).** Removed the entire `.claude/`
+  hook suite + the tool-lessons/context feature (per user request, decluttering): deleted
+  `git_add_guard`, `gpu_context`, `context_sync`, `tool_lesson_inject`, `transcript_error_capture`,
+  `record_lesson`, `ruff_autofix` (plus the already-removed `tool_error_capture`, `reflect_session_end`,
+  `recon_lib` + `reconcile-before-merge` skill), and the whole root `context/` dir (tool-lessons data,
+  auto-index, `trace_tokens.py`). Dropped the `hooks` + `env` blocks from `.claude/settings.json` (now
+  permissions-only). Lint moved off the per-edit `ruff_autofix` hook onto a local
+  `.git/hooks/{pre-commit,pre-merge-commit}` ruff gate scoped to `main` (gates committed/merged code only;
+  not version-controlled — recreate on fresh clone). **Net: zero Claude Code hooks; only the graphify
+  post-commit git hook remains.** The `2026-06-13` entry above is historical — those hooks no longer exist.

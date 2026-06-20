@@ -42,6 +42,7 @@ from app.tools import (
     reproducibility,
     resilience,
     shell,
+    suggest,
     workload_profile,
 )
 from app.tools.context import ToolContext
@@ -80,6 +81,7 @@ from app.tools.schemas import (
     RunSetupInput,
     RunShellInput,
     SearchKnowledgeInput,
+    SuggestNextStepsInput,
     WriteConfigInput,
 )
 from app.validation.session_plan import SessionPlan
@@ -168,6 +170,20 @@ _DESCRIPTIONS = {
         "(the enumerated topic list): use search_knowledge to FIND the right doc, then "
         "read_knowledge / read_repo_doc to load it in full. WHEN to use it is "
         "knowledge/conversation_style.md."
+    ),
+    "suggest_next_steps": (
+        "Offer the user 2-4 concrete next steps as CLICKABLE BUTTONS instead of asking "
+        "'want me to…?' in prose. Whenever you would end a turn by proposing what to do next "
+        "(save a baseline, compare runs, sweep, tear down, run again, dig into the latency "
+        "tail, …), do NOT phrase those options as a prose question — CALL this tool with each "
+        "option as {label, prompt}: a short button label plus the first-person message sent "
+        "when the user clicks it. The UI renders them as the same floating suggestion pills as "
+        "the welcome chips; clicking one submits its prompt as the user's next message. This is "
+        "your FINAL action of the turn — call it with NO lead-in introducing the buttons and NO "
+        "line about them afterward (they speak for themselves); the call ends the turn. Use it "
+        "for DISCRETIONARY follow-ups only; it is NOT an approval "
+        "gate — a mutating action still needs run_command / propose_session_plan (those raise "
+        "the Approve card). See read_knowledge('conversation_style') for the offer cadence."
     ),
     "read_repo_doc": (
         "Read a documentation or spec file from inside the (read-only) repos, e.g. the "
@@ -435,8 +451,9 @@ _DESCRIPTIONS = {
         "wants the best config. compare_reports gives raw deltas; this adds SLO/goodput/Pareto. "
         "Also returns `next_steps`: a RANKED list of recommended follow-ups over the validated "
         "facts + your saved history, prioritizing save-to-trend / compare-to-baseline over "
-        "teardown/run-again — turn the TOP item into a single concise offer (don't recite the "
-        "list; see read_knowledge('conversation_style') for the one-offer cadence). "
+        "teardown/run-again — offer the best 2-4 of them as CLICKABLE BUTTONS by calling "
+        "suggest_next_steps (don't recite the list in prose; see "
+        "read_knowledge('conversation_style') for the offer cadence). "
         "Call read_knowledge('analysis') to interpret it (and read_knowledge('sweep_playbook') "
         "when designing or reading a sweep/A-B)."
     ),
@@ -618,6 +635,7 @@ def build_registry(*, unrestricted: bool = False) -> dict[str, ToolSpec]:
         ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
         ToolSpec("cancel_run", _DESCRIPTIONS["cancel_run"], CancelRunInput, cancel.cancel_run),
         ToolSpec("run_resilience_drill", _DESCRIPTIONS["run_resilience_drill"], RunResilienceDrillInput, resilience.run_resilience_drill),
+        ToolSpec("suggest_next_steps", _DESCRIPTIONS["suggest_next_steps"], SuggestNextStepsInput, suggest.suggest_next_steps),
     ]
     if unrestricted:
         # Opt-in only: the allowlist-bypassing shell tool is appended (and exposed to the LLM)

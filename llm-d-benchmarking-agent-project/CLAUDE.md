@@ -118,17 +118,20 @@ approval is kept), a synthetic report produced. Default `0` (real execution).
 - **Healthy baseline ≈ 1598 passed / 20 skipped in ~15–20s.** Establish green BEFORE changing anything.
 - Don't auto-run live-LLM eval (`LLM_EVAL_LIVE=1`, `test_flows_live.py`, `make validate-live`) — spends
   Max-plan quota; only on explicit user request. Plain `pytest` is safe.
+- **Lint gate (ruff):** there is **no per-edit autofix hook anymore** — run `make lint` (`ruff check .`)
+  yourself while iterating and fix issues before committing. A local `.git/hooks/{pre-commit,
+  pre-merge-commit}` runs `ruff check` and **blocks any commit/merge to `main`** if it fails (main-only;
+  feature/worktree branches are not gated). These live in `.git/hooks` (not version-controlled) — recreate
+  them on a fresh clone; keep `main` lint-clean so the gate never blocks a merge.
 
 ## graphify (dev code-nav)
 A knowledge graph at `graphify-out/` backs code navigation: prefer `graphify query/explain/path`
-over raw grep for codebase questions, and run `graphify update .` after code changes. A `PreToolUse`
-hook already nudges this on grep/read, and a post-commit hook keeps the graph current — so this is
-hands-off. Full usage detail → `docs/PROJECT_BRAIN_REFERENCE.md`.
+over raw grep for codebase questions, and run `graphify update .` after code changes. A post-commit
+hook keeps the graph current — so this is hands-off. Full usage detail → `docs/PROJECT_BRAIN_REFERENCE.md`.
 
 ## Capturing recurring conclusions (standing instruction to future-me)
 When you derive a conclusion you'd otherwise re-investigate on a later task (env/test/build setup, repo
 gotchas, locked design decisions), append a **1–2 line** summary to the relevant section above —
-**consolidate, don't duplicate, keep it tight** (this file loads into context every session). A
-`SessionEnd` hook in `.claude/settings.json` nudges you to do this at the end of a session. Reference
+**consolidate, don't duplicate, keep it tight** (this file loads into context every session). Reference
 material (status, doc map, run-locally, graphify detail, the **config/model-drift audit log**) lives in
 `docs/PROJECT_BRAIN_REFERENCE.md` — keep it there, not here, so this file stays small.

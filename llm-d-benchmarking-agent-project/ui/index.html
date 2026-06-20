@@ -115,6 +115,9 @@
       <h1 id="header-title">New chat</h1>
     </div>
     <div class="header-actions">
+      <!-- Session-id chip sits BEFORE the buttons so that revealing it (debug mode) grows the
+           actions group leftward into empty header space instead of shoving the buttons around. -->
+      <span id="debug-session" class="debug-session" title="Session id (shown in debug view)" aria-live="polite"></span>
       <button id="builder-toggle" type="button" class="icon-btn" title="Design a benchmark — guided builder" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span></button>
       <button id="share-chat" type="button" class="icon-btn" title="Share this conversation with a read-only link" aria-label="Share this conversation"><span aria-hidden="true">🔗</span></button>
       <button id="debug-toggle" type="button" class="icon-btn" title="Debug view — show the commands the agent ran inline in the chat" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>

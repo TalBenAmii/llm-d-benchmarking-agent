@@ -156,18 +156,36 @@ def _assistant(text: str) -> dict[str, Any]:
 
 
 def _to_sdk_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Convert the neutral history into the SDK's streaming-input message dicts, as
-    alternating user/assistant TEXT turns (the only multi-turn shape the CLI accepts)."""
-    out: list[dict[str, Any]] = []
+    """Convert the neutral history into the SDK's streaming-input message dicts, as STRICTLY
+    alternating user/assistant TEXT turns — the only multi-turn shape the CLI's streaming input
+    reliably delivers.
+
+    Consecutive same-role turns are COALESCED into one (joined with a blank line). The host loop
+    routinely emits runs of same-role turns: on turn 1 it injects the env pre-probe snapshot, the
+    live-catalog snapshot, AND the real user message as three back-to-back ``user`` turns; mid-turn
+    it appends a steer ``user`` turn right after a ``tool_results`` (which also renders as a ``user``
+    turn). The CLI's streaming input does NOT reliably deliver a run of same-role messages — it
+    surfaced only the FIRST and silently dropped the rest, so on turn 1 the model saw just the env
+    pre-probe and replied "I received a blank message" even though the user's task was right there.
+    Coalescing guarantees every turn's full content reaches the model as one user turn."""
+    # Flatten neutral roles to (sdk_role, text) pairs (a tool_results turn renders as user text).
+    pairs: list[tuple[str, str]] = []
     for m in messages:
         role = m["role"]
         if role == "user":
-            out.append(_user(m["content"]))
+            pairs.append(("user", m["content"]))
         elif role == "assistant":
-            out.append(_assistant(_render_assistant_text(m.get("content") or "", m.get("tool_calls") or [])))
+            pairs.append(("assistant", _render_assistant_text(m.get("content") or "", m.get("tool_calls") or [])))
         elif role == "tool_results":
-            out.append(_user(_render_tool_results(m["results"])))
-    return out
+            pairs.append(("user", _render_tool_results(m["results"])))
+    # Coalesce consecutive same-role turns so the result strictly alternates user/assistant.
+    merged: list[tuple[str, str]] = []
+    for sdk_role, text in pairs:
+        if merged and merged[-1][0] == sdk_role:
+            merged[-1] = (sdk_role, merged[-1][1] + "\n\n" + text)
+        else:
+            merged.append((sdk_role, text))
+    return [_user(text) if sdk_role == "user" else _assistant(text) for sdk_role, text in merged]
 
 
 async def _astream(items: list[dict[str, Any]]):

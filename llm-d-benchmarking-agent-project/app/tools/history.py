@@ -11,7 +11,7 @@ agent's, grounded in ``knowledge/history.md`` (thin code, thick agent).
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +44,7 @@ def _parse_bound(raw: str, *, end_of_day: bool) -> float:
     if "T" not in s and " " not in s and end_of_day:
         dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.timestamp()
 
 

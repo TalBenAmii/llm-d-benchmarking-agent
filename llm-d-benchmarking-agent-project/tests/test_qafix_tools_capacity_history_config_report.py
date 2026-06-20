@@ -28,7 +28,6 @@ from app.capacity.planner import (
     plan_config_for_spec,
 )
 
-
 # ---- #1 + #2 : merge None-skip, no crash, model/huggingfaceId sync -----------
 
 def test_deep_merge_skips_none_override_keeping_default_dict():
@@ -183,16 +182,16 @@ async def test_result_history_list_advertises_supported_filters(tool_ctx):
 
 
 def test_filter_by_date_inclusive_bounds():
-    from app.tools.history import _filter_by_date
     from app.storage.history import HistoryRecord
+    from app.tools.history import _filter_by_date
 
     def rec(epoch: float) -> HistoryRecord:
         return HistoryRecord(id=str(epoch), stored_at=epoch, label=None)
 
     # 2026-05-15, 2026-06-20 (UTC)
     import datetime as _dt
-    may15 = _dt.datetime(2026, 5, 15, tzinfo=_dt.timezone.utc).timestamp()
-    jun20 = _dt.datetime(2026, 6, 20, tzinfo=_dt.timezone.utc).timestamp()
+    may15 = _dt.datetime(2026, 5, 15, tzinfo=_dt.UTC).timestamp()
+    jun20 = _dt.datetime(2026, 6, 20, tzinfo=_dt.UTC).timestamp()
     recs = [rec(may15), rec(jun20)]
     out, applied = _filter_by_date(recs, "2026-05-01", "2026-06-15")
     assert [r.stored_at for r in out] == [may15]  # jun20 excluded
@@ -200,19 +199,20 @@ def test_filter_by_date_inclusive_bounds():
 
 
 def test_filter_by_date_end_is_inclusive_of_whole_day():
-    from app.tools.history import _filter_by_date
-    from app.storage.history import HistoryRecord
     import datetime as _dt
+
+    from app.storage.history import HistoryRecord
+    from app.tools.history import _filter_by_date
     # A record stored late on the end-date day must be INCLUDED (bare end date => 23:59:59).
-    late = _dt.datetime(2026, 6, 15, 23, 30, tzinfo=_dt.timezone.utc).timestamp()
+    late = _dt.datetime(2026, 6, 15, 23, 30, tzinfo=_dt.UTC).timestamp()
     out, _ = _filter_by_date([HistoryRecord(id="x", stored_at=late, label=None)],
                              None, "2026-06-15")
     assert len(out) == 1
 
 
 def test_filter_by_date_bad_input_reports_error_not_crash():
-    from app.tools.history import _filter_by_date
     from app.storage.history import HistoryRecord
+    from app.tools.history import _filter_by_date
     recs = [HistoryRecord(id="x", stored_at=time.time(), label=None)]
     out, applied = _filter_by_date(recs, "not-a-date", None)
     assert "error" in applied

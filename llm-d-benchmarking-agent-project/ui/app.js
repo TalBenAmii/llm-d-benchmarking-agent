@@ -107,6 +107,13 @@ function applyDebug(on) {
   debugBtn.title = on
     ? "Hide the executed commands from the chat"
     : "Debug view — show the commands the agent ran inline in the chat";
+  updateDebugSession();
+}
+// Refresh the debug-only session-id chip from the active chat's id. Called on debug toggle and
+// whenever currentSession changes, so the chip is correct the moment debug mode is revealed.
+function updateDebugSession() {
+  const chip = document.getElementById("debug-session");
+  if (chip) chip.textContent = currentSession ? "session " + currentSession : "no session yet";
 }
 function initDebug() {
   let on = false;
@@ -118,12 +125,14 @@ debugBtn.addEventListener("click", () => {
   try { localStorage.setItem("llmd-debug", on ? "on" : "off"); } catch (e) {}
   applyDebug(on);
 });
-initDebug();
+// initDebug() is invoked AFTER currentSession is declared below — applyDebug -> updateDebugSession
+// reads currentSession, which is a `let` (temporal dead zone) until its declaration runs.
 
 let ws = null;
 let busy = false;
 let activeConsole = null;     // <pre> for the currently-running command's output
 let currentSession = null;    // id of the chat we're attached to (null until "ready")
+initDebug();                  // safe now that currentSession exists (updateDebugSession reads it)
 let switching = false;        // true while intentionally closing to switch chats
 let welcomeCard = null;       // the start-of-chat suggestion-chips card, removed once a turn starts
 let readyNoteTimer = null;    // defers the plain "Session ready" note so chips can supersede it
@@ -367,6 +376,8 @@ function switchTo(sid) {
   rec.order = ++viewClock;
   activate(rec);                                      // attach its pane + restore its working-set
   currentSession = sid || null;
+  setActiveConvRow(currentSession);                   // move the sidebar highlight NOW — no list rebuild
+  updateDebugSession();
   setHeaderTitle(sid ? convTitles[sid] : "New chat"); // optimistic; renderConvRow confirms it
   evictPanes();
   connect(sid || null, cacheHit ? rec.lastSeq : null);
@@ -410,7 +421,9 @@ function handle(msg) {
   switch (type) {
     case "ready": {
       currentSession = data.session_id;
+      updateDebugSession();
       // A brand-new chat learns its id here — register the active record under it.
+      const wasNewChat = !!(cur && !cur.id);
       if (cur) { cur.id = data.session_id; sessions[data.session_id] = cur; }
       setEnabled(true);
       const inc = !!(data.resume && data.resume.incremental);
@@ -431,7 +444,12 @@ function handle(msg) {
         // briefly so the chips, if any, supersede it.
         else if (!data.resumed) scheduleReadyNote();
       }
-      loadSessions();
+      // Refresh the sidebar list only when it must change — a brand-new chat has to appear in it.
+      // Switching to a chat already in the list leaves its content identical (only the active-row
+      // highlight moves, done synchronously in switchTo), so refetching + rebuilding the whole list
+      // here just blanked and repainted it for a frame: the flicker on every switch. Title/timestamp
+      // refreshes still ride in via `session_saved` and `done`.
+      if (wasNewChat) loadSessions();
       if (data.running) { if (cur) cur.running = true; resumeWorking(data.running_elapsed_ms); }  // re-seed elapsed from the server
       // Not running per the SERVER (authoritative). The turn may have FINISHED while this chat was
       // detached, in which case activate() optimistically restarted the spinner from the now-stale
@@ -463,7 +481,10 @@ function handle(msg) {
       appendStreamDelta(data.text || "");
       if (!workingEl.hidden) resumeThinking();
       break;
-    case "tool_call": startTool(data); setWorkTool(data.name); advancePhase(data.name, data.input); break;
+    // suggest_next_steps is a UI-only tool: it has no command/phase and no technical action row —
+    // its result is the {label,prompt} chip list, drawn as floating buttons when the tool_result
+    // arrives (renderToolResultCards → renderAgentSuggestions). So skip the action-row + phase here.
+    case "tool_call": if (data.name === "suggest_next_steps") break; startTool(data); setWorkTool(data.name); advancePhase(data.name, data.input); break;
     // Clear the welcome card only when a real turn is running — NOT for the background environment
     // pre-probe's read-only `command` events (which fire before any user message), so the start-of-
     // chat welcome/capabilities card stays visible instead of being wiped the moment the probe runs.
@@ -557,6 +578,7 @@ function renderFolder(ns, items) {
 
 function renderConvRow(s) {
   const row = el("div", "conv" + (s.id === currentSession ? " active" : ""));
+  if (s.id) row.dataset.sid = s.id;   // lets setActiveConvRow() move the highlight without a list rebuild
   convTitles[s.id] = s.title || "";
   if (s.id === currentSession) setHeaderTitle(s.title);   // keep the header in sync with the active chat
   row.title = s.title || "New chat";
@@ -571,6 +593,18 @@ function renderConvRow(s) {
   row.appendChild(del);
   row.onclick = () => openSession(s.id);
   return row;
+}
+
+// Move the active-row highlight in place — instant and rebuild-free. renderSidebar() is no longer
+// called on a plain switch (re-rendering the whole list blanked it for a frame = the per-switch
+// flicker), so the highlight that used to come "for free" from a full re-render is moved here.
+function setActiveConvRow(sid) {
+  if (!convList) return;
+  convList.querySelectorAll(".conv.active").forEach((r) => r.classList.remove("active"));
+  if (!sid) return;
+  const sel = window.CSS && CSS.escape ? CSS.escape(sid) : sid;
+  const row = convList.querySelector('.conv[data-sid="' + sel + '"]');
+  if (row) row.classList.add("active");
 }
 
 async function deleteSession(sid) {
@@ -1713,6 +1747,31 @@ function renderNextSteps(r) {
   scroll();
 }
 
+// ---- the agent's "what next?" suggestion buttons (from suggest_next_steps) -
+// Whenever the agent would offer next steps in prose ("want me to save this as a baseline?"), it
+// instead CALLS suggest_next_steps with {label, prompt} options. We draw them as the SAME floating
+// pills as the welcome chips (plain `.chip`, no arrow) under the agent's reply; clicking one sends
+// its `prompt` as the user's next message — so a non-expert advances with one tap. Rendered from the
+// tool RESULT, so it shows live AND replays on resume/reload (suggest_next_steps is a card tool).
+function renderAgentSuggestions(r) {
+  if (!r || !Array.isArray(r.suggestions) || !r.suggestions.length) return;
+  const row = el("div", "next-steps");
+  row.appendChild(el("div", "next-steps-label", "Suggested next steps"));
+  const chips = el("div", "next-steps-chips");
+  for (const s of r.suggestions.slice(0, 4)) {
+    if (!s || !s.label || !s.prompt) continue;
+    const btn = el("button", "chip", s.label);   // plain `.chip` → identical to the welcome chips
+    btn.type = "button";
+    btn.title = s.prompt;                          // hover shows the full message that will be sent
+    btn.onclick = () => sendUserMessage(s.prompt);
+    chips.appendChild(btn);
+  }
+  if (!chips.childNodes.length) return;
+  row.appendChild(chips);
+  activePane.appendChild(row);
+  scroll();
+}
+
 // ---- pre-flight / status cards (from read-only diagnostic tool_results) ---
 // The data-rich read-only tools (probe / capacity / readiness / accelerators / DoE / orchestrate)
 // emit no results_card event, so their output was only ever raw JSON in the collapsed tool panel.
@@ -2094,6 +2153,9 @@ function renderHistory(items) {
     // though the chat clearly reached a phase: clearActivePane() reset phaseReached to -1 just
     // before this replay, and only advancePhase re-derives it. (Cache-hit switches keep the rail
     // because the record's phaseReached survives; this is the missing other half.)
+    // suggest_next_steps is a UI-only tool (no technical action row / phase) — mirror the live
+    // path: skip its row so only the chips replay (rendered from its tool_result below).
+    else if (it.role === "tool_call" && it.name === "suggest_next_steps") { lastToolBody = null; }
     else if (it.role === "tool_call") { lastToolBody = addHistoryTool(it); advancePhase(it.name, it.input); }
     // A persisted card-rendering tool result, interleaved by the server right after its tool_call:
     // re-draw the report summary + clickable charts (and other rich cards) exactly as the live
@@ -2233,6 +2295,7 @@ function renderToolResultCards(data, bodyEl) {
     else if (data.name === "run_resilience_drill") renderResilienceCard(r);  // chaos / resilience drill
     else if (data.name === "autotune_search") renderAutotuneCard(_card_from_autotune_status(r));  // goal-seeking convergence
     else if (data.name === "export_run_bundle") renderReproducibilityCard(r);  // provenance bundle
+    else if (data.name === "suggest_next_steps") { renderAgentSuggestions(r); return; }  // the agent's "what next?" buttons (no JSON dump — bodyEl is null)
     if (bodyEl) bodyEl.appendChild(prettyJson(r));
   }
 }
