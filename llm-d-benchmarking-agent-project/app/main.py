@@ -839,24 +839,38 @@ async def ws(websocket: WebSocket) -> None:
         # appended to the channel's bounded ring buffer so a client that reconnects mid-turn can
         # replay what it missed and catch up to the LIVE stream.
         channel.begin_turn()
-        # Abandoned-turn guard (sim-1 00:40). Once the user APPROVES a mutating run (SessionPlan or
-        # a gated command), that run must survive a disconnect and finish in the background — a
-        # benchmark you navigated away from still completes (the WS-disconnect finally backgrounds
-        # it). But a turn that is only thinking/probing — never approved — has no recipient once the
-        # socket is gone and no reason to keep spending API tokens. So we latch approval grants and
-        # hand loop.run_turn a should_continue() that stays True only while a socket is attached
-        # (incl. a reconnect that took over the channel) OR an approval has been granted this turn;
-        # the loop honors it at the next step boundary, never mid-tool.
+        # Abandoned-turn guard (sim-1 00:40), reconciled with plan-survival. Two run states must
+        # survive a disconnect: (1) once the user APPROVES a mutating run (SessionPlan or a gated
+        # command) it finishes in the background — a benchmark you navigated away from still
+        # completes (the WS-disconnect finally backgrounds it); and (2) a turn that is still only
+        # thinking/probing must be allowed to reach its FIRST approval gate even with no socket
+        # attached, because that gate IS the deliverable of a plan-proposal turn — once surfaced it
+        # parks for free (awaiting the user's decision, holding no concurrency slot) and is persisted
+        # to session.in_flight_approvals, so it re-surfaces when the chat reopens. The original guard
+        # cut the turn off BEFORE that gate, so a user who switched chats during the pre-plan probe
+        # never got a plan to approve on return — and the same bug recurred mid-session, before any
+        # later gate (session 4dd131482da9: the probe step ran, then the turn was abandoned before
+        # proposing the sweep). So should_continue() stays True while a socket is attached (incl. a
+        # reconnect that took over the channel), OR an approval was granted this turn (state 1), OR
+        # this turn has not yet surfaced its first approval gate (state 2 — let it reach the gate and
+        # park). Once that first gate is open the in-tool park stops further stepping on its own; the
+        # guard is still honored at step boundaries (never mid-tool), so a turn that keeps probing
+        # without ever proposing a gate is bounded by MAX_STEPS.
         approved = {"value": False}
+        gate_surfaced = {"value": False}
 
         async def _request_approval(kind: str, payload: dict) -> bool:
+            # This turn has now reached a user-facing approval gate. Flip BEFORE awaiting so the
+            # guard sees it the instant the gate opens (the await below parks the turn here until the
+            # user decides — or indefinitely, for free, if they're away).
+            gate_surfaced["value"] = True
             ok = await channel.request_approval(kind, payload)
             if ok:
                 approved["value"] = True
             return ok
 
         def _should_continue() -> bool:
-            return channel.ws is not None or approved["value"]
+            return channel.ws is not None or approved["value"] or not gate_surfaced["value"]
 
         try:
             if loop is None:
