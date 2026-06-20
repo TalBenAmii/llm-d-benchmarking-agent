@@ -40,6 +40,8 @@ bugs low/medium; none were crashes of the core flow.
 | 015 | ui/styles.css | dead next-steps/report-action controls in the read-only shared viewer |
 | 016 | ui/app.js | per-pod resource sparklines grafted the previous run's pods onto a 2nd run (same chat) |
 | 017 | ui/app.js | trend-metric dropdown was one-shot — metrics from later runs never appeared |
+| 018 | app/llm/openai_provider.py | OpenAI-compatible provider crashes on an empty `choices` array |
+| 019 | ui/app.js | WS `onclose`/`onmessage` not socket-bound → rapid chat switch spawns duplicate sockets |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -134,6 +136,31 @@ unchanged. Suggested hardening if desired: deny a small set of known-dangerous f
 - **Fix:** guard `choice = (resp.choices or [None])[0]`; on `None` raise a clear
   `ProviderError("the model server returned no choices (empty response)")`.
 - **Regression test:** `tests/test_llm_caching_usage.py::test_openai_empty_choices_raises_clear_provider_error`.
+
+---
+
+## BUG-019 — WS `onclose`/`onmessage` not socket-bound → rapid chat switch spawns duplicate sockets
+- **Status:** FIXED
+- **Severity:** medium (connection leak + double-rendered events under rapid chat switching / flaky links)
+- **Where:** `ui/app.js::connect` + `switchTo` — the socket event handlers closed over the module-global
+  `ws` and a single shared `switching` boolean instead of being bound to their own socket instance.
+- **Trigger:** switch chats faster than the prior socket's `close()` fires its (always-async) `onclose`
+  — e.g. A→B→C in quick succession, or any switch while a `close` is still in flight. `switchTo` sets
+  `switching = true` once and opens a new socket; `connect` reassigns the global `ws` and registers a
+  fresh `onclose` on the NEW socket, but each OLD socket still holds its own `onclose` closure.
+- **Root cause:** a single shared `switching` flag cannot gate *multiple* in-flight deliberate closes.
+  The first old socket's `onclose` consumes `switching` (sets it false); the second old socket's
+  `onclose` then sees `switching === false`, falls through to the auto-reconnect branch, and calls
+  `connect(currentSession, …)` — spawning a DUPLICATE socket to the now-active chat. Both sockets then
+  receive the same events and both run `handle()` → double-rendered events, doubled `cur.lastSeq`
+  advancement, and a leaked/flapping connection. (Confirmed with a focused simulation: old logic fires
+  2 spurious reconnects on an A→B→C switch; the fix fires 0.)
+- **Fix:** bind every handler to the socket instance it was created for (`const sock = new WebSocket(...)`),
+  and gate `onopen`/`onclose`/`onerror`/`onmessage` on `sock === ws`. A superseded socket (one a switch
+  or reconnect has already replaced) is then inert: its deferred `onclose` returns early instead of
+  reconnecting, and its late `onmessage` can't double-render. This makes the fragile shared `switching`
+  flag unnecessary, so it was removed entirely.
+- **Regression test:** `tests/test_ui_frontend.py::test_ws_handlers_are_socket_bound`.
 
 ---
 

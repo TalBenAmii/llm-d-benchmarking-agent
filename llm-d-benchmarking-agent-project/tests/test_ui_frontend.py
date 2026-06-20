@@ -551,3 +551,20 @@ def test_persisted_run_duration_on_replay():
     js = _ui("app.js")
     # addHistoryTool now reads the backend-persisted duration_s (was hard-coded null before).
     assert "it.duration_s" in js
+
+
+def test_ws_handlers_are_socket_bound():
+    """BUG-019: WebSocket handlers must be bound to their own socket instance and gated on
+    `sock === ws`, so a superseded socket (after a chat switch / reconnect) stays inert and can't
+    spawn a duplicate connection or double-render events. The fragile shared `switching` flag —
+    which couldn't gate multiple in-flight deliberate closes — must be gone."""
+    js = _ui("app.js")
+    # The current socket is captured locally and made the active `ws`.
+    assert "const sock = new WebSocket(" in js
+    assert "ws = sock;" in js
+    # Every handler guards on socket identity; the onclose bail is the key fix.
+    assert "if (sock !== ws) return;" in js
+    assert "sock.onclose =" in js and "sock.onmessage =" in js
+    # The removed flag must not reappear (a single shared boolean can't gate concurrent closes).
+    assert "switching = true" not in js
+    assert "let switching" not in js
