@@ -73,7 +73,9 @@ if [[ "$REINSTALL" == 1 ]] || ! "$PY" -c "import uvicorn, app.main" >/dev/null 2
 fi
 
 # ── 3. Resolve HOST/PORT (CLI overrides > .env > defaults) ────────────────
-read_env() { [[ -f .env ]] && grep -E "^\s*$1\s*=" .env | tail -1 | cut -d= -f2- | tr -d ' "'"'"'' || true; }
+# Strip only SURROUNDING whitespace/quotes (not every internal space/quote — `tr -d` mangled
+# values like HOST="my host" into "myhost"); enough for the HOST/PORT/PROVIDER/KEY reads below.
+read_env() { [[ -f .env ]] && grep -E "^\s*$1\s*=" .env | tail -1 | cut -d= -f2- | sed -E "s/^[[:space:]'\"]+//; s/[[:space:]'\"]+\$//" || true; }
 HOST="${HOST_OVERRIDE:-$(read_env HOST)}"; HOST="${HOST:-127.0.0.1}"
 PORT="${PORT_OVERRIDE:-$(read_env PORT)}"; PORT="${PORT:-8000}"
 

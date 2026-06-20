@@ -1141,7 +1141,9 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
 .share-dialog {
   border: 1px solid var(--border-strong); border-radius: var(--radius);
   background: var(--panel); color: var(--text); box-shadow: var(--shadow);
-  padding: 0; max-width: 94vw; width: 520px; overflow: hidden;
+  /* max-height + scroll (mirrors .builder): on a short viewport the dialog must NOT grow past
+     the screen and clip its action row (Delete link / Open / Done) under overflow:hidden. */
+  padding: 0; max-width: 94vw; width: 520px; max-height: 90vh; overflow: auto;
 }
 .share-dialog::backdrop { background: rgba(0, 0, 0, .55); }
 .share-body { padding: 4px 18px 6px; }

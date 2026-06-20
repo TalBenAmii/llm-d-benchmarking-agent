@@ -68,6 +68,43 @@ Started 2026-06-20.
 - **Fix:** added a public `is_valid_token()` to `app/storage/share.py` and guard `revoke_share`
   with it up front (404 on a malformed token), before any filesystem/`gh` work.
 
+## BUG-006 — Share dialog clips its action buttons on a short viewport
+- **Status:** FIXED
+- **Severity:** medium (the link/Open/Done/Delete actions become unreachable; user is stuck)
+- **Where:** `ui/styles.css` `.share-dialog` — `overflow: hidden` with no `max-height`.
+- **Root cause:** the dialog grows to its natural (tall) content height; on a short viewport
+  (landscape phone, ~450–550px) it extends past the screen and `overflow:hidden` clips the bottom
+  action row — the user can't reach Done/Delete. The sibling `.builder` dialog does it correctly
+  (`max-height: 90vh; overflow: auto`).
+- **Fix:** add `max-height: 90vh; overflow: auto` to `.share-dialog` (mirror `.builder`).
+
+## BUG-007 — Helm Prometheus scrape annotation targets the wrong port
+- **Status:** FIXED
+- **Severity:** medium (broken metrics scrape — `up==0`, `AgentDown` fires — when `service.port` is overridden)
+- **Where:** `deploy/helm/.../templates/deployment.yaml` pod annotation
+  `prometheus.io/port: {{ .Values.service.port | quote }}`.
+- **Root cause:** pod-level Prometheus discovery scrapes the POD IP at the annotated port, but the
+  container always listens on the hardcoded `containerPort: 8000` / `PORT=8000`. `--set service.port=8080`
+  pointed the scrape at a port nothing listens on. The Kustomize base hardcodes `"8000"` and is correct —
+  only the Helm chart drifted.
+- **Fix:** annotate the container port (`prometheus.io/port: "8000"`), matching the Kustomize base.
+  Verified with `helm template --set service.port=8080` → annotation stays `"8000"`.
+
+## BUG-008 — `run.sh` `read_env` deletes every internal space/quote in a value
+- **Status:** FIXED
+- **Severity:** low (only the startup HOST/PORT/PROVIDER/KEY reads; KEY drives a non-blocking warning)
+- **Where:** `run.sh` `read_env()` — `... | tr -d ' "'\''`.
+- **Root cause:** `tr -d` strips spaces/quotes EVERYWHERE, so `HOST="my host"` became `myhost` and a
+  spaced/quoted value was silently corrupted; the "no API key" warn-check could misfire.
+- **Fix:** strip only SURROUNDING whitespace/quotes via `sed -E "s/^[[:space:]'\"]+//; s/...$//"`.
+  Verified: `HOST="my host"` → `my host`, padded `LLM_PROVIDER` trimmed, `PORT=8000` unchanged.
+
+## Round-2 minor items (fixture-only, not fixed)
+- `ui/preview.html` uses a stale `class="builder-btn"` (no CSS rule) and lacks the `#share-chat`
+  button/dialog that `index.html` has. preview.html is a dev fixture, not the served app (app.js
+  guards every `getElementById` with `if (el)`, so nothing throws); not a live-user bug. Left as-is
+  to avoid churning a test fixture.
+
 ## Considered but deliberately NOT changed
 - **`await app.state.runs.cancel(session.id)` blocks the WS receive loop up to ~5s** (`main.py`,
   cancel control-frame handler). Real latency nuance, but the inline `await` intentionally frees the
