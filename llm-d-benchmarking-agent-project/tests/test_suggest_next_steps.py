@@ -133,3 +133,114 @@ async def test_loop_emits_buttons_and_persists_them_for_replay(tmp_path):
     # Persisted on the card-replay path so the buttons survive a resume/reload.
     persisted = [c for c in session.card_results if c.get("name") == "suggest_next_steps"]
     assert persisted and persisted[0]["result"]["suggestions"] == [_OK, _OK2]
+
+
+def _loop_harness(tmp_path):
+    """Build the (FakeProvider-driving) pieces shared by the terminal-behavior tests."""
+    from pathlib import Path
+
+    from app.agent.session import Session
+    from app.config import get_settings
+    from app.security.allowlist import Allowlist
+    from app.security.runner import CommandRunner
+    from app.tools.context import ToolContext
+
+    project_root = Path(__file__).resolve().parents[1]
+    s = get_settings()
+    al = Allowlist.from_file(project_root / "security" / "allowlist.yaml")
+    ctx = ToolContext(settings=s, allowlist=al, runner=CommandRunner(s.repo_paths),
+                      workspace=tmp_path / "ws")
+    return Session(id="t", ctx=ctx), ctx
+
+
+async def test_suggest_next_steps_is_terminal_no_trailing_closer(tmp_path):
+    """suggest_next_steps ENDS the turn: the loop must NOT make another LLM call after it, so the
+    model never gets a step to append a redundant "use the buttons below" closer. Regression for
+    session bceaecb766eb, where the agent narrated the buttons twice (a lead-in AND a closer)."""
+    from app.agent.loop import AgentLoop
+    from app.llm.provider import AssistantTurn, ToolCall
+
+    session, _ctx = _loop_harness(tmp_path)
+
+    # Turn 2 is a closer the loop must NEVER reach — if it does, this text would be emitted.
+    _CLOSER = "Use the buttons below to choose your next step."
+    turns = [
+        AssistantTurn(text="", tool_calls=[
+            ToolCall("c1", "suggest_next_steps", {"suggestions": [_OK, _OK2]})]),
+        AssistantTurn(text=_CLOSER, tool_calls=[]),
+    ]
+
+    class FakeProvider:
+        def __init__(self, turns):
+            self._turns, self.i = turns, 0
+
+        async def chat(self, *, system, messages, tools, cache_key=None):
+            turn = self._turns[self.i]
+            self.i += 1
+            return turn
+
+    provider = FakeProvider(turns)
+    events: list[tuple[str, dict]] = []
+
+    async def emit(t, p):
+        events.append((t, p))
+
+    async def request_approval(kind, payload):
+        raise AssertionError("suggest_next_steps must NOT raise an approval gate")
+
+    await AgentLoop(provider).run_turn(
+        session, "summarize my run", emit=emit, request_approval=request_approval)
+
+    # The loop stopped right after the tool: exactly ONE LLM call, the second turn untouched.
+    assert provider.i == 1
+    # The closer was never produced — no assistant_text carries it.
+    assert not any(t == "assistant_text" and _CLOSER in (p.get("text") or "")
+                   for (t, p) in events)
+    # The buttons were still shown.
+    tr = [p for (t, p) in events if t == "tool_result" and p["name"] == "suggest_next_steps"]
+    assert tr and tr[0]["result"]["suggestions"] == [_OK, _OK2]
+
+
+async def test_waiting_steer_outranks_the_terminal_offer(tmp_path):
+    """A mid-turn user STEER outranks the terminal-offer stop: if the user typed something while
+    the turn ran, the loop keeps going to answer it instead of parking on the buttons."""
+    from app.agent.loop import AgentLoop
+    from app.llm.provider import AssistantTurn, ToolCall
+
+    session, ctx = _loop_harness(tmp_path)
+
+    turns = [
+        AssistantTurn(text="", tool_calls=[
+            ToolCall("c1", "suggest_next_steps", {"suggestions": [_OK, _OK2]})]),
+        AssistantTurn(text="Sure — comparing now.", tool_calls=[]),
+    ]
+
+    class FakeProviderWithSteer:
+        def __init__(self, turns, ctx):
+            self._turns, self.i, self._ctx = turns, 0, ctx
+
+        async def chat(self, *, system, messages, tools, cache_key=None):
+            # Simulate the user typing mid-turn: the WS handler would drop it into steer_messages.
+            if self.i == 0:
+                self._ctx.steer_messages = ["actually, compare to my last run instead"]
+            turn = self._turns[self.i]
+            self.i += 1
+            return turn
+
+    provider = FakeProviderWithSteer(turns, ctx)
+    events: list[tuple[str, dict]] = []
+
+    async def emit(t, p):
+        events.append((t, p))
+
+    async def request_approval(kind, payload):
+        raise AssertionError("suggest_next_steps must NOT raise an approval gate")
+
+    await AgentLoop(provider).run_turn(
+        session, "summarize my run", emit=emit, request_approval=request_approval)
+
+    # The loop did NOT stop on the offer — it ran a second step to answer the steer.
+    assert provider.i == 2
+    assert any(t == "assistant_text" and "comparing now" in (p.get("text") or "")
+               for (t, p) in events)
+    assert not ctx.steer_messages  # the steer was drained

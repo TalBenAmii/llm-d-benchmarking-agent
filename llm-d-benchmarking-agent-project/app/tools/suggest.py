@@ -34,9 +34,12 @@ async def suggest_next_steps(
     return {
         "suggestions": chips,
         "count": len(chips),
-        # A terse confirmation for the MODEL (the chips themselves are for the UI): keeps the
-        # agent from re-listing the options in prose on the next step — they are already shown.
+        # A terse confirmation for the MODEL (the chips themselves are for the UI). Calling this
+        # tool ENDS the turn (the loop treats it as terminal), so there is no next step to narrate
+        # into — never add a lead-in before this call or a closing line about the buttons; they
+        # are already shown and speak for themselves.
         "shown": True,
-        "note": "These options are now shown to the user as clickable buttons. Do NOT also list "
-                "them in prose — just stop and wait for the user to click one or type a reply.",
+        "note": "These options are now shown to the user as clickable buttons. Do NOT narrate "
+                "them in prose — no lead-in, no 'use the buttons below'. The turn ends here; wait "
+                "for the user to click one or type a reply.",
     }

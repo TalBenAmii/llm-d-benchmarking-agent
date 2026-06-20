@@ -178,8 +178,9 @@ _DESCRIPTIONS = {
         "option as {label, prompt}: a short button label plus the first-person message sent "
         "when the user clicks it. The UI renders them as the same floating suggestion pills as "
         "the welcome chips; clicking one submits its prompt as the user's next message. This is "
-        "your FINAL action of the turn — call it (you may add one short lead-in sentence first), "
-        "then stop and wait. Use it for DISCRETIONARY follow-ups only; it is NOT an approval "
+        "your FINAL action of the turn — call it with NO lead-in introducing the buttons and NO "
+        "line about them afterward (they speak for themselves); the call ends the turn. Use it "
+        "for DISCRETIONARY follow-ups only; it is NOT an approval "
         "gate — a mutating action still needs run_command / propose_session_plan (those raise "
         "the Approve card). See read_knowledge('conversation_style') for the offer cadence."
     ),

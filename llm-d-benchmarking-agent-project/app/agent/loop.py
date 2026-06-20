@@ -301,6 +301,14 @@ class AgentLoop:
                 if turn.tool_calls:
                     session.messages.append({"role": "tool_results", "results": tool_result_msgs})
 
+                # suggest_next_steps is TERMINAL: offering the "what next?" buttons IS the end of the
+                # turn. The chips were already emitted + persisted above, so STOP here instead of
+                # giving the model another LLM step — left to continue, it reliably appends a
+                # redundant closer ("Use the buttons below to choose your next step"), which is
+                # exactly the prose the buttons are meant to REPLACE. Mechanism, not judgment: WHAT
+                # to offer stays the model's call; this only enforces that the offer ends the turn.
+                offered_next_steps = any(tc.name == "suggest_next_steps" for tc in turn.tool_calls)
+
                 # Mid-turn user STEER (Claude-Code style). The WS handler drops any message the user
                 # types while this turn runs into ctx.steer_messages — whether they typed mid-thinking
                 # (no gate open) or INSTEAD of approving an open gate (the handler also declines the
@@ -316,10 +324,12 @@ class AgentLoop:
                     ctx.steer_messages = []
                     steered = True
 
-                # End the turn only when the model made NO tool calls AND no steer is waiting: a
-                # queued steer keeps the SAME turn alive (loop again) so the agent answers it rather
-                # than the message hanging until the user's next turn.
-                if not turn.tool_calls and not steered:
+                # End the turn when the model made NO tool calls, OR it just offered next-step
+                # buttons (terminal — see above) — UNLESS a steer is waiting. A queued steer keeps
+                # the SAME turn alive (loop again) so the agent answers it rather than the message
+                # hanging until the user's next turn (and outranks the terminal-offer stop: the user
+                # typed something, so respond to it instead of parking on the buttons).
+                if (not turn.tool_calls or offered_next_steps) and not steered:
                     break
             else:
                 await emit(events.ERROR, {"message": f"reached the step limit ({MAX_STEPS}); pausing."})
