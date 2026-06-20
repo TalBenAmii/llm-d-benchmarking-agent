@@ -5,25 +5,34 @@
 # product image (.dockerignore excludes testing/, enforced by tests/test_product_boundary.py).
 #
 # Two modes:
-#   --mode kind   (default)  Real multi-node kind cluster; the workers are PATCHED to advertise
-#                            fake `nvidia.com/gpu` via the upstream node-status extended-resource
-#                            mechanism. Pods that request a GPU schedule onto them AND really run
-#                            (use the CPU sim engine) → you get a real BR-v0.2 report. Best for
+#   --mode kind   (default)  Real kind cluster; every node is PATCHED to advertise fake
+#                            `nvidia.com/gpu` via the upstream node-status extended-resource
+#                            mechanism. GPU-requesting pods schedule onto it AND really run (use
+#                            the CPU sim engine) → you get a real BR-v0.2 report. Best for
 #                            exercising multi-replica topologies + producing real (sim-valued)
 #                            results.
+#                            • Multi-node by default (cross-node anti-affinity / topology spread).
+#                            • --single-node : 1-node cluster. REQUIRED on WSL2, where multi-node
+#                              kind worker kubelets fail to join (cgroup limitation). A single node
+#                              still proves GPU-resource scheduling end-to-end; for cross-node
+#                              PLACEMENT on WSL2 use --mode kwok instead.
 #   --mode kwok              kwok controller + fake GPU nodes (no kubelet; pods are faked). Best
 #                            for SCHEDULING / fan-out at scale (high orchestrate_sweep
-#                            max_parallel, autoscaling) — no real benchmark report.
+#                            max_parallel, autoscaling) and multi-node placement on WSL2 — but
+#                            pods don't really run, so no benchmark report.
 #
 # Usage:
-#   ./setup.sh                          # kind mode, 2 workers, 4 fake GPUs each
-#   ./setup.sh --mode kind --gpus 8     # 8 fake GPUs per worker
+#   ./setup.sh                          # kind mode, multi-node, 4 fake GPUs each
+#   ./setup.sh --single-node            # 1-node cluster (use this on WSL2)
+#   ./setup.sh --mode kind --gpus 8     # 8 fake GPUs per node
 #   ./setup.sh --mode kwok              # fake-node fleet for scheduling tests
 set -euo pipefail
 
 MODE=kind
 GPUS_PER_NODE=4
 CLUSTER=llmd-mock
+SINGLE_NODE=0
+GPU_PRODUCT=NVIDIA-A100-SXM4-80GB
 KWOK_VER=v0.6.0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -32,7 +41,8 @@ while [[ $# -gt 0 ]]; do
     --mode)  MODE="$2"; shift 2 ;;
     --gpus)  GPUS_PER_NODE="$2"; shift 2 ;;
     --cluster) CLUSTER="$2"; shift 2 ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    --single-node) SINGLE_NODE=1; shift ;;
+    -h|--help) sed -n '2,/^set /p' "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -52,21 +62,33 @@ patch_fake_gpu() {
 
 if [[ "$MODE" == "kind" ]]; then
   need kind
-  echo ">> creating multi-node kind cluster '${CLUSTER}'"
   if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
-    echo "   cluster '${CLUSTER}' already exists — reusing"
+    echo ">> cluster '${CLUSTER}' already exists — reusing"
+  elif [[ "$SINGLE_NODE" == 1 ]]; then
+    echo ">> creating single-node kind cluster '${CLUSTER}'"
+    kind create cluster --name "$CLUSTER"
   else
-    kind create cluster --config "${SCRIPT_DIR}/kind-multigpu.yaml"
+    echo ">> creating multi-node kind cluster '${CLUSTER}'"
+    kind create cluster --config "${SCRIPT_DIR}/kind-multigpu.yaml" || {
+      echo "!! multi-node create failed. On WSL2 the worker kubelets cannot join (cgroup" >&2
+      echo "   limitation). Retry single-node:  $0 --single-node" >&2
+      echo "   ...or for cross-node placement use faked nodes:  $0 --mode kwok" >&2
+      exit 1
+    }
   fi
   kubectl config use-context "kind-${CLUSTER}"
 
-  echo ">> advertising fake GPUs on worker nodes"
-  # Worker nodes are everything that is not the control-plane.
-  mapfile -t workers < <(kubectl get nodes \
-    -l '!node-role.kubernetes.io/control-plane' -o name | sed 's|node/||')
-  for w in "${workers[@]}"; do patch_fake_gpu "$w" "$GPUS_PER_NODE"; done
+  echo ">> advertising fake GPUs on schedulable nodes"
+  # Patch + label EVERY node. In single-node kind the control-plane is schedulable; in multi-node
+  # the tainted control-plane simply won't receive GPU pods (harmless). The product label lets
+  # the agent's scheduling.gpu_type_label node-affinity resolve.
+  mapfile -t nodes < <(kubectl get nodes -o name | sed 's|node/||')
+  for nd in "${nodes[@]}"; do
+    patch_fake_gpu "$nd" "$GPUS_PER_NODE"
+    kubectl label node "$nd" "nvidia.com/gpu.product=${GPU_PRODUCT}" --overwrite >/dev/null
+  done
 
-  echo ">> done. ${#workers[@]} worker(s), ${GPUS_PER_NODE} fake GPU(s) each."
+  echo ">> done. ${#nodes[@]} node(s), ${GPUS_PER_NODE} fake GPU(s) each."
   echo "   Verify:  kubectl get nodes -o custom-columns=NODE:.metadata.name,GPU:.status.capacity.'nvidia\.com/gpu'"
   echo "   Point the agent at it:  KUBECONFIG stays default (~/.kube/config now -> kind-${CLUSTER})"
 

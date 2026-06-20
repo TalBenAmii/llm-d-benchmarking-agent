@@ -48,9 +48,10 @@ scheduler.
 ```bash
 cd testing/local-cluster
 
-# kind mode: multi-node cluster + fake GPUs on the workers
-./setup.sh                       # 2 workers, 4 fake GPUs each
-./setup.sh --gpus 8              # 8 fake GPUs per worker
+# kind mode: cluster + fake GPUs on every node
+./setup.sh                       # multi-node, 4 fake GPUs each
+./setup.sh --single-node         # 1-node cluster — USE THIS ON WSL2 (see caveat below)
+./setup.sh --gpus 8              # 8 fake GPUs per node
 kubectl get nodes -o custom-columns=NODE:.metadata.name,GPU:.status.capacity.'nvidia\.com/gpu'
 
 # ... point the agent at it (its kubeconfig context is now kind-llmd-mock) and drive a run that
@@ -65,6 +66,14 @@ kubectl get nodes -o custom-columns=NODE:.metadata.name,GPU:.status.capacity.'nv
 
 Requirements: `kubectl` + `kind` (kind mode) on PATH; an internet connection the first time
 (kwok mode pulls the pinned kwok release manifests). All free.
+
+> **⚠️ WSL2 caveat.** Multi-node real-kubelet kind does **not** come up on WSL2 — the worker
+> nodes fail to join (`kubelet not healthy` / cgroup limitation; the control-plane is fine). Use
+> **`./setup.sh --single-node`** there: a single node still proves GPU-**resource** scheduling
+> end-to-end (Jobs request `nvidia.com/gpu`, schedule onto the fake-GPU node, run, complete). For
+> cross-node **placement** (anti-affinity / topology spread) on WSL2, use **`--mode kwok`** (faked
+> nodes, so no real report). *Verified end-to-end on WSL2 2026-06-20: a real `orchestrate_sweep`
+> ran 3 Jobs requesting fake GPUs, all Complete under `max_parallel=2`, with a checkpoint ConfigMap.*
 
 ## Product safety — how we keep this out of the shipped artifact
 
