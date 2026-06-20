@@ -376,6 +376,7 @@ function switchTo(sid) {
   rec.order = ++viewClock;
   activate(rec);                                      // attach its pane + restore its working-set
   currentSession = sid || null;
+  setActiveConvRow(currentSession);                   // move the sidebar highlight NOW — no list rebuild
   updateDebugSession();
   setHeaderTitle(sid ? convTitles[sid] : "New chat"); // optimistic; renderConvRow confirms it
   evictPanes();
@@ -422,6 +423,7 @@ function handle(msg) {
       currentSession = data.session_id;
       updateDebugSession();
       // A brand-new chat learns its id here — register the active record under it.
+      const wasNewChat = !!(cur && !cur.id);
       if (cur) { cur.id = data.session_id; sessions[data.session_id] = cur; }
       setEnabled(true);
       const inc = !!(data.resume && data.resume.incremental);
@@ -442,7 +444,12 @@ function handle(msg) {
         // briefly so the chips, if any, supersede it.
         else if (!data.resumed) scheduleReadyNote();
       }
-      loadSessions();
+      // Refresh the sidebar list only when it must change — a brand-new chat has to appear in it.
+      // Switching to a chat already in the list leaves its content identical (only the active-row
+      // highlight moves, done synchronously in switchTo), so refetching + rebuilding the whole list
+      // here just blanked and repainted it for a frame: the flicker on every switch. Title/timestamp
+      // refreshes still ride in via `session_saved` and `done`.
+      if (wasNewChat) loadSessions();
       if (data.running) { if (cur) cur.running = true; resumeWorking(data.running_elapsed_ms); }  // re-seed elapsed from the server
       // Not running per the SERVER (authoritative). The turn may have FINISHED while this chat was
       // detached, in which case activate() optimistically restarted the spinner from the now-stale
@@ -571,6 +578,7 @@ function renderFolder(ns, items) {
 
 function renderConvRow(s) {
   const row = el("div", "conv" + (s.id === currentSession ? " active" : ""));
+  if (s.id) row.dataset.sid = s.id;   // lets setActiveConvRow() move the highlight without a list rebuild
   convTitles[s.id] = s.title || "";
   if (s.id === currentSession) setHeaderTitle(s.title);   // keep the header in sync with the active chat
   row.title = s.title || "New chat";
@@ -585,6 +593,18 @@ function renderConvRow(s) {
   row.appendChild(del);
   row.onclick = () => openSession(s.id);
   return row;
+}
+
+// Move the active-row highlight in place — instant and rebuild-free. renderSidebar() is no longer
+// called on a plain switch (re-rendering the whole list blanked it for a frame = the per-switch
+// flicker), so the highlight that used to come "for free" from a full re-render is moved here.
+function setActiveConvRow(sid) {
+  if (!convList) return;
+  convList.querySelectorAll(".conv.active").forEach((r) => r.classList.remove("active"));
+  if (!sid) return;
+  const sel = window.CSS && CSS.escape ? CSS.escape(sid) : sid;
+  const row = convList.querySelector('.conv[data-sid="' + sel + '"]');
+  if (row) row.classList.add("active");
 }
 
 async function deleteSession(sid) {
