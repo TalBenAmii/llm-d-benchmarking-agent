@@ -830,6 +830,12 @@ async def ws(websocket: WebSocket) -> None:
         channel.restore_pending(session.in_flight_approvals)
         app.state.channels[session.id] = channel
     channel.ws = websocket  # last connection wins (single active tab, Claude-web style)
+    # Seq head at the instant we attached, captured BEFORE the ready/history sends below. A turn
+    # still running in the background can emit during those awaits; ``emit`` fans those frames out
+    # LIVE to this just-attached socket AND buffers them, so the buffer replay further down must NOT
+    # resend them (they'd double-render — the client only de-dupes approval cards). Capping the
+    # replay at this cutoff sends only what the socket genuinely missed (BUG-032).
+    replay_cutoff = channel.cur_seq
 
     busy = {"value": False}
 
@@ -1004,7 +1010,11 @@ async def ws(websocket: WebSocket) -> None:
         if chips:
             await channel.emit(ws_events.SUGGESTIONS, {"chips": chips})
         if loop is not None:
-            asyncio.create_task(_prewarm_env(session, channel))
+            # Track the task: a bare create_task is only weakly referenced by the loop, so between
+            # the probe's subprocess awaits it could be GC'd and silently cancelled (BUG-033).
+            prewarm = asyncio.create_task(_prewarm_env(session, channel))
+            app.state.background_tasks.add(prewarm)
+            prewarm.add_done_callback(app.state.background_tasks.discard)
     # Replay buffered LIVE events so a reconnecting client catches up to the live stream — the
     # events it missed, in order — rather than waiting blind for the final result. Two paths:
     #   • incremental: patch only the missed tail (seq > after_seq) onto the client's CACHED
@@ -1013,9 +1023,9 @@ async def ws(websocket: WebSocket) -> None:
     #   • full: a turn is still running and the client is rebuilding from history; replay the
     #     whole buffer below the freshly-replayed transcript (the original behavior).
     if incremental:
-        await channel.replay_live(after_seq)
+        await channel.replay_live(after_seq, through_seq=replay_cutoff)
     elif channel.turn_active:
-        await channel.replay_live()
+        await channel.replay_live(through_seq=replay_cutoff)
     # Re-surface any still-undecided approval (a gate the turn parked on while you were away),
     # AFTER the live replay so the live card lands at the bottom.
     if channel.pending:
