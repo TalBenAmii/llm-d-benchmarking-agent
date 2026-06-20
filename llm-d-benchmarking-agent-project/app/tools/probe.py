@@ -567,6 +567,15 @@ def _parse_image_tags(ctx: ToolContext, spec: str | None) -> list[dict[str, Any]
     path = next((c for c in candidates if c.is_file()), None)
     if path is None:
         return []
+    # Containment: `spec` is a free-form string, so "../../../../etc/hosts" would otherwise resolve
+    # to and parse an arbitrary host file into image_tags. Reject anything that escapes the
+    # scenarios dir (read-only, but never read outside the benchmark repo's scenarios).
+    scenarios_root = (ctx.settings.bench_repo / "config" / "scenarios").resolve()
+    try:
+        if not path.resolve().is_relative_to(scenarios_root):
+            return []
+    except (OSError, ValueError):
+        return []
     try:
         data = yaml.safe_load(path.read_text())
     except (OSError, yaml.YAMLError):

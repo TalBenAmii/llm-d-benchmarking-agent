@@ -579,3 +579,23 @@ def test_table_row_split_pairs_backticks():
     # The paired-backtick guard is present; the unconditional toggle is gone.
     assert "paired.has(k)" in js
     assert 'else if (ch === "`") { inCode = !inCode;' not in js
+
+
+def test_stream_bubble_is_snapshotted_per_chat():
+    """BUG-025: the live streaming bubble must be saved/restored per chat (like toolEls/turnUsage),
+    so switching away from a mid-stream chat can't append the destination chat's deltas into the
+    previous chat's detached pane."""
+    js = _ui("app.js")
+    assert "streamBubble: null, streamText:" in js          # initialized in makeRecord
+    assert "cur.streamBubble = streamBubble" in js          # saved in snapshotActive
+    assert "streamBubble = rec.streamBubble" in js          # restored in activate
+
+
+def test_approval_resolve_guards_socket_before_send():
+    """BUG-026: resolving an approval gate must check the socket is OPEN before ws.send — the gate
+    buttons stay clickable during a reconnect, and sending on a CLOSING/CLOSED socket throws."""
+    js = _ui("app.js")
+    i = js.index("const resolve = (ok) =>")
+    seg = js[i:i + 600]
+    assert "ws.readyState !== WebSocket.OPEN" in seg          # the guard exists in resolve
+    assert seg.index("readyState") < seg.index('type: "approval"')  # …and BEFORE the send

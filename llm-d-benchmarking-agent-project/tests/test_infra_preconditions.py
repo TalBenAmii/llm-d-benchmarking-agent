@@ -181,6 +181,22 @@ async def test_image_tags_empty_when_scenario_missing(tmp_path):
     assert cp["image_tags"] == []
 
 
+def test_image_tags_spec_rejects_path_traversal(tmp_path):
+    """BUG-028: a `spec` that traverses out of the scenarios dir (e.g. '../../evil') must NOT be
+    read, even when the target exists and is a parseable image-tag YAML. Containment returns []
+    (the same 'unknown' the agent treats as 'not a pass'), never the out-of-tree file's tags."""
+    from app.tools.probe import _parse_image_tags
+    ctx, _ = _probe_ctx(tmp_path, canned={"version --output json": VER_133})
+    # Plant a parseable, image-tag-shaped file OUTSIDE the scenarios dir (at the bench-repo root).
+    outside = ctx.settings.bench_repo / "evil.yaml"
+    outside.parent.mkdir(parents=True, exist_ok=True)
+    outside.write_text("leak:\n  repository: secret/repo\n  tag: v9.9.9\n")
+    # The traversal spec resolves exactly to that planted file, so [] proves containment, not absence.
+    target = ctx.settings.bench_repo / "config" / "scenarios" / "../../evil.yaml"
+    assert target.resolve() == outside.resolve() and outside.is_file()
+    assert _parse_image_tags(ctx, "../../evil") == []
+
+
 # ---------------------------------------------------------------------------
 # the threshold DATA lives in knowledge/, and the probe is read-only-allowlisted
 # ---------------------------------------------------------------------------

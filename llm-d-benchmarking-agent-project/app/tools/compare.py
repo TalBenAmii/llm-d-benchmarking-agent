@@ -13,6 +13,7 @@ from typing import Any
 
 from app.tools.context import ToolContext
 from app.validation.report import (
+    ReportError,
     compare_summaries,
     find_reports,
     load_report,
@@ -72,7 +73,13 @@ async def compare_reports(
         if path is None:
             skipped.append({"label": label, "reason": "no benchmark report found"})
             continue
-        report = load_report(path)
+        try:
+            report = load_report(path)
+        except ReportError as exc:
+            # Present but corrupt/unreadable (e.g. truncated by an OOM-killed run) → skip this one
+            # report and keep comparing the rest, instead of failing the whole comparison.
+            skipped.append({"label": label, "reason": "report unreadable", "errors": [str(exc)]})
+            continue
         validation = validate_report(report, schema_path)
         summary = summarize_report(report)
         reports.append({

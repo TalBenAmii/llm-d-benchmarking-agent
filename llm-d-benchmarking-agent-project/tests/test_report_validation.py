@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.validation.report import load_report, summarize_report, validate_report
+from app.validation.report import ReportError, load_report, summarize_report, validate_report
 
 
 @pytest.fixture(scope="module")
@@ -63,3 +63,20 @@ def test_summary_is_defensive_on_malformed_nondict_children():
     # Truthy-non-dict at deeper levels (stack element, run.time, standardized) is tolerated too.
     bad2 = {"run": {"time": "2026"}, "scenario": {"stack": ["pod-a", {"standardized": "x"}]}}
     assert summarize_report(bad2)["duration"] is None
+
+
+def test_load_report_raises_reporterror_on_corrupt(tmp_path):
+    """BUG-027: a present-but-corrupt report (e.g. truncated by an OOM-killed run) must surface as a
+    typed ReportError, not a raw json/yaml/OS exception that escapes the calling tool as an opaque
+    'tool ... raised: ...' string. Covers .json (JSONDecodeError) and .yaml (YAMLError)."""
+    bad_json = tmp_path / "benchmark_report_v0.2.json"
+    bad_json.write_text('{"truncated": ')                   # invalid JSON
+    with pytest.raises(ReportError):
+        load_report(bad_json)
+    bad_yaml = tmp_path / "benchmark_report_v0.2.yaml"
+    bad_yaml.write_text("key: : : not valid\n  - broken")   # invalid YAML
+    with pytest.raises(ReportError):
+        load_report(bad_yaml)
+    # A missing file (OSError) is also a clean ReportError, never a bare OSError.
+    with pytest.raises(ReportError):
+        load_report(tmp_path / "does_not_exist.json")
