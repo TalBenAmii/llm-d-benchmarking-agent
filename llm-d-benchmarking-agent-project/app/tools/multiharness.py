@@ -64,7 +64,14 @@ async def compare_harness_runs(
         if path is None:
             skipped.append({"label": label, "reason": "no benchmark report found"})
             continue
-        report = load_report(path)
+        try:
+            report = load_report(path)
+        except ReportError as exc:
+            # Present but corrupt/unreadable (e.g. truncated by an OOM-killed run) → skip this one
+            # report and keep contrasting the rest, exactly as compare_reports does (BUG-031),
+            # instead of aborting the whole cross-harness comparison.
+            skipped.append({"label": label, "reason": "report unreadable", "errors": [str(exc)]})
+            continue
         validation = validate_report(report, schema_path)
         summary = summarize_report(report)
         reports.append({

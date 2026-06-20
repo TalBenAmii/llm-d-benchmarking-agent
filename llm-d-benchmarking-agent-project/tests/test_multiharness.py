@@ -215,6 +215,24 @@ async def test_compare_harness_runs_skips_missing_and_invalid(tool_ctx, br_examp
     assert "no benchmark report found" in reasons
 
 
+async def test_compare_harness_runs_skips_unreadable_report(tool_ctx, br_example, tmp_path):
+    # BUG-031: a present-but-CORRUPT report (truncated/unparseable) must be SKIPPED like
+    # compare_reports does, not abort the whole cross-harness comparison with an opaque
+    # ReportError. (Schema-invalid is a separate path covered above; this is the PARSE failure
+    # that load_report raises ReportError for — multiharness omitted the try/except.)
+    base = load_report(br_example)
+    ip = tmp_path / "ip"
+    _write_report(ip, base, harness="inference-perf", ttft_s=0.12, out_rate=200.0)
+    corrupt = tmp_path / "corrupt"
+    corrupt.mkdir()
+    (corrupt / "benchmark_report_v0.2.json").write_text('{"truncated": ')  # invalid JSON
+    out = await multiharness.compare_harness_runs(
+        tool_ctx, sources=[str(ip), str(corrupt)]
+    )  # must NOT raise
+    assert out["compared"] is False  # only one valid report remains
+    assert "report unreadable" in {s["reason"] for s in out["skipped"]}
+
+
 async def test_compare_harness_runs_dispatch_and_registered(tool_ctx, br_example, tmp_path):
     assert "compare_harness_runs" in {d["name"] for d in tool_definitions()}
     base = load_report(br_example)
