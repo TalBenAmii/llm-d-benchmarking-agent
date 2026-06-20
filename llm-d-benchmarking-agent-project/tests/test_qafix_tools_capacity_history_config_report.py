@@ -128,6 +128,29 @@ def test_classify_hard_error_wins_over_skip():
     assert v.will_fail is True
 
 
+def test_classify_sizing_exception_is_inconclusive_not_feasible():
+    # BUG-030: the "...available GPU memory" line is the GPU-COUNT summary, NOT proof sizing ran.
+    # When a method's KV-cache sizing THROWS (only a WARNING under ignoreFailedValidation) while
+    # the other method is 0-replica-skipped, feasibility was NOT evaluated -> must be inconclusive,
+    # never feasible:true (else the agent tells the user a deployment "fits" before a doomed standup).
+    unsized = [
+        "[decode] Each replica requires 1 GPUs, total available GPU memory = 72.0 GB",
+        "[decode] WARNING: Cannot estimate model memory or KV cache for meta/Llama-3.1-405B: HTTP 401",
+        "prefill is disabled or has 0 replicas -- skipping",
+    ]
+    v = classify_diagnostics(unsized)
+    assert v.feasible is None and v.sizing_evaluated is False
+    # A genuine fit (the real KV-cache fit lines) with a 0-replica skip elsewhere stays feasible:true.
+    fit = [
+        "[decode] Allocatable KV cache memory: 30.00 GB",
+        "[decode] Per-request KV cache (max_model_len=4096): 0.50 GB",
+        "[decode] Max concurrent requests (worst case, each at max_model_len): 60",
+        "prefill is disabled or has 0 replicas -- skipping",
+    ]
+    v2 = classify_diagnostics(fit)
+    assert v2.feasible is True and v2.sizing_evaluated is True
+
+
 # ---- #3 : locate_and_parse_report generated_at -------------------------------
 
 def _write_min_report(path: Path, *, end: str | None) -> None:
