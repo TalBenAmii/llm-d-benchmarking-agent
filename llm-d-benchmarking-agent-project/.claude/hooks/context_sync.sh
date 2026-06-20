@@ -4,7 +4,8 @@
 #       accumulated (tool-failure lessons, scratch findings it reuses across sessions).
 #   (2) NUDGE: a hook can maintain the index but cannot author good content — so it reminds you to
 #       fold durable findings into memory + ./context while the session is fresh.
-# Pairs with reflect_session_end.sh (memory-focused). Disable: CONTEXT_SYNC_OFF=1.
+# Sole SessionEnd nudge (the separate reflect_session_end.sh was removed — its memory-reflection
+# reminder is folded into the nudge below). Disable: CONTEXT_SYNC_OFF=1.
 set -u
 [ "${CONTEXT_SYNC_OFF:-0}" = "1" ] && exit 0
 CTX="${CLAUDE_PROJECT_DIR:-$PWD}/context"

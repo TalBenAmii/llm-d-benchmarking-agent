@@ -41,15 +41,6 @@
             "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/ruff_autofix.sh"
           }
         ]
-      },
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/tool_error_capture.sh"
-          }
-        ]
       }
     ],
     "UserPromptSubmit": [
@@ -76,10 +67,6 @@
       {
         "matcher": "clear|logout|other",
         "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/reflect_session_end.sh"
-          },
           {
             "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/llm-d-benchmarking-agent-project/.claude/hooks/context_sync.sh"
