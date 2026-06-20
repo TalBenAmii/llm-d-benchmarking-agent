@@ -332,19 +332,24 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     Defensive: harnesses populate different subsets of fields, so every lookup is
     optional and missing pieces are simply omitted.
     """
-    run = report.get("run", {}) if isinstance(report, dict) else {}
-    scenario = report.get("scenario", {}) if isinstance(report, dict) else {}
-    results = report.get("results", {}) if isinstance(report, dict) else {}
-    agg = (
-        results.get("request_performance", {}).get("aggregate", {})
-        if isinstance(results, dict)
-        else {}
-    )
+    # Defensive: a present-but-non-dict child (e.g. a malformed/partial report summarized BEFORE
+    # schema validation — compare_reports / compare_harness_runs summarize ahead of the validity
+    # check) must degrade to {} at EVERY nesting level, never crash with AttributeError. `_d`
+    # coerces any non-dict to {} so each subsequent `.get` is on a guaranteed mapping.
+    def _d(v: Any) -> dict[str, Any]:
+        return v if isinstance(v, dict) else {}
+
+    report = _d(report)
+    run = _d(report.get("run"))
+    scenario = _d(report.get("scenario"))
+    results = _d(report.get("results"))
+    agg = _d(_d(results.get("request_performance")).get("aggregate"))
 
     # Model name (first stack component that declares one).
     model = None
-    for comp in (scenario.get("stack") or []):
-        name = comp.get("standardized", {}).get("model", {}).get("name") if isinstance(comp, dict) else None
+    stack = scenario.get("stack")
+    for comp in (stack if isinstance(stack, list) else []):
+        name = _d(_d(_d(comp).get("standardized")).get("model")).get("name")
         if name:
             model = name
             break
@@ -352,28 +357,27 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     # Which workload generator (harness) produced this report, read straight from the
     # report's own scenario.load.standardized.tool — e.g. "inference-perf" or "guidellm".
     # This is the authoritative provenance used to group/contrast a multi-harness session.
-    load = scenario.get("load", {}) if isinstance(scenario, dict) else {}
-    load_std = load.get("standardized", {}) if isinstance(load, dict) else {}
-    harness = load_std.get("tool") if isinstance(load_std, dict) else None
-    load_rate_qps = load_std.get("rate_qps") if isinstance(load_std, dict) else None
-    load_concurrency = load_std.get("concurrency") if isinstance(load_std, dict) else None
+    load_std = _d(_d(scenario.get("load")).get("standardized"))
+    harness = load_std.get("tool")
+    load_rate_qps = load_std.get("rate_qps")
+    load_concurrency = load_std.get("concurrency")
 
-    requests = agg.get("requests", {}) if isinstance(agg, dict) else {}
+    requests = _d(agg.get("requests"))
     total = requests.get("total")
     failures = requests.get("failures")
     success_rate = None
     if isinstance(total, (int, float)) and total and isinstance(failures, (int, float)):
         success_rate = round(100.0 * (total - failures) / total, 2)
 
-    latency = agg.get("latency", {}) if isinstance(agg, dict) else {}
-    throughput = agg.get("throughput", {}) if isinstance(agg, dict) else {}
+    latency = _d(agg.get("latency"))
+    throughput = _d(agg.get("throughput"))
 
     summary: dict[str, Any] = {
         "model": model,
         "harness": harness,
         "load": {k: v for k, v in (("rate_qps", load_rate_qps), ("concurrency", load_concurrency)) if v is not None} or None,
         "run_uid": run.get("uid"),
-        "duration": run.get("time", {}).get("duration"),
+        "duration": _d(run.get("time")).get("duration"),
         "requests_total": total,
         "requests_failures": failures,
         "success_rate_pct": success_rate,

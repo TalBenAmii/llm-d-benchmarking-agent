@@ -2941,9 +2941,11 @@ function submitBuilder() {
   const text = ((builderPreview && builderPreview.value) || "").trim();
   closeBuilder();
   if (!text) return;
-  // If we can't send right now (not connected / a turn in flight), drop the brief into the
-  // composer so the user's work isn't lost rather than silently no-op'ing.
-  if (busy || !ws || ws.readyState !== WebSocket.OPEN) {
+  // If we can't send right now (socket not open), drop the brief into the composer so the user's
+  // work isn't lost rather than silently no-op'ing. Do NOT gate on `busy`: sending WHILE a turn
+  // runs is allowed and means "steer" (sendUserMessage handles it) — gating on busy here both
+  // refused a legitimate steer AND clobbered any draft the user had already typed in the composer.
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
     input.value = text; input.focus();
     input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px";
     return;

@@ -1177,6 +1177,11 @@ body.share-view #context-window,
 body.share-view #debug-toggle,
 body.share-view #status,
 body.share-view #jump-latest,
+/* Interactive affordances that need a live socket/backend are DEAD in the read-only shared viewer:
+   the next-steps chips call sendUserMessage (no-op with no ws) and the report-action buttons
+   (Reproduce/Save/Export) no-op or 404 for a recipient. Hide them so they aren't clickable-but-dead. */
+body.share-view .next-steps,
+body.share-view .report-actions,
 body.share-view #run-steps { display: none !important; }
 body.share-view .main-col { margin-left: 0; }   /* no sidebar to make room for */
 

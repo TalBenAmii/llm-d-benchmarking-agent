@@ -7,12 +7,14 @@ fix → status.
 Started 2026-06-20.
 
 ## Summary (session of 2026-06-20)
-**10 bugs found → verified → fixed → tested → merged** to local `main` across 4 fast-forward
-batches (`2970975`, `8820510`, `5699f3c`, `f4d46d9`); full suite green (2011 passed / 41 skipped),
-ruff + mypy clean. Method: fan out read-only subagents over disjoint areas, **verify every lead
-against source before fixing** (~70% of "high-confidence" agent leads were debunked), then drive the
-live app adversarially. The two highest-value bugs (009, 010 — unhandled `OSError`/`ValueError`
-→ 500 on the artifact/bundle routes) were found by **adversarial HTTP fuzzing**, not static review.
+**15 bugs found → verified → fixed → tested → merged** to local `main` across 5+ fast-forward
+batches; full suite green (2014 passed / 41 skipped), ruff + mypy clean. Method: fan out read-only
+subagents over disjoint areas, **verify every lead against source before fixing** (~70% of
+"high-confidence" agent leads were debunked), then drive the live app adversarially. The
+highest-value bugs (009, 010 — unhandled `OSError`/`ValueError` → 500 on the artifact/bundle routes)
+were found by **adversarial HTTP fuzzing**, not static review.
+
+Bugs 011–015 (round 5, resume): backend crash-hardening on malformed input + two frontend UX bugs.
 
 Dynamic end-to-end checks that passed clean (no bugs): a live WS chat turn, the malformed-frame WS
 fuzz (socket survived every bad frame), and a **full SIMULATE=1 benchmark flow**
@@ -31,6 +33,74 @@ bugs low/medium; none were crashes of the core flow.
 | 008 | run.sh | `read_env` deleted internal spaces/quotes |
 | 009 | app/main.py | over-long id → 500 (ENAMETOOLONG) on artifact/bundle |
 | 010 | app/main.py | NUL byte → 500 (ValueError) on artifact/bundle |
+| 011 | app/validation/report.py | `summarize_report` crashes on a malformed (non-dict-child) report |
+| 012 | app/tools/execute.py | results-store non-iterable `paths` → TypeError before allowlist |
+| 013 | app/tools/discover.py | `discover_stack` crashes on a non-dict component element |
+| 014 | ui/app.js | Builder "Send" refused to steer + clobbered the composer draft mid-turn |
+| 015 | ui/styles.css | dead next-steps/report-action controls in the read-only shared viewer |
+
+**Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
+policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
+metachar-screened but not value-constrained, never changing the mode. Since the metachar screen
+(`app/security/allowlist.py` `_DANGEROUS`) permits `:` and `=`, an unknown flag like
+`kubectl get pods --as=system:admin` (RBAC impersonation), `--token=…`, or `--server=…` would pass
+on an AUTO-RUN read-only command with no approval. This is a deliberate, thoroughly-documented design
+trade-off (the hard boundary is `shell=False` + the metachar screen + cluster RBAC), so it was left
+unchanged. Suggested hardening if desired: deny a small set of known-dangerous flags
+(`--as`, `--as-group`, `--token`, `--server`, `--username`, `--password`) even under the relaxed policy.
+
+---
+
+## BUG-011 — `summarize_report` crashes on a malformed (non-dict-child) report
+- **Status:** FIXED
+- **Severity:** medium (an AttributeError escapes as an agent error, not a clean tool error)
+- **Where:** `app/validation/report.py::summarize_report`, reached PRE-validation by
+  `app/tools/compare.py` (`compare_reports`) and `app/tools/multiharness.py` (`compare_harness_runs`)
+  — both summarize BEFORE checking `validation.valid`.
+- **Root cause:** the top-level extractions only guarded `report` (not the child VALUES), and the
+  model chain / `run.time` lookups did `.get(...).get(...)` on a present-but-non-dict child. A report
+  parsing to a dict but with e.g. `run: "2026"` or `scenario.stack: "x"` → `AttributeError`.
+- **Fix:** a `_d()` non-dict→`{}` coercion applied at EVERY nesting level (run/scenario/results/agg/
+  requests/latency/throughput/stack-element/standardized/model/time), honoring the docstring's
+  "every lookup is optional and missing pieces are simply omitted." Regression in `test_report_validation.py`.
+
+## BUG-012 — results-store non-iterable `paths` → TypeError before the allowlist
+- **Status:** FIXED
+- **Severity:** low (niche team-sharing path; an uncaught TypeError instead of a clean ToolError)
+- **Where:** `app/tools/execute.py` `_build_results_store_argv` — `[str(p) for p in (store.get("paths") or [])]`.
+- **Root cause:** `paths` read from the unconstrained `store` dict and iterated with no shape check;
+  a scalar (`paths: 5`) raised `TypeError` at argv-build time, before `allowlist.validate` could reject
+  it; a bare string silently iterated per-character.
+- **Fix:** `isinstance(paths, (list, tuple))` guard → a self-correctable `ToolError`. Regression in `test_results_store.py`.
+
+## BUG-013 — `discover_stack` crashes on a non-dict component element
+- **Status:** FIXED
+- **Severity:** low (robustness — a garbled discovery stream; trusted subprocess in practice)
+- **Where:** `app/tools/discover.py::_summarize_stack` — iterated components calling `comp.get(...)`;
+  `_parse_components` validates only list-ness, not element shape.
+- **Root cause:** a JSON list with a non-dict element (or non-dict `standardized`/`model`/`accelerator`)
+  → `AttributeError`.
+- **Fix:** same `_d()` coercion over comp/std/meta/model/accelerator. Regression in `test_stack_discovery.py`.
+
+## BUG-014 — Builder "Send" refused to steer and clobbered the composer draft mid-turn
+- **Status:** FIXED
+- **Severity:** medium (silent no-op + data loss: overwrites whatever the user was typing)
+- **Where:** `ui/app.js::submitBuilder` — `if (busy || !ws || ...) { input.value = text; return; }`.
+- **Root cause:** the whole app design allows sending WHILE a turn runs ("steer" — see
+  `sendUserMessage`'s explicit no-busy-guard), but the Builder was the lone path that refused mid-turn
+  AND destroyed the composer's existing draft by assigning `input.value = text`.
+- **Fix:** drop `busy` from the guard (gate only on socket state); let `sendUserMessage` handle the steer.
+
+## BUG-015 — Dead interactive controls in the read-only shared viewer
+- **Status:** FIXED
+- **Severity:** medium (a share recipient sees clickable controls that silently do nothing / 404)
+- **Where:** `ui/styles.css` `body.share-view` hide-list omitted `.next-steps` + `.report-actions`.
+- **Root cause:** a shared snapshot keeps report/analysis tool results (only `approval_request` items
+  are stripped at mint time), so the viewer renders the "Suggested next steps" chips (call
+  `sendUserMessage` → no-op with no socket) and the report-action buttons (Reproduce/Save no-op;
+  Export opens an API URL that 404s for a recipient with no backend).
+- **Fix:** add `.next-steps` + `.report-actions` to the `body.share-view { display:none }` rule (the
+  approval-card sibling concern from an earlier pass was already covered by the mint-time strip).
 
 ---
 

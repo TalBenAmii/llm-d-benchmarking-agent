@@ -63,20 +63,28 @@ def _summarize_stack(components: list[dict[str, Any]]) -> dict[str, Any]:
     roles: list[str] = []
     engines: list[dict[str, Any]] = []
     tools: list[str] = []
+    # Defensive: `_parse_components` validates only that the stream is a JSON *list*, not that each
+    # element is a dict. A garbled stream with a non-dict element (or a non-dict standardized/model/
+    # accelerator) must be coerced/skipped, never crash _summarize_stack with AttributeError. `_d`
+    # coerces any non-dict to {}.
+    def _d(v: Any) -> dict[str, Any]:
+        return v if isinstance(v, dict) else {}
+
     for comp in components:
-        std = comp.get("standardized") or {}
-        meta = comp.get("metadata") or {}
+        comp = _d(comp)
+        std = _d(comp.get("standardized"))
+        meta = _d(comp.get("metadata"))
         tool = std.get("tool")
         if isinstance(tool, str) and tool not in tools:
             tools.append(tool)
         if std.get("kind") == "inference_engine":
-            model = (std.get("model") or {}).get("name")
+            model = _d(std.get("model")).get("name")
             role = std.get("role")
             if isinstance(model, str) and model not in models:
                 models.append(model)
             if isinstance(role, str) and role not in roles:
                 roles.append(role)
-            accel = std.get("accelerator") or {}
+            accel = _d(std.get("accelerator"))
             engines.append({
                 "label": meta.get("label"),
                 "model": model,

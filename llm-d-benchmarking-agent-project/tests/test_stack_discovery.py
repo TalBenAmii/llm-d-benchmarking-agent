@@ -130,6 +130,14 @@ def test_summarize_extracts_stack_facts():
     assert decode["accelerator"]["parallelism"]["tp"] == 2
 
 
+def test_summarize_tolerates_non_dict_components():
+    # Regression: _parse_components only validates list-ness, not element shape. A garbled stream
+    # with a non-dict element (or a non-dict standardized/model) must not crash _summarize_stack.
+    s = _summarize_stack(["pod-a", 5, {"standardized": "x"}, {"standardized": {"model": "y"}}])
+    assert s["component_count"] == 4
+    assert s["models"] == [] and s["inference_engine_count"] == 0
+
+
 # ---- the tool end-to-end (faked subprocess) -------------------------------------
 
 async def test_discover_runs_readonly_and_writes_workspace(tmp_path):

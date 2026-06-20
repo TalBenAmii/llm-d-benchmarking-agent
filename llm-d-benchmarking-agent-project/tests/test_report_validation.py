@@ -46,3 +46,20 @@ def test_summary_is_defensive_on_sparse_report():
     s = summarize_report({"run": {}, "results": {}})
     assert s["requests_total"] is None
     assert s["latency"] == {} and s["throughput"] == {}
+
+
+def test_summary_is_defensive_on_malformed_nondict_children():
+    # Regression: compare_reports / compare_harness_runs call summarize_report BEFORE the validity
+    # check, so a parseable-but-malformed report whose children are present-but-non-dict must NOT
+    # crash with AttributeError — every nesting level coerces a non-dict to {}.
+    bad = {
+        "run": "2026-06-20",                              # scalar instead of a mapping
+        "scenario": {"stack": "not-a-list", "load": "x"},
+        "results": {"request_performance": "x"},
+    }
+    s = summarize_report(bad)                             # must not raise
+    assert s["model"] is None and s["harness"] is None
+    assert s["duration"] is None and s["requests_total"] is None
+    # Truthy-non-dict at deeper levels (stack element, run.time, standardized) is tolerated too.
+    bad2 = {"run": {"time": "2026"}, "scenario": {"stack": ["pod-a", {"standardized": "x"}]}}
+    assert summarize_report(bad2)["duration"] is None

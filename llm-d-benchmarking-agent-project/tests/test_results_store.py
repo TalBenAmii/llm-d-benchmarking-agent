@@ -74,6 +74,15 @@ def test_build_argv_rm():
     assert argv[3:] == ["results", "rm", "workspaces/run1"]
 
 
+def test_build_argv_paths_must_be_a_list():
+    # Regression: a non-iterable `paths` (scalar) or a non-list mapping must raise a clean
+    # ToolError, not a raw TypeError at argv-build time (before the allowlist could reject it).
+    with pytest.raises(ToolError):
+        _store_argv({"command": "add", "paths": 5})
+    with pytest.raises(ToolError):
+        _store_argv({"command": "rm", "paths": {"not": "a list"}})
+
+
 def test_build_argv_ls_remote_with_filters():
     argv = _store_argv({"command": "ls", "remote": "prod", "model": "meta-llama/Llama-3.1-8B", "hardware": "a100"})
     assert argv[3:] == ["results", "ls", "prod", "-m", "meta-llama/Llama-3.1-8B", "-w", "a100"]

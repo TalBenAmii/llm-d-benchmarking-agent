@@ -69,7 +69,13 @@ def _build_results_store_argv(store: dict[str, Any]) -> list[str]:
     out: list[str] = [command]
     if command in ("add", "rm"):
         # `results add|rm <paths...>` — one or more local dir paths / run-uids to (un)stage.
-        out += [str(p) for p in (store.get("paths") or [])]
+        # Guard the shape: a non-iterable `paths` (e.g. a scalar) would raise TypeError BEFORE the
+        # allowlist could reject it; a bare string would silently iterate per-character. Both must
+        # be a clean, self-correctable ToolError instead.
+        paths = store.get("paths") or []
+        if not isinstance(paths, (list, tuple)):
+            raise ToolError(f"results {command!r} `paths` must be a list of path/run-uid strings")
+        out += [str(p) for p in paths]
     elif command == "remote":
         # `results remote {add NAME URI | rm NAME | ls}`.
         action = str(store.get("remote_action", ""))
