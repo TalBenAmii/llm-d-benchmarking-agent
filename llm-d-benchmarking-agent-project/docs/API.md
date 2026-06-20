@@ -1,7 +1,7 @@
 # API & Tool Reference
 
 Two interfaces: the **HTTP/WebSocket API** the browser (or any client) speaks to the
-backend, and the **agent tool surface** — the 35 schema-validated tools that are the LLM's
+backend, and the **agent tool surface** — the 36 schema-validated tools that are the LLM's
 *entire* set of actions. The tool input schemas are defined in
 [`app/tools/schemas.py`](../app/tools/schemas.py) (the single source of truth, emitted to
 the LLM as JSON Schema); the registry + descriptions live in
@@ -179,6 +179,12 @@ Every tool call is validated against its Pydantic input model before the handler
 | Tool | Key inputs | What it does |
 |---|---|---|
 | `cancel_run` | `session_id` | Cancel a still-running background run/turn in **another** chat by its session id — frees the concurrency-cap slot it holds and reaps its subprocess (no orphaned process / leaked Job). Idempotent; refuses to cancel the run it is called from. Judgment on **when** to cancel is in `knowledge/run_lifecycle.md`. |
+
+### Conversation / UX (read-only — renders chat UI, no cluster/repo access)
+
+| Tool | Key inputs | What it does |
+|---|---|---|
+| `suggest_next_steps` | `options` (each `{label, prompt}`), optional lead-in | Offer 2-4 concrete next steps as **clickable buttons** instead of a prose "want me to…?". The UI renders them as floating suggestion pills; clicking one submits its `prompt` as the user's next message. The agent's **turn-ending** discretionary follow-up — **not** an approval gate (mutations still go through `propose_session_plan`/`run_command`). Offer cadence: `knowledge/conversation_style.md`. |
 
 ---
 

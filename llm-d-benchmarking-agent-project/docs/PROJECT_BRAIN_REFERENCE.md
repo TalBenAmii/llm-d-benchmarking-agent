@@ -28,7 +28,7 @@ also includes: a **Kubernetes-native benchmark orchestrator**
 sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
 comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
 **Prometheus/Grafana observability**, and a **hardened image + one-command Helm/Kustomize
-deploy** (`Dockerfile`, `deploy/`) with least-privilege RBAC. The agent exposes **35 tools**
+deploy** (`Dockerfile`, `deploy/`) with least-privilege RBAC. The agent exposes **36 tools**
 (see `app/tools/registry.py` for the authoritative list).
 All of this obeys the same thin-code/thick-agent + determinism-gate rules in `CLAUDE.md`.
 

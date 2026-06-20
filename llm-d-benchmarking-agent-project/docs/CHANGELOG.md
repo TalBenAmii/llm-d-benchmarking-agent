@@ -10,7 +10,7 @@ inventory), with remaining/deferred work in [`ROADMAP_V4.md`](../ROADMAP_V4.md).
 
 Post-v3 work tracked live in [`FEATURES.md`](../FEATURES.md) and [`ROADMAP_V4.md`](../ROADMAP_V4.md);
 the only outstanding roadmap items are the 7 DEFERRED phases. The agent tool surface has grown from
-22 to **35 tools** (`app/tools/registry.py` is authoritative). Landed since v3 (representative, not
+22 to **36 tools** (`app/tools/registry.py` is authoritative). Landed since v3 (representative, not
 exhaustive — see `FEATURES.md` for the evidence-backed inventory): interactive spec + workload
 co-creation, proactive metrics-server pre-flight + pre-run install offer, one-command publish of a
 chat to a public link, a single-GPU-cluster runbook, and assorted UI/observability refinements.

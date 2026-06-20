@@ -2,7 +2,7 @@
 
 > **What this is.** A grounded cross-reference of every feature documented in the
 > [`llm-d-benchmark`](https://github.com/llm-d/llm-d-benchmark) repo against THIS agent's
-> coverage (the 35 tools in `app/tools/registry.py`, `security/allowlist.yaml`, the
+> coverage (the 36 tools in `app/tools/registry.py`, `security/allowlist.yaml`, the
 > `knowledge/` brain, and `app/validation/`). Each row is verified against source: every ✅
 > cites the tool + file that backs it; every ⬜ cites the benchmark doc that documents the
 > missing capability.

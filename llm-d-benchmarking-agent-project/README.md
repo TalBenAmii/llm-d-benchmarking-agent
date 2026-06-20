@@ -9,7 +9,7 @@ agent interviews you, inspects your environment, proposes a plan you approve, de
 driving the real `llmdbenchmark` CLI on your behalf, inside a strict security sandbox, asking
 your approval before anything changes your system.
 
-It exposes **35 tools** and has grown well past the original quickstart MVP into a full
+It exposes **36 tools** and has grown well past the original quickstart MVP into a full
 benchmarking workbench: a Kubernetes-native run orchestrator, a results analyzer (goodput /
 SLO / Pareto), multi-harness comparison, capacity pre-flight, cross-session history & trends,
 Prometheus/Grafana observability, and a one-command Helm/Kustomize deploy.
@@ -142,7 +142,7 @@ its result shows up when you return. Chats are saved and replayable from the sid
 ## Feature showcase
 
 Everything below is something you trigger by *asking* — the agent picks the right tool. This
-is the full surface (the 35 tools, grouped by what you'd want).
+is the full surface (the 36 tools, grouped by what you'd want).
 
 ### Run & deploy
 
