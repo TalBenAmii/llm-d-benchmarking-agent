@@ -63,6 +63,14 @@ async def _poll_loop(
     emit = ctx.emit
     if emit is None:
         return
+    # Optional external metrics dashboard (the user's own llm-d Grafana, config-supplied) to
+    # surface in the live panel ALONGSIDE the agent's own kubectl-top view (proposal G6). None
+    # when unconfigured, in which case the payload carries no dashboard_url and the UI shows only
+    # the table/sparklines. Carried on EVERY tick because the UI replaces its snapshot wholesale
+    # per tick — including it once would flicker. Independent of metrics-server: even when
+    # kubectl-top is unavailable, the dashboard still rides the {available:false} tick.
+    dashboard_url = ctx.settings.metrics_dashboard_url or None
+    dash = {"dashboard_url": dashboard_url} if dashboard_url else {}
     announced_unavailable = False
     consecutive_failures = 0
     while True:
@@ -81,13 +89,14 @@ async def _poll_loop(
                     await emit(RESOURCE_STATS, {
                         "available": False,
                         "note": "live resource stats unavailable (no metrics-server)",
+                        **dash,
                     })
             else:
                 rows = _parse_top_table(res.output)
                 announced_unavailable = False  # a good sample re-arms the one-shot note
                 consecutive_failures = 0        # ...and re-arms the give-up counter
                 await emit(RESOURCE_STATS, {
-                    "available": True, "namespace": namespace, "rows": rows,
+                    "available": True, "namespace": namespace, "rows": rows, **dash,
                 })
         except asyncio.CancelledError:
             raise

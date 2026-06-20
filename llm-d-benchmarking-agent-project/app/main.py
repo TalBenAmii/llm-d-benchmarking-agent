@@ -42,6 +42,8 @@ from app.observability.logctx import bind as log_bind
 from app.observability.logctx import new_corr_id
 from app.observability.logging import setup_logging
 from app.observability.metrics import render_prometheus
+from app.orchestrator.controller import BenchmarkOrchestrator
+from app.orchestrator.kube import RealKubeClient
 from app.packaging import gist_publish
 from app.packaging.report_card import render_report_card
 from app.packaging.shared_chat import render_shared_chat
@@ -53,7 +55,9 @@ from app.storage.provenance import BundleStore
 from app.storage.retention import readiness, run_gc, self_check
 from app.storage.share import ShareStore, is_valid_token
 from app.tools import report_locate
+from app.tools.context import ToolContext
 from app.tools.json_tail import find_last_json
+from app.tools.manage_runs import serialize_status
 from app.tools.probe import probe_environment
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
@@ -283,6 +287,45 @@ async def delete_namespace(namespace: str) -> JSONResponse:
     for sid in deleted:
         _teardown_session_runtime(sid)
     return JSONResponse({"deleted": deleted, "count": len(deleted)})
+
+
+@app.get("/api/jobs", dependencies=[Depends(rate_limit)])
+async def list_orchestrated_jobs(
+    namespace: str, session_id: str | None = None, sweep_id: str | None = None,
+) -> JSONResponse:
+    """Read-only REST mirror of the orchestrator's run state for non-chat clients (proposal G1):
+    list the agent-managed benchmark Jobs in ``namespace``, classified FRESH from the cluster
+    (``BenchmarkOrchestrator.reconstruct`` — the cluster is the source of truth, nothing is held
+    locally). This is the SAME state ``manage_orchestrated_runs(action='list')`` returns, exposed
+    as a plain HTTP GET so a programmatic client can poll run state without driving the chat LLM.
+
+    READ-ONLY by design: it runs an allowlisted ``kubectl get jobs`` and mutates nothing —
+    submitting and stopping runs stay approval-gated through the chat tool, keeping the
+    agent-first surface intact. Scope with ``session_id`` and/or ``sweep_id`` (query params), or
+    omit both to span the namespace. Degrades to an empty, honest result when no cluster is
+    reachable instead of 500-ing."""
+    ctx = ToolContext(
+        settings=app.state.settings,
+        allowlist=app.state.allowlist,
+        runner=app.state.runner,
+        workspace=app.state.settings.resolved_workspace_dir,
+    )
+    orch = BenchmarkOrchestrator(RealKubeClient(ctx), ctx.workspace)
+    try:
+        statuses = await orch.reconstruct(namespace=namespace, session_id=session_id, sweep_id=sweep_id)
+    except Exception as exc:  # noqa: BLE001 — a read mirror must report "no cluster" softly, not 500
+        return JSONResponse({
+            "namespace": namespace, "session_id": session_id, "sweep_id": sweep_id,
+            "runs": [], "n": 0, "available": False,
+            "note": f"could not read cluster jobs: {exc}",
+        })
+    return JSONResponse({
+        "namespace": namespace, "session_id": session_id, "sweep_id": sweep_id,
+        "runs": [serialize_status(s) for s in statuses], "n": len(statuses),
+        "n_active": sum(1 for s in statuses if not s.terminal),
+        "n_terminal": sum(1 for s in statuses if s.terminal),
+        "available": True,
+    })
 
 
 def _history_store() -> HistoryStore:

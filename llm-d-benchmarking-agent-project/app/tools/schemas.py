@@ -982,6 +982,34 @@ class CancelRunInput(BaseModel):
     )
 
 
+class ManageOrchestratedRunsInput(BaseModel):
+    namespace: str = Field(
+        ...,
+        description="Kubernetes namespace whose orchestrated benchmark Jobs to list/stop/reap.",
+    )
+    action: Literal["list", "stop", "cleanup"] = Field(
+        default="list",
+        description="list = show the agent-managed Jobs and their phase, classified fresh from "
+                    "the cluster (read-only, auto-runs). stop = DELETE the still-running Jobs in "
+                    "scope (approval-gated) to ACTUALLY stop cluster work — cancel_run only stops "
+                    "the in-process watch, so a submitted Job keeps running after it. cleanup = "
+                    "reap only TERMINAL Jobs to tidy the namespace (approval-gated; in-flight runs "
+                    "are never touched). Deleting a Job preserves results on the PVC.",
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Scope to ONE session's orchestrated Jobs (the chat/session id stamped on the "
+                    "Job labels at submit time). Omit to span every agent-managed Job in the "
+                    "namespace. Pair with action=stop after cancel_run to halt that session's "
+                    "still-running cluster Jobs.",
+    )
+    sweep_id: str | None = Field(
+        default=None,
+        description="Scope to ONE DoE sweep's treatment Jobs (the sweep_id orchestrate_sweep "
+                    "returned). Pair with action=stop to halt a whole running sweep at once.",
+    )
+
+
 class DoEFactor(BaseModel):
     """One swept parameter in a DoE matrix: a human `name`, the dotted config `key` the
     level overrides, and the list of `levels` to sweep. The cross-product of all factors'

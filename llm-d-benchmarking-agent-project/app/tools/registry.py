@@ -32,6 +32,7 @@ from app.tools import (
     hf_secret,
     history,
     knowledge_access,
+    manage_runs,
     multiharness,
     observe,
     orchestrate,
@@ -67,6 +68,7 @@ from app.tools.schemas import (
     InspectWorkloadProfileInput,
     ListCatalogInput,
     LocateReportInput,
+    ManageOrchestratedRunsInput,
     ObserveRunMetricsInput,
     OrchestrateBenchmarkInput,
     OrchestrateSweepInput,
@@ -577,6 +579,19 @@ _DESCRIPTIONS = {
         "read_knowledge('orchestrator') to choose between this and the CLI path, and "
         "read_knowledge('sweep_playbook') to design the treatments."
     ),
+    "manage_orchestrated_runs": (
+        "List, stop, or reap the orchestrator's Kubernetes benchmark Jobs ON THE CLUSTER — the "
+        "manage surface for orchestrate_benchmark_run / orchestrate_sweep. action='list' "
+        "classifies each agent-managed Job fresh from the cluster (phase + which run/sweep/"
+        "treatment/session it is); read-only, auto-runs. action='stop' DELETES the still-running "
+        "Jobs in scope (approval-gated `kubectl delete job`) — use this to ACTUALLY stop cluster "
+        "work, because cancel_run only stops the agent's in-process WATCH task and a submitted Job "
+        "keeps running after that. action='cleanup' reaps only TERMINAL Jobs to tidy the namespace "
+        "(in-flight runs untouched). Deleting a Job never touches the results PVC, so artifacts "
+        "survive. Scope with session_id (one chat's runs) and/or sweep_id (one sweep's "
+        "treatments); omit both to span the namespace. Judgment on WHEN to stop/reap is in "
+        "knowledge/run_lifecycle.md; choosing this vs cancel_run is in knowledge/orchestrator.md."
+    ),
     "run_resilience_drill": (
         "RESILIENCE / CHAOS DRILL: prove the orchestrator correctly classifies + recovers from "
         "injected faults AND survives its own restart mid-run. OPT-IN and DOUBLE-gated — it "
@@ -634,6 +649,7 @@ def build_registry(*, unrestricted: bool = False) -> dict[str, ToolSpec]:
         ToolSpec("orchestrate_sweep", _DESCRIPTIONS["orchestrate_sweep"], OrchestrateSweepInput, orchestrate.orchestrate_sweep),
         ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
         ToolSpec("cancel_run", _DESCRIPTIONS["cancel_run"], CancelRunInput, cancel.cancel_run),
+        ToolSpec("manage_orchestrated_runs", _DESCRIPTIONS["manage_orchestrated_runs"], ManageOrchestratedRunsInput, manage_runs.manage_orchestrated_runs),
         ToolSpec("run_resilience_drill", _DESCRIPTIONS["run_resilience_drill"], RunResilienceDrillInput, resilience.run_resilience_drill),
         ToolSpec("suggest_next_steps", _DESCRIPTIONS["suggest_next_steps"], SuggestNextStepsInput, suggest.suggest_next_steps),
     ]

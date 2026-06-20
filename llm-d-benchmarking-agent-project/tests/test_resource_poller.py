@@ -176,6 +176,51 @@ async def test_poller_noop_when_emit_is_none(tmp_path):
     assert not any(c["argv"][:3] == ["kubectl", "top", "pods"] for c in runner.calls)
 
 
+async def test_poller_carries_dashboard_url_when_configured(tmp_path):
+    """G6: a configured GRAFANA_DASHBOARD_URL rides EVERY available tick so the UI can embed the
+    user's own llm-d Grafana alongside the agent's kubectl-top view during a run."""
+    ctx, runner = _ctx(tmp_path)
+    ctx.settings.grafana_dashboard_url = "https://grafana.example/d/llm-d/overview"
+    runner._canned = {"top pods": TOP_PODS}
+    events = _collector(ctx)
+
+    async with resource_stats_poller(ctx, namespace="bench", interval=0.01):
+        await _drain(lambda: any(p.get("available") for _, p in events))
+
+    stats = [p for t, p in events if t == "resource_stats" and p.get("available")]
+    assert stats and all(p["dashboard_url"] == "https://grafana.example/d/llm-d/overview" for p in stats)
+
+
+async def test_poller_dashboard_url_rides_unavailable_tick(tmp_path):
+    """G6 is independent of metrics-server: even when `kubectl top` is unavailable, the configured
+    dashboard URL still rides the one {available:false} note so the Grafana embed shows regardless."""
+    ctx, runner = _ctx(tmp_path)
+    ctx.settings.grafana_dashboard_url = "https://grafana.example/d/llm-d/overview"
+    _always_fail(runner)
+    events = _collector(ctx)
+
+    async with resource_stats_poller(ctx, namespace="bench", interval=0.01):
+        await _drain(lambda: any(p.get("available") is False for _, p in events))
+
+    note = next(p for t, p in events if t == "resource_stats" and p.get("available") is False)
+    assert note["dashboard_url"] == "https://grafana.example/d/llm-d/overview"
+
+
+async def test_poller_omits_dashboard_url_when_unconfigured(tmp_path):
+    """Default (unset) carries NO dashboard_url key — today's behavior (table/sparklines only).
+    Whitespace-only is treated as unset too (stripped by Settings.metrics_dashboard_url)."""
+    ctx, runner = _ctx(tmp_path)
+    ctx.settings.grafana_dashboard_url = "   "
+    runner._canned = {"top pods": TOP_PODS}
+    events = _collector(ctx)
+
+    async with resource_stats_poller(ctx, namespace="bench", interval=0.01):
+        await _drain(lambda: any(p.get("available") for _, p in events))
+
+    stats = [p for t, p in events if t == "resource_stats" and p.get("available")]
+    assert stats and all("dashboard_url" not in p for p in stats)
+
+
 async def test_poller_task_finishes_after_exit(tmp_path):
     ctx, runner = _ctx(tmp_path)
     runner._canned = {"top pods": TOP_PODS}

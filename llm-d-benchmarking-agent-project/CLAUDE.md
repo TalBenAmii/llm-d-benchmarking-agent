@@ -71,7 +71,7 @@ The kind-quickstart MVP (probe → ensure repo → `install.sh --uv` → `standu
 → `smoketest` → `run` → parse report → summarize → teardown) is **implemented & `pytest`-green**.
 Well past it now: a **K8s-native orchestrator** (`app/orchestrator/`), results analyzer
 (goodput/SLO/Pareto/DoE), multi-harness comparison, capacity pre-flight, cross-session trends,
-Prometheus/Grafana observability, hardened Helm/Kustomize deploy — exposing **36 tools**
+Prometheus/Grafana observability, hardened Helm/Kustomize deploy — exposing **37 tools**
 (`app/tools/registry.py` is authoritative). Host bootstrap (Docker daemon + kind via
 `scripts/install_prereqs.sh`, cluster create/delete) is agent-owned, approval-gated, and widened
 purely via `security/allowlist.yaml` (no per-command Python) — all obeying the thin-code/thick-agent

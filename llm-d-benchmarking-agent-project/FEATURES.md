@@ -93,11 +93,11 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 
 ---
 
-## 4. The 36 agent tools (authoritative list — `app/tools/registry.py`)
+## 4. The 37 agent tools (authoritative list — `app/tools/registry.py`)
 
-> Note: the registry defines **36** tools (matches `CLAUDE.md`). Verify by reading
-> `app/tools/registry.py:build_registry`. (A 37th, `run_shell`, is registered ONLY when the
-> operator sets `UNRESTRICTED_TOOLS` — off by default, so the stable surface is 36.)
+> Note: the registry defines **37** tools (matches `CLAUDE.md`). Verify by reading
+> `app/tools/registry.py:build_registry`. (A 38th, `run_shell`, is registered ONLY when the
+> operator sets `UNRESTRICTED_TOOLS` — off by default, so the stable surface is 37.)
 
 **Sensing / grounding (read-only, auto-run):** `probe_environment`, `list_catalog`,
 `inspect_workload_profile`, `estimate_run_duration`, `read_knowledge`, `search_knowledge`,
@@ -110,7 +110,9 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 **Mutating (approval-gated):** `ensure_repos`, `run_setup`, `execute_llmdbenchmark`,
 `run_command`, `orchestrate_benchmark_run`, `orchestrate_sweep` (parallel DoE-treatment Jobs
 under a concurrency cap, with per-treatment retry/dead-letter + checkpoint/resume — the
-proposal's parallel-treatment scheduling), `provision_hf_secret`.
+proposal's parallel-treatment scheduling), `manage_orchestrated_runs` (list **read-only** /
+stop / reap the orchestrator's K8s Jobs ON the cluster — `stop` deletes a still-running Job,
+which `cancel_run` does NOT; also mirrored read-only at `GET /api/jobs`), `provision_hf_secret`.
 
 **Analysis / history (read-only):** `compare_reports`, `compare_harness_runs`,
 `analyze_results`, `aggregate_runs`, `result_history`, `cancel_run`.

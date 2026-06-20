@@ -309,6 +309,17 @@ time as it runs"):
 Do not promise a streaming metric chart the benchmark can't produce; offer kubectl top + log
 streaming as the real, available equivalent.
 
+### Embedding the user's own Grafana in the live panel (optional)
+If the operator has their own llm-d observability stack (the upstream `--monitoring` Grafana),
+they can set the backend env var **`GRAFANA_DASHBOARD_URL`** to that dashboard's URL. When set,
+the live resource panel that opens during a run **embeds that dashboard alongside** the agent's
+own kubectl-top table/sparklines (and shows it even when no metrics-server is present, since the
+external Grafana is independent of it). Unset (the default) → the panel shows only the agent's
+own view. This is mechanism only — it surfaces the operator's dashboard; it does not make the
+benchmark itself stream metrics. So when a user asks for "live Grafana during the run," the
+honest answer is: point me at your Grafana via `GRAFANA_DASHBOARD_URL` and I'll show it beside
+the run.
+
 ### The substitute for "custom Prometheus queries"
 
 The benchmark collects only its fixed metric set, so arbitrary PromQL is **the user's own

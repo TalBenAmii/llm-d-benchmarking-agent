@@ -155,7 +155,8 @@ async def orchestrate_benchmark_run(
     if not watch:
         job = await orch.submit(spec_obj)
         return {"submitted": True, "run_id": run_id, "job": job, "namespace": namespace,
-                "note": "Job submitted; not watched. Use list_orchestrated_runs to check status."}
+                "note": "Job submitted; not watched. Use manage_orchestrated_runs(action='list') "
+                        "to check its status, or action='stop' to delete it."}
 
     # Phase 21: forward the benchmark pod's live log lines to the UI as `output` events — the
     # SAME transport the runner already uses for streamed command output — so the user sees

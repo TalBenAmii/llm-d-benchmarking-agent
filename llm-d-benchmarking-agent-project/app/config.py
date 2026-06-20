@@ -154,6 +154,23 @@ class Settings(BaseSettings):
     # SA. Set via ORCHESTRATOR_SERVICE_ACCOUNT in the backend env / the deploy manifest.
     orchestrator_service_account: str = ""
 
+    # Optional external metrics dashboard (Grafana/Prometheus) surfaced in the live resource
+    # panel DURING a run. Empty (default) -> the panel shows only the agent's own kubectl-top
+    # table + sparklines (today's behavior). Set GRAFANA_DASHBOARD_URL to the user's own llm-d
+    # observability dashboard (the upstream `--monitoring` Grafana, e.g.
+    # https://grafana.example/d/llm-d/llm-d-overview) to EMBED it alongside the run — the
+    # during-run "live monitoring with llm-d's observability stack" the proposal asks for. Pure
+    # mechanism: the URL is the operator's; the UI only renders it when it is an http(s) URL.
+    grafana_dashboard_url: str = ""
+
+    @property
+    def metrics_dashboard_url(self) -> str:
+        """The configured external metrics dashboard URL (whitespace-stripped), or "" when unset
+        — the signal NOT to add a ``dashboard_url`` to the live ``resource_stats`` payload (the
+        UI then shows only the agent's own kubectl-top view). The browser revalidates it is an
+        http(s) URL before embedding, so a stray value never renders."""
+        return self.grafana_dashboard_url.strip()
+
     # ---- Chaos / resilience drill (opt-in fault injection) ----------------
     # Gate for the dedicated `run_resilience_drill` tool. OFF in production: the chaos
     # fault-injection seam (app/orchestrator/chaos.py) is a KubeClient decorator that rewrites

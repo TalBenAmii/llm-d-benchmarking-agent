@@ -967,6 +967,31 @@ CANCEL_STUCK_RUN = Flow(
     required_tools=["cancel_run"],
 )
 
+MANAGE_ORCHESTRATED_RUNS = Flow(
+    name="manage-orchestrated-runs",
+    title="stop an orchestrated benchmark Job on the cluster (manage_orchestrated_runs)",
+    description="Run lifecycle on the CLUSTER: a benchmark submitted via orchestrate_benchmark_run "
+                "is a real K8s Job, so cancel_run (which only stops the in-process watch) is not "
+                "enough — the agent uses manage_orchestrated_runs(action='stop') to actually delete "
+                "the still-running Job(s). The same tool lists run state and reaps finished Jobs. "
+                "Scored on choosing manage_orchestrated_runs for cluster run management.",
+    repo_state="present_with_venv",
+    tools_present=["docker", "kind", "kubectl"],
+    mock_user_input="I started a benchmark as a Kubernetes Job in the llmd-quickstart namespace "
+                    "and it's still running on the cluster. Stop the actual Job — not just the "
+                    "agent's watch.",
+    turns=[
+        _turn("Listing the orchestrated Jobs in the namespace to see what's still running.",
+              _tc("manage_orchestrated_runs", namespace="llmd-quickstart", action="list")),
+        _turn("Stopping the still-running orchestrated Job(s) on the cluster — this deletes the "
+              "Job (cancel_run would only stop the agent's watch); results on the PVC are kept.",
+              _tc("manage_orchestrated_runs", namespace="llmd-quickstart", action="stop")),
+        _turn("That deletes the running Job(s) so the cluster work actually stops; finished Jobs "
+              "can be reaped later with action='cleanup', and your benchmark artifacts are kept."),
+    ],
+    required_tools=["manage_orchestrated_runs"],
+)
+
 RESILIENCE_DRILL = Flow(
     name="resilience-drill",
     title="chaos / resilience drill (opt-in fault injection + restart durability)",
@@ -1021,7 +1046,7 @@ TOOL_CHOICE_FLOWS = [
     EXPORT_PROVENANCE_BUNDLE, REPRODUCE_RUN_FLOW,
     CAPACITY_PREFLIGHT,
     ORCHESTRATE_K8S_JOB, ORCHESTRATE_SWEEP, ENDPOINT_READINESS_GATE, OBSERVE_LIVE_USAGE,
-    CANCEL_STUCK_RUN, RESILIENCE_DRILL,
+    CANCEL_STUCK_RUN, MANAGE_ORCHESTRATED_RUNS, RESILIENCE_DRILL,
 ]
 
 

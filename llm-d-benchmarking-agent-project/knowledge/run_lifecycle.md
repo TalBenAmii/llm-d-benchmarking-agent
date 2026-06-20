@@ -17,6 +17,19 @@ deliberately.
   (the user can cancel the current chat with the Stop control; an agent cancels *another* chat's
   run by its `session_id`).
 
+## `cancel_run` vs `manage_orchestrated_runs` — stop the watch vs stop the cluster Job
+`cancel_run` stops the **in-process turn** (the agent's watch + its local subprocess). For a
+benchmark you started with `orchestrate_benchmark_run` / `orchestrate_sweep`, that turn is only
+*watching* a Kubernetes **Job** — so cancelling the watch frees the slot but the **Job keeps
+running on the cluster**. To actually stop cluster work, use
+`manage_orchestrated_runs(action='stop', namespace=…, session_id=…/sweep_id=…)`, which deletes
+the still-running Job(s). The same tool also lists run state (`action='list'`, read-only — the
+cluster is the source of truth) and reaps finished Jobs (`action='cleanup'`, terminal only).
+Deleting a Job never touches the results PVC, so artifacts are preserved. Rule of thumb:
+**local CLI run → `cancel_run`; orchestrated K8s Job → `cancel_run` to free the slot AND
+`manage_orchestrated_runs(action='stop')` to stop the Job.** (A programmatic, non-chat client can
+read the same run state read-only over `GET /api/jobs?namespace=…`.)
+
 ## When TO cancel
 - **An abandoned run is pinning a slot the user now needs.** The classic case: someone started a
   long benchmark, navigated away, and now no new run can start because the concurrency cap is
