@@ -1,10 +1,8 @@
 # CLAUDE.md — critical instructions for this project
 
-> This is the **project-scoped** CLAUDE.md (the canonical project brain). It lives in
-> `llm-d-benchmarking-agent-project/` so Claude loads it whenever you work inside the
-> project. The monorepo-root `CLAUDE.md` is now just a slim pointer + the READ-ONLY gotcha.
-> Several subsystems also carry their own scoped `CLAUDE.md` (see "Layout" below) — those
-> load additively when you work in that directory.
+> **Project-scoped brain** — loads whenever you work inside `llm-d-benchmarking-agent-project/`.
+> The monorepo-root `CLAUDE.md` is a slim pointer; subsystem dirs carry their own scoped
+> `CLAUDE.md` that load additively (see "Layout").
 
 ## What this is
 A **local chat-based assistant agent** that helps non-experts run `llm-d-benchmark`.
@@ -12,15 +10,10 @@ A user describes a use case ("benchmark a chat app with 500 concurrent users"); 
 interviews them, checks preconditions, deploys an llm-d stack if needed, runs a benchmark,
 and explains the results — driving the `llmdbenchmark` CLI on their behalf.
 
-## Workspace structure (three sibling folders)
-```
-<repo-root>/                         # this monorepo checkout (any path / clone location)
-├── llm-d/                            # guide repo — READ-ONLY context (deploy guides)
-├── llm-d-benchmark/                  # benchmark repo — READ-ONLY; provides the `llmdbenchmark`
-│                                     #   CLI (console script `llmdbenchmark = llmdbenchmark.cli:cli`)
-│                                     #   installed into its own .venv by ./install.sh
-└── llm-d-benchmarking-agent-project/ # THIS project — the ONLY folder we write code in
-```
+## Workspace (three sibling folders under `<repo-root>/`)
+`llm-d/` + `llm-d-benchmark/` = READ-ONLY upstream repos (deploy guides + the `llmdbenchmark`
+CLI `llmdbenchmark = llmdbenchmark.cli:cli`, installed into its own `.venv` by `./install.sh`);
+`llm-d-benchmarking-agent-project/` = THIS project, the only folder we write code in.
 
 ## Non-negotiable rules
 1. **The two repos are READ-ONLY** (`llm-d/`, `llm-d-benchmark/`). Read their docs/specs/schemas
@@ -74,24 +67,21 @@ determinism gates), `app/security/` (the allowlist validator contract), `knowled
 (CORE vs on-demand), `tests/` (scoped runs + the worktree env gotchas).
 
 ## What's built (status + feature set)
-The MVP — drive the `llm-d-benchmark` quickstart end-to-end on a local kind cluster
-(probe → ensure repo → `install.sh --uv` → `standup --spec cicd/kind` → `smoketest` →
-`run` → parse report → summarize → teardown) — is **implemented & `pytest`-green**, and the
-project has grown well past it: a **Kubernetes-native orchestrator** (`app/orchestrator/`),
-a **results analyzer** (goodput/SLO/Pareto/DoE), **multi-harness comparison**, a **capacity
-pre-flight**, **cross-session trends**, **Prometheus/Grafana observability**, and a hardened
-**Helm/Kustomize deploy**, exposing **35 tools** (`app/tools/registry.py` is authoritative).
-The agent owns host bootstrap (Docker daemon + kind binary via `scripts/install_prereqs.sh`,
-cluster create/delete), all approval-gated and widened purely via `security/allowlist.yaml`
-(no per-command Python). All of it obeys the thin-code/thick-agent + determinism-gate rules
-above. **Full feature inventory + how to verify each → `FEATURES.md` (read first); MVP/status
-detail, remaining work, doc map → `docs/PROJECT_BRAIN_REFERENCE.md` + `ROADMAP_V4.md`.**
+The kind-quickstart MVP (probe → ensure repo → `install.sh --uv` → `standup --spec cicd/kind`
+→ `smoketest` → `run` → parse report → summarize → teardown) is **implemented & `pytest`-green**.
+Well past it now: a **K8s-native orchestrator** (`app/orchestrator/`), results analyzer
+(goodput/SLO/Pareto/DoE), multi-harness comparison, capacity pre-flight, cross-session trends,
+Prometheus/Grafana observability, hardened Helm/Kustomize deploy — exposing **35 tools**
+(`app/tools/registry.py` is authoritative). Host bootstrap (Docker daemon + kind via
+`scripts/install_prereqs.sh`, cluster create/delete) is agent-owned, approval-gated, and widened
+purely via `security/allowlist.yaml` (no per-command Python) — all obeying the thin-code/thick-agent
++ determinism rules above. **Full inventory + how to verify each → `FEATURES.md` (read first);
+status/remaining/doc map → `docs/PROJECT_BRAIN_REFERENCE.md` + `ROADMAP_V4.md`.**
 
-**Simulate Mode (`SIMULATE=1`).** A dry-run toggle: the agent walks the WHOLE workflow
-(probe → plan → standup → smoketest → run → report) but executes nothing — every command is
-a no-op returning synthetic success, per-command approvals are skipped (the upfront
-SessionPlan approval is kept), and a synthetic report is produced. Watch a guide end-to-end
-without touching a cluster. Default `0` (real execution).
+**Simulate Mode (`SIMULATE=1`).** Dry-run toggle: the agent walks the WHOLE workflow
+(probe → plan → standup → smoketest → run → report) but executes nothing — every command a
+no-op returning synthetic success, per-command approvals skipped (the upfront SessionPlan
+approval is kept), a synthetic report produced. Default `0` (real execution).
 
 ## Docs & run — pointers
 - **What the agent does + how to verify each feature** → `FEATURES.md` (read first).
@@ -107,21 +97,18 @@ without touching a cluster. Default `0` (real execution).
   For *architecture/refactor* vocabulary (module, interface, depth, seam, adapter, leverage, locality)
   + finding refactor candidates, use the `codebase-design` / `improve-codebase-architecture` skills.
 
-## Working in a worktree + running the suite (recurring setup — DON'T re-derive each task)
-Established facts; reuse them instead of re-investigating every session (the `tests/CLAUDE.md`
-has the tests-local quick reference):
-- **Git root = this monorepo** (the repo checkout, at whatever path you cloned it to —
-  referred to below as `<repo-root>`); `llm-d-benchmarking-agent-project/`
-  is a subdir; `llm-d/` + `llm-d-benchmark/` are **nested untracked repos that are EMPTY in any
-  worktree** → catalog/report tests break there unless pointed back at the primary copy via `REPOS_DIR`.
+## Working in a worktree + running the suite (established facts — reuse, don't re-derive)
+`tests/CLAUDE.md` has the tests-local quick reference. Key facts:
+- **Git root = this monorepo** (`<repo-root>`); `llm-d-benchmarking-agent-project/` is a subdir.
+  `llm-d/` + `llm-d-benchmark/` are **nested untracked repos, EMPTY in any worktree** → point
+  catalog/report tests back at the primary copy via `REPOS_DIR=<repo-root>`.
 - **Branch worktrees off LOCAL `main` HEAD, not origin** (main is many commits ahead of origin and
   other sessions commit to it). Verify `merge-base == main HEAD` before merging; re-check SHA ancestry
   AFTER merging (concurrent-session hazard). Never `git add -A` at the monorepo root (grabs
   `.claude/worktrees/*` gitlinks) — add specific paths.
-- **Run the suite from a worktree like this** (exercises *your* worktree code against the *populated*
-  primary sibling repos — the primary `.venv` is an editable install pointing at the primary tree, so
-  `PYTHONPATH` is required; `conftest.py` resolves the bench repo via `get_settings().bench_repo`,
-  honoring `REPOS_DIR`):
+- **Run the suite from a worktree** (exercises *your* worktree code against the *populated* primary
+  sibling repos; the primary `.venv` is an editable install → `PYTHONPATH` required; `conftest.py`
+  resolves the bench repo via `get_settings().bench_repo`, honoring `REPOS_DIR`):
   ```bash
   cd <worktree>/llm-d-benchmarking-agent-project
   PYTHONPATH=<worktree>/llm-d-benchmarking-agent-project \
