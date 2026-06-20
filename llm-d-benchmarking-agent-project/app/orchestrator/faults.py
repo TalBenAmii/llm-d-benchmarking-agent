@@ -39,7 +39,11 @@ class Failure:
 
 
 def _container_statuses(pod: dict[str, Any]) -> list[dict[str, Any]]:
-    return (pod.get("status", {}) or {}).get("containerStatuses", []) or []
+    # Defensive: a truthy non-list ``containerStatuses`` (the ``or []`` fallback only catches
+    # falsy) would otherwise be iterated element-by-element and crash ``.get`` on a non-dict —
+    # honoring the "classification never crashes" invariant (cf. job.py::_as_int / BUG-023).
+    cs = (pod.get("status", {}) or {}).get("containerStatuses", []) or []
+    return [c for c in cs if isinstance(c, dict)] if isinstance(cs, list) else []
 
 
 def _scan_oom(pods: list[dict]) -> Failure | None:
@@ -57,7 +61,12 @@ def _scan_oom(pods: list[dict]) -> Failure | None:
 
 def _scan_unschedulable(pods: list[dict]) -> Failure | None:
     for pod in pods:
-        for cond in (pod.get("status", {}) or {}).get("conditions", []) or []:
+        conds = (pod.get("status", {}) or {}).get("conditions", []) or []
+        if not isinstance(conds, list):
+            continue                                    # a non-list `conditions` isn't iterable as gates
+        for cond in conds:
+            if not isinstance(cond, dict):
+                continue
             if cond.get("type") == "PodScheduled" and str(cond.get("status")) == "False" \
                     and cond.get("reason") == "Unschedulable":
                 return Failure(UNSCHEDULABLE, message=cond.get("message", "pod is unschedulable"),
@@ -108,6 +117,9 @@ def classify_failure(job_status, pods: list[dict[str, Any]]) -> Failure:
     if getattr(job_status, "reason", "") == "DeadlineExceeded":
         return Failure(TIMEOUT, message="benchmark exceeded its activeDeadlineSeconds")
 
+    # Drop any non-dict pod element so a malformed/forged ``get pods -o json`` items list can't
+    # crash a scanner's ``pod.get(...)`` — classification degrades to UNKNOWN, never raises.
+    pods = [p for p in pods if isinstance(p, dict)]
     for scan in (_scan_oom, _scan_unschedulable, _scan_evicted, _scan_image_error, _scan_run_error):
         found = scan(pods)
         if found is not None:

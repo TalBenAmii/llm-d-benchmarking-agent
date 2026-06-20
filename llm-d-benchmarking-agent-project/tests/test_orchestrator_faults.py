@@ -80,6 +80,27 @@ def test_failed_without_pod_signal_is_unknown():
     assert classify_failure(_failed(), []).kind == UNKNOWN
 
 
+def test_classify_failure_never_crashes_on_malformed_pods():
+    """BUG-029: classification must never raise on a malformed/forged pods shape — it degrades to
+    UNKNOWN, honoring the documented 'classification never crashes' invariant (cf. job.py _as_int).
+    The ``... or []`` fallbacks only catch falsy values, so a truthy non-list conditions/
+    containerStatuses, or a non-dict pod element, used to crash the scanners with AttributeError."""
+    malformed = [
+        [{"status": {"conditions": "broken"}, "metadata": {"name": "p"}}],   # conditions: non-list
+        [None, {"status": {}}],                                              # None pod element
+        ["just-a-string"],                                                   # non-dict pod element
+        [{"status": {"containerStatuses": "x"}}],                            # containerStatuses: non-list
+        [{"status": {"conditions": ["x", 5]}}],                             # non-dict condition elements
+    ]
+    for pods in malformed:
+        assert classify_failure(_failed(), pods).kind == UNKNOWN  # must not raise
+    # A well-formed OOM pod still classifies correctly (the guards don't suppress real signals).
+    oom = [{"status": {"containerStatuses": [
+        {"name": "c", "state": {"terminated": {"reason": "OOMKilled", "exitCode": 137}}}]},
+        "metadata": {"name": "p"}}]
+    assert classify_failure(_failed(), oom).kind == OOM
+
+
 async def test_controller_diagnose_lists_pods_and_classifies(tmp_path):
     kube = FakeKubeClient()
     kube.program("r1", phases=["failed"],

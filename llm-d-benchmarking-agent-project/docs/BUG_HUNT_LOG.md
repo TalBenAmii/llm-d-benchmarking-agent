@@ -51,6 +51,7 @@ bugs low/medium; none were crashes of the core flow.
 | 026 | ui/app.js | approval `resolve` sent on the socket with no `readyState` guard → throws if clicked mid-reconnect |
 | 027 | app/validation/report.py | `load_report` raised raw parse exception → opaque tool error across 6 tools on a corrupt report |
 | 028 | app/tools/probe.py | `probe_environment(spec=…)` followed `..` traversal, parsing an arbitrary YAML file into image_tags |
+| 029 | app/orchestrator/faults.py | `classify_failure` crashed on a non-list `conditions`/`containerStatuses` or non-dict pod element |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -316,6 +317,45 @@ was re-verified against source before fixing (one was debunked, see the non-bug 
 - `autotune_search(action="propose_next_config")` returns `ok:True` for an out-of-bounds candidate when
   `knobs` is omitted (empty `bounds` → the unknown-key/type checks are skipped). Niche; fix: `if not bounds:
   return {"ok": False, "reason": "needs the plan's knobs to validate"}`.
+
+---
+
+## Round 7 (2026-06-21) — orchestrator hunt: 1 fixed (BUG-029), 1 design concern surfaced (not patched)
+
+## BUG-029 — `classify_failure` crashes on malformed pod JSON (non-list conditions/containerStatuses, non-dict pod)
+- **Status:** FIXED
+- **Severity:** low (defensive — not reachable from real `kubectl get pods -o json`, but it violated the
+  module's documented "classification never crashes" invariant, same class as BUG-023)
+- **Where:** `app/orchestrator/faults.py` — `_container_statuses` / `_scan_unschedulable` use the
+  `(... or [])` fallback, which only catches FALSY values; a truthy non-list (`conditions: "x"`,
+  `containerStatuses: "x"`) was iterated element-by-element → `.get(...)` on a `str`/`int` →
+  `AttributeError`; a non-dict/`None` pod element crashed `pod.get(...)`.
+- **Trigger (reproduced):** `classify_failure(job_status, pods)` with a malformed/forged pods list →
+  `AttributeError` escapes `diagnose()` as an opaque tool error instead of degrading to UNKNOWN.
+- **Fix:** `_container_statuses` returns `[]` for a non-list and filters non-dict elements;
+  `_scan_unschedulable` skips a non-list `conditions` and non-dict cond entries; `classify_failure`
+  filters non-dict pod elements up front. Real signals (OOM, etc.) still classify; malformed input → UNKNOWN.
+- **Regression test:** `tests/test_orchestrator_faults.py::test_classify_failure_never_crashes_on_malformed_pods`.
+
+### Design concern surfaced — watch-timeout dead-letters a still-running Job (NEEDS MAINTAINER DECISION, not patched)
+- **Where:** `app/orchestrator/controller.py:329-336` (the `else` branch) + sweep checkpoint at `:406-415`.
+- **Observation:** when `max_wait` elapses while a Job is still `active`/`pending`, `watch()` correctly
+  returns the non-terminal status (honoring the documented invariant "hitting max_wait is NOT a failure"),
+  but `run_with_retries` then synthesizes `Failure(TIMEOUT)` and — since TIMEOUT ∉ retryable — dead-letters
+  it. In a checkpointed sweep this records the treatment `COMPLETED, dead_lettered=True`, so resume SKIPS it
+  forever even though the Job may still be running / may have succeeded. The line is explicitly commented, so
+  the author was aware; and CLAUDE.md's retry-decision section DOES list TIMEOUT as a deterministic
+  dead-letter — so the two documented invariants are in tension.
+- **Why NOT patched here:** the correct behavior is a genuine design decision, and every concrete fix is
+  risky: making the synthesized TIMEOUT *retryable* would resubmit a FRESH Job (`-a2`) while the original is
+  still running (double-run, orphaned Job); returning an "inconclusive / still-running" outcome and recording
+  it `IN_FLIGHT` (so resume re-checks via `reconstruct`) is a substantial semantic change to the
+  retry/sweep/checkpoint contract that existing tests + the agent's remediation advice rely on. This warrants
+  a maintainer call (and likely a distinct `RunOutcome` "inconclusive" state), not a blind in-hunt patch.
+- **Recommended direction:** distinguish a *client watch timeout* (Job still running) from a real
+  `DeadlineExceeded` TIMEOUT fault; for the former, do NOT `record_completed`/dead-letter — leave it
+  in-flight so a same-`sweep_id` resume re-checks the cluster (the source of truth) and re-runs only if the
+  Job truly didn't finish. (Default `max_wait` is 3600s/7200s, so this only bites very long benchmarks.)
 
 ---
 
