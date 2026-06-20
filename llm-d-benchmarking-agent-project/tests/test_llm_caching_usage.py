@@ -13,6 +13,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from app.agent import events
 from app.agent.loop import AgentLoop
 from app.agent.session import Session, SessionManager
@@ -191,6 +193,24 @@ async def test_openai_sends_cache_key_when_enabled():
     p = _openai_provider(send_cache_key=True)
     await p.chat(system="s", messages=[{"role": "user", "content": "x"}], tools=_TOOLS, cache_key="sess1")
     assert p._client.captured["prompt_cache_key"] == "sess1"
+
+
+async def test_openai_empty_choices_raises_clear_provider_error():
+    """An OpenAI-compatible server (vLLM / llm-d under content-filter or error conditions) can
+    return a 200 with an EMPTY choices array. The provider must surface a clear ProviderError
+    instead of leaking an opaque IndexError from choices[0] — mirroring _usage_from's
+    never-crash-on-a-degenerate-response contract."""
+    from app.llm.provider import ProviderError
+
+    p = _openai_provider(send_cache_key=False)
+
+    async def _create(**kwargs):
+        p._client.captured = kwargs
+        return SimpleNamespace(choices=[], usage=None)
+
+    p._client.chat.completions.create = _create  # type: ignore[assignment]
+    with pytest.raises(ProviderError, match="no choices"):
+        await p.chat(system="s", messages=[{"role": "user", "content": "x"}], tools=_TOOLS)
 
 
 def test_openai_provider_reads_setting_from_config():

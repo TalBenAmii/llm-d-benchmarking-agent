@@ -40,7 +40,14 @@ class OpenAIProvider(LLMProvider):
             tool_choice="auto",
             **extra,
         )
-        msg = resp.choices[0].message
+        # Some OpenAI-compatible servers (vLLM / llm-d under content-filter or error
+        # conditions) can return a 200 with an EMPTY choices array. Guard it with a clear
+        # ProviderError instead of letting `choices[0]` leak an opaque IndexError — mirrors
+        # the "never crash on a degenerate response" contract of _usage_from below.
+        choice = (resp.choices or [None])[0]
+        if choice is None:
+            raise ProviderError("the model server returned no choices (empty response)")
+        msg = choice.message
         tool_calls: list[ToolCall] = []
         for tc in (msg.tool_calls or []):
             try:

@@ -122,6 +122,48 @@ unchanged. Suggested hardening if desired: deny a small set of known-dangerous f
 
 ---
 
+## BUG-018 — OpenAI-compatible provider crashes on an empty `choices` array
+- **Status:** FIXED
+- **Severity:** low-medium (caught by the agent loop's broad `except`, but degraded a recoverable
+  provider-shape into an opaque `IndexError: list index out of range` with no actionable message).
+- **Where:** `app/llm/openai_provider.py::OpenAIProvider.chat` — `resp.choices[0].message` /
+  `resp.choices[0].finish_reason` indexed `choices[0]` with no guard. An OpenAI-compatible server
+  (vLLM / llm-d under content-filter or error conditions — the file's own stated target) can return
+  a 200 with an empty `choices` array. The adjacent `_usage_from` is explicitly written to
+  "never crash, return zeros," so the unguarded index was an inconsistency in the same contract.
+- **Fix:** guard `choice = (resp.choices or [None])[0]`; on `None` raise a clear
+  `ProviderError("the model server returned no choices (empty response)")`.
+- **Regression test:** `tests/test_llm_caching_usage.py::test_openai_empty_choices_raises_clear_provider_error`.
+
+---
+
+## Candidates surfaced 2026-06-20 (verified by source, NOT yet fixed — for the next increment)
+Two parallel hunters (orchestrator, storage) returned the findings below. Each was confirmed
+real against source, but is a missing-guard on **malformed/forged on-disk or kubectl JSON**, not
+reachable through the agent's normal flow — so they're queued, not yet patched (session paused to
+preserve user quota before starting them):
+- **CAND-A `app/storage/autotune.py:126`** — `AutotuneStore.load` does `trials.sort(key=lambda t: t.index)`
+  OUTSIDE the per-item try/except. A corrupt `<search_id>.json` with `"index": null`/string loads
+  (the dataclass does no type-validation) then the sort raises `TypeError`, violating the class's
+  documented "a corrupt log degrades to empty, never crashes" contract. Fix: skip non-int `index`
+  items, or `key=lambda t: t.index if isinstance(t.index, int) else 0`.
+- **CAND-B `app/storage/history.py:226` & `:269`** — `HistoryStore.list`/`trend` sort on `r.stored_at`,
+  which `_read` never type-checks. A history file with `"stored_at": null`/string crashes the sort,
+  breaking listing/trending + the analyzer's history pull for ALL records. Fix: reject non-numeric
+  `stored_at` in `_read`, or make the sort key defensive. (Same class as BUG-011/012/013.)
+- **CAND-C `app/storage/provenance.py:320`** — `BundleStore.list` sorts on `b.get("created_at") or 0.0`;
+  a truthy non-numeric `created_at` (string) mixed with the `0.0` fallback crashes the sort. Partially
+  mitigated (normal writer emits a float). Fix: coerce the key to a number.
+- **CAND-D `app/orchestrator/job.py:371-373`** — `classify_job_status` does `int(status.get("active",0) or 0)`;
+  a non-numeric count in a forged `kubectl get -o json` raises `ValueError`, aborting the watch/reconstruct
+  loop. Only reachable via corrupted/forged kubectl JSON. Fix: an `_as_int` helper returning 0.
+- **CAND-E `app/orchestrator/job.py:382`** — the `succeeded>0 and active==0 and not _cond("Failed")`
+  success heuristic ignores `failed`, so a multi-pod managed Job with `succeeded=1, failed=1` could be
+  mis-reported SUCCEEDED. Not reachable for agent-authored Jobs (all single-pod, `backoffLimit:0`), only
+  a hand-applied/future multi-pod managed Job. Fix: also require `failed == 0` in that branch.
+
+---
+
 ## BUG-001 — Dead duplicate `fmtNum` in `ui/app.js` (latent)
 - **Status:** FIXED
 - **Severity:** low (latent maintainability trap; no current user-visible effect)
