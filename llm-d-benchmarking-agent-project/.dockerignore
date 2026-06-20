@@ -29,6 +29,11 @@ __pycache__/
 # Tests are not needed in the production image.
 tests/
 
+# Debug-only local mock-cluster harness (multi-node kind / kwok fake-GPU scaffolding used to
+# exercise multi-GPU orchestration without real hardware). NEVER part of the product — the
+# Dockerfile only COPYs the four runtime dirs, and tests/test_product_boundary.py enforces it.
+testing/
+
 # VCS + editor + OS noise.
 .git/
 .github/

@@ -1,0 +1,26 @@
+# Multi-node kind cluster for the local mock-GPU harness.
+#
+# DEBUG-ONLY — not part of the product (see ./README.md). This stands up a SEPARATE cluster
+# (name: llmd-mock) from the CPU-sim quickstart cluster (llmd-quickstart), so nothing here
+# touches your existing deployment.
+#
+# Three nodes (1 control-plane + 2 workers) so cross-node placement actually means something:
+# pod anti-affinity, topology spread, and the orchestrator's `avoid_topology_key` only have
+# teeth when there is more than one schedulable node. setup.sh advertises fake `nvidia.com/gpu`
+# on the two workers (via the upstream node-status extended-resource PATCH), so GPU-requesting
+# pods schedule onto them and — being the CPU sim engine — actually run.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: llmd-mock
+nodes:
+  - role: control-plane
+  - role: worker
+    labels:
+      # setup.sh patches these workers to advertise nvidia.com/gpu; the product label lets the
+      # agent's `scheduling.gpu_type_label` node-affinity resolve against a realistic value.
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+      node.kubernetes.io/instance-type: mock-gpu-a100
+  - role: worker
+    labels:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+      node.kubernetes.io/instance-type: mock-gpu-a100

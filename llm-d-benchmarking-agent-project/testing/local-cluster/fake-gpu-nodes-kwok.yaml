@@ -1,0 +1,71 @@
+# kwok fake GPU nodes — DEBUG-ONLY (see ./README.md).
+#
+# These are pure Kubernetes API objects managed by the kwok controller (kubernetes-sigs/kwok):
+# they have NO kubelet and run NO containers. Pods scheduled onto them are *faked* Running by
+# kwok's stages. Use this path to exercise the SCHEDULING / PLACEMENT / fan-out logic at scale
+# (e.g. orchestrate_sweep with a high max_parallel, or the autoscaling path) without spending a
+# single real GPU — but NOT to get a real benchmark report (the engine never actually serves).
+#
+# For pods that REALLY run (the CPU sim engine actually responding, producing a real BR-v0.2
+# report), use the kind-patch path instead (setup.sh --mode kind). See README §"Which mode".
+#
+# Apply order (setup.sh --mode kwok does this for you):
+#   kubectl apply -f https://github.com/kubernetes-sigs/kwok/releases/download/$KWOK_VER/kwok.yaml
+#   kubectl apply -f https://github.com/kubernetes-sigs/kwok/releases/download/$KWOK_VER/stage-fast.yaml
+#   kubectl apply -f fake-gpu-nodes-kwok.yaml
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: kwok-gpu-0
+  annotations:
+    kwok.x-k8s.io/node: fake          # tells kwok to manage (fake) this node's lifecycle
+    node.alpha.kubernetes.io/ttl: "0"
+  labels:
+    type: kwok                          # kwok's default node selector
+    kubernetes.io/role: agent
+    nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+    node.kubernetes.io/instance-type: kwok-gpu-a100
+spec:
+  taints:
+    - key: nvidia.com/gpu              # mirrors a real GPU node taint so the agent's authored
+      value: "present"                 # tolerations get exercised
+      effect: NoSchedule
+status:
+  allocatable: &cap
+    cpu: "64"
+    memory: 512Gi
+    pods: "256"
+    nvidia.com/gpu: "8"
+  capacity: *cap
+  nodeInfo:
+    kubeletVersion: fake
+  phase: Running
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: kwok-gpu-1
+  annotations:
+    kwok.x-k8s.io/node: fake
+    node.alpha.kubernetes.io/ttl: "0"
+  labels:
+    type: kwok
+    kubernetes.io/role: agent
+    nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+    node.kubernetes.io/instance-type: kwok-gpu-a100
+spec:
+  taints:
+    - key: nvidia.com/gpu
+      value: "present"
+      effect: NoSchedule
+status:
+  allocatable: &cap1
+    cpu: "64"
+    memory: 512Gi
+    pods: "256"
+    nvidia.com/gpu: "8"
+  capacity: *cap1
+  nodeInfo:
+    kubeletVersion: fake
+  phase: Running
