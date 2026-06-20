@@ -1,0 +1,6 @@
+- make chat look like the design mock (floaty bubble style), so remove chat box background so it is the same background as the conversation and chatbox make it a little bit wider (like design mock size). make the background color similar to design mock. 
+
+
+- add feature that makes the benchmark agents suggest next steps and provide the design of the feature to be similar to the mock design. (see 3 floating suggestion buttons in the mock design). all clickable suggestion that chat does like in welcome message, "🔖 Save provenance bundle", etc should be formated the same as the suggestion buttons.
+
+![alt text](image.png) this still hasent resovled: ![alt text](image-1.png)
