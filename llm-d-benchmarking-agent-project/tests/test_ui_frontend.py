@@ -514,7 +514,11 @@ def test_sidebar_toggle_moved_into_sidebar():
     # The header carries a separate expand affordance, wired + shown only when collapsed.
     assert 'id="sidebar-expand"' in html
     assert 'getElementById("sidebar-expand")' in js
-    assert "body.sidebar-collapsed .sidebar-expand { display: inline-flex; }" in css
+    # Hidden by default, shown only when collapsed. The selector is `.icon-btn.sidebar-expand`
+    # (not bare `.sidebar-expand`) so it out-specifies the later `.icon-btn { display:inline-flex }`
+    # rule — otherwise the header button leaks through while the sidebar is expanded.
+    assert ".icon-btn.sidebar-expand { display: none; }" in css
+    assert "body.sidebar-collapsed .icon-btn.sidebar-expand { display: inline-flex; }" in css
 
 
 def test_share_header_brand():
