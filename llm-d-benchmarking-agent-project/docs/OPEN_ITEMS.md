@@ -401,10 +401,11 @@ are **DERIVED** (project-added robustness/escape-hatch features the proposal nev
 # Part D — Dead / orphaned code (cleanups, not features)
 **Verdict:** ⬜ (orphaned) · **Lineage:** DERIVED — none of these is a proposal item; they're **code hygiene**
 
-**Decision (2026-06-20): TRIAGED — 2 removed, 2 mischaracterizations corrected, 3 kept, 1 deferred.**
+**Decision (2026-06-20): TRIAGED — 2 removed, 2 mischaracterizations corrected, 3 kept, 1 fixed (D5).**
 Each row was re-verified against current code (the line numbers in the original audit were stale).
 Two items turned out **not to be dead** on inspection and were re-filed; two genuinely-dead items were
-removed (104 scoped tests green); the rest are kept by design with the one correctness item deferred.
+removed; the one correctness item (D5) was **fixed** (SIMULATE probe-honesty cue wired into
+`SIMULATE_NOTE` + regression test); the rest are kept by design.
 
 | Item | Where (verified) | Disposition · why |
 |---|---|---|
@@ -413,13 +414,13 @@ removed (104 scoped tests green); the rest are kept by design with the one corre
 | **D2 — bundle JSON route** | `GET /api/sessions/{sid}/bundle/{bundle_id}` (`main.py:612`) | 🔒 **KEPT (re-filed — not dead)** — unreached by *our UI* but a **deliberately security-hardened read-only API surface** with a dedicated passing test (`test_artifacts.py::test_bundle_json_route_returns_metadata`) + path-traversal/overlong-sid/NUL-byte coverage. Same "programmatic read mirror" rationale as A4's `GET /api/jobs`. |
 | **D3 — packaging assets funcs** | `app/packaging/assets.py` (`required_rbac_rules`, `deploy_dir`, `helm_chart_dir`, `kustomize_base_dir`) | 🔒 **KEPT (re-filed — not dead)** — these are the **single source of truth for the orchestrator's least-privilege RBAC**, and four tests assert the shipped **Helm + Kustomize chart Role rules equal this contract** (the chart-vs-app **drift guard**). "Only its own test imports it" was true but misleading: a test-only contract that powers a drift guard is load-bearing. |
 | **D4 — dead event constant** | `SESSION_PLAN = "session_plan"` (`app/agent/events.py:98`) | ✅ **REMOVED** — the symbol was never referenced (the plan rides `approval_request.kind`; the live string is set in `plan.py`, not via this constant). Constant + its stale docstring line dropped. |
-| **D5 — orphan knowledge cue** | `knowledge/sim_integration.md`; `knowledge/benchmark_feature_coverage.md` | ⏸️ **DEFERRED (tracked — the one correctness item)** — the SIMULATE-honesty rule in `sim_integration.md` *should* be injected alongside `SIMULATE_NOTE` (`prompt.py:150/218`) but isn't, so it's missing exactly when it matters. Fixing it touches **byte-stability-sensitive prompt assembly** (prompt-cache), so it's scheduled separately rather than done mid-triage. Cue must be config-stable like `SIMULATE_NOTE`. |
+| **D5 — orphan knowledge cue** | `knowledge/sim_integration.md`; `knowledge/benchmark_feature_coverage.md` | ✅ **RESOLVED (2026-06-20)** — the SIMULATE probe-honesty floor (no-op probe output is "unknown / not checked", never narrated as confirmed real host state) is now **inlined into `SIMULATE_NOTE`** (`prompt.py:154`) with a pointer to the full `sim_integration.md` guide. It's config-stable (only appended when `SIMULATE=1`) so it does **not** perturb the byte-stable prompt-cache prefix — `test_context_mgmt.py` stays green. New regression guard `test_simulate.py::test_simulate_note_carries_probe_honesty_cue` locks the cue in. *(`benchmark_feature_coverage.md` was a developer doc, not a runtime cue — no wiring needed.)* |
 | **D6 — orphan dev file** | `ui/preview.html` (served at `/static/preview.html`) | 🔒 **KEPT** — intentional card-layout dev fixture driven by `window.__LLMD_PREVIEW__` (referenced by `app.js`); kept on purpose, flagged so it's not mistaken for reachable UI. |
 
 **Net:** the audit's "6 dead spots" were really **2 dead (now removed)**, **1 reserved field**, **1 dev
-fixture**, **1 correctness gap (D5, deferred)**, and **2 mischaracterized load-bearing pieces (D2 route,
-D3 drift guard) now corrected**. The only remaining open item with **user-facing correctness weight** is
-the **D5** `sim_integration.md` cue.
+fixture**, **1 correctness gap (D5 — now FIXED)**, and **2 mischaracterized load-bearing pieces (D2 route,
+D3 drift guard) now corrected**. D5's SIMULATE probe-honesty cue is now wired into `SIMULATE_NOTE`
+(`prompt.py:154`) and guarded by a test — **no open correctness-weight item remains in Part D.**
 
 ---
 
@@ -471,15 +472,16 @@ precondition lands.
 | A5 | G5 — upstream PR + GPU demo | 🟢 Split | 🟢 **Split** — multi-GPU *orchestration* demo COVERED locally (mock-GPU harness `5fde2b3`); real-silicon numbers + upstream PR remain open. |
 | B1 | T1 — `graph_query` dev tool | ⬜ (built, unmerged) | ⏸️ **Keep deferred** — branch 187 behind `main`; dev-convenience not worth the rebase + security re-check now. |
 | C  | Gated features (chaos / `run_shell` / image-gated orchestrate) | ✅ but OFF | ✅ **Reviewed — intentional, no change** (⚠️ `UNRESTRICTED_TOOLS` enabled on this dev host). |
-| D  | Code-hygiene spots (was "6 dead") | mixed | ✅ **2 removed** (D1a field, D4 constant); 🔒 **3 kept** (D1b reserved, D6 fixture, + D2/D3 **re-filed as load-bearing**); ⏸️ **D5 deferred** (the one correctness gap). |
+| D  | Code-hygiene spots (was "6 dead") | mixed | ✅ **2 removed** (D1a field, D4 constant); 🔒 **3 kept** (D1b reserved, D6 fixture, + D2/D3 **re-filed as load-bearing**); ✅ **D5 FIXED** (SIMULATE probe-honesty cue wired into `SIMULATE_NOTE` + regression test). |
 | E  | ROADMAP phases 34/43/44/47/52/57/58 | ⬜ deferred | ✅ **Reviewed — all 7 stay deferred** (each precondition-blocked; nothing landed unblocks them). |
 
-**Bottom line (post-triage):** the only **code changes** made were two genuinely-dead removals in
-Part D (`export_run_bundle.session_id`, the `SESSION_PLAN` constant — 104 scoped tests green). The
+**Bottom line (post-triage):** the **code changes** made were two genuinely-dead removals in
+Part D (`export_run_bundle.session_id`, the `SESSION_PLAN` constant) plus the **D5 fix** (the
+SIMULATE probe-honesty cue, now inlined into `SIMULATE_NOTE` with a regression guard). The
 triage's biggest *correction* was catching **two "dead" items that were actually load-bearing** (D2's
-security-hardened JSON route, D3's RBAC drift guard) before they were deleted. The genuine remaining
-gaps worth closing for the agent's own users are small and now explicitly tracked: **A3** (optional
-upstream-viz reuse) and **D5** (the SIMULATE-honesty cue, the only correctness-weight item). **A5**
+security-hardened JSON route, D3's RBAC drift guard) before they were deleted. With D5 closed, the only
+genuine remaining gap worth closing for the agent's own users is **A3** (optional upstream-viz reuse,
+on backlog). **A5**
 gained a free local multi-GPU orchestration demo via the mock harness; its real-silicon + upstream-PR
 halves stay open. Everything else is **divergent-by-design** (A1/A2/A4 — undoing weakens the system),
 **external/hardware-gated** (A5 residual, most of E), or **complete-but-gated** (C).

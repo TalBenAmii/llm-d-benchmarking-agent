@@ -93,6 +93,27 @@ def test_system_prompt_includes_simulate_note_only_when_on(tmp_path):
     assert "DRY SIMULATION" not in build_system_prompt(off)
 
 
+def test_simulate_note_carries_probe_honesty_cue(tmp_path):
+    """D5: the SIMULATE probe-honesty floor (never narrate no-op probe output as confirmed
+    real host state) must be ACTIVE whenever SIMULATE is on. Previously this rule lived only
+    in knowledge/sim_integration.md, which sits in the on-demand index with no cue to load it
+    — so it was missing exactly when it mattered. It is now inlined into SIMULATE_NOTE (which
+    is config-stable, so it does not perturb the prompt-cache prefix) with a pointer to the
+    full guide. Guard it so a future edit can't silently strip it back out."""
+    on_prompt = build_system_prompt(_ctx(tmp_path, simulate=True, runner=SimRunner({})))
+    off_prompt = build_system_prompt(_ctx(tmp_path, simulate=False, runner=SimRunner({})))
+    low = on_prompt.lower()
+    # the honesty floor: no-op probe output is not real host state, no fabricated readiness
+    assert "real host state" in low
+    assert "readiness" in low
+    assert "didn't actually run" in low
+    # and a pointer to the full rule so the model can load the rest on demand
+    assert "knowledge/sim_integration.md" in on_prompt
+    # entirely absent when SIMULATE is off (it rides on SIMULATE_NOTE)
+    assert "real host state" not in off_prompt.lower()
+    assert "knowledge/sim_integration.md" not in off_prompt
+
+
 def test_locate_report_synthesizes_in_simulate(tmp_path):
     empty = tmp_path / "results"
     empty.mkdir()
