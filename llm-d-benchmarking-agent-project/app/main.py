@@ -516,10 +516,10 @@ async def session_artifact(sid: str, path: str) -> FileResponse:
         suffix = candidate.suffix.lower()
         if suffix not in _ARTIFACT_SUFFIXES or not candidate.is_file():
             raise HTTPException(status_code=404, detail="artifact not found")
-    except OSError:
-        # An over-long `sid`/`path` component (ENAMETOOLONG) or any other filesystem error during
-        # resolution must read as a clean 404 — never a 500. (HTTPException is not an OSError, so
-        # the explicit 404s above propagate untouched.)
+    except (OSError, ValueError):
+        # An over-long `sid`/`path` component (ENAMETOOLONG → OSError) or an embedded NUL byte
+        # (`%00` → ValueError "embedded null byte") during resolution must read as a clean 404 —
+        # never a 500. (HTTPException is neither, so the explicit 404s above propagate untouched.)
         raise HTTPException(status_code=404, detail="artifact not found") from None
     return FileResponse(candidate, media_type=_ARTIFACT_MEDIA[suffix])
 
@@ -552,8 +552,9 @@ def _resolve_bundle(sid: str, bundle_id: str) -> dict[str, Any]:
         base = (sessions_root / sid).resolve()
         if base.parent != sessions_root or not base.is_dir():
             raise HTTPException(status_code=404, detail="bundle not found")
-    except OSError:
-        # Over-long `sid` (ENAMETOOLONG) or other filesystem error → clean 404, never a 500.
+    except (OSError, ValueError):
+        # Over-long `sid` (ENAMETOOLONG → OSError) or an embedded NUL byte (`%00` → ValueError) →
+        # clean 404, never a 500.
         raise HTTPException(status_code=404, detail="bundle not found") from None
     bundle = BundleStore(base).read(bundle_id)  # _safe_id inside rejects ../ and a/b ids
     if bundle is None:

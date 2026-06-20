@@ -116,7 +116,23 @@ Started 2026-06-20.
   never a 500. HTTPException isn't an OSError, so the explicit 404s still propagate.
 - **Tests:** `tests/test_artifacts.py` — long sid + long path (artifact), long sid (both bundle routes).
 
-## Round 3 — turn-lifecycle deep audit + HTTP fuzzing (verified sound)
+## BUG-010 — NUL byte in artifact/bundle path 500s (ValueError, sibling of BUG-009)
+- **Status:** FIXED
+- **Severity:** medium (500 on `%00` in a path/sid; classic injection-probe input)
+- **Where:** `app/main.py` `session_artifact` + `_resolve_bundle` — the BUG-009 fix caught only `OSError`.
+- **Trigger:** `GET /api/sessions/<sid>/artifact?path=a%00b.png` (or `%00` in the sid) → **500**.
+- **Root cause:** an embedded NUL byte makes `Path.resolve()` raise **`ValueError`** ("embedded null
+  byte"), which is NOT an `OSError`, so the BUG-009 `except OSError` missed it. (The bundle *bundle_id*
+  was already safe via `_safe_id`, but the bundle *sid* shared the gap.)
+- **Fix:** broaden both guards to `except (OSError, ValueError)`.
+- **Tests:** extended `tests/test_artifacts.py::test_artifact_route_404_for_overlong_ids` with a NUL-byte path.
+
+## Round 3 — turn-lifecycle deep audit + HTTP/WS fuzzing (verified sound)
+- **WebSocket frame fuzzing:** drove non-JSON, non-object JSON, unknown/missing `type`, extra fields,
+  wrong field types, bad/empty/unknown approval `request_id`, a 2 MB text frame, and a binary frame.
+  The handler returned a structured `protocol_error` (or harmlessly ignored a stale approval) for every
+  one and **kept the socket alive** — no crash, no hang. (Two defensible non-bugs: an unknown approval
+  `request_id` gets no response — idempotent stale-approval handling; chat text has no hard size cap.)
 - A focused deep read of the race-prone live-turn lifecycle (`app/agent/loop.py`, `channel.py`,
   `lifecycle.py`, `ws_schemas.py`) found **no actionable bugs**: the resume-cursor window math, the
   approval park/resume bookkeeping, steer-drain (no `await` between read and reset), cancellation/slot

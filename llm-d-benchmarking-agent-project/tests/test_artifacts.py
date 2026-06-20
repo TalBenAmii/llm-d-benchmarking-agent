@@ -159,8 +159,8 @@ def test_artifact_route_404_for_unknown_session(client_with_workspace):
 
 
 def test_artifact_route_404_for_overlong_ids(client_with_workspace):
-    """Regression: an over-long `sid` or `path` component (> NAME_MAX) makes a filesystem stat
-    raise OSError(ENAMETOOLONG); the route must catch it and 404, NOT 500."""
+    """Regression: an over-long `sid`/`path` component (> NAME_MAX → OSError ENAMETOOLONG) or an
+    embedded NUL byte (`%00` → ValueError "embedded null byte") must 404, NOT 500."""
     client, sessions_root = client_with_workspace
     _make_run(sessions_root, "sessABC")
     # Over-long sid → is_dir() on sessions_root/<sid> raises ENAMETOOLONG.
@@ -170,6 +170,10 @@ def test_artifact_route_404_for_overlong_ids(client_with_workspace):
     # Real session + over-long path → is_file() on the resolved candidate raises ENAMETOOLONG.
     assert client.get(
         "/api/sessions/sessABC/artifact", params={"path": "a" * 2000 + ".png"}
+    ).status_code == 404
+    # Embedded NUL byte in the path → ValueError on resolve(); must also 404, not 500.
+    assert client.get(
+        "/api/sessions/sessABC/artifact", params={"path": "a\x00b.png"}
     ).status_code == 404
 
 
