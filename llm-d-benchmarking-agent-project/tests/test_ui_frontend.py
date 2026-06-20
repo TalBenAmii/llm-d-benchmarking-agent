@@ -434,3 +434,99 @@ def test_share_view_in_preview_harness():
     """The preview harness exposes the share-view render paths (live + offline static)."""
     js = _ui("app.js")
     assert "bootShareView," in js and "bootSharedStatic," in js
+
+
+def test_chat_reading_column_stays_900px():
+    """User override #1: the reading column / composer / cards keep the 900px width (NOT 760px)."""
+    css = _ui("styles.css")
+    # The transcript column and the floating composer both at 900.
+    assert "max-width: 900px" in css
+    # No content container was left narrowed to 760 (the 760 breakpoint media query is fine).
+    for line in css.splitlines():
+        if "max-width: 760px" in line:
+            assert "@media" in line, f"a 760px content container slipped through: {line.strip()}"
+
+
+def test_composer_is_floating_transparent():
+    """User override #2: the composer floats (transparent bg, rounded border), no panel fill."""
+    css = _ui("styles.css")
+    # Find the #composer rule block and assert it uses a transparent background.
+    block = css.split("#composer {", 1)[1].split("}", 1)[0]
+    assert "background: transparent" in block, "composer must be transparent (floating), not a panel"
+    assert "border-radius: var(--radius-lg)" in block
+
+
+def test_working_bar_attaches_inside_composer():
+    """The working/status bar sits INSIDE the composer box (a top row, hairline-separated)."""
+    html = _ui("index.html")
+    css = _ui("styles.css")
+    # #working is now the first child of the #composer form, not a footer sibling.
+    composer_open = html.index('<form id="composer"')
+    working_pos = html.index('id="working"')
+    input_pos = html.index('id="input"')
+    assert composer_open < working_pos < input_pos, "working bar must be inside the composer, above the input"
+    # Its CSS gives it a bottom hairline separator (no longer a centered standalone bar).
+    work_block = css.split(".working {", 1)[1].split("}", 1)[0]
+    assert "border-bottom: 1px solid var(--border)" in work_block
+
+
+def test_bigger_sidebar_carets():
+    """Task 2: the results + namespace-folder carets are bumped up to be more prominent."""
+    css = _ui("styles.css")
+    folder = css.split(".conv-folder-caret {", 1)[1].split("}", 1)[0]
+    results = css.split(".results-caret {", 1)[1].split("}", 1)[0]
+    assert "font-size: 16px" in folder
+    assert "font-size: 16px" in results
+
+
+def test_unified_suggestion_button_style():
+    """Task 3: welcome chips, next-step buttons, and report actions share ONE suggestion style."""
+    css = _ui("styles.css")
+    # A single shared rule lists all three component classes together.
+    assert ".chip," in css and ".next-step-chip," in css and ".report-action {" in css
+    # The next-step list is capped at 4 buttons in app.js.
+    js = _ui("app.js")
+    assert "r.next_steps.slice(0, 4)" in js
+
+
+def test_assistant_avatar_is_three_hex_mesh():
+    """Task 5: the assistant/report/provenance avatar renders the real 3-hex mesh (not 1 hex)."""
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    assert "function meshAvatarSvg" in js and "function whoEl" in js
+    # All four .who call-sites go through whoEl now.
+    assert js.count("whoEl(") >= 4, "every assistant/report avatar slot should use whoEl()"
+    # The mesh has three hex paths (two purple + one gray), matching the brand logo.
+    assert js.count('"hx-p"') >= 2 and '"hx-g"' in js
+    # The single-hex ::after mask is now only a fallback for an avatar without an inline svg.
+    assert ":not(:has(svg))::after" in css
+
+
+def test_sidebar_toggle_moved_into_sidebar():
+    """Task 6: the collapse control lives in the sidebar; a header expand button re-opens it."""
+    html = _ui("index.html")
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    # The in-sidebar toggle sits inside the sidebar brand block (top of the sidebar) — i.e. its id
+    # appears in the document AFTER the .sidebar-brand opens.
+    assert 'id="sidebar-toggle"' in html
+    assert html.index('class="sidebar-brand"') < html.index('id="sidebar-toggle"')
+    # The header carries a separate expand affordance, wired + shown only when collapsed.
+    assert 'id="sidebar-expand"' in html
+    assert 'getElementById("sidebar-expand")' in js
+    assert "body.sidebar-collapsed .sidebar-expand { display: inline-flex; }" in css
+
+
+def test_share_header_brand():
+    """Task 7: shared /share pages show the llm-d brand in the top bar (sidebar is hidden there)."""
+    html = _ui("index.html")
+    css = _ui("styles.css")
+    assert 'class="header-brand"' in html
+    assert "body.share-view .header-brand { display: inline-flex; }" in css
+
+
+def test_persisted_run_duration_on_replay():
+    """Task 7: a replayed action row renders the persisted run duration, not just the badge."""
+    js = _ui("app.js")
+    # addHistoryTool now reads the backend-persisted duration_s (was hard-coded null before).
+    assert "it.duration_s" in js
