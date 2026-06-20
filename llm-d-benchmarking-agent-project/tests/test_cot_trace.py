@@ -14,7 +14,7 @@ from app.agent.loop import AgentLoop
 from app.agent.session import Session
 from app.config import get_settings
 from app.llm.agent_sdk_provider import _effort_option, _thinking_options
-from app.llm.provider import AssistantTurn, ToolCall, Usage
+from app.llm.provider import AssistantTurn, Usage
 from app.observability.cot_trace import TRACE_FILENAME, TurnTrace
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
