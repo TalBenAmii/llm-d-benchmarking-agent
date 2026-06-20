@@ -34,7 +34,10 @@ import glob
 total = 0
 for f in glob.glob(os.path.join(ctx, "*.md")):
     try:
-        total += len(re.findall(r'^- \[', open(f, encoding="utf-8", errors="replace").read(), flags=re.M))
+        # Count only RAW auto-captured signatures (hex-hash ids like `- [829d44c65e]`),
+        # NOT curated `- [named-slug]` guardrails — once raw errors are generalized into
+        # named lessons (or retired into the dedup comment) they should stop tripping this.
+        total += len(re.findall(r'^- \[[0-9a-f]{6,}\]', open(f, encoding="utf-8", errors="replace").read(), flags=re.M))
     except Exception:
         pass
 if total >= 12:
