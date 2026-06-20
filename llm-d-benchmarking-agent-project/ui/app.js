@@ -825,11 +825,18 @@ function mdInline(s) {
 // split on UNescaped pipes (respecting inline-code spans and `\|` escapes).
 function splitTableRow(row) {
   row = row.trim().replace(/^\|/, "").replace(/\|$/, "");
+  // Only backticks that form a MATCHED pair within the row open a code span that protects pipes.
+  // A single stray/unmatched backtick must NOT toggle code mode — otherwise it would stay "open"
+  // for the rest of the row and swallow every remaining `|`, collapsing the row into one cell.
+  const ticks = [];
+  for (let k = 0; k < row.length; k++) if (row[k] === "`") ticks.push(k);
+  const paired = new Set();
+  for (let k = 0; k + 1 < ticks.length; k += 2) { paired.add(ticks[k]); paired.add(ticks[k + 1]); }
   const cells = []; let cur = "", inCode = false;
   for (let k = 0; k < row.length; k++) {
     const ch = row[k];
     if (ch === "\\" && row[k + 1] === "|") { cur += "|"; k++; }
-    else if (ch === "`") { inCode = !inCode; cur += ch; }
+    else if (ch === "`" && paired.has(k)) { inCode = !inCode; cur += ch; }
     else if (ch === "|" && !inCode) { cells.push(cur); cur = ""; }
     else cur += ch;
   }

@@ -568,3 +568,14 @@ def test_ws_handlers_are_socket_bound():
     # The removed flag must not reappear (a single shared boolean can't gate concurrent closes).
     assert "switching = true" not in js
     assert "let switching" not in js
+
+
+def test_table_row_split_pairs_backticks():
+    """BUG-024: splitTableRow must only let a MATCHED pair of backticks open a code span that
+    protects pipes. A single stray backtick previously left `inCode` stuck true, swallowing every
+    remaining `|` and collapsing the rest of the row into one cell. The fix pre-computes the set of
+    paired backtick positions and toggles code mode only on those."""
+    js = _ui("app.js")
+    # The paired-backtick guard is present; the unconditional toggle is gone.
+    assert "paired.has(k)" in js
+    assert 'else if (ch === "`") { inCode = !inCode;' not in js

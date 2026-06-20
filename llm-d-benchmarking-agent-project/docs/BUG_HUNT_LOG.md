@@ -46,6 +46,7 @@ bugs low/medium; none were crashes of the core flow.
 | 021 | app/storage/provenance.py | truthy non-numeric `created_at` → `TypeError` crashes the WHOLE bundle list |
 | 022 | app/storage/autotune.py | non-numeric trial `index` → `TypeError` crashes `load()` (whole autotune log) |
 | 023 | app/orchestrator/job.py | non-numeric Job count (`active`/`succeeded`/`failed`) → `int()` `ValueError` aborts the watch loop |
+| 024 | ui/app.js | `splitTableRow` unmatched backtick left `inCode` stuck → collapsed the rest of a table row into one cell |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -214,6 +215,25 @@ unchanged. Suggested hardening if desired: deny a small set of known-dangerous f
   with a forged non-numeric-count status (asserts PENDING + zeroed counts, no raise).
 - **CAND-E (the sibling success-heuristic edge) deliberately NOT changed** — see the candidates note
   below for the regression reasoning.
+
+---
+
+## BUG-024 — `splitTableRow` unmatched backtick collapses the rest of a markdown table row
+- **Status:** FIXED
+- **Severity:** low (garbled table rendering when the agent emits a stray backtick inside a table row)
+- **Where:** `ui/app.js::splitTableRow` — `else if (ch === "\`") { inCode = !inCode; ... }`.
+- **Trigger (reproduced via a standalone node sim):** a table body/header row containing a single
+  UNmatched backtick, e.g. `| a\` | b | c |`. The lone backtick flips `inCode` true and it never flips
+  back, so every `|` after it is treated as inside a code span and NOT split — the row collapses from
+  3 cells to 1 (`["a\` | b | c"]`), garbling the rendered table.
+- **Root cause:** the splitter toggled code-mode on EVERY backtick, assuming they always come in pairs.
+  A matched pair correctly protects an embedded `|` (the intended GFM feature); an odd/stray backtick
+  has no closing partner and shouldn't open a protected span at all.
+- **Fix:** pre-compute the set of backtick positions that form a matched pair (indices 0&1, 2&3, …; a
+  trailing odd backtick is left out) and toggle `inCode` only on those. Matched code spans still protect
+  their pipes; a stray backtick is now inert. (node sim: stray-backtick row `["a\` | b | c"]` →
+  `["a\`","b","c"]`; the matched-pair `| \`a|b\` | c | d |` case is unchanged.)
+- **Regression test:** `tests/test_ui_frontend.py::test_table_row_split_pairs_backticks`.
 
 ---
 
