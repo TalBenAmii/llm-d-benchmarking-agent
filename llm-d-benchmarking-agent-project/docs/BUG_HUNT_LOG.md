@@ -53,6 +53,7 @@ bugs low/medium; none were crashes of the core flow.
 | 028 | app/tools/probe.py | `probe_environment(spec=…)` followed `..` traversal, parsing an arbitrary YAML file into image_tags |
 | 029 | app/orchestrator/faults.py | `classify_failure` crashed on a non-list `conditions`/`containerStatuses` or non-dict pod element |
 | 030 | app/capacity/planner.py | capacity verdict read `feasible:true` when KV-cache sizing never ran (count-summary mistaken for sizing proof) |
+| 031 | app/tools/multiharness.py | `compare_harness_runs` aborted the whole comparison on one corrupt report (sibling `compare_reports` skips it) |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -424,6 +425,29 @@ pairing, stale-gist fall-through, token traversal all guarded). One solid HIGH-s
   direction: the change can only turn a false `feasible:true` into the cautious `None`, never the reverse.
 - **Regression test:** `tests/test_qafix_tools_capacity_history_config_report.py::test_classify_sizing_exception_is_inconclusive_not_feasible`
   (all 20 existing capacity tests still pass).
+
+---
+
+## Round 10 (2026-06-21) — final tool/provider sweep: 1 fixed (BUG-031, completes the BUG-027 family)
+A high-signal sweep of the remaining tool handlers + all LLM providers confirmed them well-defended
+(OpenAI empty-choices already fixed as BUG-018; Scheduling/ChaosPlan `from_dict`, sweep treatment
+schema, observe table parsing, agent-SDK streaming, execute argv all guarded). One medium bug:
+
+## BUG-031 — `compare_harness_runs` aborts the whole comparison on one corrupt report
+- **Status:** FIXED
+- **Severity:** medium (one truncated report fails the entire cross-harness comparison; sibling handles it)
+- **Where:** `app/tools/multiharness.py` — `report = load_report(path)` was unguarded.
+- **Trigger:** `compare_harness_runs(sources=[<run with a truncated report>, <other>])`. Since BUG-027
+  hardened `load_report` to raise typed `ReportError`, the unguarded call now propagates it out of the
+  handler → the loop's catch-all → `tool 'compare_harness_runs' raised: ...`, aborting the comparison.
+- **Root cause:** BUG-027 routed the corrupt-report skip into the two *multi-report* tools `compare_reports`
+  + `analyze_results` but missed the third multi-report tool, `compare_harness_runs` — its only try/except
+  wrapped `compare_across_harnesses`, not the `load_report` loop. (The single-report callers —
+  reproducibility/history/autotune — correctly surface the typed error; only the multi-report aggregators
+  should skip-and-continue.)
+- **Fix:** mirror `compare_reports` exactly — `try load_report / except ReportError → skipped.append(...);
+  continue`. `ReportError` was already imported. One corrupt report is now skipped, the rest contrasted.
+- **Regression test:** `tests/test_multiharness.py::test_compare_harness_runs_skips_unreadable_report`.
 
 ---
 
