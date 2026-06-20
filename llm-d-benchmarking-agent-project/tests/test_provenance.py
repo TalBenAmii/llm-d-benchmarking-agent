@@ -282,3 +282,19 @@ async def test_capture_repo_state_with_canned_runner():
     (d / ".git").mkdir()
     out = await capture_repo_state(d, run)
     assert out == {"sha": "deadbee", "dirty": True}
+
+
+def test_list_survives_non_numeric_created_at(tmp_path):
+    """BUG-021: a bundle whose on-disk ``created_at`` is a truthy non-number (a forged/corrupt
+    string) must not crash ``list()`` for EVERY bundle. The old ``b.get('created_at') or 0.0`` key
+    only neutralized falsy values, so a string still raised ``TypeError: '<' not supported between
+    str and float`` and broke the whole bundle list. The corrupt bundle stays listed, sorted as
+    oldest (coerced to 0.0)."""
+    bdir = tmp_path / "bundles"
+    bdir.mkdir()
+    (bdir / "aaaaaaaa.json").write_text(json.dumps({"bundle_id": "ignored", "created_at": 5.0}))
+    (bdir / "bbbbbbbb.json").write_text(json.dumps({"bundle_id": "ignored", "created_at": "NOPE"}))
+    bundles = BundleStore(tmp_path).list()  # must not raise
+    ids = [b["bundle_id"] for b in bundles]  # read() overrides id with the path stem
+    assert set(ids) == {"aaaaaaaa", "bbbbbbbb"}
+    assert ids[0] == "aaaaaaaa"  # numeric 5.0 first; corrupt (-> 0.0) sorts last

@@ -13,12 +13,13 @@ no search logic.
 from __future__ import annotations
 
 import copy
+import json
 
 import pytest
 import yaml
 
 from app.agent.results_card import build_results_card
-from app.storage.autotune import AutotuneStore
+from app.storage.autotune import AutotuneStore, Trial
 from app.tools import autotune
 from app.tools.context import ToolError
 from app.tools.registry import REGISTRY, dispatch, tool_definitions
@@ -420,3 +421,25 @@ def test_no_toolerror_path_for_autotune(tool_ctx):
     # autotune_search never raises ToolError — bad input is returned as a dict. Guard the import
     # path so the contract is documented (the loop converts ToolError; autotune doesn't raise it).
     assert issubclass(ToolError, RuntimeError)
+
+
+def test_load_survives_non_numeric_index(tmp_path):
+    """BUG-022: a trial whose on-disk ``index`` is non-numeric (null/string — the dataclass does
+    no type-check) must not crash ``load()``. The sort key would otherwise raise
+    ``TypeError: '<' not supported between NoneType and int`` and break the WHOLE log, violating
+    the documented 'a corrupt log degrades to empty, never crashes' contract. The bad-index trial
+    stays loaded, sorted first (coerced to 0.0)."""
+    adir = tmp_path / "autotune"
+    adir.mkdir()
+    fields = list(Trial.__dataclass_fields__)
+
+    def mk(i):
+        d = dict.fromkeys(fields)
+        d["index"] = i
+        return d
+
+    (adir / "srch.json").write_text(json.dumps({"search_id": "srch", "trials": [mk(2), mk(None), mk(0)]}))
+    trials = AutotuneStore(tmp_path).load("srch")  # must not raise
+    assert len(trials) == 3
+    # None -> 0.0 sorts first (stable: before the real 0), then 0, then 2.
+    assert [t.index for t in trials] == [None, 0, 2]

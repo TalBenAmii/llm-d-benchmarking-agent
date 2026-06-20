@@ -85,6 +85,15 @@ def valid_knob_key(key: str) -> bool:
     return isinstance(key, str) and bool(_KEY_RE.fullmatch(key))
 
 
+def _as_num(v: Any) -> float:
+    """Crash-proof sort key: the value if a real number, else 0.0. ``Trial`` is built from on-disk
+    JSON with no type-check (the dataclass annotation isn't enforced), so a corrupt log with a
+    non-numeric ``index`` (null/string) would make ``load()``'s ``trials.sort(...)`` raise
+    ``TypeError`` — violating the documented "a corrupt log degrades to empty, never crashes"
+    contract. ``bool`` is excluded (an ``int`` subclass, never a valid index)."""
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+
+
 class AutotuneStore:
     """Append/read the per-search trial log under ``<root>/autotune``.
 
@@ -123,7 +132,7 @@ class AutotuneStore:
                 trials.append(Trial(**known))
             except TypeError:
                 continue
-        trials.sort(key=lambda t: t.index)
+        trials.sort(key=lambda t: _as_num(t.index))
         return trials
 
     def append(self, search_id: str, trial: Trial) -> None:
