@@ -16,7 +16,13 @@ Ask (or infer) **what single thing varies** and **whether it changes the deploym
   vary is a *workload/run* knob (max-concurrency, QPS, prompt/output tokens). The stack is
   deployed **once**, then benchmarked N times. Cheap and fast.
   → `execute_llmdbenchmark(subcommand="run", flags={experiments: "<treatments.yaml>"})`
-  against an already-stood-up stack. One `standup`, N runs.
+  against an already-stood-up stack. One `standup`, N runs (the CLI runs them **sequentially**).
+  → **Parallel / K8s-native alternative:** `orchestrate_sweep` runs the same treatments as
+  Kubernetes Jobs under a `max_parallel` concurrency cap — each individually retryable, a failing
+  treatment dead-letters without sinking the rest, and progress is checkpointed so the sweep
+  resumes after an interruption. Pass the run treatments from `generate_doe_experiment` as its
+  `treatments` list. Prefer it when speed/scale matters and the orchestrator image is configured;
+  see `read_knowledge('orchestrator')`.
 - **Full DoE sweep.** The thing you vary changes the *deployment itself* (replicas, tensor
   parallelism, prefill/decode split, model). Each treatment needs its own standup+teardown.
   → `execute_llmdbenchmark(subcommand="experiment", flags={experiments: "<doe.yaml>"})`.

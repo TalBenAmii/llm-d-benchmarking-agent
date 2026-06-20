@@ -108,7 +108,9 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 `generate_doe_experiment`, `convert_guide_to_scenario`.
 
 **Mutating (approval-gated):** `ensure_repos`, `run_setup`, `execute_llmdbenchmark`,
-`run_command`, `orchestrate_benchmark_run`, `provision_hf_secret`.
+`run_command`, `orchestrate_benchmark_run`, `orchestrate_sweep` (parallel DoE-treatment Jobs
+under a concurrency cap, with per-treatment retry/dead-letter + checkpoint/resume — the
+proposal's parallel-treatment scheduling), `provision_hf_secret`.
 
 **Analysis / history (read-only):** `compare_reports`, `compare_harness_runs`,
 `analyze_results`, `aggregate_runs`, `result_history`, `cancel_run`.
@@ -128,11 +130,6 @@ approval.
 **Reproducibility (read-only):** `export_run_bundle` (capture a provenance bundle — repo
 SHAs + resolved config + validated report digest), `reproduce_run` (re-derive a rerun
 proposal that goes back through the SessionPlan-approval + `--dry-run` gates).
-
-**Conversation / UX (read-only, auto-run):** `suggest_next_steps` — offer 2-4 concrete
-follow-ups as clickable buttons instead of a prose "want me to…?"; the agent's turn-ending
-discretionary offer (NOT an approval gate — mutations still go through their own gates). See
-`knowledge/conversation_style.md`.
 
 *How to verify each tool:* every tool has a focused test in `tests/` (e.g.
 `tests/test_new_tools.py`, `tests/test_analyze.py`, `tests/test_capacity.py`,

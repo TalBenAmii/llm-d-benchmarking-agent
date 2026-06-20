@@ -96,27 +96,43 @@ When you get a not-ready result:
 This is the proposal's §3.3 dependency management: the run depends on a healthy serving stack,
 so we verify that dependency (readiness) and — only with approval — bring it up.
 
-## Sweeps & retries
+## Sweeps & retries — two ways to run N treatments
 
-- For a parameter sweep, prefer the CLI's native DoE (`execute_llmdbenchmark`
-  `subcommand="experiment"`) when running locally. The orchestrator's parallel Job path
-  (used internally for K8s-native sweeps) caps concurrency and dead-letters a treatment that
-  keeps failing — one bad treatment doesn't sink the rest.
+A DoE sweep runs many treatments. There are **two** execution paths; pick by where the run lives:
+
+- **`execute_llmdbenchmark` `subcommand="experiment"`** — the CLI's native DoE, run locally as
+  a blocking subprocess. Treatments run **sequentially**. Best for a local/quickstart sweep you
+  watch live, and the only path when the orchestrator image isn't configured. Setup-factor
+  sweeps (each treatment needs its own standup/teardown) go here.
+- **`orchestrate_sweep`** — the orchestrator's **parallel** Job path, now exposed as a tool. It
+  runs the treatments as Kubernetes Jobs under a `max_parallel` concurrency cap, each with its
+  own retry/dead-letter budget, against ONE already-stood-up stack. A treatment that keeps
+  failing **dead-letters without sinking the rest**. Use this for K8s-native, parallel,
+  restart-resilient, individually-retryable run-parameter sweeps when speed/scale matters and the
+  orchestrator image is set. This is the proposal's parallel-treatment scheduling capability.
+
+Typical flow: `generate_doe_experiment` to design the matrix → feed its **run treatments** to
+`orchestrate_sweep` as the `treatments` list (one entry per treatment, name + workload/run
+overrides), choosing `max_parallel` from the cluster's spare capacity.
+
 - Retries are only worth it for transient faults (`evicted`). Deterministic faults (`oom`,
   `unschedulable`, `image_error`, `timeout`) never auto-retry — fix the cause instead.
 
 ## Checkpoint / resume for long DOE sweeps (the cluster is the source of truth)
 
-The orchestrator's K8s-native sweep path is **checkpoint-resilient**: consistent with the
-stateless design (proposal §3.3/§4 — reconstruct from the cluster, store nothing locally), a
-sweep's progress is persisted to a per-sweep Kubernetes ConfigMap (`llmd-bench-sweep-<sweep_id>`),
-not a local file. That ConfigMap is the single source of truth — it records which treatments are
-**completed** (with their outcome) and which are **in-flight** — so a resumed sweep skips the
-already-completed treatments (idempotent; no duplicate work) and a fresh orchestrator process
-can reconstruct exactly what is done from the cluster. Nothing is lost on a restart.
+`orchestrate_sweep` is **checkpoint-resilient**: consistent with the stateless design (proposal
+§3.3/§4 — reconstruct from the cluster, store nothing locally), a sweep's progress is persisted
+to a per-sweep Kubernetes ConfigMap (`llmd-bench-sweep-<sweep_id>`), not a local file. That
+ConfigMap is the single source of truth — it records which treatments are **completed** (with
+their outcome) and which are **in-flight** — so a resumed sweep skips the already-completed
+treatments (idempotent; no duplicate work) and a fresh orchestrator process can reconstruct
+exactly what is done from the cluster. Nothing is lost on a restart.
 
-Judgment for the agent: this resilience is built into the orchestrated sweep machinery — you
-don't drive it with a tool call (there is no agent-facing `sweep_id` argument or resume tool).
-Agent-run sweeps go through the CLI's native DoE (`execute_llmdbenchmark subcommand="experiment"`,
-see "Sweeps & retries" above). If a long sweep is interrupted, reassure the user the cluster
-holds the source of truth rather than telling them all prior work is lost.
+Driving it: a fresh `orchestrate_sweep` call returns a generated `sweep_id`. **To resume an
+interrupted sweep, call `orchestrate_sweep` again with that same `sweep_id` AND the same
+`treatments`** — completed treatments are read from the checkpoint and skipped, only the
+remainder runs, and the result merges the prior outcomes (so it still covers all N). Keep
+treatment **names stable** across resumes (the name forms the treatment's resume key). Set
+`checkpoint=false` only for a one-shot sweep you don't need to resume. If a long sweep is
+interrupted, reassure the user the cluster holds the source of truth — re-issue with the same
+`sweep_id` to continue rather than restarting from scratch.

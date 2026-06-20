@@ -68,6 +68,7 @@ from app.tools.schemas import (
     LocateReportInput,
     ObserveRunMetricsInput,
     OrchestrateBenchmarkInput,
+    OrchestrateSweepInput,
     ProbeEnvironmentInput,
     ProvisionHfSecretInput,
     ReadKnowledgeInput,
@@ -542,6 +543,23 @@ _DESCRIPTIONS = {
         "cpu/memory baseline. Call read_knowledge('orchestrator') to choose between this and "
         "execute_llmdbenchmark and to interpret a failure classification."
     ),
+    "orchestrate_sweep": (
+        "Run a multi-treatment DoE sweep as PARALLEL Kubernetes Jobs the orchestrator manages "
+        "end-to-end — the proposal's parallel-treatment scheduling. Pass `treatments` (each a "
+        "named run with its own spec/harness/workload/command; usually the run treatments from "
+        "generate_doe_experiment) and a `max_parallel` concurrency cap: treatments run "
+        "concurrently up to the cap, each as its own retry/dead-letter Job, so one persistently-"
+        "failing treatment dead-letters WITHOUT sinking the rest. Progress is checkpointed to a "
+        "cluster ConfigMap (set checkpoint=false to opt out), so an interrupted sweep RESUMES — "
+        "pass back the returned `sweep_id` with the same treatments and completed ones are "
+        "skipped. All treatments share ONE stood-up stack in `namespace` (gated once on endpoint "
+        "readiness). Use this instead of execute_llmdbenchmark(subcommand='experiment'), which "
+        "runs the CLI's SEQUENTIAL DoE, when you want K8s-native parallel, restart-resilient, "
+        "individually-retryable treatment runs. Needs the orchestrator image (ORCHESTRATOR_IMAGE "
+        "or `image`). Pass `scheduling` to place every Job (GPU/affinity/anti-starvation). Call "
+        "read_knowledge('orchestrator') to choose between this and the CLI path, and "
+        "read_knowledge('sweep_playbook') to design the treatments."
+    ),
     "run_resilience_drill": (
         "RESILIENCE / CHAOS DRILL: prove the orchestrator correctly classifies + recovers from "
         "injected faults AND survives its own restart mid-run. OPT-IN and DOUBLE-gated — it "
@@ -596,6 +614,7 @@ def build_registry(*, unrestricted: bool = False) -> dict[str, ToolSpec]:
         ToolSpec("export_run_bundle", _DESCRIPTIONS["export_run_bundle"], ExportRunBundleInput, reproducibility.export_run_bundle),
         ToolSpec("reproduce_run", _DESCRIPTIONS["reproduce_run"], ReproduceRunInput, reproducibility.reproduce_run),
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
+        ToolSpec("orchestrate_sweep", _DESCRIPTIONS["orchestrate_sweep"], OrchestrateSweepInput, orchestrate.orchestrate_sweep),
         ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
         ToolSpec("cancel_run", _DESCRIPTIONS["cancel_run"], CancelRunInput, cancel.cancel_run),
         ToolSpec("run_resilience_drill", _DESCRIPTIONS["run_resilience_drill"], RunResilienceDrillInput, resilience.run_resilience_drill),

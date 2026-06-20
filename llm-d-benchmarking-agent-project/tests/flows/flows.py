@@ -873,6 +873,40 @@ ORCHESTRATE_K8S_JOB = Flow(
     required_tools=["orchestrate_benchmark_run"],
 )
 
+ORCHESTRATE_SWEEP = Flow(
+    name="orchestrate-parallel-sweep",
+    title="run a DoE sweep as PARALLEL Kubernetes Jobs (orchestrate_sweep)",
+    description="The parallel-treatment path: instead of the CLI's sequential DoE "
+                "(execute_llmdbenchmark subcommand='experiment'), the agent runs the treatments "
+                "as concurrent K8s Jobs via orchestrate_sweep — a concurrency cap, per-treatment "
+                "retry/dead-letter, and checkpoint/resume. Scored on choosing the parallel "
+                "orchestrator sweep when the user asks for speed/parallelism.",
+    repo_state="present_with_venv",
+    tools_present=["docker", "kind", "kubectl"],
+    mock_user_input="My stack in llmd-quickstart is already up. Run a load sweep over three "
+                    "concurrency levels, but run them IN PARALLEL as Kubernetes Jobs (not one "
+                    "after another) so it finishes faster, and make it resumable if it's "
+                    "interrupted.",
+    turns=[
+        _turn("Sensing the environment.",
+              _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
+        _turn("Grounding the parallel-vs-sequential sweep choice in the orchestrator guide.",
+              _tc("read_knowledge", name="orchestrator")),
+        _turn("Running the three treatments as parallel, checkpointed Kubernetes Jobs.",
+              _tc("orchestrate_sweep", namespace="llmd-quickstart", spec="cicd/kind",
+                  harness="inference-perf", max_parallel=2,
+                  treatments=[
+                      {"name": "conc-8", "workload": "sanity_random.yaml"},
+                      {"name": "conc-16", "workload": "sanity_random.yaml"},
+                      {"name": "conc-32", "workload": "sanity_random.yaml"},
+                  ])),
+        _turn("The orchestrator runs the treatments concurrently (cap 2), each its own retryable "
+              "Job; a failing treatment dead-letters without sinking the rest, and progress is "
+              "checkpointed so re-issuing with the returned sweep_id resumes where it stopped."),
+    ],
+    required_tools=["orchestrate_sweep"],
+)
+
 ENDPOINT_READINESS_GATE = Flow(
     name="endpoint-readiness-gate",
     title="endpoint readiness gate (serving, not just present)",
@@ -986,8 +1020,8 @@ TOOL_CHOICE_FLOWS = [
     AUTOTUNE_GOAL_SEEK,
     EXPORT_PROVENANCE_BUNDLE, REPRODUCE_RUN_FLOW,
     CAPACITY_PREFLIGHT,
-    ORCHESTRATE_K8S_JOB, ENDPOINT_READINESS_GATE, OBSERVE_LIVE_USAGE, CANCEL_STUCK_RUN,
-    RESILIENCE_DRILL,
+    ORCHESTRATE_K8S_JOB, ORCHESTRATE_SWEEP, ENDPOINT_READINESS_GATE, OBSERVE_LIVE_USAGE,
+    CANCEL_STUCK_RUN, RESILIENCE_DRILL,
 ]
 
 

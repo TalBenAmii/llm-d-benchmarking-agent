@@ -1229,7 +1229,7 @@ const RUN_PHASES = [
 // Tool name -> phase index for the progress rail. Tools NOT in this map deliberately don't move
 // the rail (phaseForTool returns -1 → advancePhase no-ops): the meta / UX / alongside-any-phase
 // tools — observe_run_metrics, run_command, cancel_run, autotune_search, export_run_bundle,
-// reproduce_run, run_resilience_drill, suggest_next_steps (and run_shell when UNRESTRICTED_TOOLS).
+// reproduce_run, run_resilience_drill (and run_shell when UNRESTRICTED_TOOLS).
 const TOOL_PHASE = {
   probe_environment: 0, list_catalog: 0, inspect_workload_profile: 0, estimate_run_duration: 0,
   advise_accelerators: 0, check_capacity: 0, discover_stack: 0,
@@ -1237,7 +1237,7 @@ const TOOL_PHASE = {
   propose_session_plan: 1,
   ensure_repos: 2, run_setup: 2, provision_hf_secret: 2,
   write_and_validate_config: 3, convert_guide_to_scenario: 3, generate_doe_experiment: 3,
-  orchestrate_benchmark_run: 5,
+  orchestrate_benchmark_run: 5, orchestrate_sweep: 5,
   locate_and_parse_report: 6, analyze_results: 6, compare_reports: 6, compare_harness_runs: 6,
   aggregate_runs: 6, result_history: 6,
 };
