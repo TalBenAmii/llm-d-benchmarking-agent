@@ -323,3 +323,20 @@ async def test_aclose_disconnects_spare(monkeypatch):
     await asyncio.sleep(0.01)
     assert spare.disconnected is True
     assert p._prewarm_task is None
+
+
+async def test_aclose_awaits_disconnect_before_returning(monkeypatch):
+    # BUG-044: graceful_shutdown does `await provider.aclose()` and then the event loop tears
+    # down — it does NOT pump the loop afterwards. If aclose merely fire-and-forgets the
+    # disconnect (a bare create_task), that cleanup task never runs and the prewarmed spare CLI
+    # subprocess is LEAKED/orphaned on every SIGTERM. So aclose must have actually disconnected
+    # the spare by the time it RETURNS — with NO trailing `await asyncio.sleep` to pump the loop.
+    connects: list = []
+    p = _provider_with_fake_connect(monkeypatch, connects=connects)
+    p.start_prewarm("sys", _tools())
+    await asyncio.sleep(0)                    # let the background connect task finish
+    spare = connects[0]
+    await p.aclose()
+    # No sleep here on purpose: this models the shutdown path, which awaits aclose then stops.
+    assert spare.disconnected is True, "aclose must await the spare's disconnect, not defer it"
+    assert p._prewarm_task is None
