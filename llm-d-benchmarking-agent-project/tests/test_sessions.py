@@ -70,6 +70,35 @@ def test_list_newest_first_and_skips_empty(manager):
     assert listed[0]["message_count"] == 2
 
 
+def test_list_survives_corrupt_non_numeric_updated_at(manager):
+    """BUG-020/021/022/040 class, on the still-unguarded ``SessionManager.list`` sort key.
+
+    A session's ``updated_at`` is read straight off disk (``data.get('updated_at')``) with NO
+    per-field type check, and ``list()`` sorts on ``s.get('updated_at') or 0``. The ``or 0`` only
+    rescues a FALSY value (None/0); a TRUTHY non-number — a corrupt / hand-edited / forward-
+    incompatible state.json carrying a STRING timestamp (e.g. ``"2026-06-21T10:00:00"``) — sails
+    through and makes ``sorted(...)`` compare ``str`` against the ``float`` of a healthy record:
+    ``TypeError: '<' not supported between instances of 'float' and 'str'``. That raise is on the
+    NON-best-effort sort (the per-record ``try/except`` only guards JSON parse), so it crashes the
+    WHOLE ``GET /api/sessions`` 500 — every saved chat vanishes from the sidebar, not just the
+    corrupt one. After the fix the corrupt value coerces to 0.0 (sorted oldest) and the rest list."""
+    good = _seed(manager, "healthy chat")  # numeric updated_at via persist()
+    corrupt = manager.create()
+    corrupt.messages.append({"role": "user", "content": "corrupt chat"})
+    corrupt.persist()
+    # Forge a non-numeric updated_at directly on disk, exactly as a hand-edit / bad writer would.
+    cpath = manager._root / corrupt.id / "state.json"
+    data = json.loads(cpath.read_text())
+    data["updated_at"] = "2026-06-21T10:00:00"  # a TRUTHY string — bypasses `or 0`
+    cpath.write_text(json.dumps(data))
+
+    listed = manager.list()  # must not raise
+    ids = {x["id"] for x in listed}
+    assert good.id in ids and corrupt.id in ids  # BOTH chats survive
+    # The corrupt record sorts as oldest (coerced to 0.0), so the healthy one leads.
+    assert listed[0]["id"] == good.id
+
+
 def test_delete(manager):
     s = _seed(manager)
     assert manager.delete(s.id) is True

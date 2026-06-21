@@ -63,6 +63,18 @@ def _effective_namespace(data: dict[str, Any]) -> str | None:
     return data.get("namespace") or (data.get("approved_plan") or {}).get("namespace")
 
 
+def _as_num(v: Any) -> float:
+    """Crash-proof sort key (BUG-020/021/022/040 class). A session's ``updated_at`` is read straight
+    off disk with NO per-field type-check (``list()``), so a corrupt / hand-edited / forward-
+    incompatible state.json carrying a TRUTHY non-number (e.g. a string timestamp) would make
+    ``sorted(...)`` compare ``str`` against a healthy record's ``float`` and raise ``TypeError`` —
+    crashing the WHOLE sidebar list (``GET /api/sessions`` 500) for every chat, not just the corrupt
+    one. The old ``or 0`` only rescued FALSY values (None/0), not a truthy non-number. Coercing keeps
+    the record visible (sorted as oldest) instead of crashing. ``bool`` is excluded — an ``int``
+    subclass, never a valid timestamp."""
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+
+
 # Keep the executed-command trail bounded so a long session's snapshot stays small.
 _COMMANDS_MAX = 500
 # Renderable tool results are richer than command rows (a full report summary + chart paths),
@@ -368,7 +380,7 @@ class SessionManager:
                     "message_count": len(messages),
                 }
             )
-        out.sort(key=lambda s: s.get("updated_at") or 0, reverse=True)
+        out.sort(key=lambda s: _as_num(s.get("updated_at")), reverse=True)
         return out
 
     def delete(self, sid: str | None) -> bool:
