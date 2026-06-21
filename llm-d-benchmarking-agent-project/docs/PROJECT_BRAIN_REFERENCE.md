@@ -65,13 +65,6 @@ uvicorn app.main:app --reload
 pytest tests/
 ```
 
-## graphify (dev code-nav) — full detail
-This project has a knowledge graph at `graphify-out/` with god nodes, community structure, and cross-file relationships — this is the full reference. (No Claude Code hook nudges graphify; prefer `graphify query` over raw grep by habit.)
-- For codebase questions, first run `graphify query "<question>"` when `graphify-out/graph.json` exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than `GRAPH_REPORT.md` or raw grep output.
-- If `graphify-out/wiki/index.md` exists, use it for broad navigation instead of raw source browsing.
-- Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost). (A custom subdir-aware post-commit hook already does this in the background on project commits.)
-
 ## Config / model-drift audit log
 Per the large-codebase best-practices guide ("review config after major model releases; retire
 workarounds built for old model limitations"):
@@ -95,5 +88,11 @@ workarounds built for old model limitations"):
   auto-index, `trace_tokens.py`). Dropped the `hooks` + `env` blocks from `.claude/settings.json` (now
   permissions-only). Lint moved off the per-edit `ruff_autofix` hook onto a local
   `.git/hooks/{pre-commit,pre-merge-commit}` ruff gate scoped to `main` (gates committed/merged code only;
-  not version-controlled — recreate on fresh clone). **Net: zero Claude Code hooks; only the graphify
-  post-commit git hook remains.** The `2026-06-13` entry above is historical — those hooks no longer exist.
+  not version-controlled — recreate on fresh clone). **Net: zero Claude Code hooks.** The `2026-06-13`
+  entry above is historical — those hooks no longer exist.
+- **2026-06-21 — graphify dev code-nav removed (per user request).** Deleted the graphify integration
+  entirely: the `graphify-out/` code-graph dir, the custom subdir-aware `.git/hooks/post-commit` rebuild
+  hook, the `.gitignore` entries, the CLAUDE.md / this-file usage sections, and the global graphify skill +
+  `graphifyy` binary. **Net now: zero git hooks beyond the `main`-scoped pre-commit/pre-merge lint+test gate.**
+  (The unmerged `worktree-graphify-runtime-tool` prototype branch + its OPEN_ITEMS / PROPOSAL_GAP_REPORT
+  entries were left intact as a record.)
