@@ -888,6 +888,10 @@ async def ws(websocket: WebSocket) -> None:
         # without ever proposing a gate is bounded by MAX_STEPS.
         approved = {"value": False}
         gate_surfaced = {"value": False}
+        # Set when this turn ends because the user CANCELLED it (clicked Stop). The steer backstop
+        # in `finally` must NOT fire for a cancelled turn — otherwise a steer the user queued just
+        # before stopping would resurrect the very run they asked to stop (a fresh follow-up turn).
+        was_cancelled = {"value": False}
 
         async def _request_approval(kind: str, payload: dict) -> bool:
             # This turn has now reached a user-facing approval gate. Flip BEFORE awaiting so the
@@ -921,7 +925,9 @@ async def ws(websocket: WebSocket) -> None:
             # shutdown). The concurrency slot is already released as this unwinds the runner's
             # `async with run_semaphore`. Announce it (best-effort — a socket may be attached)
             # and persist so a resumed chat shows the run ended, then re-raise so the task is
-            # marked cancelled and the registry's awaiter returns.
+            # marked cancelled and the registry's awaiter returns. Flag the cancel so the steer
+            # backstop in `finally` does NOT spawn a follow-up turn (the user asked to STOP).
+            was_cancelled["value"] = True
             with contextlib.suppress(Exception):
                 session.persist()
                 await channel.emit("cancelled", {"message": "run cancelled"})
@@ -946,8 +952,19 @@ async def ws(websocket: WebSocket) -> None:
             # attached to hear the reply — start a fresh follow-up turn now so the agent still
             # answers promptly. asyncio.create_task schedules it on the next tick, so this turn's
             # `busy=False`/registry-pop above settle first; the new turn re-arms both.
+            #
+            # EXCEPT when this turn was CANCELLED (the user clicked Stop): the backstop would then
+            # resurrect the very run the user just stopped — a steer queued mid-turn (the cancel
+            # raises CancelledError before the loop drained it) would start a fresh follow-up turn,
+            # so the agent keeps working right after "Stop". Drop the leftover steer instead; the
+            # cancel must win. (A still-undecided gate that the user steered-to-decline is handled
+            # on the live socket, not here.)
             leftover = session.ctx.steer_messages
-            if leftover and loop is not None and channel.ws is not None:
+            if was_cancelled["value"]:
+                session.ctx.steer_messages = []
+                if channel.ws is None and not channel.pending:
+                    app.state.channels.pop(session.id, None)
+            elif leftover and loop is not None and channel.ws is not None:
                 followup = "\n\n".join(leftover)
                 session.ctx.steer_messages = []
                 with log_bind(corr_id=new_corr_id(), session_id=session.id):
