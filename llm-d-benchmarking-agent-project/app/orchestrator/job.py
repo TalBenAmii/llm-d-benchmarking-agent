@@ -379,7 +379,14 @@ def classify_job_status(job_obj: dict[str, Any]) -> JobStatus:
     DeadlineExceeded for a timeout); otherwise active vs pending by the active count."""
     meta = job_obj.get("metadata", {}) or {}
     status = job_obj.get("status", {}) or {}
-    conditions = status.get("conditions", []) or []
+    raw_conditions = status.get("conditions")
+    # `kubectl get job -o json` emits a list of condition dicts, but a forged/corrupt object can
+    # carry a scalar `conditions` or non-dict elements; the `(... or [])` fallback only catches a
+    # FALSY value, so a truthy non-list (or a list with a str/None element) would `c.get(...)` →
+    # AttributeError and abort the whole watch()/reconstruct() loop. Same crash class as BUG-029
+    # (classify_failure) + BUG-023 (the counts): coerce a non-list to [] and skip non-dict elements
+    # so a real terminal signal still classifies and malformed input degrades, never raises.
+    conditions = [c for c in raw_conditions if isinstance(c, dict)] if isinstance(raw_conditions, list) else []
     active = _as_int(status.get("active", 0))
     succeeded = _as_int(status.get("succeeded", 0))
     failed = _as_int(status.get("failed", 0))
