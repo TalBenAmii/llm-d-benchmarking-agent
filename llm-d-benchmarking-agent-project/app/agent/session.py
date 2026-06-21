@@ -172,16 +172,34 @@ class Session:
 
     def record_in_flight_approval(self, entry: dict[str, Any]) -> None:
         """Track a still-undecided approval gate (by ``request_id``). Idempotent — a re-emit of
-        the same gate does not duplicate the entry."""
+        the same gate does not duplicate the entry.
+
+        ``in_flight_approvals`` is loaded straight off disk (``SessionManager.load`` ->
+        ``data.get('in_flight_approvals', [])``) with NO per-element type check, so a corrupt /
+        hand-edited / forward-incompatible state.json may leave a NON-DICT element in the list. The
+        idempotency scan must skip those rather than do ``a.get(...)`` on a ``str``/scalar and raise
+        AttributeError — this runs on the LIVE turn path (``request_approval`` surfaces a NEW gate
+        for a resumed session), so a raise here crashes the turn. Sibling of BUG-044, which guarded
+        only ``Channel.restore_pending``; the corrupt element survives in this list and bites here."""
         rid = entry.get("request_id")
-        if any(a.get("request_id") == rid for a in self.in_flight_approvals):
+        if any(isinstance(a, dict) and a.get("request_id") == rid for a in self.in_flight_approvals):
             return
         self.in_flight_approvals.append(entry)
 
     def clear_in_flight_approval(self, request_id: str | None) -> None:
-        """Drop a pending gate once it is decided or cancelled. No-op if already absent."""
+        """Drop a pending gate once it is decided or cancelled. No-op if already absent.
+
+        Reached from the WS receive loop on the RECONNECT path: ``Channel.resolve`` (the user
+        clicks Approve/Reject, or types a message that declines a still-open gate) calls this on a
+        ``request_id`` restored from disk by BUG-044's ``restore_pending``. ``in_flight_approvals``
+        was loaded off disk with no per-element type check, so a corrupt non-dict element (a torn
+        string, a scalar) must be DROPPED here rather than make ``a.get(...)`` raise AttributeError
+        — that raise is unwrapped at the ``channel.resolve`` call sites and would tear the whole WS
+        handler down, re-bricking the exact chat BUG-044 set out to keep usable (just one click
+        later). Non-dict garbage is removed alongside the matched gate; a real gate is preserved."""
         self.in_flight_approvals = [
-            a for a in self.in_flight_approvals if a.get("request_id") != request_id
+            a for a in self.in_flight_approvals
+            if isinstance(a, dict) and a.get("request_id") != request_id
         ]
 
     def persist(self) -> None:
