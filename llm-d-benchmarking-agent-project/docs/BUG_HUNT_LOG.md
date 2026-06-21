@@ -1729,6 +1729,46 @@ TTL / start-vs-adopt-race / re-arm all correct. NO bug.
 
 ---
 
+## Round 35 (2026-06-21) — subagent wave 22 (CORS wildcard+credentials)
+One fix. BUG-079 closes a security hole in CORS setup: an operator who sets `CORS_ALLOW_ORIGINS=*` — the
+single most natural way to "open CORS" — silently turns the API into "allow all origins, credentialed."
+Starlette's `CORSMiddleware` refuses to emit a literal `Access-Control-Allow-Origin: *` while credentials
+are enabled; with allow-all-origins AND `allow_credentials=True` it instead echoes the request's OWN
+`Origin` back plus `Access-Control-Allow-Credentials: true` for every origin, so any website on the
+internet can make authenticated cross-origin reads of the API (session list, transcripts, etc.). Fix drops
+credentials whenever the wildcard is present, yielding a safe literal `*` that browsers won't pair with
+credentials, while an explicit origin allowlist keeps credentialed CORS (the intended authenticated-UI use).
+
+**Verified clean (no bug) — round 35:** `evaluate_slo` (`app/validation/analysis.py:181`) SLO-verdict math
+is correct for every metric — latency lower-is-better `<=` in ms (target not double-converted), throughput
+floor higher-is-better `>=` in tokens/s (tokens/min ÷ 60), inclusive boundaries, p99 default percentile,
+missing-metric excluded (not false-pass), NaN fail-safe, and goodput percentile-interpolation bounded. NO bug.
+
+## BUG-079 — `CORS_ALLOW_ORIGINS=*` silently becomes "allow all origins, credentialed" (any site reads authenticated API)
+- **Status:** FIXED
+- **Severity:** high (security — wildcard CORS paired with credentials lets any origin on the internet make
+  authenticated cross-origin reads of the API: session list, transcripts, etc.)
+- **Where:** `app/main.py` `install_cors` (~line 208), reachable via `Settings.cors_origins_list`
+  (`config.py:112`) parsing `CORS_ALLOW_ORIGINS=*` into `["*"]`, wired at module load (`main.py:232`).
+- **Trigger:** `install_cors` always passed `allow_credentials=True`. Starlette's `CORSMiddleware` refuses
+  to emit a literal `Access-Control-Allow-Origin: *` when credentials are enabled: with `allow_all_origins`
+  AND `allow_credentials` it calls `allow_explicit_origin`, echoing the REQUEST's own `Origin` back plus
+  `Access-Control-Allow-Credentials: true` for EVERY origin. So an operator setting `CORS_ALLOW_ORIGINS=*`
+  (the single most natural way to "open CORS") silently turns the API into "allow all origins, credentialed"
+  — any website on the internet can make authenticated cross-origin reads (session list, transcripts, etc.).
+  Reproduced: a GET with `Origin: https://evil.example.com` (never configured) returns
+  `Access-Control-Allow-Origin: https://evil.example.com` + `Access-Control-Allow-Credentials: true`.
+- **Root cause:** `install_cors` unconditionally set `allow_credentials=True`, even when origins was `["*"]`.
+  Combined with Starlette's wildcard+credentials behavior, the wildcard never produced a safe literal `*`;
+  it produced a per-request reflected origin with credentials — effectively allow-all credentialed CORS.
+- **Fix:** in `install_cors` set `allow_credentials = not ("*" in origins)`; the wildcard drops credentials
+  → a safe literal `Access-Control-Allow-Origin: *` that browsers will not pair with credentials, while an
+  explicit origin allowlist keeps credentialed CORS (the intended authenticated-UI use).
+- **Regression test:** `tests/test_api_trust.py::test_cors_wildcard_origin_never_reflects_arbitrary_origin_with_credentials`
+  (plus `test_cors_explicit_origin_list_keeps_credentials`, confirming the allowlist path is unchanged).
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
