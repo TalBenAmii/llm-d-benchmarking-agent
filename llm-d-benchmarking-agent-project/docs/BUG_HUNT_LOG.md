@@ -56,6 +56,7 @@ bugs low/medium; none were crashes of the core flow.
 | 031 | app/tools/multiharness.py | `compare_harness_runs` aborted the whole comparison on one corrupt report (sibling `compare_reports` skips it) |
 | 032 | app/main.py + app/agent/channel.py | reconnect mid-turn double-rendered events (buffer replay overlapped the live emit during attach) |
 | 033 | app/main.py | env pre-probe `create_task` untracked → GC-able mid-probe (lost reference) |
+| 034 | deploy/ RBAC + app/packaging/assets.py | Role lacked `configmaps` → every in-cluster checkpointed DOE sweep fails Forbidden |
 
 **Security observation (NOT auto-fixed — needs maintainer decision):** the *documented* relaxed-flag
 policy (`security/allowlist.yaml` lines 42-48) accepts UNKNOWN flags on an allowlisted command,
@@ -487,6 +488,36 @@ findings:
 - **Fix:** store it in `app.state.background_tasks` + an `add_done_callback(...discard)` (the same pattern the
   disconnect/backstop paths already use). (Finding-3, concurrent `env_snapshot`/`commands` writes by the
   probe vs the first turn, is the accepted best-effort behavior — not changed.)
+
+---
+
+## Round 12 (2026-06-21) — final infra/deploy/CSS sweep: 1 fixed (BUG-034, high)
+A sweep of the non-Python surfaces (Helm + Kustomize manifests, scripts, styles.css/index.html).
+Everything else checked out (Helm vs Kustomize ports/probes/selectors agree, scripts are `set -euo
+pipefail` + properly quoted, every `getElementById` has a matching element, all dialogs reachable).
+One high-severity deploy-breaking defect:
+
+## BUG-034 — deployed RBAC Role lacks `configmaps` → every in-cluster checkpointed sweep fails Forbidden
+- **Status:** FIXED
+- **Severity:** high (the Phase 22 sweep checkpoint/resume feature — ON BY DEFAULT, `orchestrate_sweep(
+  checkpoint=True)` — is entirely non-functional in any real in-cluster deployment)
+- **Where:** `app/packaging/assets.py::ORCHESTRATOR_RBAC_RULES` (the contract) + `deploy/helm/.../templates/
+  rbac.yaml` + `deploy/kustomize/base/rbac.yaml` (both derived from it) + the test that locked it in.
+- **Trigger:** deploy the agent in-cluster, run a checkpointed DOE sweep → `CheckpointStore.load()` does
+  `kubectl get configmaps -l …` and `.write()` does `kubectl apply` of a ConfigMap (via the SAME
+  RealKubeClient/allowlisted kubectl the Jobs use), under the agent's ServiceAccount → `Error from server
+  (Forbidden): configmaps is forbidden`.
+- **Root cause:** the RBAC contract docstring says it's "derived from the kubectl verbs RealKubeClient runs"
+  — but it enumerated only the Job/Pod ops and was never updated when Phase 22 added the ConfigMap
+  read/write. `tests/test_packaging.py` even ASSERTED `configmaps` absent (grouped with secrets/roles), so
+  the stale Role was locked in. Worked only in tests (in-memory fakes never hit RBAC). A code-vs-manifest
+  contradiction, not a deliberate exclusion (configmaps here are the agent's OWN managed-by checkpoints).
+- **Fix:** add a least-privilege `configmaps: [get, list, watch, create, patch]` rule (NO delete — the
+  agent never prunes checkpoints) to the contract + both manifests; update the test to require that rule and
+  keep forbidding secrets/roles/rolebindings; refresh the "Jobs only" comments. All 17 packaging tests pass
+  (incl. the helm/kustomize-match-the-contract checks).
+- **Regression test:** updated `tests/test_packaging.py` RBAC-contract test (asserts the configmaps rule +
+  no-delete + still-no-secrets/roles).
 
 ---
 

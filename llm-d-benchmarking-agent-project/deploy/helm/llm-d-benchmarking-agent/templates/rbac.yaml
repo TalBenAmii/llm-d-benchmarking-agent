@@ -1,8 +1,9 @@
 {{- if .Values.rbac.create -}}
 # Least-privilege, NAMESPACED RBAC for the agent's orchestrator. These verbs are EXACTLY what
 # app/orchestrator/kube.py (RealKubeClient) runs via kubectl — apply/get/list/watch/patch/
-# delete Jobs, get/list/watch Pods, and read Pod logs — and nothing more. No ClusterRole, no
-# write access to anything but benchmark Jobs in this namespace.
+# delete Jobs, get/list/watch Pods, read Pod logs, and get/list/watch + create/patch the per-sweep
+# checkpoint ConfigMap (Phase 22 DOE sweep resume — the agent's OWN managed-by ConfigMaps, never
+# Secrets) — and nothing more. No ClusterRole, no access to Secrets/Roles in this namespace.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -19,6 +20,11 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
+  # Sweep checkpoint/resume: CheckpointStore reads (kubectl get configmaps -l) and writes
+  # (kubectl apply = create-or-update) one managed-by ConfigMap per sweep_id. No delete.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
