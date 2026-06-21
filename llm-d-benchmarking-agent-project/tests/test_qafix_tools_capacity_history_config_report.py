@@ -151,6 +151,38 @@ def test_classify_sizing_exception_is_inconclusive_not_feasible():
     assert v2.feasible is True and v2.sizing_evaluated is True
 
 
+def test_classify_gpu_count_shortfall_is_infeasible_not_feasible():
+    # BUG-030 class: under the DEFAULT enforce=False path the upstream planner tags its
+    # "<N> GPUs are required per replica" GPU-COUNT shortfall as a WARNING (not ERROR / not
+    # DEPLOYMENT WILL FAIL), then continues sizing as if the GPUs existed and emits the FIT
+    # KV-cache markers. So the spec asks TP=4 (4 GPUs/replica) on a 2-GPU pod — a hard
+    # won't-deploy — yet the verdict read feasible:true. It must be infeasible (the same
+    # condition is ERROR -> infeasible under enforce=True).
+    diags = [
+        "[decode] WARNING: Accelerator requested is 2 but TP x PP x DP = 4 x 1 x 1 "
+        "= 4 GPUs are required per replica",
+        "[decode] 80 GB per GPU, 80 x 0.9 = 72.0 GB available",
+        "[decode] Each replica requires 4 GPUs, total available GPU memory = 288.0 GB",
+        "[decode] Allocatable KV cache memory: 200.00 GB",
+        "[decode] Per-request KV cache (max_model_len=4096): 0.50 GB",
+        "[decode] Max concurrent requests (worst case, each at max_model_len): 400",
+        "prefill is disabled or has 0 replicas -- skipping",
+    ]
+    v = classify_diagnostics(diags)
+    assert v.feasible is False
+    assert v.will_fail is True
+    # The benign "Some GPUs will be idle" warning must NOT trip the shortfall marker.
+    idle = classify_diagnostics(
+        [
+            "[decode] WARNING: Each replica requires 1 GPUs, but 2 requested per pod. "
+            "Some GPUs will be idle.",
+            "[decode] Allocatable KV cache memory: 30.00 GB",
+            "[decode] Per-request KV cache (max_model_len=4096): 0.50 GB",
+        ]
+    )
+    assert idle.feasible is True
+
+
 # ---- #3 : locate_and_parse_report generated_at -------------------------------
 
 def _write_min_report(path: Path, *, end: str | None) -> None:
