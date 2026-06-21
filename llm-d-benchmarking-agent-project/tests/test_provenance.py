@@ -211,6 +211,47 @@ def test_build_bundle_id_is_content_addressed(br_example):
     assert id1 != id2 and id1 != id3  # SHA- and path-sensitive
 
 
+def test_build_bundle_id_no_collision_for_different_runs_at_same_path(tmp_path):
+    """Two GENUINELY DIFFERENT validated runs (different report bytes + summary, hence different
+    report_digest) with NO run_uid, written to the SAME report_path and same repo SHAs, must get
+    DISTINCT bundle ids — otherwise the BundleStore silently OVERWRITES the first bundle with the
+    second, collapsing two different runs onto one provenance node.
+
+    Reproduces the collision: run_uid is optional (report.run.uid may be absent), and the old id
+    basis was only {run_uid, report_path, repo_shas} — so with run_uid=None and a reused path the
+    two ids were identical despite differing report content.
+    """
+    repos = {
+        "llm-d": {"sha": "abc1234", "dirty": False},
+        "llm-d-benchmark": {"sha": "def5678", "dirty": False},
+    }
+    common = dict(
+        report_valid=True, report_path="/runs/latest/benchmark_report_v0.2.yaml",
+        repos=repos, resolved_config={}, agent_version="1", knowledge_version="k",
+    )
+    # No "run_uid" key in either summary -> run_uid is None for both.
+    b1 = build_bundle(
+        report_bytes=b"RUN-ONE-bytes",
+        report_summary={"harness": "x", "throughput": {"output_token_rate": {"mean": 100}}},
+        **common,
+    )
+    b2 = build_bundle(
+        report_bytes=b"RUN-TWO-bytes",
+        report_summary={"harness": "x", "throughput": {"output_token_rate": {"mean": 999}}},
+        **common,
+    )
+    # Different content -> different digest -> must be different ids.
+    assert b1.report_digest != b2.report_digest
+    assert b1.bundle_id != b2.bundle_id, "different runs collided onto one provenance bundle id"
+
+    # And the store must keep BOTH bundles, not overwrite the first.
+    store = BundleStore(tmp_path / "ws")
+    store.write(b1)
+    store.write(b2)
+    ids = {b["bundle_id"] for b in store.list()}
+    assert ids == {b1.bundle_id, b2.bundle_id}
+
+
 # ---- BundleStore -----------------------------------------------------------
 
 
