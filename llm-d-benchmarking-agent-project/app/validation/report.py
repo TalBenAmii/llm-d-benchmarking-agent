@@ -453,22 +453,58 @@ def find_reports(roots: list[str | Path], *, newest_only: bool = False) -> list[
     return [uniq[-1]] if newest_only else uniq
 
 
-# Comparable metrics: (dotted path into a summary, human name, direction).
-# "lower"/"higher" = which way is better; used to pick the winning run per metric.
-_COMPARE_METRICS: tuple[tuple[str, str, str], ...] = (
-    ("latency.ttft", "time to first token", "lower"),
-    ("latency.tpot", "time per output token", "lower"),
-    ("latency.itl", "inter-token latency", "lower"),
-    ("latency.request_latency", "end-to-end request latency", "lower"),
-    ("throughput.output_token_rate", "output token throughput", "higher"),
-    ("throughput.total_token_rate", "total token throughput", "higher"),
-    ("throughput.request_rate", "request throughput", "higher"),
+# Comparable metrics: (dotted path into a summary, human name, direction, canonical unit).
+# "lower"/"higher" = which way is better; used to pick the winning run per metric. The
+# canonical unit is what every run's value is normalized to BEFORE the delta/winner math,
+# so a run that reported a metric in `s` and another that reported it in `ms` (both are
+# schema-valid Units) are compared on the same scale — otherwise 0.5s would read as
+# "smaller" (= the winner) than 200ms purely because 0.5 < 200 numerically.
+_COMPARE_METRICS: tuple[tuple[str, str, str, str], ...] = (
+    ("latency.ttft", "time to first token", "lower", "ms"),
+    ("latency.tpot", "time per output token", "lower", "ms"),
+    ("latency.itl", "inter-token latency", "lower", "ms"),
+    ("latency.request_latency", "end-to-end request latency", "lower", "ms"),
+    ("throughput.output_token_rate", "output token throughput", "higher", "tokens/s"),
+    ("throughput.total_token_rate", "total token throughput", "higher", "tokens/s"),
+    ("throughput.request_rate", "request throughput", "higher", "queries/s"),
 )
 _COMPARE_SCALARS: tuple[tuple[str, str, str], ...] = (
     ("success_rate_pct", "success rate", "higher"),
     ("requests_total", "total requests", "none"),
 )
 _STAT_PREFERENCE = ("mean", "p50", "p90", "p95", "p99")
+
+# Per canonical unit, the multipliers that bring a reported (schema-valid) unit onto it.
+# A reported unit absent from its canonical family's table is left UNCONVERTED but flagged,
+# so we never silently apply a wrong factor; an unknown/missing unit is treated as already
+# canonical (the BR Units enum is closed, so this only bites a non-conforming report).
+_CANONICAL_CONVERSIONS: dict[str, dict[str, float]] = {
+    "ms": {
+        "ms": 1.0, "s": 1000.0, "us": 0.001,
+        "ms/token": 1.0, "s/token": 1000.0,
+    },
+    "tokens/s": {
+        "tokens/s": 1.0, "tokens/sec": 1.0, "tok/s": 1.0, "tps": 1.0,
+        "tokens/min": 1.0 / 60.0,
+    },
+    "queries/s": {
+        "queries/s": 1.0, "queries/sec": 1.0, "req/s": 1.0, "requests/s": 1.0, "qps": 1.0,
+    },
+}
+
+
+def _to_canonical(value: float, units: Any, canonical: str) -> tuple[float, bool]:
+    """Convert ``value`` (reported in ``units``) onto ``canonical``.
+
+    Returns ``(converted_value, converted)``. ``converted`` is False when the reported
+    unit is missing or not in the canonical family (the value is passed through unchanged,
+    so a non-conforming report degrades to its raw number rather than a wrong scale)."""
+    if units is None:
+        return float(value), False
+    mult = _CANONICAL_CONVERSIONS.get(canonical, {}).get(str(units).strip().lower())
+    if mult is None:
+        return float(value), False
+    return float(value) * mult, True
 
 
 def _dig(summary: dict[str, Any], dotted: str) -> Any:
@@ -531,18 +567,28 @@ def compare_summaries(entries: list[dict[str, Any]], *, baseline_index: int = 0)
     summaries = [e.get("summary") or {} for e in entries]
     rows: list[dict[str, Any]] = []
 
-    for dotted, name, direction in _COMPARE_METRICS:
+    for dotted, name, direction, canonical in _COMPARE_METRICS:
         values: list[float | None] = []
         stat_used: str | None = None
-        units: Any = None
+        any_converted = False
         for s in summaries:
             v, stat, u = _stat_value(_dig(s, dotted))
-            values.append(v)
-            if v is not None:
-                stat_used = stat_used or stat
-                units = units if units is not None else u
+            if v is None:
+                values.append(None)
+                continue
+            # Normalize every run onto the metric's canonical unit BEFORE comparing, so a
+            # run reporting `s` and one reporting `ms` (both schema-valid) don't crown the
+            # wrong winner / produce a nonsense delta by comparing 0.5 against 200.
+            conv, converted = _to_canonical(v, u, canonical)
+            any_converted = any_converted or converted
+            values.append(conv)
+            stat_used = stat_used or stat
         if sum(v is not None for v in values) < 2:
             continue  # nothing to compare for this metric
+        # Report the canonical unit when we actually normalized at least one value; if no
+        # run carried a recognized unit, fall back to None (units unknown) rather than
+        # asserting a canonical unit we couldn't verify.
+        units = canonical if any_converted else None
         rows.append(_build_metric_row(dotted, name, direction, stat_used, units, labels, values, baseline_index))
 
     for dotted, name, direction in _COMPARE_SCALARS:
@@ -666,7 +712,7 @@ def compare_across_harnesses(entries: list[dict[str, Any]]) -> dict[str, Any]:
     # For each shared metric, the per-harness representative value (no winner picked).
     cross_metrics: list[dict[str, Any]] = []
     for m in shared:
-        name = next((nm for k, nm, _ in (_COMPARE_METRICS) if k == m), m)
+        name = next((nm for k, nm, *_ in _COMPARE_METRICS if k == m), m)
         per_harness = []
         for h in sorted(measured_by[m]):
             # representative = first run of that harness that carries the metric.

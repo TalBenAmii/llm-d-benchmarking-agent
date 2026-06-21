@@ -42,13 +42,36 @@ def test_compare_summaries_deltas_and_winners():
     ttft = by_key["latency.ttft"]
     assert ttft["direction"] == "lower"
     assert ttft["best"]["label"] == "c1"          # lower latency wins
+    # values are normalized to the canonical unit (ms): 0.10s -> 100ms, 0.40s -> 400ms.
+    assert ttft["units"] == "ms"
     c16 = next(p for p in ttft["per_run"] if p["label"] == "c16")
-    assert c16["delta_abs"] == pytest.approx(0.30)
+    assert c16["value"] == pytest.approx(400.0)
+    assert c16["delta_abs"] == pytest.approx(300.0)   # 400ms - 100ms (canonicalized)
     assert c16["delta_pct"] == pytest.approx(300.0)
 
     thr = by_key["throughput.output_token_rate"]
     assert thr["direction"] == "higher"
     assert thr["best"]["label"] == "c16"          # higher throughput wins
+
+
+def test_compare_summaries_normalizes_mixed_latency_units_for_winner():
+    # Two schema-valid reports of the SAME metric in DIFFERENT units (the BR Units enum
+    # allows both `s` and `ms`): A reports TTFT as 0.5 s (= 500 ms), B as 200 ms. B is
+    # genuinely faster (200ms < 500ms). Without unit normalization the comparison crowned
+    # A as the winner (0.5 < 200 numerically) and reported a ~39900% delta — a wrong winner
+    # AND a nonsense delta. After the fix both are normalized to ms before comparing.
+    A = {"label": "A", "summary": {"model": "m", "run_uid": "a",
+         "latency": {"ttft": {"units": "s", "mean": 0.5}}, "throughput": {}}}
+    B = {"label": "B", "summary": {"model": "m", "run_uid": "b",
+         "latency": {"ttft": {"units": "ms", "mean": 200.0}}, "throughput": {}}}
+    out = compare_summaries([A, B], baseline_index=0)
+    ttft = next(m for m in out["metrics"] if m["key"] == "latency.ttft")
+    assert ttft["best"]["label"] == "B"          # 200ms beats 500ms (NOT A by raw 0.5 < 200)
+    assert ttft["units"] == "ms"                  # canonicalized unit reported
+    by_label = {p["label"]: p for p in ttft["per_run"]}
+    assert by_label["A"]["value"] == pytest.approx(500.0)   # 0.5s -> 500ms
+    assert by_label["B"]["value"] == pytest.approx(200.0)
+    assert by_label["B"]["delta_pct"] == pytest.approx(-60.0)   # not +39900%
 
 
 def test_compare_summaries_requires_two():
