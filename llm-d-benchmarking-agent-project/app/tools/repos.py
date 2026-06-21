@@ -21,41 +21,53 @@ async def ensure_repos(ctx: ToolContext, *, repos: list[str] | None = None, ref:
     repos_dir = ctx.settings.resolved_repos_dir
     results: list[dict[str, Any]] = []
 
-    for name in repos:
-        if name not in _KNOWN_REPOS:
-            results.append({"repo": name, "action": "unknown_repo",
-                            "note": f"only {list(_KNOWN_REPOS)} are supported"})
-            continue
-        path = ctx.settings.repo_paths[name]
-        if (path / ".git").exists():
-            results.append({"repo": name, "action": "already_present", "path": str(path)})
-            continue
-        if path.exists() and any(path.iterdir()):
-            results.append({
-                "repo": name, "action": "partial_detected", "path": str(path),
-                "note": "directory exists but is not a git repo; leaving it untouched — "
-                        "please remove/fix it manually if you want a fresh clone",
-            })
-            continue
+    # ALWAYS refresh the catalog before returning — even if a later repo's clone is rejected at
+    # the approval gate (ApprovalRejected), denied (ToolError), or over-quota (QuotaError), which
+    # propagate straight out of ``ctx.run_command`` mid-loop. An EARLIER repo in the same call may
+    # already have been cloned successfully; without this ``finally`` the early exception would skip
+    # the refresh and leave the per-context catalog cache STALE (empty, present=False). Downstream
+    # callers that read ``ctx.catalog()`` WITHOUT refresh — ``plan.validate_plan`` and the
+    # ``catalog_for_allowlist`` check inside every ``run_command``/``run_readonly`` — would then
+    # reject every valid spec/harness/workload/ref for the rest of the turn even though the repo is
+    # on disk and usable. (This is exactly the "after cloning, call ctx.catalog(refresh=True) or
+    # later tools see the stale catalog" hazard, realized by an early-exit path.)
+    try:
+        for name in repos:
+            if name not in _KNOWN_REPOS:
+                results.append({"repo": name, "action": "unknown_repo",
+                                "note": f"only {list(_KNOWN_REPOS)} are supported"})
+                continue
+            path = ctx.settings.repo_paths[name]
+            if (path / ".git").exists():
+                results.append({"repo": name, "action": "already_present", "path": str(path)})
+                continue
+            if path.exists() and any(path.iterdir()):
+                results.append({
+                    "repo": name, "action": "partial_detected", "path": str(path),
+                    "note": "directory exists but is not a git repo; leaving it untouched — "
+                            "please remove/fix it manually if you want a fresh clone",
+                })
+                continue
 
-        url = f"https://github.com/llm-d/{name}"
-        argv = ["git", "clone", url]
-        if ref:
-            argv += ["--branch", ref]
-        repos_dir.mkdir(parents=True, exist_ok=True)
-        res = await ctx.run_command(argv, cwd=repos_dir, timeout=900.0)
-        ok = res.exit_code == 0 and (path / ".git").exists()
-        entry: dict[str, Any] = {
-            "repo": name,
-            "action": "cloned" if ok else "clone_failed",
-            "path": str(path),
-            "exit_code": res.exit_code,
-        }
-        if not ok:
-            entry["log_tail"] = res.output[-600:]
-        results.append(entry)
+            url = f"https://github.com/llm-d/{name}"
+            argv = ["git", "clone", url]
+            if ref:
+                argv += ["--branch", ref]
+            repos_dir.mkdir(parents=True, exist_ok=True)
+            res = await ctx.run_command(argv, cwd=repos_dir, timeout=900.0)
+            ok = res.exit_code == 0 and (path / ".git").exists()
+            entry: dict[str, Any] = {
+                "repo": name,
+                "action": "cloned" if ok else "clone_failed",
+                "path": str(path),
+                "exit_code": res.exit_code,
+            }
+            if not ok:
+                entry["log_tail"] = res.output[-600:]
+            results.append(entry)
+    finally:
+        ctx.catalog(refresh=True)  # the catalog may now be populated
 
-    ctx.catalog(refresh=True)  # the catalog may now be populated
     return {"results": results}
 
 
