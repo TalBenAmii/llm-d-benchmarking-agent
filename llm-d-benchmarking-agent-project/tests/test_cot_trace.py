@@ -65,6 +65,25 @@ def test_trace_appends_jsonl(tmp_path):
     assert "ts" in first  # every record is timestamped
 
 
+def test_trace_bounds_a_nested_body(tmp_path):
+    # The module's documented contract (_BODY_LIMIT) is that "a runaway turn can't grow the
+    # trace without limit". A model can emit a large body nested INSIDE a tool_calls input dict
+    # (e.g. write_config's `content`), not just as a flat string. That nested oversize body must
+    # be bounded too — otherwise one step's record is unbounded (defeating the per-record cap).
+    from app.observability.cot_trace import _BODY_LIMIT
+
+    blob = "y" * (_BODY_LIMIT + 500_000)
+    trace = TurnTrace.for_session(tmp_path)
+    trace.event("step", tool_calls=[{"name": "write_config", "input": {"content": {"blob": blob}}}])
+
+    line = (tmp_path / TRACE_FILENAME).read_text().strip()
+    # The whole JSON record must stay within a small constant of the per-body limit, not balloon
+    # to the full ~700KB of the un-clipped blob.
+    assert len(line) < _BODY_LIMIT + 50_000
+    # And it must remain valid JSON (a truncation marker, never malformed).
+    json.loads(line)
+
+
 # ---- loop integration ----------------------------------------------------------------------
 def _session(tmp_path) -> Session:
     s = get_settings()
