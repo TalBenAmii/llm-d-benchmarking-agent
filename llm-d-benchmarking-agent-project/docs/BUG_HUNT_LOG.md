@@ -1683,6 +1683,52 @@ are fully consistent so BUG-061's gate can't wrongly reject (scenarios not ref-c
 
 ---
 
+## Round 34 (2026-06-21) — subagent wave 21 (SimRunner output faithfulness)
+One fix. BUG-078 closes a faithfulness gap in the SIMULATE command runner: under `SIMULATE=1`,
+`SimRunner.execute` returned a synthetic non-empty `output`/`lines` banner, but read-only consumers parse
+`RunResult.output` as DATA (no exit_code/JSON guard) — so the banner was misread as real infrastructure
+state (e.g. two phantom kind clusters), a success-shaped lie in a structured tool result that the D5
+probe-honesty prompt cue cannot undo. Fix makes `SimRunner` return empty output, matching `CommandRunner`,
+the canonical `CaptureRunner` test fake, and a real no-output command — the "simulated" signal already
+rides the command event's `simulated` flag + the `SIMULATE_NOTE` prompt cue, never the captured output.
+
+**Verified clean (no bug) — round 34:** the `agent_sdk` prewarm fingerprint/adopt logic is sound — the
+`(hash(system), tool-name-tuple)` fingerprint is sufficient because a tool name maps 1:1 to one schema per
+process, and the only distinct `(system, tools)` configs are process-global `Settings`
+(`UNRESTRICTED_TOOLS` / `SIMULATE`) that change BOTH fields, so a wrong-context spare can't be adopted;
+TTL / start-vs-adopt-race / re-arm all correct. NO bug.
+
+## BUG-078 — SimRunner fabricated a synthetic output banner that read-only probes parse as real data
+- **Status:** FIXED
+- **Severity:** medium (a success-shaped lie in a structured tool result: under `SIMULATE=1` the agent is
+  shown infrastructure that does not exist, and the D5 probe-honesty prompt cue cannot undo it)
+- **Where:** `app/security/runner.py` `SimRunner.execute` (~line 347); victim consumer
+  `app/tools/probe.py:182` (`_probe_kind`), with the same fake text reaching `_probe_kube_context`,
+  `_parse_results_dir`, and `stdout_tail`.
+- **Trigger:** under `SIMULATE=1`, `SimRunner.execute` returned a synthetic non-empty output —
+  `output="[simulate] (no-op) would run: <argv>\n[simulate] exit_code=0"` / `lines=[those 2 banner lines]`
+  — where the real `CommandRunner`, the canonical test fake `CaptureRunner` (`tests/flows/harness.py`), and
+  a real command that printed nothing all return EMPTY output. SimRunner's own docstring claimed it
+  "mirrors CaptureRunner," but CaptureRunner returns `output=""`/`lines=[]` for a no-op. Read-only
+  consumers parse `RunResult.output` as DATA: `_probe_kind` does
+  `clusters=[c for c in res.output.splitlines() if c.strip() and "No kind clusters" not in c]` with no
+  exit_code/JSON guard, so the banner became TWO PHANTOM cluster names — the agent sees infrastructure that
+  doesn't exist (e.g. "a cluster already exists, skip standup"); other parsers (`_probe_kube_context`,
+  `_parse_results_dir`, `stdout_tail`) saw the same fake text.
+- **Root cause:** `SimRunner.execute` emitted a human-readable "[simulate] …" banner into the captured
+  `output`/`lines` (and streamed it via `on_line`), diverging from `CommandRunner`/`CaptureRunner`, which
+  return empty output for a no-op. Consumers treat captured output as machine-parseable data, so the banner
+  was indistinguishable from real command output — a success-shaped lie in a structured tool result that
+  the D5 probe-honesty prompt cue cannot undo. The hermetic SIMULATE flow tests never caught it because
+  they run on `CaptureRunner` (empty output), not the live `SimRunner`.
+- **Fix:** `SimRunner.execute` returns `output=""`/`lines=[]` and streams no `on_line` banner — matching
+  `CaptureRunner` and a real no-output command; the "simulated" signal already rides the command event's
+  `simulated` flag + the `SIMULATE_NOTE` prompt cue, never the captured output.
+- **Regression test:** `tests/test_simulate.py::test_simrunner_output_does_not_fabricate_parsed_data` (plus
+  updated `test_simrunner_execute_is_noop_success`, which had encoded the old banner-in-output behavior).
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
