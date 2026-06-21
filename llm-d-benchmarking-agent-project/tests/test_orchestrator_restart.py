@@ -13,7 +13,7 @@ from __future__ import annotations
 from app.orchestrator.controller import BenchmarkOrchestrator
 from app.orchestrator.job import JobSpec
 from app.orchestrator.restart import RestartProof, prove_restart_recovery
-from tests.orchestrator_fakes import FakeKubeClient
+from tests.orchestrator_fakes import FakeKubeClient, make_pod
 
 NS = "bench"
 SWEEP = "sw-restart"
@@ -150,3 +150,40 @@ async def test_restart_during_injected_fault_run_combined(tmp_path):
         sweep_kube, tmp_path, namespace=NS, sweep_id=SWEEP,
         specs=[_spec("t1"), _spec("t2"), _spec("t3")], max_parallel=2, max_attempts=1, poll_interval=0)
     assert proof.no_duplicates and proof.completed_before == 1 and proof.run_after == 2
+
+
+async def test_sweep_resume_retry_is_not_counted_as_duplicate_job(tmp_path):
+    """A retry on resume (a transient fault → fresh ``-a2`` Job for the SAME treatment) must NOT
+    be reported as a duplicate Job. ``prove_restart_recovery`` strips the ``-a<N>`` suffix back to
+    the logical treatment id precisely so an attempt-2 retry counts as the same treatment — but the
+    duplicate test then over-counted, treating the two attempt entries of one retried treatment as
+    a 'duplicate apply' and flipping the key durability invariant ``no_duplicates`` to False.
+
+    Trigger: a partial sweep (k=1 of N=2 done) resumes, and the one remaining treatment is evicted
+    on attempt 1 (transient → retried) and succeeds on attempt 2. NO treatment ran twice; the run
+    is fully durable. The proof must report 0 duplicate applies."""
+    kube = FakeKubeClient()
+    # t1 completes pre-restart (single attempt).
+    kube.program("t1-a1", phases=["succeeded"])
+    # t2 on resume: attempt 1 fails with a TRANSIENT (evicted) fault → retry; attempt 2 succeeds.
+    kube.program("t2-a1", phases=["active", "failed"],
+                 pods=[make_pod("t2-a1", phase="Failed", reason="Evicted")])
+    kube.program("t2-a2", phases=["succeeded"])
+
+    # --- pre-restart: t1 completes + checkpoints to the cluster ConfigMap.
+    await BenchmarkOrchestrator(kube, tmp_path).run_sweep(
+        [_spec("t1")], max_parallel=1, max_attempts=1, poll_interval=0, sweep_id=SWEEP, namespace=NS)
+
+    # --- restart: a FRESH orchestrator resumes the full sweep; t2 retries (a2) to success.
+    specs = [_spec("t1"), _spec("t2")]
+    proof = await prove_restart_recovery(kube, tmp_path, namespace=NS, sweep_id=SWEEP, specs=specs,
+                                         max_parallel=2, max_attempts=3, poll_interval=0)
+
+    assert proof.completed_before == 1
+    assert proof.run_after == 1                       # only t2 ran on resume (one logical treatment)
+    # A retried treatment is ONE treatment, not a duplicate Job apply.
+    assert proof.duplicate_applies == 0
+    assert proof.no_duplicates is True
+    # The cluster checkpoint records both treatments completed (t2 via its retry).
+    final = await BenchmarkOrchestrator(kube, tmp_path).reconstruct_sweep(SWEEP, namespace=NS)
+    assert final.completed_ids() == {"t1", "t2"}

@@ -121,12 +121,15 @@ async def prove_restart_recovery(
             poll_interval=poll_interval, sweep_id=sweep_id, namespace=namespace,
         )
         all_applied = _applied_job_run_ids(kube)
-        newly_applied = all_applied[len(before):]
-        # No duplicate Jobs: each logical treatment applied at most once across the whole drill.
-        per_treatment = {t.run_id for t in specs}
-        duplicates = sum(
-            1 for t in per_treatment if all_applied.count(t) > 1
-        )
+        # `_applied_job_run_ids` strips the `-a<N>` attempt suffix, so a treatment that RETRIED on
+        # resume (a transient fault → a fresh `-a2` Job) appears once PER ATTEMPT. Those repeated
+        # attempt applies are NOT duplicate treatments — they are one logical treatment, exactly as
+        # the docstring promises. Count DISTINCT logical treatments per pass, and define a duplicate
+        # as a treatment re-run AFTER it was already applied pre-restart (the durability invariant:
+        # the checkpoint must skip an already-completed treatment, never re-run it).
+        before_ids = set(before)
+        newly_applied = sorted(set(all_applied[len(before):]))
+        duplicates = sum(1 for t in newly_applied if t in before_ids)
         return RestartProof(
             mode="sweep",
             recovered=True,
