@@ -1352,6 +1352,68 @@ and rollover/skew handling — NO bug.
 
 ---
 
+## Round 28 (2026-06-21) — subagent wave 15 (shutdown ordering / restart-proof)
+Two fixes. BUG-068 closes a graceful-shutdown ordering gap: the teardown swept the run registry + the LLM
+spare but never the BUG-033 read-only env pre-probe (tracked only in `app.state.background_tasks`), so a
+SIGTERM landing mid-probe orphaned its `kubectl get nodes` / `kind get clusters` process group — the exact
+leak `graceful_shutdown` exists to prevent. BUG-069 closes a restart-DURABILITY false negative: the
+restart-recovery proof's duplicate check counted a per-attempt retry (a transient-fault `-a2` Job) as a
+duplicate_apply, flipping the headline `no_duplicates` durability verdict to a false "NOT durable" and
+inflating `run_after`. The retry state machine itself was re-verified sound.
+
+## BUG-068 — graceful-shutdown never cancels the read-only env pre-probe, orphaning its subprocess group
+- **Status:** FIXED
+- **Severity:** medium (a SIGTERM mid-probe orphans the probe's process group — the exact subprocess leak
+  `graceful_shutdown` exists to prevent)
+- **Where:** `app/main.py::graceful_shutdown` (~line 164).
+- **Trigger:** the teardown swept only the run registry (`await runs.shutdown()`) + the LLM spare
+  (`await provider.aclose()`). But the read-only environment pre-probe (`_prewarm_env`, the BUG-033 task,
+  kicked off on a brand-new chat connect at `main.py` ~1056) is tracked ONLY in
+  `app.state.background_tasks` and is never `runs.register`'d — so `runs.shutdown()` never reaches it, and
+  nothing else in shutdown/lifespan touches `background_tasks`. The probe runs real subprocesses
+  (`kubectl get nodes`, `kind get clusters`) via `ctx.run_readonly`, and the runner reaps the child's
+  process group only on `CancelledError` (`runner.py` ~283). So a SIGTERM landing mid-probe ORPHANS that
+  process group.
+- **Root cause:** BUG-033 made the pre-probe a tracked task so it survives GC, but nobody made shutdown
+  cancel it — `background_tasks` is touched by no teardown path, so the probe is never awaited or cancelled
+  on SIGTERM and its `CancelledError`-gated reaper never fires.
+- **Fix:** between `runs.shutdown()` and `provider.aclose()`, cancel every still-live task in
+  `app.state.background_tasks` and `await asyncio.gather(..., return_exceptions=True)` their unwind (so the
+  runner's `CancelledError` path SIGKILLs the child group and shutdown waits for the reap); wrapped in
+  `contextlib.suppress` so a misbehaving probe can't abort the later provider close. Distinct from BUG-067
+  (the run-sweep itself) and BUG-045 (`aclose` awaits).
+- **Regression test:**
+  `tests/test_run_lifecycle.py::test_graceful_shutdown_cancels_background_pre_probe`.
+
+## BUG-069 — restart-recovery proof counts a per-attempt retry as a duplicate, flipping the durability verdict
+- **Status:** FIXED
+- **Severity:** medium (a false "NOT durable" report — the resilience drill's restart-durability proof
+  wrongly fails, and `run_after` is inflated, on any treatment that retried during the resume pass)
+- **Where:** `app/orchestrator/restart.py::prove_restart_recovery` (~line 123, sweep mode).
+- **Trigger:** `_applied_job_run_ids` strips each Job's `-a<N>` attempt suffix back to the logical treatment
+  id (so an attempt-2 retry is the same logical treatment), but the duplicate check did
+  `all_applied.count(t) > 1` over those stripped ids. A treatment that RETRIED during the resume pass
+  (transient fault → fresh `-a2` Job) appears once PER ATTEMPT in `all_applied`, so `count>1` → it is wrongly
+  counted as a `duplicate_apply` → flips the headline `no_duplicates` durability verdict to False (a false
+  "NOT durable" report) and inflates `run_after` (each attempt counted as a separate treatment run). A retry
+  is one logical treatment, not a duplicate.
+- **Root cause:** the duplicate invariant was expressed as "appears more than once in the stripped applied
+  list," but the stripped list legitimately contains one entry per attempt; a retry within a single resume
+  pass is the same logical treatment run once, not a re-run after completion.
+- **Fix:** count DISTINCT logical treatments applied during the resume pass for `run_after`
+  (`sorted(set(all_applied[len(before):]))`), and redefine a duplicate as a treatment re-run AFTER it was
+  already applied pre-restart (`before_ids = set(before); duplicates = sum(1 for t in newly_applied if t in
+  before_ids)`) — the true durability invariant (the checkpoint must skip an already-completed treatment,
+  never re-run it). All existing restart tests used `max_attempts=1` so no retry could occur during the
+  proof's resume pass — the bug was never exercised. The retry state machine ITSELF was verified sound (the
+  `range(1, max_attempts+1)` budget loop has no off-by-one; `-aN` DNS-1123 overflow is unreachable since
+  `max_attempts` is schema-bounded `le=5`; resubmit always uses a distinct `-aN`; dead-letter retains
+  `final_failure`; sweep checkpoint keys on the stable base `run_id`).
+- **Regression test:**
+  `tests/test_orchestrator_restart.py::test_sweep_resume_retry_is_not_counted_as_duplicate_job`.
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
