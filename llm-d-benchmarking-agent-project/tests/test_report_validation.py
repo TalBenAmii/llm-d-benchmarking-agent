@@ -120,3 +120,53 @@ def test_find_report_honours_root_precedence_over_global_mtime(tmp_path):
     empty_first = tmp_path / "empty"
     empty_first.mkdir()
     assert _find_report([empty_first, workspace]) == rep_b  # newest within the fallback root
+
+
+def _report_ctx(workspace):
+    """A minimal ToolContext rooted at ``workspace`` for report-locate handler tests."""
+    from app.config import get_settings
+    from app.tools.context import ToolContext
+    s = get_settings()
+    return ToolContext(settings=s, allowlist=None, runner=None, workspace=workspace)
+
+
+@pytest.mark.parametrize("evil", ["../outside", "../../../../etc", "/etc/passwd-dir"])
+def test_locate_rejects_session_id_path_traversal(tmp_path, evil):
+    """SECURITY: session_id is an UNVALIDATED agent-supplied string used to build
+    ``ctx.workspace.parent / session_id``. A value containing ``..`` (or an absolute path)
+    must NOT let the tool escape the sessions root and locate+read a benchmark_report
+    elsewhere on disk. Fails before the fix (the out-of-root report is located and read);
+    passes after (a ToolError is raised, so the loop relays a clean {"error": ...})."""
+    from app.tools.context import ToolError
+    from app.tools.report_locate import locate_and_parse_report
+
+    sessions_root = tmp_path / "sessions"
+    ws = sessions_root / "sess1"
+    ws.mkdir(parents=True)
+    # Plant a report OUTSIDE the sessions root that the traversal would otherwise reach.
+    outside = tmp_path / "outside"
+    outside.mkdir(exist_ok=True)
+    (outside / "benchmark_report_v0.2.yaml").write_text("run: {uid: SHOULD-NOT-BE-READ}\n")
+
+    ctx = _report_ctx(ws)
+    with pytest.raises(ToolError):
+        locate_and_parse_report(ctx, session_id=evil)
+
+
+def test_locate_accepts_legitimate_session_id(tmp_path):
+    """The fix must keep the normal path working: a plain session_id naming a sibling session
+    inside the sessions root still locates that session's report (no false rejection)."""
+    from app.tools.report_locate import _session_root
+
+    sessions_root = tmp_path / "sessions"
+    ws = sessions_root / "sess1"
+    ws.mkdir(parents=True)
+    sibling = sessions_root / "sess2"
+    sibling.mkdir()
+    rep = sibling / "benchmark_report_v0.2.yaml"
+    rep.write_text("run: {uid: LEGIT}\n")
+
+    ctx = _report_ctx(ws)
+    root = _session_root(ctx, "sess2")
+    assert root == sibling.resolve()
+    assert root.is_relative_to(sessions_root.resolve())
