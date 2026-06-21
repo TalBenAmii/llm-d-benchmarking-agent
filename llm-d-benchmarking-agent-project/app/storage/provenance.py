@@ -177,13 +177,29 @@ def _report_digest(report_bytes: bytes, summary: dict[str, Any]) -> str:
     return h.hexdigest()
 
 
-def _compute_bundle_id(*, run_uid: str | None, report_path: str | None, repos: dict[str, Any]) -> str:
-    """Content hash (sha256, 16 hex) of run_uid + report_path + repo SHAs — so the same run +
-    same repos maps to one bundle (idempotent), but a genuinely different run/repo state does
-    not collide (mirrors history.compute_record_id)."""
+def _compute_bundle_id(
+    *, run_uid: str | None, report_path: str | None, repos: dict[str, Any], report_digest: str
+) -> str:
+    """Content hash (sha256, 16 hex) of run_uid + report_path + repo SHAs + the report digest —
+    so the same run + same repos maps to one bundle (idempotent), but a genuinely different run
+    does not collide (mirrors history.compute_record_id).
+
+    The ``report_digest`` (sha256 of the validated report bytes + its summary) is part of the
+    basis because ``run_uid`` is OPTIONAL — a report with no ``run.uid`` (``run_uid is None``)
+    written to a REUSED ``report_path`` (e.g. a re-benchmark / autotune trial overwriting the
+    same run dir) with the same repo SHAs would otherwise hash to an IDENTICAL id, so the store
+    would silently OVERWRITE the first bundle with the second — two genuinely different validated
+    runs collapsing onto one provenance node. Mixing the digest in keeps idempotency (the same
+    run has the same digest) while breaking the collision (different runs have different digests),
+    matching this function's own documented contract."""
     repo_shas = {name: (state or {}).get("sha") for name, state in sorted(repos.items())}
     basis = json.dumps(
-        {"run_uid": run_uid, "report_path": report_path, "repo_shas": repo_shas},
+        {
+            "run_uid": run_uid,
+            "report_path": report_path,
+            "repo_shas": repo_shas,
+            "report_digest": report_digest,
+        },
         sort_keys=True,
         default=str,
     )
@@ -231,7 +247,9 @@ def build_bundle(
     cfg_path = resolved_config.get("path") if isinstance(resolved_config, dict) else None
 
     digest = _report_digest(report_bytes, report_summary)
-    bundle_id = _compute_bundle_id(run_uid=run_uid, report_path=report_path, repos=repos)
+    bundle_id = _compute_bundle_id(
+        run_uid=run_uid, report_path=report_path, repos=repos, report_digest=digest
+    )
     dirty = any(bool((state or {}).get("dirty")) for state in repos.values())
 
     return ProvenanceBundle(
