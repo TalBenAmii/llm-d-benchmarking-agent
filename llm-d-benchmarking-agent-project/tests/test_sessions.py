@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -83,6 +84,45 @@ def test_title_is_stable_across_saves(manager):
     s.persist()
     manager._sessions.clear()
     assert manager.load(s.id).title == original
+
+
+def test_persist_is_atomic_crash_mid_write_preserves_prior_snapshot(manager, monkeypatch):
+    """A crash mid-write must NOT corrupt the live state.json (data-integrity / atomicity).
+
+    persist() fires on nearly every turn event while load()/list() read state.json concurrently
+    (sidebar refresh, reconnect, another tab). A direct write_text to the live path truncates the
+    whole transcript on a crash and exposes a torn file to a concurrent reader. The atomic
+    temp-then-replace must write to a *.tmp sidecar and leave the prior good state.json intact.
+
+    We seed a good snapshot, then simulate a crash partway through the NEXT persist by patching
+    Path.write_text to write partial garbage to whatever path it targets and then raise. With the
+    non-atomic write the garbage lands on state.json itself (load → None / corrupt); with the
+    atomic write it lands on the .tmp sidecar and state.json is untouched and still loadable.
+    """
+    s = _seed(manager, "first good content")
+    state_path = s.ctx.workspace / "state.json"
+    good = state_path.read_text()
+    assert json.loads(good)["messages"]  # sanity: the good snapshot is whole
+
+    real_write_text = Path.write_text
+
+    def crashing_write_text(self, data, *args, **kwargs):
+        # Truncate-then-fail, exactly like an interrupted write to whatever path is targeted.
+        real_write_text(self, data[: len(data) // 2])
+        raise OSError("simulated crash mid-write")
+
+    s.messages.append({"role": "user", "content": "second message that triggers a re-persist"})
+    monkeypatch.setattr(Path, "write_text", crashing_write_text)
+    s.persist()  # best-effort: swallows the OSError
+    monkeypatch.undo()
+
+    # The live snapshot must still be the prior GOOD one — never the half-written garbage.
+    assert state_path.read_text() == good
+    manager._sessions.clear()
+    loaded = manager.load(s.id)
+    assert loaded is not None and loaded.messages == [{"role": "user", "content": "first good content"}]
+    # The session must still appear in the sidebar (a torn file would JSONDecodeError → skipped).
+    assert s.id in {row["id"] for row in manager.list()}
 
 
 def test_derive_title_truncates_long_text():

@@ -185,38 +185,49 @@ class Session:
         ]
 
     def persist(self) -> None:
-        """Best-effort transcript snapshot for resumability/debugging."""
+        """Best-effort transcript snapshot for resumability/debugging.
+
+        Written ATOMICALLY (temp file + ``os.replace``) like every sibling store
+        (history/share/provenance/autotune). ``persist`` fires on nearly every turn event
+        (channel.py/loop.py/main.py) while ``SessionManager.load``/``list`` read ``state.json``
+        concurrently (a sidebar refresh, a reconnect, another tab) — a direct ``write_text`` to
+        the live path let a reader observe a TORN file (``JSONDecodeError`` → the running chat
+        reads as GONE / drops out of the sidebar), and a crash mid-write truncated the whole
+        transcript permanently. The temp-then-replace keeps the prior good snapshot intact until
+        the new one lands whole."""
         try:
             self.ctx.workspace.mkdir(parents=True, exist_ok=True)
             if not self.title:
                 self.title = derive_title(self.messages)
             self.updated_at = time.time()
-            (self.ctx.workspace / "state.json").write_text(
-                json.dumps(
-                    {
-                        "id": self.id,
-                        "title": self.title,
-                        "created_at": self.created_at,
-                        "updated_at": self.updated_at,
-                        "messages": self.messages,
-                        "approved_plan": self.approved_plan,
-                        "namespace": self.namespace,
-                        "commands": self.commands[-_COMMANDS_MAX:],
-                        "approvals": self.approvals[-_COMMANDS_MAX:],
-                        "in_flight_approvals": self.in_flight_approvals,
-                        "card_results": self.card_results[-_CARD_RESULTS_MAX:],
-                        "tool_durations": self.tool_durations,
-                        "total_input_tokens": self.total_input_tokens,
-                        "total_output_tokens": self.total_output_tokens,
-                        "total_cache_read_tokens": self.total_cache_read_tokens,
-                        "total_cache_write_tokens": self.total_cache_write_tokens,
-                        "last_context_tokens": self.last_context_tokens,
-                        "catalog_injected": self.catalog_injected,
-                        "prewarmed": self.prewarmed,
-                    },
-                    indent=2,
-                )
+            payload = json.dumps(
+                {
+                    "id": self.id,
+                    "title": self.title,
+                    "created_at": self.created_at,
+                    "updated_at": self.updated_at,
+                    "messages": self.messages,
+                    "approved_plan": self.approved_plan,
+                    "namespace": self.namespace,
+                    "commands": self.commands[-_COMMANDS_MAX:],
+                    "approvals": self.approvals[-_COMMANDS_MAX:],
+                    "in_flight_approvals": self.in_flight_approvals,
+                    "card_results": self.card_results[-_CARD_RESULTS_MAX:],
+                    "tool_durations": self.tool_durations,
+                    "total_input_tokens": self.total_input_tokens,
+                    "total_output_tokens": self.total_output_tokens,
+                    "total_cache_read_tokens": self.total_cache_read_tokens,
+                    "total_cache_write_tokens": self.total_cache_write_tokens,
+                    "last_context_tokens": self.last_context_tokens,
+                    "catalog_injected": self.catalog_injected,
+                    "prewarmed": self.prewarmed,
+                },
+                indent=2,
             )
+            path = self.ctx.workspace / "state.json"
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(payload)
+            tmp.replace(path)
         except OSError:
             pass
 
