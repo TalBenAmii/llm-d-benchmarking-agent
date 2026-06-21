@@ -7,6 +7,7 @@ definitions (name/description/JSON-Schema) are exported for the LLM providers.
 from __future__ import annotations
 
 import inspect
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -707,7 +708,21 @@ async def dispatch(ctx: ToolContext, name: str, raw_input: dict[str, Any]) -> di
     try:
         model = spec.input_model.model_validate(raw_input or {})
     except ValidationError as exc:
-        return {"error": "invalid arguments", "details": exc.errors(include_url=False)}
+        # ``details`` is fed straight back to the model (so it can self-correct) AND serialized by
+        # the loop (``clamp_tool_result_content`` -> ``json.dumps``) before it is appended to the
+        # transcript. A custom field/model validator that ``raise``s ``ValueError``/``AssertionError``
+        # (e.g. AutotuneKnob's ``max > min`` check) makes Pydantic embed the raised EXCEPTION OBJECT
+        # in each entry's ``ctx`` — which is NOT JSON-serializable. Left in, that ``json.dumps`` would
+        # raise ``TypeError`` OUTSIDE the loop's per-tool guard, crashing the turn AND leaving an
+        # orphaned tool_call with no matching tool_result (poisoning the next turn). Drop ``ctx``
+        # (``include_context=False``) — the human-readable ``msg`` already carries the validator's
+        # message — then JSON-roundtrip as a belt-and-braces guarantee the result is serializable.
+        details = exc.errors(include_url=False, include_context=False)
+        try:
+            details = json.loads(json.dumps(details, default=str))
+        except (TypeError, ValueError):  # pragma: no cover — defensive last resort
+            details = [{"msg": e.get("msg", "invalid value")} for e in details]
+        return {"error": "invalid arguments", "details": details}
 
     kwargs = model.model_dump()
     result = spec.handler(ctx, **kwargs)

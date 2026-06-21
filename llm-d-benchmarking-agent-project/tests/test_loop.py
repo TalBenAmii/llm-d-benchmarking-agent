@@ -7,6 +7,7 @@ Proves the loop wiring without an API key or running heavy commands:
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -165,3 +166,70 @@ async def test_invalid_plan_is_reported_not_executed(tmp_path):
     plan_results = [p for (t, p) in events if t == "tool_result" and p["name"] == "propose_session_plan"]
     assert plan_results and plan_results[0]["result"]["valid"] is False
     assert session.approved_plan is None
+
+
+async def test_schema_validation_error_does_not_break_the_loop(tmp_path):
+    """A Pydantic *schema* validation failure that runs through a custom validator (one that
+    ``raise``s ``ValueError``) must come back as a CLEAN, JSON-serializable tool error the model
+    can self-correct from — not crash the loop.
+
+    Trigger: the model calls ``propose_session_plan`` with an ``autotune`` knob whose ``max <=
+    min``. ``AutotuneKnob``'s ``model_validator`` raises ``ValueError`` during
+    ``SessionPlan.model_validate`` (so the handler never runs); ``dispatch`` turns the
+    ``ValidationError`` into ``{"error": "invalid arguments", "details": ...}``. Pydantic's
+    ``errors()`` embeds the raised ``ValueError`` OBJECT in each entry's ``ctx`` — a NON-JSON-
+    serializable value. The loop then ``clamp_tool_result_content``-s every tool result with
+    ``json.dumps``; an unsanitized ``details`` makes that raise ``TypeError`` OUTSIDE the
+    per-tool ``_invoke`` guard, escaping ``run_turn`` after the assistant message (with its
+    ``tool_calls``) was appended but BEFORE the matching ``tool_results`` block — an orphaned
+    tool_call that poisons the next turn. The fix sanitizes ``details`` so the result serializes.
+    """
+    turns = [
+        AssistantTurn(text="Plan with a search.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+            "use_case_summary": "x", "spec": "cicd/kind", "namespace": "ns",
+            "harness": "inference-perf", "workload": "sanity_random.yaml",
+            "autotune": {
+                "strategy": "bisection", "objective": "ttft", "direction": "min", "budget": 5,
+                # max <= min trips AutotuneKnob._check -> raise ValueError -> non-serializable ctx
+                "knobs": [{"name": "c", "key": "max-concurrency", "min": 10.0, "max": 5.0}],
+            },
+        })]),
+        AssistantTurn(text="Let me fix the bounds.", tool_calls=[]),
+    ]
+    events: list[tuple[str, dict]] = []
+
+    async def emit(t, p):
+        events.append((t, p))
+
+    async def request_approval(kind, payload):
+        raise AssertionError("approval must not be requested for a schema-invalid plan")
+
+    session = _session(tmp_path)
+    # Must NOT raise (the bug raised TypeError out of run_turn here).
+    await AgentLoop(FakeProvider(turns)).run_turn(
+        session, "tune it", emit=emit, request_approval=request_approval)
+
+    # The turn reached a clean end (did not die mid-loop).
+    assert events[-1][0] == "done"
+    assert not any(t == "error" for (t, _) in events), "the loop must not surface an agent error"
+
+    # The validation error came back as a clean, JSON-serializable tool result.
+    plan_results = [p for (t, p) in events if t == "tool_result" and p["name"] == "propose_session_plan"]
+    assert plan_results and plan_results[0]["result"].get("error") == "invalid arguments"
+    json.dumps(plan_results[0]["result"])  # the whole result must serialize (incl. details)
+
+    # The model got a SECOND step to self-correct (the loop continued past the bad call).
+    assert AgentLoop  # keep import used
+    assert any(m.get("role") == "assistant" and m.get("content") == "Let me fix the bounds."
+               for m in session.messages)
+
+    # Tool-call/result pairing intact: the assistant message that issued c1 is followed by a
+    # tool_results block carrying c1 — no orphaned tool_call that would poison the next turn.
+    asst = next((m for m in session.messages if m.get("role") == "assistant"
+                 and any(tc.get("id") == "c1" for tc in m.get("tool_calls", []))), None)
+    assert asst is not None
+    results_blocks = [m for m in session.messages if m.get("role") == "tool_results"]
+    assert any(r.get("tool_call_id") == "c1"
+               for block in results_blocks for r in block.get("results", []))
+    # Every persisted message round-trips through JSON (the transcript is replay-safe).
+    json.dumps(session.messages)
