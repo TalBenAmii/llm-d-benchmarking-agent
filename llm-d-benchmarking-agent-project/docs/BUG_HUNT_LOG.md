@@ -1274,6 +1274,43 @@ bug. (The `session_id` containment, BUG-055, remains correct — it passed the f
 
 ---
 
+## Round 26 (2026-06-21) — subagent wave 13 (mid-turn compaction)
+One fix (BUG-066 closes a transcript-compaction timing gap: compaction ran exactly once at turn start and was
+never re-evaluated as a single long turn grew, so the replayed context could overflow the provider *within* the
+same turn). Plus the saturation note below: the 4th adversarial meta-review returned the first NO-BUG result.
+
+**Round 26 — saturation note:** the 4th adversarial meta-review (of fixes 059-065, incl. the BUG-064
+`parse_items`-shorter-list ripple — all `[0]` indexers verified length-guarded) was the FIRST meta-review to
+return NO BUG (the prior three each caught a real sibling: BUG-044/052/063), and fresh-area hunters are now
+overwhelmingly NO-BUG (ui, llm, deploy, instrument, auth, converters, workload_profile) — coverage across
+logic/security/concurrency/infra/correctness is effectively exhaustive; remaining yield is deep long-tail.
+
+## BUG-066 — transcript compacted only once at turn start, never re-evaluated as a long turn overflows mid-turn
+- **Status:** FIXED
+- **Severity:** medium (a single long tool-heavy turn can re-send a growing transcript that crosses the
+  threshold, eventually a provider context-overflow that aborts the turn)
+- **Where:** `app/agent/loop.py` (~line 122, the single `compact_messages` call sitting BEFORE the
+  `for _ in range(MAX_STEPS)` loop).
+- **Trigger:** the transcript was compacted exactly ONCE, at turn start — when it's still below the
+  `_COMPACT_THRESHOLD_CHARS` (48000) threshold, so a no-op — and never re-evaluated as the turn grows. But a
+  single `run_turn` replays the WHOLE transcript to the provider on EVERY step, and one turn can append up to
+  `MAX_STEPS × (several × _TOOL_RESULT_BUDGET=6000)` chars of new tool results, so the replayed context blows
+  past the threshold WITHIN the same turn. Reproduced hermetically: a 20-step tool-every-step turn grows the
+  per-call transcript 363 → 120447 chars, crossing 48000 at step 8, while `compact_messages` is invoked exactly
+  once and old large tool results are never elided.
+- **Root cause:** the mechanism documented to "keep the replayed transcript from growing without bound" was
+  structurally unable to fire during the very turn that overflows it → the growing history is re-sent in full to
+  the provider each step, eventually a provider context-overflow (400 input too long) that `loop.py:167-169` can
+  only catch by ABORTING the turn.
+- **Fix:** hoist the compaction into a local `_compact()` helper and call it before EVERY step (top of the loop
+  body, after the abandoned-turn guard) in addition to turn start; `compact_messages` is idempotent and a cheap
+  no-op below the threshold, so the per-step check only acts once the transcript actually crosses it, and pairing
+  + the recent window are untouched (compaction only shrinks content strings, never drops/reorders messages).
+- **Regression test:**
+  `tests/test_context_mgmt.py::test_compaction_runs_mid_turn_when_a_long_turn_crosses_the_threshold`.
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
