@@ -152,10 +152,16 @@ def publish(
         html_file.write_text(html_doc, encoding="utf-8")
         gist_url = _gh(["gist", "create", "--desc", _GIST_DESC.format(token=token), str(html_file)])
     gist_id = gist_url.rsplit("/", 1)[-1]
-    githack, htmlpreview = _render_urls(_raw_url_for(gist_id))
 
+    # Record the mapping the MOMENT the gist exists — BEFORE deriving the render URLs (which makes a
+    # second `gh api` call that can fail transiently right after a create). If we waited, a hiccup
+    # there would leave a live gist with no `.gist` mapping: unrevocable (revoke()/the script both
+    # gate on the mapping) and re-created on every retry (reuse also keys off the mapping). With it
+    # recorded first, the gist stays revocable and a retry reuses it.
     mapping.parent.mkdir(parents=True, exist_ok=True)
     mapping.write_text(gist_id + "\n", encoding="utf-8")
+
+    githack, htmlpreview = _render_urls(_raw_url_for(gist_id))
     return PublishResult(token, gist_id, githack, htmlpreview, reused=False)
 
 
