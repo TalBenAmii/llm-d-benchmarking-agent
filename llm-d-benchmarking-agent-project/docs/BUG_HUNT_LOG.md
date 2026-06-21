@@ -599,12 +599,13 @@ no new defect (see the Verified NON-bugs note).
 
 ---
 
-## Round 16 (2026-06-21) — subagent-orchestrated waves 2-4: 6 fixed (BUG-038..043) + known-open #1 RESOLVED
+## Round 16 (2026-06-21) — subagent-orchestrated waves 2-4 + meta-review: 8 fixed (BUG-038..045) + known-open #1 RESOLVED
 Three subagent waves over disjoint areas — session/orchestrator persistence, the tool-layer date/catalog
 paths, the security allowlist read-only-trigger region logic, and the persisted-render path (share + WS
-history). Six real defects fixed + merged to `main`; the previously-logged **known-open #1** security item
-(global-region `read_only_trigger` downgrade, Round 8) is RESOLVED by BUG-042 (region-aware detection).
-Two clean areas re-reviewed with no defect (see the Verified-clean note for round 16, below).
+history) — plus an adversarial meta-review of the session's fixes that surfaced two more (BUG-044/045). Eight
+real defects fixed + merged to `main`; the previously-logged **known-open #1** security item (global-region
+`read_only_trigger` downgrade, Round 8) is RESOLVED by BUG-042 (region-aware detection). Clean areas
+re-reviewed with no defect (see the Verified-clean note for round 16, below).
 
 ## BUG-038 — `session.persist()` writes `state.json` non-atomically (torn read / truncated transcript)
 - **Status:** FIXED
@@ -711,11 +712,57 @@ Two clean areas re-reviewed with no defect (see the Verified-clean note for roun
   `tool_durations`; a malformed row is skipped and the render degrades gracefully.
 - **Regression test:** `tests/test_share.py::test_share_survives_corrupt_session_transcript`.
 
+## BUG-044 — `restore_pending` crashes the WS reconnect on a non-dict `in_flight_approvals` element (bricks reload of that chat)
+- **Status:** FIXED
+- **Severity:** medium-high (a SIBLING of BUG-043 on the very WS-reconnect path BUG-043 claimed to close —
+  a single torn element permanently bricks reload of that one chat)
+- **Where:** `app/agent/channel.py::restore_pending` (~line 242).
+- **Trigger:** `restore_pending` did `entry.get("request_id")` for each element of `in_flight_approvals`.
+  `in_flight` is loaded straight off disk (`Session.load` → `data.get("in_flight_approvals", [])`,
+  `session.py:300`) with NO per-element type check, so a non-dict element (a torn string/scalar in a
+  corrupt / hand-edited / forward-incompatible `state.json`) raised an `AttributeError` on the WS reconnect
+  path (`main.py:845`) BEFORE the history emit AND the receive loop — permanently bricking reload of that
+  one chat.
+- **Root cause:** BUG-043 hardened `_history_items` / share but its regression test only exercised the share
+  route (which never calls `restore_pending`), so this EARLIER reconnect path stayed unguarded — the same
+  trust-every-persisted-element class as BUG-043, one call-site upstream of it.
+- **Fix:** coerce a non-list `in_flight` to `[]` and skip non-dict elements (mirrors BUG-043's `_dicts`
+  guard); a genuine gate among garbage is still restored. Found by an ADVERSARIAL META-REVIEW of this
+  session's nine fixes.
+- **Regression test:** `tests/test_ws.py::test_channel_restore_pending_survives_corrupt_in_flight`.
+
+## BUG-045 — `aclose()` leaks the prewarmed Claude CLI subprocess on graceful shutdown
+- **Status:** FIXED
+- **Severity:** medium (one orphaned/connected CLI subprocess leaked per SIGTERM on graceful shutdown)
+- **Where:** `app/llm/agent_sdk_provider.py::aclose()` (~line 339).
+- **Trigger:** `aclose()` delegated to `_discard_prewarm`, which schedules the spare's disconnect as a bare
+  untracked `asyncio.create_task` and returns immediately. `graceful_shutdown` (`main.py:170`) does
+  `await provider.aclose()` and the event loop then tears down WITHOUT pumping again, so the deferred
+  disconnect never ran — one orphaned/connected CLI subprocess per SIGTERM. The bare `create_task` was also
+  a BUG-033-class GC hazard (weakly referenced, cancellable mid-disconnect).
+- **Root cause:** `aclose()` deferred the disconnect to a fire-and-forget task on a path where nothing pumps
+  the loop afterward; the pre-existing `test_aclose_disconnects_spare` passed only because it added a trailing
+  `await asyncio.sleep(0.01)` the real shutdown path lacks.
+- **Fix:** `aclose()` now awaits the spare's disconnect INLINE (new `_disconnect_spare` helper) and drains any
+  in-flight background cleanups via `gather`; the hot-path `_discard_prewarm` keeps its non-blocking cleanup
+  but tracks the task in a strong-ref `self._cleanup_tasks` set with a self-discarding done-callback (closes
+  the GC hazard).
+- **Regression test:** `tests/test_agent_sdk_provider.py::test_aclose_awaits_disconnect_before_returning`.
+
 ### Verified clean (no bug) — round 16
 - **`app/llm/` layer full review** — usage accounting, SDK message threading, and context-compaction pairing
   were reviewed end-to-end: NO bug.
 - **FastAPI REST surface re-fuzzed** — history/jobs/share with empty/traversal/over-long/NUL inputs returned
   clean 4xx/200 with no 500s; the one real defect on the persisted-render path is BUG-043.
+- **`deploy/` swept clean** — Dockerfile / helm / kustomize / scripts / CSS reviewed with NO defect (helm lint
+  + `kubectl --dry-run` + RBAC empirically tested on a throwaway namespace).
+- **Adversarial meta-review** of the session's fixes confirmed the other 8 fixes (BUG-035..043) sound; it
+  surfaced BUG-044 (the unguarded `restore_pending` sibling of BUG-043).
+
+### Noted, not filed (accepted design tradeoff) — round 16
+- **`SessionManager._sessions` is never evicted from memory** — slow unbounded growth over process lifetime.
+  Reads as an accepted design tradeoff (sessions are bounded in practice and pruned on disk), not a discrete
+  defect; recorded here so a future hunt doesn't re-discover it as new.
 
 ---
 
