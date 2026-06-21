@@ -116,7 +116,7 @@ async def test_sweep_dead_letters_one_without_sinking_the_rest(tmp_path):
     cross-treatment isolation). Needles are matched by run-id substring, most-specific first."""
     ctx, runner = _ctx(tmp_path)
     sid = "swfix01"
-    bad_run_id = _sweep_run_id(sid, "bad", 2)  # f"{sid}-bad"
+    bad_run_id = _sweep_run_id(sid, "bad")  # f"{sid}-bad"
     runner._canned = {
         f"run-id={bad_run_id}": FAILED_JOB,   # this treatment's Job reads FAILED
         "get endpoints": ENDPOINTS_READY,
@@ -138,7 +138,7 @@ async def test_sweep_resumes_skipping_completed_treatments(tmp_path):
     """With a cluster checkpoint already recording a treatment COMPLETED, a resume (same
     sweep_id + treatments) SKIPS it — no Job submitted for it — and merges its prior outcome."""
     sid = "swresume"
-    done_run_id = _sweep_run_id(sid, "t1", 1)
+    done_run_id = _sweep_run_id(sid, "t1")
     checkpoint = SweepCheckpoint(sweep_id=sid)
     checkpoint.record_completed(done_run_id, succeeded=True, dead_lettered=False, fault_kind=None)
     cm = build_configmap_manifest(sid, checkpoint, namespace="bench")
@@ -165,16 +165,15 @@ def test_sweep_run_id_is_pure_in_sweep_id_and_name_for_empty_slug_names():
     For a name that slugs to nothing (e.g. all punctuation/non-ASCII — schema-allowed: the
     `name` field has no pattern), the fallback must NOT depend on the treatment's POSITION in
     the list: otherwise reordering / inserting a treatment between a sweep and its same-sweep_id
-    resume shifts the index, yields a different run-id, and the already-completed treatment is
-    re-run as a DUPLICATE Job — breaking the resume idempotency invariant."""
+    resume yields a different run-id, and the already-completed treatment is re-run as a
+    DUPLICATE Job — breaking the resume idempotency invariant. Purity in position is now
+    STRUCTURAL: the signature is (sweep_id, name) only, so position cannot leak in."""
     sid = "sw-fixed"
     empty_slug_name = "###"            # _slug("###") == "" → the fallback path
-    # Same (sweep_id, name) at two different positions must give the same run-id.
-    assert _sweep_run_id(sid, empty_slug_name, 1) == _sweep_run_id(sid, empty_slug_name, 5)
-    # And it must not depend on the index at all: a third position agrees too.
-    assert _sweep_run_id(sid, empty_slug_name, 2) == _sweep_run_id(sid, empty_slug_name, 1)
+    # Same (sweep_id, name) is stable across calls (it never saw position to begin with).
+    assert _sweep_run_id(sid, empty_slug_name) == _sweep_run_id(sid, empty_slug_name)
     # Distinct empty-slug names must still map to DISTINCT run-ids (no fallback collision).
-    assert _sweep_run_id(sid, "###", 1) != _sweep_run_id(sid, "***", 1)
+    assert _sweep_run_id(sid, "###") != _sweep_run_id(sid, "***")
 
 
 async def test_sweep_resume_reordered_empty_slug_treatment_is_skipped_not_rerun(tmp_path):
@@ -184,7 +183,7 @@ async def test_sweep_resume_reordered_empty_slug_treatment_is_skipped_not_rerun(
     must be SKIPPED (its run-id is stable per name), not re-submitted as a duplicate Job."""
     sid = "swreorder"
     empty_name = "###"
-    done_run_id = _sweep_run_id(sid, empty_name, 1)
+    done_run_id = _sweep_run_id(sid, empty_name)
     checkpoint = SweepCheckpoint(sweep_id=sid)
     checkpoint.record_completed(done_run_id, succeeded=True, dead_lettered=False, fault_kind=None)
     cm = build_configmap_manifest(sid, checkpoint, namespace="bench")
@@ -201,7 +200,7 @@ async def test_sweep_resume_reordered_empty_slug_treatment_is_skipped_not_rerun(
     # The completed empty-slug treatment is resumed (skipped), only "x" runs fresh.
     assert res["resumed"] == [empty_name]
     submitted = {rid.rsplit("-a", 1)[0] for rid in _applied_run_ids(runner)}
-    assert submitted == {_sweep_run_id(sid, "x", 1)}  # NOT the empty-slug treatment
+    assert submitted == {_sweep_run_id(sid, "x")}  # NOT the empty-slug treatment
 
 
 async def test_sweep_checkpoint_false_writes_no_configmap(tmp_path):

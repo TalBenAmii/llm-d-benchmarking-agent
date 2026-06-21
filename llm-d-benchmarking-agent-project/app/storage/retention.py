@@ -195,7 +195,7 @@ def _remove(path: Path) -> None:
             path.unlink()
 
 
-def _enumerate_shares(base: Path, children: list[Path]) -> list[_Item]:
+def _enumerate_shares(children: list[Path]) -> list[_Item]:
     """List the shares area's prunable items: ONE item per token, even though a published share
     spans two files (``<token>.json`` snapshot + ``<token>.gist`` mapping). The snapshot is the
     canonical artifact (it defines a live share), so when present it drives the item's id, mtime,
@@ -246,7 +246,7 @@ def _enumerate(area: ManagedArea, root: Path, active_ids: set[str]) -> list[_Ite
         # must not disable retention for every other area (GC must not crash).
         return []
     if area.item_kind == "share":
-        return _enumerate_shares(base, children)
+        return _enumerate_shares(children)
     items: list[_Item] = []
     want_dir = area.item_kind == "dir"
     for child in children:
