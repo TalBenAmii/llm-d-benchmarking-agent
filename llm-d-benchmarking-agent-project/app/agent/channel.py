@@ -253,11 +253,29 @@ class Channel:
             }
 
     async def reemit_pending(self) -> None:
-        """Re-surface every still-undecided approval to the freshly-attached socket."""
+        """Re-surface every still-undecided approval to the freshly-attached socket.
+
+        Sent DIRECTLY to the current socket (same path as :meth:`replay_live`), NOT via
+        :meth:`emit`. The gate was already buffered + seq-stamped once when
+        :meth:`request_approval` first surfaced it, and it lives durably in
+        ``session.in_flight_approvals``; re-surfacing it is a pure re-send to whatever socket is
+        now attached. Routing it back through ``emit`` would advance ``_seq`` and append a fresh
+        copy to the BOUNDED ring on EVERY (re)connect — a flaky client reconnecting to a
+        parked-gate chat would, after a handful of reconnects, fill the ring with duplicate
+        approval frames and EVICT the turn's real progress events (tool calls/results/text), so a
+        later full ``replay_live`` recovers nothing — defeating the catch-up buffer's whole
+        purpose. The client de-dupes the card by ``request_id`` regardless, so a seqless direct
+        re-send is correct and idempotent.
+        """
+        ws = self.ws
+        if ws is None:
+            return
         for rid, p in list(self.pending.items()):
-            await self.emit(events.APPROVAL_REQUEST, {
+            frame = outbound(events.APPROVAL_REQUEST, {
                 "request_id": rid, "kind": p["kind"], "payload": p["payload"],
             })
+            with contextlib.suppress(Exception):
+                await ws.send_json(frame)
 
     def resolve(self, rid: str | None, approved: bool) -> bool:
         """Fulfil a pending approval from a client ``approval`` message. Idempotent."""

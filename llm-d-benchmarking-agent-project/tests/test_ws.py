@@ -917,6 +917,72 @@ def test_channel_replay_after_seq_sends_only_tail():
     assert all(f["seq"] > 1 for f in ws.sent)
 
 
+def test_channel_reemit_pending_does_not_pollute_buffer_or_seq():
+    """Regression: a flaky client reconnecting repeatedly to a parked-gate chat must NOT lose the
+    turn's real progress. ``reemit_pending`` re-surfaces the open gate by sending it DIRECTLY to
+    the attached socket — it must NOT route through ``emit`` (which advances ``seq`` and appends to
+    the BOUNDED ring on every reconnect, eventually evicting the turn's real tool_call/result/text
+    events so a later full ``replay_live`` recovers nothing).
+
+    Before the fix, N reconnects appended N duplicate ``approval_request`` frames to the ring and
+    bumped ``cur_seq`` by N; with a small ring the real progress events fell off entirely. After
+    the fix the buffer and ``seq`` are untouched, yet each reconnect still re-surfaces the card.
+    """
+    import asyncio
+
+    from app.agent.channel import Channel
+
+    class _Sess:
+        id = "reemit"
+
+    class _FakeWS:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, frame):
+            self.sent.append(frame)
+
+    async def _drive():
+        # Ring sized to exactly fit the turn's events + the gate, so any extra append evicts a
+        # real progress event — the precise condition that loses catch-up data.
+        ch = Channel(_Sess(), buffer_max=5)
+        ch.begin_turn()
+        await ch.emit("assistant_text", {"text": "thinking"})                        # seq 1
+        await ch.emit("tool_call", {"id": "t1", "name": "probe", "input": {}})        # seq 2
+        await ch.emit("tool_result", {"id": "t1", "name": "probe", "result": {}})     # seq 3
+        await ch.emit("assistant_text", {"text": "here is the plan"})                 # seq 4
+        await ch.emit("approval_request", {"request_id": "R", "kind": "session_plan", "payload": {}})  # seq 5
+        ch.pending["R"] = {"future": asyncio.get_event_loop().create_future(),
+                           "kind": "session_plan", "payload": {}, "tool_call_id": "t1"}
+
+        buf_before = [(f["seq"], f["type"]) for f in ch.buffered_events]
+        seq_before = ch.cur_seq
+
+        # Simulate five reconnects to the parked gate; each re-surfaces the gate to a fresh socket.
+        for _ in range(5):
+            sock = _FakeWS()
+            ch.ws = sock
+            await ch.reemit_pending()
+            # The gate is still re-surfaced live (the user must see the card)...
+            assert [f["type"] for f in sock.sent] == ["approval_request"]
+            # ...but seqless: it was NOT routed through emit/buffer.
+            assert sock.sent[0].get("seq") is None
+
+        # The bounded ring and the seq cursor are untouched by the re-surfaces.
+        assert [(f["seq"], f["type"]) for f in ch.buffered_events] == buf_before
+        assert ch.cur_seq == seq_before
+
+        # A returning client doing a full replay still recovers the real progress events.
+        ws = _FakeWS()
+        ch.ws = ws
+        await ch.replay_live()
+        return [f["type"] for f in ws.sent if f["type"] != "approval_request"]
+
+    recovered = asyncio.run(_drive())
+    assert recovered == ["assistant_text", "tool_call", "tool_result", "assistant_text"], (
+        "the turn's real progress must survive repeated gate re-surfaces, not be evicted")
+
+
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_ws_ready_reports_running_elapsed():
     """`ready` carries `running_elapsed_ms`: None for an idle/brand-new chat, and a non-negative
