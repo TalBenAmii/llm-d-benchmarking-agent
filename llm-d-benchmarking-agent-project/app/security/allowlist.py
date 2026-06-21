@@ -19,19 +19,23 @@ strictly validated.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+# The generic token-walk engine + mode constants live in the private sibling module. This file
+# imports FROM it (one-way; the engine imports nothing back) so there is no cycle. The mode
+# constants are re-exported here because external callers import READ_ONLY/MUTATING from this
+# module — keeping the public names stable.
+from app.security._validator import MUTATING, READ_ONLY, _Reject, _Validator
+
+__all__ = ["READ_ONLY", "MUTATING", "Decision", "AllowlistError", "Allowlist"]
+
 # Tokens we generate never need shell metacharacters. We reject them on every token
 # as defense in depth, even though the runner uses shell=False (no shell to inject).
 _DANGEROUS = set(";|&$><`\n\r\t\0\\!*?(){}[]'\"")
-
-READ_ONLY = "read_only"
-MUTATING = "mutating"
 
 
 @dataclass
@@ -208,15 +212,19 @@ class Allowlist:
         if entry is None:
             return _deny(argv, f"executable {exe!r} is not allowlisted")
 
+        # The generic token walk is delegated to the engine, constructed per call with the
+        # value-constraint table (for `ref` resolution) and the optional live catalog (for
+        # `ref_catalog` membership). No per-command knowledge crosses this boundary — only the
+        # parsed YAML structures and the argv tokens do.
+        v = _Validator(self._value_constraints, catalog)
         rest = argv[1:]
         try:
             if entry.get("flat"):
-                mode = self._walk(
+                mode = v.walk(
                     rest,
                     flags=entry.get("flags", {}),
                     positionals=entry.get("positionals", []),
                     base_mode=entry.get("mode", MUTATING),
-                    catalog=catalog,
                 )
                 return self._allow(argv, mode, exe, entry, None, None)
 
@@ -224,11 +232,11 @@ class Allowlist:
             global_flags = entry.get("global_flags", {})
             subcommands = entry.get("subcommands", {})
 
-            sub_idx = self._find_subcommand_index(rest, global_flags)
+            sub_idx = v.find_subcommand_index(rest, global_flags)
             if sub_idx is None:
                 # Allow standalone read-only global flags (e.g. `llmdbenchmark --version`).
-                if self._has_read_only_trigger(rest, global_flags):
-                    self._walk(rest, flags=global_flags, positionals=[], base_mode=READ_ONLY, catalog=catalog)
+                if v._has_read_only_trigger(rest, global_flags):
+                    v.walk(rest, flags=global_flags, positionals=[], base_mode=READ_ONLY)
                     return self._allow(argv, READ_ONLY, exe, entry, None, None)
                 return _deny(argv, f"no subcommand provided for {exe!r}")
 
@@ -241,15 +249,15 @@ class Allowlist:
             post = rest[sub_idx + 1:]
 
             # Validate the global-flags region (flags only, no positionals).
-            self._walk(pre, flags=global_flags, positionals=[], base_mode=READ_ONLY, catalog=catalog)
+            v.walk(pre, flags=global_flags, positionals=[], base_mode=READ_ONLY)
 
             # Validate the subcommand region; global flags remain acceptable here too. The pre
             # region is tagged with the flag-dict that is EFFECTIVE there (the executable's
             # global_flags) so a read_only_trigger is only honored where the flag actually takes
             # effect — see _walk's region-aware read-only detection.
-            mode = self._walk_subcommand(
+            mode = v.walk_subcommand(
                 subname, sub, post, global_flags=global_flags,
-                pre_regions=[(pre, global_flags)], catalog=catalog,
+                pre_regions=[(pre, global_flags)],
             )
             return self._allow(argv, mode, exe, entry, subname, sub)
         except _Reject as exc:
@@ -294,232 +302,3 @@ class Allowlist:
             quota_per_session=per_session,
             quota_per_day=per_day,
         )
-
-    # ---- internals --------------------------------------------------------
-    def _walk_subcommand(
-        self,
-        subname: str,
-        sub: dict[str, Any],
-        tokens: list[str],
-        *,
-        global_flags: dict,
-        pre_regions: list[tuple[list[str], dict]],
-        catalog: dict | None,
-    ) -> str:
-        """Validate the region AFTER a matched subcommand token and return the effective mode.
-
-        Most subcommands are a single level: ``tokens`` is walked against the subcommand's own
-        flags (merged with the still-acceptable global flags) and positionals. But a subcommand
-        may itself declare ``subcommands:`` — a NESTED command group (e.g. ``llmdbenchmark
-        results <store-command>`` whose ``init``/``status``/``remote``/``add``/``push``/``pull``
-        each have their own mode + positionals, exactly mirroring the upstream argparse
-        sub-subparsers). In that case the FIRST positional after this subcommand selects the
-        nested subcommand and we recurse one level deeper with the same uniform rules. This is
-        PURE MECHANISM driven entirely by the YAML shape: a subcommand with no ``subcommands``
-        key is single-level (every pre-existing entry), so this is strictly additive. The mode
-        of the DEEPEST matched (leaf) subcommand wins, while any ``read_only_trigger`` flag at
-        any level still downgrades to read-only and global flags stay acceptable throughout.
-
-        ``pre_regions`` is the list of leading-flag regions BEFORE this subcommand token, each
-        paired with the flag-dict that was EFFECTIVE in that region. A ``read_only_trigger`` in a
-        pre-region is honored ONLY if the flag is a trigger in *that region's own* flag-dict — so
-        a subcommand-OWN trigger (e.g. ``standup``'s ``-n``/``--dry-run``) sitting in the GLOBAL
-        pre-region (where only ``global_flags`` are effective) does NOT downgrade the command. This
-        closes an approval-gate bypass: upstream registers ``-n``/``--dry-run`` on BOTH the
-        top-level parser and each subparser, and whether a global-position ``-n`` actually takes
-        effect depends on an upstream ``default=argparse.SUPPRESS`` detail we don't control — so a
-        security gate must NOT treat a flag as a dry-run in a region where its effect is not
-        guaranteed. The INTENTIONAL nested propagation is preserved because each intermediate
-        region carries the flag-dict (``merged_flags``) effective at THAT level."""
-        merged_flags = {**global_flags, **sub.get("flags", {})}
-        nested = sub.get("subcommands")
-        if nested:
-            # A nested command group: the next positional is the nested subcommand token. Flags
-            # belonging to THIS level (and globals) may precede it; we reuse the same scanner that
-            # finds the top-level subcommand so a leading flag never gets mistaken for the token.
-            idx = self._find_subcommand_index(tokens, merged_flags)
-            if idx is None:
-                raise _Reject(f"no subcommand provided for {subname!r}")
-            nested_name = tokens[idx]
-            nested_sub = nested.get(nested_name)
-            if nested_sub is None:
-                raise _Reject(f"subcommand {nested_name!r} is not allowlisted for {subname!r}")
-            pre = tokens[:idx]
-            post = tokens[idx + 1:]
-            # Validate this level's leading flags (flags only — no positionals before the nested
-            # token); read_only_triggers among them propagate down via pre_regions, tagged with
-            # THIS level's effective flags (merged_flags) so an intermediate-level trigger still
-            # counts — that is the intentional nested propagation.
-            self._walk(pre, flags=merged_flags, positionals=[], base_mode=READ_ONLY, catalog=catalog)
-            return self._walk_subcommand(
-                nested_name, nested_sub, post,
-                global_flags=merged_flags,
-                pre_regions=[*pre_regions, (pre, merged_flags)], catalog=catalog,
-            )
-        return self._walk(
-            tokens,
-            flags=merged_flags,
-            positionals=sub.get("positionals", []),
-            base_mode=sub.get("mode", MUTATING),
-            catalog=catalog,
-            # read_only_triggers from the outer region(s) matter too — but each is judged against
-            # the flags that were EFFECTIVE where it appeared (see pre_regions above).
-            pre_regions=pre_regions,
-        )
-
-    def _find_subcommand_index(self, tokens: list[str], global_flags: dict) -> int | None:
-        i = 0
-        while i < len(tokens):
-            tok = tokens[i]
-            if tok.startswith("-"):
-                spec = global_flags.get(tok)
-                if spec is None:
-                    # Unknown global flag: accepted (policy allows any flag once the
-                    # executable is allowlisted). Treat as boolean so we don't swallow
-                    # what might be the subcommand token.
-                    i += 1
-                    continue
-                i += 2 if spec.get("takes_value") else 1
-                continue
-            return i
-        return None
-
-    def _walk(
-        self,
-        tokens: list[str],
-        *,
-        flags: dict,
-        positionals: list,
-        base_mode: str,
-        catalog: dict | None,
-        pre_regions: list[tuple[list[str], dict]] | None = None,
-    ) -> str:
-        """Walk a token region. Returns the effective mode. Raises _Reject on any
-        unrecognized flag/positional or bad value.
-
-        ``pre_regions`` carries the leading-flag regions from OUTER levels, each paired with the
-        flag-dict effective there; a read_only_trigger in a pre-region is honored only against its
-        OWN region's flags (so a subcommand-own trigger in the global pre-region is NOT honored)."""
-        read_only_triggered = any(
-            self._has_read_only_trigger(tokens_, flags_) for tokens_, flags_ in (pre_regions or [])
-        )
-        pos_specs = list(positionals)
-        repeated_matched = False  # did a head `repeated` spec consume at least one token?
-        i = 0
-        while i < len(tokens):
-            tok = tokens[i]
-            if tok.startswith("-"):
-                spec = flags.get(tok)
-                if spec is None:
-                    # Policy: any flag is accepted once the executable + subcommand are
-                    # allowlisted. The unknown flag's arity is unknown, so greedily consume
-                    # a following non-option token as its value (handles `-l inference-perf`);
-                    # `--flag=value` is self-contained. Every token is already metachar-screened
-                    # in validate(), and unknown flags never downgrade the mode — so mutating
-                    # commands keep their approval gate. (Unknown-flag VALUES are not checked
-                    # against value_constraints; known flags still are.)
-                    if "=" not in tok and i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
-                        i += 2
-                    else:
-                        i += 1
-                    continue
-                if spec.get("read_only_trigger"):
-                    read_only_triggered = True
-                if spec.get("takes_value"):
-                    if i + 1 >= len(tokens):
-                        raise _Reject(f"flag {tok!r} expects a value")
-                    self._check_value(tokens[i + 1], spec.get("value"), catalog, ctx=tok)
-                    i += 2
-                else:
-                    i += 1
-                continue
-            # positional
-            if not pos_specs:
-                raise _Reject(f"unexpected positional argument {tok!r}")
-            pspec = pos_specs[0]
-            self._check_value(tok, pspec.get("value"), catalog, ctx="positional")
-            # A posspec marked `repeated: true` (DATA) is the LAST spec and matches one-or-more
-            # remaining positionals against the same constraint (e.g. the Results Store
-            # `add <paths...>` / `pull <remotes...>`, mapping to argparse nargs='+'/'*'). It stays
-            # on the stack so every following positional is validated against it. A normal spec is
-            # consumed once. PURE MECHANISM — the variable arity is the YAML's, not Python's.
-            if pspec.get("repeated"):
-                repeated_matched = True
-            else:
-                pos_specs.pop(0)
-            i += 1
-
-        # Any positional specs still unconsumed are acceptable only if they need not appear: a
-        # spec marked `optional: true` (zero-or-one); a `repeated` spec is zero-or-more when also
-        # marked `optional` (nargs='*'), otherwise one-or-more (nargs='+') and so still REQUIRED
-        # unless it already matched at least one token. This lets a subcommand take a VARIABLE
-        # number of positionals (e.g. `push [remote] [path]`, `add <paths...>`) without
-        # per-command Python. A required, unmatched spec is rejected as before. PURE MECHANISM
-        # from the YAML shape.
-        leftover_required = [
-            p for p in pos_specs
-            if not p.get("optional") and not (p.get("repeated") and repeated_matched)
-        ]
-        if leftover_required:
-            raise _Reject(f"missing required positional argument(s): {len(leftover_required)}")
-
-        return READ_ONLY if read_only_triggered else base_mode
-
-    @staticmethod
-    def _has_read_only_trigger(tokens: list[str], flags: dict) -> bool:
-        return any(flags.get(t, {}).get("read_only_trigger") for t in tokens if t.startswith("-"))
-
-    def _check_value(self, value: str, constraint: Any, catalog: dict | None, *, ctx: str) -> None:
-        if constraint is None:
-            return  # any value (already metachar-screened)
-        constraint = self._resolve(constraint)
-        # Alternation: the value satisfies the flag if it satisfies ANY listed sub-constraint.
-        # Pure DATA — used so e.g. `--spec` can be EITHER a live-catalog name OR a
-        # workspace-confined authored spec path, without baking either rule into Python.
-        if "any_of" in constraint:
-            alternatives = constraint["any_of"]
-            errs: list[str] = []
-            for alt in alternatives:
-                try:
-                    self._check_value(value, alt, catalog, ctx=ctx)
-                    return
-                except _Reject as exc:
-                    errs.append(str(exc))
-            raise _Reject(
-                f"value {value!r} for {ctx} matched no allowed form ({'; '.join(errs)})"
-            )
-        if "enum" in constraint:
-            if value not in constraint["enum"]:
-                raise _Reject(f"value {value!r} for {ctx} not in {constraint['enum']}")
-            return
-        if "regex" in constraint:
-            if not re.fullmatch(constraint["regex"], value):
-                raise _Reject(f"value {value!r} for {ctx} does not match required pattern")
-            return
-        if "ref_catalog" in constraint:
-            kind = constraint["ref_catalog"]
-            if catalog is None:
-                # Cannot verify membership without a catalog; charset already screened.
-                return
-            allowed = catalog.get(kind, [])
-            # Workload values may be given as 'name' or 'name.yaml'; normalize.
-            candidates = {value, value.removesuffix(".yaml"), f"{value}.yaml"}
-            if not (candidates & set(allowed)):
-                raise _Reject(f"value {value!r} is not in the live {kind} catalog")
-            return
-        raise _Reject(f"unrecognized constraint for {ctx}: {constraint!r}")
-
-    def _resolve(self, constraint: Any, _depth: int = 0) -> dict:
-        if _depth > 8:
-            raise _Reject("constraint ref nesting too deep")
-        if isinstance(constraint, dict) and "ref" in constraint:
-            name = constraint["ref"]
-            target = self._value_constraints.get(name)
-            if target is None:
-                raise _Reject(f"unknown value_constraints ref {name!r}")
-            return self._resolve(target, _depth + 1)
-        return constraint
-
-
-class _Reject(Exception):
-    """Internal control-flow exception used to short-circuit a denial."""
