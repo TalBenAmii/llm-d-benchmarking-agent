@@ -80,6 +80,25 @@ def test_classify_edge_cases():
     assert st.phase == PENDING and st.active == 0 and st.succeeded == 0 and st.failed == 0
 
 
+def test_classify_survives_malformed_conditions():
+    # A forged/corrupt `kubectl get job -o json` whose `conditions` is not a clean list of
+    # dicts must NOT raise out of classify (same crash class as BUG-029 for classify_failure):
+    # a non-dict condition element (`c.get(...)` on a str/None) would AttributeError and abort
+    # the whole watch()/reconstruct() loop the orchestrator's stateless recovery depends on.
+    # Non-dict elements are ignored; a real terminal signal among them still classifies.
+    bad_elems = {"metadata": {"name": "j"}, "status": {
+        "active": 1, "conditions": ["Complete", None, 7, {"type": "Failed", "status": "True",
+                                                          "reason": "BackoffLimitExceeded"}]}}
+    st = classify_job_status(bad_elems)
+    assert st.phase == FAILED and st.reason == "BackoffLimitExceeded"  # real cond still honored
+    # conditions that is not a list at all (e.g. a forged scalar/mapping) → ignored, no crash.
+    non_list = {"metadata": {"name": "j"}, "status": {"active": 1, "conditions": "Complete"}}
+    assert classify_job_status(non_list).phase == ACTIVE
+    # all condition elements malformed + no terminal count → PENDING, never a raise.
+    all_bad = {"metadata": {"name": "j"}, "status": {"conditions": [None, "x", 3]}}
+    assert classify_job_status(all_bad).phase == PENDING
+
+
 # ---- submit ---------------------------------------------------------------
 
 async def test_submit_writes_manifest_and_applies(tmp_path):
