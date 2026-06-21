@@ -1086,6 +1086,37 @@ grep-sweep for the recurring unguarded-coercion-on-disk-JSON vein that produced 
 
 ---
 
+## Round 22 (2026-06-21) — subagent wave 10 (subprocess stdout robustness; resumed after quota reset): 1 fixed (BUG-059 med-high)
+This round RESUMED the hunt after the shared Claude Max-plan quota (which had paused wave 9 — see Round 21)
+reset; a single probe hunter confirmed quota restored and found BUG-059.
+
+## BUG-059 — un-terminated >64 KiB subprocess line crashes the runner AND orphans the child process group
+- **Status:** FIXED
+- **Severity:** medium-high (realistic, non-adversarial output crashes command execution AND leaks a live
+  child process group while the server keeps running)
+- **Where:** `app/security/runner.py::CommandRunner.execute`, the `_pump` coroutine (~line 224).
+- **Trigger:** stdout was drained via `async for raw in proc.stdout` (line-buffered
+  `StreamReader.readline()`), which raises `ValueError: Separator is not found, and chunk exceed the limit`
+  the instant a single un-terminated line passes asyncio's default 64 KiB StreamReader cap. The trigger is
+  realistic output, not adversarial: a large one-line `kubectl get … -o json`, a base64 blob, or a minified
+  log line — anything ≥65,536 bytes on one line with no `\n`.
+- **Root cause:** that `ValueError` is in NEITHER the `except TimeoutError` nor the `except
+  asyncio.CancelledError` handler, so it escaped `execute()` raw (`command_exec.py`'s `run_command`/
+  `run_readonly` pass it straight through; only the broad tool-dispatch guard turns it into an opaque "tool
+  raised"). Worse, the exception path never ran `_kill_process_group`, so a still-alive child + its process
+  group is ORPHANED while the server keeps running.
+- **Fix:** drain stdout in fixed-size chunks (`proc.stdout.read(_READ_CHUNK=65536)`) with a `codecs`
+  incremental UTF-8 decoder (keeps a multibyte char whole across a chunk boundary; `errors="replace"`
+  tolerates non-UTF-8); flush each complete (newline-terminated) line to `on_line` + the bounded capture
+  tail, and flush a never-terminated line in bounded `_MAX_LINE_CHARS` segments so a runaway child can't grow
+  an unbounded buffer. Normal output is unchanged (line-splitting, multibyte-across-boundary, and a trailing
+  newline-less line all verified). Also hardens the `run_shell` UNRESTRICTED_TOOLS POC (it delegates to
+  `execute`) without weakening its intentional no-allowlist behavior.
+- **Regression test:** `tests/test_qafix_infra_runner.py::test_huge_single_line_does_not_crash_the_runner`
+  (+ `::test_huge_line_then_alive_child_is_reaped_not_leaked`).
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
