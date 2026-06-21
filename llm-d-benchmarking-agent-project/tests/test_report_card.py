@@ -129,3 +129,24 @@ def test_report_card_is_a_full_html_document():
     assert html.startswith("<!DOCTYPE html>")
     assert "</html>" in html
     assert "Benchmark report" in html
+
+
+def test_report_card_survives_non_dict_children():
+    # A corrupt/forged on-disk bundle: BundleStore.read only checks the TOP level is a dict with a
+    # "bundle_id" — the dict-typed CHILDREN (report_summary / repos / resolved_config) are never
+    # shape-validated. A non-dict child (e.g. "resolved_config": "oops") used to crash the renderer
+    # with AttributeError ('str' has no .get / 'list' has no .values), turning the public
+    # /bundle/{id}/report-card.html route into a 500. It must now render an empty section instead.
+    for field in ("report_summary", "repos", "resolved_config", "env_snapshot"):
+        for bad in ("oops", ["a", "b"], 5, True):
+            html = render_report_card({"bundle_id": "x1", field: bad})
+            assert html.startswith("<!DOCTYPE html>"), f"{field}={bad!r}"
+            assert "</html>" in html
+    # A non-dict ELEMENT inside repos (a per-repo status that isn't a dict) is also coerced.
+    html = render_report_card({"bundle_id": "x1", "repos": {"llm-d": "not-a-dict"}})
+    assert html.startswith("<!DOCTYPE html>")
+    # Non-dict latency/throughput families under a (dict) summary don't crash the ladder either.
+    html = render_report_card(
+        {"bundle_id": "x1", "report_summary": {"latency": "x", "throughput": 5}}
+    )
+    assert html.startswith("<!DOCTYPE html>")
