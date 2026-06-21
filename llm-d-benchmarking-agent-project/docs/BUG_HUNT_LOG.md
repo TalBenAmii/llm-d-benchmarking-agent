@@ -1053,6 +1053,39 @@ catalog-refresh fall-through. Three real defects fixed + merged to `main`.
 
 ---
 
+## Round 21 (2026-06-21) — subagent wave 9 (storage sort-key) + quota wall: 1 fixed (BUG-058 med)
+Wave 9 launched 3 hunters (knowledge/prompt, session-plan, storage/retention). The shared Claude Max-plan
+quota was EXHAUSTED mid-wave ("You've hit your session limit · resets 11am Asia/Jerusalem"), killing all
+three. The storage/retention hunter had written the `_as_num` helper + regression test but hit the wall
+before wiring it into the sort site; the orchestrator (main loop, git/edit ops only) completed the wiring
+and merged it. The knowledge/prompt + session-plan hunters left no committed work (re-run when quota resets).
+
+## BUG-058 — corrupt non-numeric `updated_at` 500s the whole session sidebar list
+- **Status:** FIXED
+- **Severity:** medium (a single corrupt/hand-edited/forward-incompatible `state.json` crashes
+  `GET /api/sessions` for EVERY chat, not just the corrupt one — the whole sidebar list disappears)
+- **Where:** `app/agent/session.py::SessionManager.list` sort key (~line 383).
+- **Trigger:** `out.sort(key=lambda s: s.get("updated_at") or 0, reverse=True)`. The `or 0` rescues only a
+  FALSY value (None/0); a TRUTHY non-number — a corrupt/hand-edited `state.json` carrying a STRING timestamp
+  (e.g. `"2026-06-21T10:00:00"`), read straight off disk with no per-field type check — sails through and
+  makes `sorted(...)` compare `str` against a healthy record's `float`:
+  `TypeError: '<' not supported between instances of 'float' and 'str'`. That raise is on the NON-best-effort
+  sort (the per-record `try/except` only guards the JSON parse), so it 500s the whole list.
+- **Root cause:** a falsy-only guard on a disk-loaded numeric used as a sort key — same class as
+  BUG-020/021/022/040; this is the `SessionManager.list` sibling flagged-but-deferred back in wave 2.
+- **Fix:** a crash-proof `_as_num()` helper (`v if isinstance(v,(int,float)) and not isinstance(v,bool) else
+  0.0`) used as the sort key, so a corrupt value coerces to 0.0 (sorted oldest, still visible) instead of
+  crashing; `bool` is excluded (an `int` subclass, never a valid timestamp).
+- **Regression test:** `tests/test_sessions.py::test_list_survives_corrupt_non_numeric_updated_at`.
+
+### Note — session paused (quota, not bug-supply)
+The hunt was paused here by Max-plan quota exhaustion (resets 11am Asia/Jerusalem), NOT by running out of
+bugs. To resume: re-launch the knowledge/prompt, session-plan, and storage/retention hunters (no committed
+work was lost), then continue with fresh lenses (command/shell tool, auth/rate-limiter, a systematic
+grep-sweep for the recurring unguarded-coercion-on-disk-JSON vein that produced BUG-023/029/037/040/043/044/052/056/058).
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
