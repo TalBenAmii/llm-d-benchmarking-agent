@@ -1457,6 +1457,68 @@ owned inline via async-with-or-async-gen `finally`) so nothing is orphaned on sh
 
 ---
 
+## Round 30 (2026-06-21) — subagent wave 17 (shares GC / sweep run-id)
+Two fixes. BUG-071 closes the previously-noted (round 29) gap where share snapshots accumulate without GC —
+`shares/` was missing from `retention.MANAGED_AREAS` despite `share.py`'s docstring promising they were
+GC-eligible, and a naive file-area add would orphan the `.gist` token→gist-id mapping; the fix adds a `shares`
+managed area with a token-aware `share` item-kind that treats one published share (`.json` snapshot + `.gist`
+mapping) as ONE logical item. BUG-072 closes a sweep-resume duplicate-Job hazard where an empty-`_slug` treatment
+name fell back to its 1-based list POSITION, so reordering between a sweep and its resume gave a completed
+treatment a different run-id, failed `is_completed`, and re-submitted it as a duplicate Kubernetes Job.
+
+**Verified clean (no bug) — round 30:** the orchestrator `cleanup()`/`diagnose()`/`reconstruct()` paths are
+correctly label-scoped (`managed-by` + exact session/sweep match, deleting by the cluster's own job name);
+`diagnose`'s pod-correlation uses an exact run-id selector; label-vs-annotation routing and the Scheduling
+rendering are sound. The checkpoint ConfigMap is intentionally never deleted by `cleanup` — the BUG-034 RBAC
+omits configmap delete by design — so a resume can still read prior completion state.
+
+## BUG-071 — `shares/` not in `retention.MANAGED_AREAS`, so share snapshots + `.gist` mappings grow without bound
+- **Status:** FIXED
+- **Severity:** medium (unbounded growth on a long-lived server + a docstring that lied)
+- **Where:** `app/storage/retention.py` `MANAGED_AREAS` (~line 71) + `app/storage/share.py` docstring (~line 22).
+- **Trigger:** `share.py`'s docstring promised share snapshots are "GC-eligible exactly like" sessions/history,
+  but `shares` was missing from `retention.MANAGED_AREAS`, so `run_gc` never scanned them. Shares have NO TTL —
+  they live until an explicit revoke (`DELETE /api/share/{token}`) — so on a long-lived server they grow without
+  bound, and the docstring's GC promise was false.
+- **Root cause:** the `shares/` area was simply never registered with retention, and a naive `"file"`-kind add
+  would be wrong: a published share is TWO files (`<token>.json` snapshot + `<token>.gist` token→gist-id mapping),
+  so a file area would count them as two items and could prune the snapshot while orphaning the mapping (a
+  dangling `.gist`).
+- **Fix:** a new `ManagedArea("shares", "shares", "share")` plus a `"share"` item-kind. `_enumerate_shares` groups
+  files by token stem (ignoring the atomic-write `.json.tmp`), treats one token as ONE logical item, sizes
+  `.json`+`.gist` together (byte cap), and records the `.gist` as a sibling; `_Item` gained `extra_paths`, and
+  `gc_area`'s removal loop deletes the primary path + siblings as a unit (no dangling half). Orphan `.gist` files
+  (a best-effort revoke that couldn't reach `gh`) are surfaced and prunable. A fresh/within-cap share is never
+  pruned. Stale docstrings in both files were corrected.
+- **Regression test:** `tests/test_retention.py` (8 new, incl.
+  `test_gc_share_snapshot_and_gist_pruned_together`, `test_gc_prunes_orphan_gist_mapping`,
+  `test_gc_keeps_fresh_share_under_caps`).
+
+## BUG-072 — empty-`_slug` sweep treatment name falls back to list POSITION, re-running a completed treatment on resume
+- **Status:** FIXED
+- **Severity:** medium (a sweep resume re-submits an already-completed treatment as a duplicate Kubernetes Job —
+  the exact failure the cluster checkpoint exists to prevent)
+- **Where:** `app/tools/orchestrate.py` `_sweep_run_id` (~line 194), reached from `orchestrate_sweep`.
+- **Trigger:** `_sweep_run_id` is documented as "a PURE function of `(sweep_id, name)`" so a same-`sweep_id` resume
+  maps each treatment NAME to the same run-id and `checkpoint.is_completed(s.run_id)` skips already-done
+  treatments. But when `_slug(name)` is empty — `_slug(name)` is `""` for all-punctuation/non-ASCII names, and
+  `SweepTreatment.name` (`schemas.py:443`) has NO pattern constraint, so such names pass schema validation — the
+  fallback was `f"t{index}"`, the treatment's 1-based POSITION in the list. The position shifts when treatments are
+  reordered or one is inserted between a sweep and its resume, so the completed treatment gets a different run-id,
+  fails `is_completed`, and is RE-SUBMITTED as a duplicate Job.
+- **Root cause:** the empty-slug fallback keyed on list position, not on the name, breaking the
+  pure-function-of-`(sweep_id, name)` contract for names whose slug is empty. Reproduced: `sweep_id="sw-fixed"`,
+  `[{name:"x"},{name:"###"}]` → `"###"` → `sw-fixed-t2` (completes + checkpoints); resume reordered
+  `[{name:"###"},{name:"x"}]` → `"###"` → `sw-fixed-t1` ≠ checkpointed → re-run.
+- **Fix:** `_name_fallback_slug = "t" + sha1(name)[:6]` (a pure function of NAME, position-independent); distinct
+  empty-slug names still map to distinct run-ids; worst case fits the DNS-1123 budget (40-char `sweep_id` + `-a5`
+  → 62 ≤ 63) and `validate_job_name` remains the backstop.
+- **Regression test:**
+  `tests/test_orchestrator_sweep_tool.py::test_sweep_run_id_is_pure_in_sweep_id_and_name_for_empty_slug_names`
+  + `::test_sweep_resume_reordered_empty_slug_treatment_is_skipped_not_rerun`.
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
