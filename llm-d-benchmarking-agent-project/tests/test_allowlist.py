@@ -54,6 +54,110 @@ def test_version_standalone_is_read_only(allowlist, catalog):
     assert d.allowed and d.mode == READ_ONLY
 
 
+def test_version_after_other_global_flag_is_read_only(allowlist, catalog):
+    # (c) --version is a GENUINE global trigger (argparse action="version" exits before any
+    # action). It must stay honored as read-only even alongside another global flag, and the
+    # bypass fix must not regress it.
+    d = allowlist.validate(["llmdbenchmark", "-v", "--version"], catalog=catalog)
+    assert d.allowed and d.mode == READ_ONLY and not d.requires_approval
+
+
+# ---- approval-gate bypass (BUG): a subcommand-OWN read_only_trigger placed in the GLOBAL /
+# pre-subcommand region must NOT downgrade a mutating subcommand to read-only. Upstream
+# llmdbenchmark registers `-n`/`--dry-run` on BOTH the top-level parser AND each subparser, so
+# whether a GLOBAL-position `-n` actually takes effect hinges on an upstream
+# `default=argparse.SUPPRESS` detail we do not control — a security gate must therefore NOT treat
+# such a flag as a dry-run where its effect is not guaranteed. These pin the FAIL-SAFE direction:
+# global-position trigger -> stays mutating -> still requires approval.
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        # `-n` / `--dry-run` BEFORE the mutating subcommand token (the bypass).
+        ["llmdbenchmark", "-n", "standup", "-p", "ns"],
+        ["llmdbenchmark", "--dry-run", "standup", "-p", "ns"],
+        ["llmdbenchmark", "--spec", "cicd/kind", "--dry-run", "run", "-p", "ns",
+         "-l", "inference-perf", "-w", "sanity_random.yaml"],
+        ["llmdbenchmark", "-n", "run", "-p", "ns", "-l", "inference-perf", "-w", "sanity_random.yaml"],
+        ["llmdbenchmark", "-n", "smoketest", "-p", "ns"],
+        ["llmdbenchmark", "--dry-run", "teardown", "-p", "ns"],
+        ["llmdbenchmark", "-n", "experiment", "-e", "exp.yaml"],
+    ],
+)
+def test_global_position_dry_run_does_not_bypass_approval(allowlist, catalog, argv):
+    d = allowlist.validate(argv, catalog=catalog)
+    # Command is still permitted, but stays MUTATING -> approval-gated (NOT auto-run).
+    assert d.allowed, f"{argv} should still be allowed"
+    assert d.mode == MUTATING, f"{argv} must stay mutating (global-position -n is not a dry-run)"
+    assert d.requires_approval, f"{argv} must still require approval"
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected_mode"),
+    [
+        # (a) The SAME trigger flag in the subcommand's OWN region still downgrades correctly.
+        (["llmdbenchmark", "standup", "--dry-run", "-p", "ns"], READ_ONLY),
+        (["llmdbenchmark", "standup", "-n", "-p", "ns"], READ_ONLY),
+        (["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns", "-l", "inference-perf",
+          "-w", "sanity_random.yaml", "--dry-run"], READ_ONLY),
+        (["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns", "--list-endpoints"], READ_ONLY),
+        (["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns", "-z"], READ_ONLY),
+        (["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns", "--generate-config"], READ_ONLY),
+        (["llmdbenchmark", "--spec", "cicd/kind", "plan", "-n"], READ_ONLY),
+        (["llmdbenchmark", "-n", "experiment", "-e", "exp.yaml"], MUTATING),  # contrast: global -> mutating
+    ],
+)
+def test_subcommand_region_trigger_still_downgrades(allowlist, catalog, argv, expected_mode):
+    # (a) preserved: a read_only_trigger flag in the subcommand's own region still controls the
+    # mode exactly as before — only the GLOBAL-position misuse is closed.
+    d = allowlist.validate(argv, catalog=catalog)
+    assert d.allowed and d.mode == expected_mode
+
+
+def test_nested_pre_token_propagation_is_region_aware():
+    # (b) preserved AND the bypass closed at EVERY level. The intentional nested read-only
+    # propagation honors a trigger in the region BEFORE a nested subcommand token ONLY when the
+    # flag is effective THERE (the intermediate level's merged flags) — a deeper level's OWN
+    # trigger flag does NOT downgrade when it appears in an OUTER region where it is not effective.
+    policy = {
+        "executables": {
+            "tool": {
+                "global_flags": {"--gver": {"read_only_trigger": True}},  # genuine global trigger
+                "subcommands": {
+                    "group": {
+                        "mode": READ_ONLY,
+                        "flags": {"--gdry": {"read_only_trigger": True}},  # GROUP-level trigger
+                        "subcommands": {
+                            "leaf": {
+                                "mode": MUTATING,
+                                "flags": {"--ldry": {"read_only_trigger": True}},  # LEAF-own trigger
+                                "positionals": [{"value": None, "optional": True}],
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+    al = Allowlist(policy)
+
+    def mode(argv):
+        return al.validate(argv).mode
+
+    assert mode(["tool", "group", "leaf"]) == MUTATING
+    # (a) leaf-own trigger in the leaf's own region downgrades.
+    assert mode(["tool", "group", "leaf", "--ldry"]) == READ_ONLY
+    # (b) an INTERMEDIATE (group)-level trigger in the region before the nested leaf token still
+    # propagates down — the nested-propagation mechanism is intact.
+    assert mode(["tool", "group", "--gdry", "leaf"]) == READ_ONLY
+    # (c) a genuine GLOBAL trigger before the group still downgrades.
+    assert mode(["tool", "--gver", "group", "leaf"]) == READ_ONLY
+    # BUG closed: a leaf-own trigger in the GLOBAL region does NOT downgrade.
+    assert mode(["tool", "--ldry", "group", "leaf"]) == MUTATING
+    # And a leaf-own trigger in the GROUP region (also not effective there) does NOT downgrade.
+    assert mode(["tool", "group", "--ldry", "leaf"]) == MUTATING
+
+
 def test_workload_name_without_extension_normalizes(allowlist, catalog):
     d = allowlist.validate(
         ["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns", "-l", "inference-perf", "-w", "sanity_random"],
