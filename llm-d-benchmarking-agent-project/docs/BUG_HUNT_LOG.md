@@ -764,6 +764,80 @@ re-reviewed with no defect (see the Verified-clean note for round 16, below).
   Reads as an accepted design tradeoff (sessions are bounded in practice and pruned on disk), not a discrete
   defect; recorded here so a future hunt doesn't re-discover it as new.
 
+## Round 17 (2026-06-21) — subagent wave 5 (WS race / DoE / dispatch): 3 fixed (BUG-046 low-med, BUG-047/048 med-high)
+A fifth subagent wave over three disjoint areas — the DoE cross-product treatment-dedup, the tool-dispatch
+validation-error serialization path (loop-poisoning), and the WS mid-turn-reconnect missed-tail window vs
+the bounded live-buffer ring eviction. Three real defects fixed + merged to `main`. BUG-048 is the INVERSE
+of BUG-032 (and distinct from BUG-036) on the same reconnect path; BUG-047 escapes the per-tool `_invoke`
+guard from the loop's result-clamp step.
+
+## BUG-046 — DoE level-dedup collapses distinct levels that are equal-but-different-type in Python (`1`/`1.0`/`True`)
+- **Status:** FIXED
+- **Severity:** low-medium (a factor with equal-valued cross-type levels silently sweeps a SMALLER matrix
+  than the agent requested — a content-dedup drop, no error, treatment NAMES stay distinct)
+- **Where:** `app/validation/doe.py::_hashable` (~line 166), consumed by the dedup signature in `_expand`
+  (~line 155).
+- **Trigger:** the cross-product treatment-payload dedup built a signature `tuple(sorted((k, _hashable(v))))`
+  and skipped a combo whose signature was already seen; `_hashable` returned the raw value, but in Python
+  `1 == 1.0 == True` with EQUAL hashes, so signatures `("a.b",1)` / `("a.b",1.0)` / `("a.b",True)` collide.
+  A factor with `levels=[1, True]` or `[1, 1.0]` silently collapsed two genuinely-distinct levels into ONE
+  treatment.
+- **Root cause:** the dedup key paired each value by Python value/hash identity, which conflates `int`/`float`/
+  `bool` instances that compare and hash equal — so distinct levels signed to the same tuple.
+- **Fix:** pair each value with its concrete type name — return `(type(base).__name__, base)` — so
+  `("int",1)` / `("float",1.0)` / `("bool",True)` are distinct; a true repeat (same type AND value, e.g.
+  `[10, 10]`) still dedupes. Safe direction (only ever MORE treatments, never re-introduces a real dup).
+- **Regression test:** `tests/test_doe.py::test_distinct_levels_equal_in_python_are_not_deduped`.
+
+## BUG-047 — un-serializable Pydantic `ctx` in a validation error poisons the loop with an ORPHANED tool_call
+- **Status:** FIXED
+- **Severity:** medium-high (a custom-validator `ValueError`/`AssertionError` on a tool's input model →
+  `TypeError` in the loop's result-clamp, OUTSIDE the per-tool guard → an orphaned `tool_call` in
+  `session.messages` that poisons the NEXT turn with a provider error)
+- **Where:** `app/tools/registry.py::dispatch` (~line 710), surfacing as a `TypeError` at
+  `app/agent/loop.py:287` (`clamp_tool_result_content` → `json.dumps`), OUTSIDE the per-tool `_invoke` guard.
+- **Trigger:** `dispatch` returned `{"error":"invalid arguments","details": exc.errors(include_url=False)}`.
+  When a tool's Pydantic input model has a custom field/model validator that raises `ValueError`/
+  `AssertionError`, Pydantic embeds the raised EXCEPTION OBJECT in each error entry's `ctx` — not
+  JSON-serializable. The loop clamps every tool result with `json.dumps`, which is outside `_invoke`'s
+  `try/except` (that only wraps `dispatch`), so the `TypeError` escaped `run_turn` AFTER the assistant message
+  with its `tool_calls` was appended (`loop.py:217`) but BEFORE the matching `tool_results` block
+  (`loop.py:301`) → an ORPHANED `tool_call` in `session.messages` that poisons the next turn (provider error).
+  Concrete repro: `propose_session_plan` with an autotune knob where `max <= min`
+  (`AutotuneKnob._check`, `session_plan.py:62`, raises `ValueError`). The existing invalid-args tests only hit
+  the missing-field path (no `ctx`, serializes fine) — why it slipped.
+- **Root cause:** `dispatch`'s docstring promises validation errors are returned-not-raised for
+  self-correction, but the returned value carried Pydantic's non-serializable `ctx` (the raised exception
+  object), which then detonated at the un-guarded `json.dumps` clamp step.
+- **Fix:** `exc.errors(include_url=False, include_context=False)` drops the non-serializable `ctx` (the
+  human-readable `msg` still carries the validator message for self-correction) + a defensive
+  `json.loads(json.dumps(details, default=str))` roundtrip + a `msg`-only last-resort fallback.
+- **Regression test:** `tests/test_loop.py::test_schema_validation_error_does_not_break_the_loop`.
+
+## BUG-048 — mid-turn reconnect drops the missed tail evicted from the bounded live-buffer ring during attach (inverse of BUG-032)
+- **Status:** FIXED
+- **Severity:** medium-high (a permanent content gap in the reconnecting client's cached pane — a missed
+  `tool_result` / report card / streaming chunk / even `done` — with no de-dup, no re-fetch, no
+  full-rebuild fallback)
+- **Where:** `app/main.py` ws handler (~line 853 capture + ~1047 replay calls) ↔
+  `app/agent/channel.py::replay_live` (~line 146).
+- **Trigger:** the INVERSE of BUG-032 (and distinct from BUG-036). On mid-turn reconnect the handler captures
+  `replay_cutoff = channel.cur_seq` synchronously (BUG-032), then awaits `emit("ready")` (+ `emit("history")`
+  on the full path) BEFORE calling `replay_live(after_seq, through_seq=replay_cutoff)`. The per-turn live
+  buffer is a bounded `deque(maxlen=LIVE_BUFFER_MAX)`. A still-running chatty background turn emitting a burst
+  DURING those awaits appends to the ring (delivered live to the just-attached socket, `seq > replay_cutoff`)
+  and EVICTS the oldest entries — which can include the FRONT of the missed window
+  `(after_seq, replay_cutoff]`. By the time `replay_live` reads `self._buffer` those frames are gone: never
+  delivered live (they predate this socket's attach) and now unreplayable → a permanent content gap.
+- **Root cause:** `replay_live` read the live ring LAZILY (after the eviction-prone awaits), so a burst during
+  attach could evict the front of the missed window before it was replayed — the snapshot of what to replay
+  was taken too late.
+- **Fix:** snapshot `channel.buffered_events` synchronously at attach (alongside `replay_cutoff`, before the
+  eviction-prone awaits) and pass it to `replay_live(..., frames=replay_snapshot)` on BOTH the incremental
+  and full mid-turn paths; `replay_live` gained an optional `frames` param (falls back to the live buffer when
+  omitted), preserving the `through_seq` cap + `after_seq` cursor.
+- **Regression test:** `tests/test_ws.py::test_reconnect_midturn_does_not_drop_missed_tail_evicted_during_attach`.
+
 ---
 
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
