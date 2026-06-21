@@ -28,10 +28,6 @@ from app.dig import dict_or_empty, dig_dotted
 # percentile-ladder SSOT that stays here.
 from app.validation.report_metrics import (
     _PCTL_KEYS,
-    _STANDARD_METRICS_CATALOG,  # noqa: F401  (re-export)
-    _extract_standard_metric,  # noqa: F401  (re-export for callers/tests)
-    _load_catalog_section,  # noqa: F401  (re-export)
-    _native_stat,  # noqa: F401  (re-export)
     _stat,
     extract_session_performance,
     extract_standard_metrics,
