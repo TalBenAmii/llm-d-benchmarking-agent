@@ -36,9 +36,28 @@ _BODY_LIMIT = 200_000
 
 
 def _clip(value: Any, limit: int = _BODY_LIMIT) -> Any:
-    """Stringify+truncate an oversized body with a visible marker; pass small values through."""
-    if isinstance(value, str) and len(value) > limit:
-        return value[:limit] + f"\n…[truncated {len(value) - limit} chars]"
+    """Truncate every oversized string body with a visible marker; small values pass through.
+
+    Recurses into the list/dict CONTAINERS the loop hands us (notably a step's ``tool_calls``,
+    whose ``input`` is a model-emitted dict that can nest a large body like ``write_config``'s
+    ``content``). Bounding only a top-level string would let such a nested blob grow one record
+    without limit — defeating the per-record cap. Recursion is depth-bounded so a degenerate
+    (or cyclic) structure can never blow the stack while tracing a live turn.
+    """
+    return _clip_at(value, limit, depth=8)
+
+
+def _clip_at(value: Any, limit: int, depth: int) -> Any:
+    if isinstance(value, str):
+        if len(value) > limit:
+            return value[:limit] + f"\n…[truncated {len(value) - limit} chars]"
+        return value
+    if depth <= 0:
+        return value
+    if isinstance(value, dict):
+        return {k: _clip_at(v, limit, depth - 1) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_clip_at(v, limit, depth - 1) for v in value]
     return value
 
 
