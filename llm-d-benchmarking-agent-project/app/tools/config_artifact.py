@@ -176,13 +176,23 @@ def unrecognized_flags(content: dict[str, Any], reference: dict[str, Any]) -> li
     Non-fatal: shape validation still passes; this only lets the agent WARN. Returns the FULL
     dotted keys (sorted, de-duped) so the agent can name them precisely. Empty when there is no
     reference (repo absent) — we don't guess without repo truth. Structural path segments
-    (``flags``, ``name``) and any segment the repo uses are NOT flagged."""
+    (``flags``, ``name``) and any segment the repo uses are NOT flagged.
+
+    A dotted key rooted in a SOFT-OPTIONAL knob (``tracing.*``) is also NOT flagged: that whole
+    family is rendered by the upstream jinja behind ``{% if … is defined %}`` guards but appears
+    in NO scenario example or stock defaults BY DESIGN (the very reason ``_SOFT_OPTIONAL_KNOBS``
+    exists). So its sub-leaves (``otlpEndpoint``, ``samplerArg``, ``vllmDecode`` …) can NEVER be
+    corroborated against repo truth — flagging them would falsely brand every legitimate,
+    documented ``tracing.*`` knob as a fabricated flag. The soft-optional union only widened the
+    top-level NAME; this is the matching skip for the dotted SUB-paths."""
     known = set(reference.get("known_leaf_keys", []))
     if not known:
         return []
     flagged: set[str] = set()
     for dotted in content:
         if dotted == "name":
+            continue
+        if dotted.split(".", 1)[0] in _SOFT_OPTIONAL_KNOBS:
             continue
         leaf = dotted.split(".")[-1]
         if leaf in _STRUCTURAL_LEAF_SEGMENTS:
