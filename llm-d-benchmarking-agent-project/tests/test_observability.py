@@ -325,3 +325,25 @@ def test_observability_knowledge_documents_streaming_unimplemented_and_substitut
 
     # Grounded in upstream truth, not invented (the benchmark metrics doc names the gap).
     assert "metrics_collection.md" in md
+
+
+def test_observability_knowledge_documents_grafana_vs_metrics_server_offer():
+    """THIN-CODE, knowledge-only: before a run the agent must offer BOTH live-view options as a pair
+    and clarify what each is for — Grafana (the richer view it can only ADVISE on, via
+    GRAFANA_DASHBOARD_URL) and metrics-server (the convenient CPU/mem-only alternative it CAN install).
+    That judgment lives in knowledge, not Python (mirrors the streaming/tracing assertions). Read the
+    file directly; no app behavior changed."""
+    from app.config import get_settings
+
+    md = (get_settings().knowledge_dir / "observability.md").read_text()
+    lower = md.lower()
+
+    # Both options are named together as a pair.
+    assert "grafana" in lower and "metrics-server" in lower
+    # The honest asymmetry: Grafana is advice-only (user sets the env var); metrics-server is the
+    # install-for-you option.
+    assert "GRAFANA_DASHBOARD_URL" in md
+    assert "advise" in lower
+    assert "install_metrics_server.sh" in md
+    # The probe fact the agent tailors its message on (configured vs not).
+    assert "grafana_dashboard.configured" in md

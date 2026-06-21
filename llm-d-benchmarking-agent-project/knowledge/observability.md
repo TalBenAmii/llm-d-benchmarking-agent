@@ -97,6 +97,33 @@ Probe with `observe_run_metrics` first: if it already returns `available: true`,
 offer the install when it is genuinely absent and the user actually wants the live view. (See
 `knowledge/infra_providers` for per-provider differences.)
 
+### Two live-view options to offer before a run — Grafana (richer) vs metrics-server (convenient)
+
+When the user wants to *watch a run live*, there are two complementary surfaces. Offer BOTH as a
+pair before the run (alongside the metrics-server offer above) and clarify what each is for — they
+are not the same thing, and one is not a drop-in for the other:
+
+- **Grafana — the richer, recommended view.** The operator's own llm-d observability dashboard (the
+  upstream `--monitoring` Grafana, backed by their Prometheus) shows the *full* picture: GPU
+  utilization, vLLM/EPP latency (TTFT/ITL), throughput, queue depth, KV-cache, **and history across
+  the whole run**. The catch: it is the user's own stack, so you can only **advise** — never set it
+  up for them. They stand up Prometheus+Grafana (point them at the upstream
+  `install-prometheus-grafana.sh` / observability `setup.md` via `knowledge/useful_repo_docs.md`) and
+  set the backend env var `GRAFANA_DASHBOARD_URL`; you cannot write env/secrets. Once it is set, an
+  **Open Grafana** button appears above the live metrics in the run panel and opens the dashboard in a
+  modal. `probe_environment` reports `grafana_dashboard.configured` (true once the env var is set) —
+  use it to tailor the message: configured → "it'll show up in the run panel"; not configured → "set
+  `GRAFANA_DASHBOARD_URL` and I'll embed it beside the run".
+- **metrics-server — the convenient alternative.** Live **CPU/memory only** (no GPU, no latency, no
+  history), but it is the zero-setup option **you can install for them** in one approval-gated step
+  (`install_metrics_server.sh`, per §2.1) and it lights up the in-panel sparklines immediately. It is
+  the right answer when the user just wants a quick "is anything melting?" view and has no Grafana
+  stack.
+
+Position Grafana as the fuller picture and metrics-server as the quick fallback; be honest that you
+can *do* the metrics-server install but can only *guide* the Grafana setup. The two are independent —
+the Grafana embed works even when metrics-server is absent, and vice-versa (see §5.2 for the embed).
+
 ## 3. Benchmark monitoring — activating `results.observability` (DEFAULT ON)
 
 The Benchmark Report v0.2 carries a `results.observability` block (KV-cache hit rate, schedule
@@ -311,14 +338,15 @@ streaming as the real, available equivalent.
 
 ### Embedding the user's own Grafana in the live panel (optional)
 If the operator has their own llm-d observability stack (the upstream `--monitoring` Grafana),
-they can set the backend env var **`GRAFANA_DASHBOARD_URL`** to that dashboard's URL. When set,
-the live resource panel that opens during a run **embeds that dashboard alongside** the agent's
-own kubectl-top table/sparklines (and shows it even when no metrics-server is present, since the
-external Grafana is independent of it). Unset (the default) → the panel shows only the agent's
-own view. This is mechanism only — it surfaces the operator's dashboard; it does not make the
-benchmark itself stream metrics. So when a user asks for "live Grafana during the run," the
-honest answer is: point me at your Grafana via `GRAFANA_DASHBOARD_URL` and I'll show it beside
-the run.
+they can set the backend env var **`GRAFANA_DASHBOARD_URL`** to that dashboard's URL. When set, an
+**Open Grafana** button appears above the live metrics in the run panel; clicking it opens the
+dashboard in a large modal overlay (with an **open-in-new-tab** fallback for Grafana instances that
+refuse iframe embedding via `X-Frame-Options` / `frame-ancestors`). The button shows even when no
+metrics-server is present, since the external Grafana is independent of it. Unset (the default) → no
+button, and the panel shows only the agent's own kubectl-top view. This is mechanism only — it
+surfaces the operator's dashboard; it does not make the benchmark itself stream metrics. So when a
+user asks for "live Grafana during the run," the honest answer is: point me at your Grafana via
+`GRAFANA_DASHBOARD_URL` and I'll show it in the run panel (see the paired offer in §2).
 
 ### The substitute for "custom Prometheus queries"
 

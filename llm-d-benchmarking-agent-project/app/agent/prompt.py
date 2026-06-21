@@ -134,6 +134,14 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   later run. SKIP the offer only if it is already available, the user already declined, or it is a
   managed cluster that ships metrics (GKE/OpenShift). Never defer it to a mid-run action. See
   read_knowledge('observability').
+- When offering live observability before a run, present BOTH options as a pair and clarify what
+  each is for (wording in read_knowledge('observability')): (1) the operator's own **Grafana** — the
+  richer view (GPU, latency, throughput, KV-cache, history) you can only ADVISE on, since they stand
+  up the stack + set `GRAFANA_DASHBOARD_URL` and you cannot set it for them; when set it embeds in the
+  run panel (probe_environment reports `grafana_dashboard.configured`); and (2) **metrics-server** —
+  the convenient CPU/memory-only alternative you CAN install for them (per the rule above). Frame
+  Grafana as the fuller view and metrics-server as the zero-setup fallback; never imply you can stand
+  up Grafana yourself.
 """
 
 

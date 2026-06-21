@@ -90,6 +90,44 @@ async def test_metrics_server_no_kubectl(tmp_path):
 
 def test_hard_rule_drives_the_pre_run_offer():
     """The offer is guaranteed by a HARD_RULE (not buried playbook prose): the system prompt
-    references the probe fact AND the vetted install command, so the agent offers before running."""
+    references the probe fact AND the vetted install command, so the agent offers before running.
+    It also presents Grafana as the richer (advice-only) alternative, keyed off the probe fact."""
     assert "metrics_server" in HARD_RULES
     assert "install_metrics_server.sh" in HARD_RULES
+    # The pre-run offer presents BOTH live-view options as a pair: Grafana (advice-only) too.
+    assert "Grafana" in HARD_RULES
+    assert "GRAFANA_DASHBOARD_URL" in HARD_RULES
+    assert "grafana_dashboard.configured" in HARD_RULES
+
+
+def _grafana_ctx(tmp_path, *, grafana_url=""):
+    """A ToolContext whose Settings carry a chosen GRAFANA_DASHBOARD_URL (default unset)."""
+    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos",
+                        workspace_dir=tmp_path / "ws", grafana_dashboard_url=grafana_url)
+    runner = CaptureRunner(settings.repo_paths, canned={})
+    ctx = ToolContext(
+        settings=settings,
+        allowlist=Allowlist.from_file(settings.allowlist_path),
+        runner=runner,
+        workspace=tmp_path / "ws",
+    )
+    frozen = frozen_catalog()
+    ctx._catalog = frozen
+    ctx.catalog = lambda *, refresh=False: frozen
+    return ctx, runner
+
+
+async def test_grafana_dashboard_configured(tmp_path):
+    """GRAFANA_DASHBOARD_URL set → grafana_dashboard.configured True. Pure config introspection:
+    NO cluster read is issued (the agent uses this to tailor its pre-run Grafana offer)."""
+    ctx, runner = _grafana_ctx(tmp_path, grafana_url="https://grafana.example/d/llm-d/overview")
+    out = await probe_environment(ctx, checks=["grafana_dashboard"])
+    assert out["grafana_dashboard"] == {"configured": True}
+    assert runner.calls == []  # config-only, never a kubectl call
+
+
+async def test_grafana_dashboard_unconfigured(tmp_path):
+    """Unset (default) → configured False; a whitespace-only value is treated as unset (stripped)."""
+    ctx, _ = _grafana_ctx(tmp_path, grafana_url="   ")
+    out = await probe_environment(ctx, checks=["grafana_dashboard"])
+    assert out["grafana_dashboard"] == {"configured": False}

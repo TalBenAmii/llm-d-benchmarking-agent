@@ -51,10 +51,14 @@ def test_app_js_resource_view_is_per_chat_and_dashboard_ready():
     # Per-chat snapshot so a chat switch re-renders the front chat's run in the shared panel.
     assert "resourceData" in js
     assert "resourceActive" in js
-    # Structured to host a Grafana/Prometheus dashboard when the event carries a URL; otherwise
-    # the live table stands in (graceful fallback).
+    # When the event carries a Grafana URL, an "Open Grafana" button (above the metrics) opens the
+    # dashboard in a modal overlay; otherwise the live kubectl-top table stands in (graceful fallback).
     assert "dashboard_url" in js
-    assert "resource-dash-frame" in js
+    assert "resource-dash-btn" in js     # the button replaces the old always-on inline iframe
+    assert "openGrafanaModal" in js      # click → modal overlay, not an always-on embed
+    assert "grafana-modal-frame" in js   # the lazily-loaded iframe lives in the modal now
+    # The old always-on inline iframe is gone (replaced by the button-triggered modal).
+    assert "resource-dash-frame" not in js
 
 
 def test_old_inline_resource_panel_is_gone():

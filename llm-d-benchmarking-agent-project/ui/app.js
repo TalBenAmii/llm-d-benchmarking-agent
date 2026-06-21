@@ -1203,23 +1203,17 @@ function renderResourceSide() {
   body.innerHTML = "";
   const data = resourceData;
 
-  // Dashboard slot (Grafana/Prometheus): surface it when the backend supplies a URL, otherwise the
-  // live table below stands in. Built to host a richer embed later without touching the layout.
+  // Grafana slot: a button ABOVE the metrics that opens the operator's dashboard in a modal overlay
+  // (replaces the old always-on inline iframe — the embed now loads lazily, only when asked). Shown
+  // only when the backend supplied a valid http(s) dashboard_url (GRAFANA_DASHBOARD_URL configured);
+  // run-scoped, since this panel only exists during a run. The agent's own kubectl-top view renders
+  // below it. See openGrafanaModal for the X-Frame-Options "open in new tab" fallback.
   if (data.dashboard_url && /^https?:\/\//i.test(data.dashboard_url)) {
-    const dash = el("div", "resource-dash");
-    const frame = el("iframe", "resource-dash-frame");
-    frame.src = data.dashboard_url;
-    frame.title = "Live metrics dashboard";
-    frame.setAttribute("loading", "lazy");
-    frame.setAttribute("referrerpolicy", "no-referrer");
-    frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
-    dash.appendChild(frame);
-    const link = el("a", "resource-dash-link", "Open dashboard ↗");
-    link.href = data.dashboard_url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    dash.appendChild(link);
-    body.appendChild(dash);
+    const btn = el("button", "resource-dash-btn", "📊 Open Grafana");
+    btn.type = "button";
+    btn.title = "Open the live Grafana dashboard";
+    btn.addEventListener("click", () => openGrafanaModal(data.dashboard_url));
+    body.appendChild(btn);
   }
 
   if (data.available === false) {
@@ -2590,6 +2584,53 @@ function openLightbox(src, title) {
   img.alt = title || "benchmark chart";
   cap.textContent = title || "";
   cap.hidden = !title;
+  if (typeof dlg.showModal === "function") dlg.showModal();
+  else dlg.setAttribute("open", "");
+}
+
+// Lazily-created, reused modal that embeds the operator's Grafana dashboard at a large size. Native
+// <dialog> gives Esc-to-close + focus handling; we add a ✕, a backdrop-click dismiss, and an
+// "open in new tab" fallback for Grafana instances that refuse iframe embedding (X-Frame-Options /
+// frame-ancestors) — without it those would render a blank modal. The iframe src is set on open and
+// cleared on close so the embedded dashboard stops polling/refreshing in the background.
+let grafanaModalEls = null;
+function ensureGrafanaModal() {
+  if (grafanaModalEls) return grafanaModalEls;
+  const dlg = document.createElement("dialog");
+  dlg.className = "grafana-modal";
+  const inner = el("div", "grafana-modal-inner");
+  const head = el("div", "grafana-modal-head");
+  head.appendChild(el("span", "grafana-modal-title", "Grafana — live metrics"));
+  const tab = el("a", "grafana-modal-tab", "Open in new tab ↗");
+  tab.target = "_blank";
+  tab.rel = "noopener noreferrer";
+  const close = el("button", "grafana-modal-close", "✕");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close");
+  close.addEventListener("click", () => dlg.close());
+  head.appendChild(tab);
+  head.appendChild(close);
+  const frame = el("iframe", "grafana-modal-frame");
+  frame.title = "Live Grafana dashboard";
+  frame.setAttribute("referrerpolicy", "no-referrer");
+  frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+  inner.appendChild(head);
+  inner.appendChild(frame);
+  dlg.appendChild(inner);
+  // A click whose target is the dialog itself is on the backdrop → dismiss. Clearing src on close
+  // (fires for ✕, Esc, and backdrop) stops the embed from fetching in the background.
+  dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+  dlg.addEventListener("close", () => { frame.src = "about:blank"; });
+  document.body.appendChild(dlg);
+  grafanaModalEls = { dlg, frame, tab };
+  return grafanaModalEls;
+}
+
+function openGrafanaModal(url) {
+  if (!url || !/^https?:\/\//i.test(url)) return;
+  const { dlg, frame, tab } = ensureGrafanaModal();
+  frame.src = url;
+  tab.href = url;
   if (typeof dlg.showModal === "function") dlg.showModal();
   else dlg.setAttribute("open", "");
 }
