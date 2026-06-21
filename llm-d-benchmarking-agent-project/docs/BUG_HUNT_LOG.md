@@ -1517,6 +1517,65 @@ omits configmap delete by design — so a resume can still read prior completion
   `tests/test_orchestrator_sweep_tool.py::test_sweep_run_id_is_pure_in_sweep_id_and_name_for_empty_slug_names`
   + `::test_sweep_resume_reordered_empty_slug_treatment_is_skipped_not_rerun`.
 
+## Round 31 (2026-06-21) — subagent wave 18 (gist orphan / fma false-feasible)
+Two fixes. BUG-073 closes a gist-publish ordering hazard where a SECOND `gh api` call (URL derivation) ran
+BEFORE the `<token>.gist` mapping was written, so a transient `gh` hiccup right after a successful `gh gist
+create` left a live SECRET gist that the app could never revoke (an unrevocable orphan) — and a retry made
+ANOTHER. BUG-074 is the third in the false-feasible family (after BUG-030 KV-cache sizing-proof and BUG-035
+GPU shortfall): an `fma` (fast model actuation) deployment skips vLLM capacity validation upstream and returns
+no sizing, so `classify_diagnostics` saw no FAIL/skip/sized marker and fell through to `else: feasible=True` —
+an un-evaluated run read as a fit.
+
+**Verified clean (no bug) — round 31:** `faults.py` `classify_failure` classification LOGIC (priority order,
+OOM-vs-evicted-vs-`run_error`, image-pull waiting reasons, unschedulable, none-vs-unknown) is correct for every
+reachable pod/job condition shape. The `_scan_oom` (state+lastState) vs `_scan_run_error` (state-only)
+asymmetry is UNREACHABLE because the agent's Jobs use `restartPolicy:Never` + `backoffLimit:0` (no in-place
+restart → no waiting+lastState-only shape can ever occur) — NOT a bug.
+
+## BUG-073 — gist URL-derivation runs BEFORE the `.gist` mapping is written, leaving an unrevocable orphan gist
+- **Status:** FIXED
+- **Severity:** medium (security/correctness — a live SECRET gist on the user's GitHub the app can never delete)
+- **Where:** `app/packaging/gist_publish.py` `publish` (~line 153); reuse path (~line 139); HTTP route
+  `app/main.py:795`.
+- **Trigger:** after `gh gist create` succeeds — a real SECRET gist is now live — `publish()` ran
+  `_render_urls(_raw_url_for(gist_id))`, a SECOND `gh api gists/<id>` call, BEFORE writing the `<token>.gist`
+  token→gist-id mapping. `_raw_url_for → _gh` raises `GistPublishError` on ANY non-zero `gh` exit — a common
+  transient network / rate-limit / API hiccup right after a create — aborting `publish()` before the mapping was
+  written.
+- **Root cause:** the mapping was written only at the END of `publish()`, after URL derivation. `revoke()` and
+  `scripts/publish_shared_chat.sh --revoke` both gate on the mapping existing, so a create-then-URL-error left a
+  live gist that could never be deleted through the app (an unrevocable orphan on the user's GitHub). The reuse
+  path (~line 139) also keys off the mapping, so a retry didn't reuse the orphan — it created ANOTHER. The HTTP
+  route (`main.py:795`) catches `GistPublishError` and returns a clean 503 ("falling back to local link"),
+  masking that an unrevocable gist was just created.
+- **Fix:** write the `<token>.gist` mapping the MOMENT the gist id is parsed (immediately after `gh gist create`),
+  BEFORE `_raw_url_for`. The gist is now always recorded → always revocable, and a retry reuses it instead of
+  orphaning a second one; `publish()` still surfaces a URL-derivation error, but on-disk state is consistent.
+- **Regression test:**
+  `tests/test_gist_publish.py::test_publish_records_the_mapping_even_when_url_derivation_fails`.
+
+## BUG-074 — `fma` deployment skips capacity sizing, so `classify_diagnostics` reads it as feasible:true
+- **Status:** FIXED
+- **Severity:** medium-high (third false-feasible: an un-evaluated capacity run reported as a confirmed fit)
+- **Where:** `app/capacity/planner.py` `classify_diagnostics` (marker ~line 56, `sizing_bypassed` ~line 196);
+  bridge `scripts/capacity_check.py:186`; upstream `capacity_validator.py:417-420`.
+- **Trigger:** for an `fma` (fast model actuation) deployment, upstream `run_capacity_planner` returns EARLY with
+  NO sizing — it logs "Deployment method is fma -- skipping vLLM capacity validation" and returns `[]`
+  (`capacity_validator.py:417-420`); the bridge `scripts/capacity_check.py:186` falls back to the framing log
+  lines. `classify_diagnostics` then saw no FAIL/ERROR/skip/sized marker, so it fell through to
+  `else: feasible=True` — an un-evaluated run read as a fit. The `examples/fma` spec sets `fma.enabled:true` and
+  is in the catalog snapshot, so `check_capacity(spec="examples/fma")` hits this. DISTINCT trigger/marker from
+  BUG-030 (KV-cache sizing-proof) / BUG-035 (GPU shortfall).
+- **Root cause:** `classify_diagnostics`'s feasibility fall-through assumed any run with no failure marker was a
+  fit, but an `fma` run produces NO sizing at all (it's deliberately skipped upstream) and emits no marker the
+  classifier recognized — so a never-evaluated run defaulted to `feasible=True`.
+- **Fix:** added `_FMA_SKIP_MARKER = "skipping vllm capacity validation"`; the classifier sets an `fma_skip` flag
+  on that line and folds it into `sizing_bypassed`, so an `fma` run downgrades to `feasible=None` (INCONCLUSIVE)
+  with a reason noting the KV-cache/VRAM pre-flight doesn't apply to `fma`. Conservative: the marker can't appear
+  in a real fit line (a genuinely-sized run still reads `feasible:true`) and a hard ERROR still wins.
+- **Regression test:**
+  `tests/test_qafix_tools_capacity_history_config_report.py::test_classify_fma_method_is_inconclusive_not_feasible`.
+
 ---
 
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
