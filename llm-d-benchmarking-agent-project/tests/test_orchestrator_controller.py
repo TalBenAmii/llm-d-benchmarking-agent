@@ -99,6 +99,19 @@ def test_classify_survives_malformed_conditions():
     assert classify_job_status(all_bad).phase == PENDING
 
 
+def test_classify_survives_non_dict_job_obj():
+    # `kube.parse_items` does NOT filter non-dict `items` elements, so a forged/corrupt
+    # `kubectl get jobs -o json` whose `items` carries a non-dict element (a bare string,
+    # null, or number) flows straight into `classify_job_status(j)` from `status()`/
+    # `reconstruct()`. The interior was hardened for malformed CHILDREN (BUG-023 counts,
+    # BUG-037 conditions) but NOT for a non-dict TOP-LEVEL job — `job_obj.get(...)` would
+    # AttributeError and abort the whole watch()/reconstruct() loop. The sibling
+    # `classify_failure` (BUG-029) already filters non-dict pods; this is the missing twin.
+    for bad in ("not-a-job", None, 7, ["a", "b"]):
+        st = classify_job_status(bad)  # must NOT raise
+        assert st.phase == ABSENT and st.active == 0 and st.succeeded == 0 and st.failed == 0
+
+
 # ---- submit ---------------------------------------------------------------
 
 async def test_submit_writes_manifest_and_applies(tmp_path):

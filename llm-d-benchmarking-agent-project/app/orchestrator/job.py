@@ -377,6 +377,14 @@ def classify_job_status(job_obj: dict[str, Any]) -> JobStatus:
     """Map a Job object (from ``kubectl get job -o json``) to a stable phase. A Complete
     condition → succeeded; a Failed condition → failed (carrying its reason/message, e.g.
     DeadlineExceeded for a timeout); otherwise active vs pending by the active count."""
+    # `kube.parse_items` does NOT filter non-dict `items` elements, so a forged/corrupt
+    # `kubectl get jobs -o json` can hand a non-dict job straight to `status()`/`reconstruct()`.
+    # A bare `job_obj.get(...)` on a str/None/int would AttributeError and abort the whole
+    # watch()/reconstruct() loop (the cluster is the source of truth those loops read). The
+    # sibling `classify_failure` already filters non-dict pods (BUG-029); mirror that here so a
+    # malformed top-level job degrades to ABSENT instead of crashing. Same class as BUG-023/037.
+    if not isinstance(job_obj, dict):
+        return JobStatus(name="", phase=ABSENT)
     meta = job_obj.get("metadata", {}) or {}
     status = job_obj.get("status", {}) or {}
     raw_conditions = status.get("conditions")
