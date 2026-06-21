@@ -396,12 +396,28 @@ class BenchmarkOrchestrator:
         # completions never race on the in-memory document or the apply.
         ck_lock = asyncio.Lock()
 
+        async def _safe_checkpoint_write() -> None:
+            """Persist the checkpoint, BEST-EFFORT. The ConfigMap write is a mutating
+            ``kubectl apply`` (approval- and quota-gated) and so CAN raise — quota exhausted
+            mid-sweep, approval declined, or a transient apply error. It runs OUTSIDE the
+            per-treatment try/except in ``_one`` (in ``_persist_in_flight`` before it and
+            ``_persist_completed`` after it), so an uncaught error here would propagate through
+            ``asyncio.gather`` and SINK THE WHOLE SWEEP — destroying every other treatment's
+            result — which directly violates the sweep's per-treatment isolation invariant.
+            Since the cluster is the source of truth and a missed/stale checkpoint write only
+            degrades to "re-run this treatment on resume" (never data loss — the in-memory
+            mutation still happened, so the next successful write and the live result are
+            correct), a write failure must NEVER abort a run. Swallow it like the other
+            best-effort side channels (``_safe_metric`` / ``_tail_logs``)."""
+            with contextlib.suppress(Exception):
+                await store.write(checkpoint, namespace=namespace)  # type: ignore[arg-type]
+
         async def _persist_in_flight(run_id: str) -> None:
             if store is None:
                 return
             async with ck_lock:
                 checkpoint.record_in_flight(run_id)
-                await store.write(checkpoint, namespace=namespace)  # type: ignore[arg-type]
+                await _safe_checkpoint_write()
 
         async def _persist_completed(outcome: RunOutcome) -> None:
             if store is None:
@@ -412,7 +428,7 @@ class BenchmarkOrchestrator:
                     dead_lettered=outcome.dead_lettered,
                     fault_kind=outcome.final_failure.kind if outcome.final_failure else None,
                 )
-                await store.write(checkpoint, namespace=namespace)  # type: ignore[arg-type]
+                await _safe_checkpoint_write()
 
         def _tagged_sink(run_id: str) -> OnLogLine | None:
             if on_log_line is None:
