@@ -145,15 +145,27 @@ def validate_plan(plan: SessionPlan, catalog: dict[str, Any]) -> list[str]:
     specs = catalog.get("specs", [])
     harnesses = catalog.get("harnesses", [])
     workloads = set(catalog.get("workloads", []))
+    by_harness = catalog.get("workloads_by_harness") or {}
 
     if specs and plan.spec not in specs:
         errors.append(f"spec {plan.spec!r} is not in the catalog (have e.g. {specs[:5]})")
     if harnesses and plan.harness not in harnesses:
         errors.append(f"harness {plan.harness!r} is not in the catalog ({harnesses})")
-    if workloads:
-        norm = {plan.workload, plan.workload.removesuffix(".yaml"), f"{plan.workload}.yaml"}
-        if not (norm & workloads):
-            errors.append(f"workload {plan.workload!r} is not in the catalog for any harness")
+    # The run uses the (harness, workload) PAIR — a profile valid for harness B is not a valid
+    # `-w` for harness A. When the per-harness map is available AND lists the chosen harness,
+    # scope the workload check to THAT harness so a cross-harness mismatch (which the flat
+    # union would wrongly accept) is rejected. Fall back to the union otherwise (partial/
+    # absent catalog), preserving the original behavior.
+    norm = {plan.workload, plan.workload.removesuffix(".yaml"), f"{plan.workload}.yaml"}
+    scoped = by_harness.get(plan.harness) if isinstance(by_harness, dict) else None
+    if scoped is not None:
+        if not (norm & set(scoped)):
+            errors.append(
+                f"workload {plan.workload!r} is not a profile for harness {plan.harness!r} "
+                f"(have {sorted(scoped)})"
+            )
+    elif workloads and not (norm & workloads):
+        errors.append(f"workload {plan.workload!r} is not in the catalog for any harness")
     if not _RFC1123.fullmatch(plan.namespace):
         errors.append(f"namespace {plan.namespace!r} is not a valid RFC1123 label")
     return errors

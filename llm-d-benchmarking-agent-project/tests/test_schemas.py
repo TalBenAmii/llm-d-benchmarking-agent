@@ -96,6 +96,44 @@ def test_session_plan_bad_namespace(catalog):
     assert any("namespace" in e for e in validate_plan(plan, catalog))
 
 
+def test_session_plan_rejects_workload_from_wrong_harness():
+    """A workload that exists in the catalog only under a DIFFERENT harness must be
+    rejected: the (harness, workload) pair is what the run uses, and a profile valid
+    for harness B is not a valid `-w` for harness A. The flat-union check passed it
+    before — the approved plan then mapped to an un-runnable command."""
+    catalog = {
+        "specs": ["cicd/kind"],
+        "harnesses": ["inference-perf", "aiperf"],
+        # union contains both; per-harness map partitions them
+        "workloads": ["sanity_random.yaml", "dataset.yaml"],
+        "workloads_by_harness": {
+            "inference-perf": ["sanity_random.yaml"],
+            "aiperf": ["dataset.yaml"],
+        },
+    }
+    # 'dataset.yaml' is an aiperf-only profile; pairing it with inference-perf is invalid.
+    bad = SessionPlan(
+        use_case_summary="chat", spec="cicd/kind", namespace="ns",
+        harness="inference-perf", workload="dataset.yaml",
+    )
+    errors = validate_plan(bad, catalog)
+    assert any("workload" in e and "inference-perf" in e for e in errors), errors
+
+    # The correctly-paired plan must still pass (no false rejection).
+    good = SessionPlan(
+        use_case_summary="chat", spec="cicd/kind", namespace="ns",
+        harness="inference-perf", workload="sanity_random.yaml",
+    )
+    assert validate_plan(good, catalog) == []
+
+    # Suffix tolerance must survive the per-harness check ('dataset' == 'dataset.yaml').
+    good_aiperf = SessionPlan(
+        use_case_summary="chat", spec="cicd/kind", namespace="ns",
+        harness="aiperf", workload="dataset",
+    )
+    assert validate_plan(good_aiperf, catalog) == []
+
+
 def test_registry_handlers_callable():
     for spec in REGISTRY.values():
         assert callable(spec.handler)
