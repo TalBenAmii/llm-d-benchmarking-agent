@@ -281,6 +281,62 @@ def test_app_graceful_shutdown_callable_and_cancels(tmp_path):
         asyncio.run(_drive())
 
 
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_graceful_shutdown_cancels_background_pre_probe(tmp_path):
+    """``graceful_shutdown`` must cancel the read-only environment pre-probe (``_prewarm_env``,
+    BUG-033) that is tracked ONLY in ``app.state.background_tasks`` — never ``runs.register``.
+
+    The pre-probe runs real subprocesses (``kubectl get nodes``, ``kind get clusters``, …) via the
+    runner the instant a brand-new chat connects. ``runs.shutdown()`` only sweeps the run REGISTRY,
+    so it never reaches this task. If shutdown doesn't cancel ``background_tasks`` too, a SIGTERM
+    that lands mid-probe leaves the task running and ORPHANS its child process group — the exact
+    leak ``graceful_shutdown`` exists to prevent. We model the probe with a task that, like the
+    real runner's ``CancelledError`` path (``app/security/runner.py``), reaps its 'subprocess' only
+    when cancelled; the test asserts both the cancel AND the reap, and that the provider close still
+    runs (a leftover probe must not abort the rest of teardown).
+    """
+    from app.main import app, graceful_shutdown
+
+    with TestClient(app):
+        reaped = {"value": False}
+
+        async def _fake_pre_probe() -> None:
+            # Stands in for `_prewarm_env`: parks while its subprocess runs, and reaps the child's
+            # process group on cancellation exactly as the real runner does on CancelledError.
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                reaped["value"] = True  # the runner's killpg(...) on shutdown-cancel
+                raise
+
+        provider_closed = {"value": False}
+
+        class _ClosableProvider:
+            async def aclose(self) -> None:
+                provider_closed["value"] = True
+
+        async def _drive():
+            app.state.provider = _ClosableProvider()
+            probe = asyncio.create_task(_fake_pre_probe())
+            app.state.background_tasks.add(probe)
+            probe.add_done_callback(app.state.background_tasks.discard)
+            await asyncio.sleep(0)  # let the probe park on its event
+            assert not probe.done(), "pre-probe should still be in-flight when SIGTERM lands"
+
+            # No registered runs — only the background pre-probe is live. graceful_shutdown must
+            # still cancel it (and reap its subprocess) rather than orphaning it on SIGTERM.
+            await graceful_shutdown(app)
+
+            assert probe.cancelled(), (
+                "the background environment pre-probe survived shutdown (orphaned subprocess)"
+            )
+            assert reaped["value"], "the pre-probe's child process group was never reaped on cancel"
+            # The provider close must still have run — a leftover probe can't abort later teardown.
+            assert provider_closed["value"], "provider.aclose() was skipped after the probe cancel"
+
+        asyncio.run(_drive())
+
+
 # --- (c) /readyz reports per-component readiness ----------------------------------------
 
 
