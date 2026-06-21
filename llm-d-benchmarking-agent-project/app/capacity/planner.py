@@ -28,6 +28,17 @@ _FAIL_MARKER = "DEPLOYMENT WILL FAIL"
 _ERROR_TAG = "ERROR:"
 _WARNING_TAG = "WARNING:"
 
+# A GPU-COUNT shortfall: the spec requests TP x PP x DP GPUs per replica but the pod has
+# fewer (capacity_validator.py:139-144, "... <N> GPUs are required per replica"). This is a
+# hard won't-deploy — under enforce=True it is tagged ERROR: (so already infeasible here). But
+# under the DEFAULT enforce=False/ignoreFailedValidation path the SAME line is only a WARNING:,
+# AND the planner then keeps sizing as if the GPUs existed, emitting the FIT KV-cache markers —
+# making an under-provisioned deployment read as feasible:true (a BUG-030-class false fit). We
+# treat this line as a hard-fail signal so the default path matches the enforced verdict. The
+# benign sibling "...requested per pod. Some GPUs will be idle." (over-provisioned, deploys
+# fine) uses a different string, so it is NOT caught.
+_GPU_SHORTFALL_MARKER = "gpus are required per replica"
+
 # Substrings the upstream planner emits when it BYPASSES the VRAM/KV-cache sizing for a
 # method instead of evaluating it. When sizing is bypassed there is NO fit/won't-fit signal,
 # so a clean (no-ERROR) run does NOT mean "it fits" — it means "feasibility was not
@@ -134,7 +145,10 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
 
     for line in diags:
         low = line.lower()
-        if _FAIL_MARKER in line:
+        if _FAIL_MARKER in line or _GPU_SHORTFALL_MARKER in low:
+            # A "DEPLOYMENT WILL FAIL" line, or a GPU-COUNT shortfall (more GPUs/replica
+            # required than the pod has) — both are hard won't-deploy conditions, even when
+            # the upstream only tags them WARNING under ignoreFailedValidation.
             will_fail = True
         if any(m in low for m in _SIZED_MARKERS):
             any_sized = True
