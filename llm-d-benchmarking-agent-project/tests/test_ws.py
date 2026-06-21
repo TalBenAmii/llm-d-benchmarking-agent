@@ -983,6 +983,53 @@ def test_channel_reemit_pending_does_not_pollute_buffer_or_seq():
         "the turn's real progress must survive repeated gate re-surfaces, not be evicted")
 
 
+def test_channel_restore_pending_survives_corrupt_in_flight():
+    """Regression (sibling of BUG-043): ``restore_pending`` repopulates ``pending`` from the
+    session's persisted ``in_flight_approvals``, which is loaded straight off disk with NO
+    per-element type check (``Session.load`` -> ``data.get('in_flight_approvals', [])``). It runs
+    on the WS reconnect path (main.py) BEFORE the history emit and the receive loop. A corrupt /
+    hand-edited / forward-incompatible state.json whose ``in_flight_approvals`` carries a NON-DICT
+    element (a torn string, a scalar) made ``entry.get(...)`` raise AttributeError — crashing the
+    reconnect and permanently bricking reload of that one chat. BUG-043 closed exactly this blast
+    radius for ``_history_items``/share but this earlier path was left unguarded.
+
+    After the fix a malformed element is skipped, a genuine gate among the garbage is still
+    restored, and a wholly non-list ``in_flight`` degrades to empty — never a raise.
+    """
+    import asyncio
+
+    from app.agent.channel import Channel
+
+    class _Sess:
+        id = "restore-corrupt"
+
+    async def _drive():
+        ch = Channel(_Sess())
+        # Garbage interleaved with one REAL gate (BUG-043 corruption class).
+        corrupt = [
+            "TORN-NON-DICT-PENDING",
+            None,
+            7,
+            {"request_id": "R1", "kind": "session_plan", "payload": {"x": 1}, "tool_call_id": "t1"},
+            {"no_request_id": True},  # dict but missing rid -> skipped, not fatal
+        ]
+        ch.restore_pending(corrupt)  # before the fix: AttributeError on the str element
+        # The real gate is restored (so reemit_pending can re-surface it + resolve can accept it).
+        assert set(ch.pending) == {"R1"}
+        assert ch.pending["R1"]["kind"] == "session_plan"
+        assert ch.pending["R1"]["restored"] is True
+
+        # A wholly non-list (forged scalar/mapping) in_flight degrades to empty, never raises.
+        ch2 = Channel(_Sess())
+        ch2.restore_pending("not-a-list")  # type: ignore[arg-type]
+        assert ch2.pending == {}
+        ch3 = Channel(_Sess())
+        ch3.restore_pending({"request_id": "R"})  # a dict is not a list of gates -> ignored
+        assert ch3.pending == {}
+
+    asyncio.run(_drive())
+
+
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_ws_ready_reports_running_elapsed():
     """`ready` carries `running_elapsed_ms`: None for an idle/brand-new chat, and a non-negative
