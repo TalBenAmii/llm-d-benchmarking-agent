@@ -521,6 +521,42 @@ One high-severity deploy-breaking defect:
 
 ---
 
+## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
+The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
+`claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
+(real LLM turns, faked command execution, no user data, no real cluster) on :8012, driven over `/ws`.
+
+**Two full agent flows driven end-to-end — both ran CLEAN (0 error events, 0 server tracebacks, coherent
+summaries, correct event ordering, SessionPlan gate approved → flow proceeded → `done`):**
+- Flow 1 (single-run): `fetch_key_docs → propose_session_plan →[approve]→ execute_llmdbenchmark ×3 →
+  locate_and_parse_report → suggest_next_steps`. Report rendered via the frontend's `renderReportSummary`
+  from the `tool_result` (NOT a `results_card` — by design, see results_card.py:9-16; debunked as a non-bug).
+- Flow 2 (sweep+analyze): `…→ generate_doe_experiment → execute_llmdbenchmark ×2 → analyze_results →
+  compare_reports → locate_and_parse_report → suggest_next_steps`. Also clean to `done`.
+This validates the live turn loop, tool dispatch, streaming deltas, the approval gate, session persistence,
+and the BUG-019/032 socket/replay paths in a real end-to-end run.
+
+### SIMULATE-mode OBSERVATION (not patched — fix is a feature/design decision)
+- **What:** in SIMULATE mode, `analyze_results` and `compare_reports` (and therefore sweep analysis) return
+  empty — `{"analyzed": false, "reason": "no valid benchmark report to analyze", "skipped": []}` /
+  `{"compared": false, "reason": "need at least two valid reports…"}` — so a SIMULATE dry-run/demo of the
+  ANALYZER/sweep path shows no results card and no analysis.
+- **Root cause:** only `locate_and_parse_report` has a synthetic-report branch (`report_locate.py:42`,
+  `if ctx.settings.simulate: return <fabricated summary>`). `SimRunner` writes NO report files, and
+  `analyze_results`/`compare_reports` read report FILES from disk (`find_reports`/`load_report`) → they find
+  none. So SIMULATE's "walk the WHOLE workflow, synthetic report produced" promise covers the single-run
+  report but NOT the analyzer/comparison/sweep paths.
+- **Reachability:** SIMULATE-only (real mode writes real reports the analyzer reads fine) — a dry-run/demo
+  degradation, not a real-operation correctness bug.
+- **Why NOT patched:** the fix is to fabricate synthetic ANALYZER output (SLO verdicts + Pareto frontier in
+  the validated BR v0.2 shape) for SIMULATE — a non-trivial feature with real judgment (what synthetic
+  verdict values?), and whether SIMULATE should cover the analyzer path is a maintainer scope decision (the
+  synthetic branch was added to `locate_and_parse_report` only, possibly deliberately). Recommended minimal
+  step if desired: a SIMULATE-aware `reason` ("simulate mode produces no analyzer report files — use
+  SIMULATE=0 for real analysis") so the empty result doesn't read as a failure during a demo.
+
+---
+
 ## Candidates surfaced 2026-06-20 (verified by source) — A/B/C+D now FIXED (2026-06-21), E deliberately declined
 Two parallel hunters (orchestrator, storage) returned the findings below. Each was confirmed
 real against source — a missing-guard on **malformed/forged on-disk or kubectl JSON**, not
