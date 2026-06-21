@@ -132,6 +132,46 @@ def test_classify_garbage_pods_never_raises():
         assert sr.pods == [] and sr.max_restart_count == 0 and sr.youngest_age_seconds is None
 
 
+def test_classify_survives_non_numeric_restart_count():
+    """A forged/corrupt pod with a non-numeric ``restartCount`` must NOT crash the classifier —
+    the docstring promises garbage pods_json degrades (never raises), and the sibling guards on
+    the same line (``isinstance(cs, dict)``) / two lines below (``isinstance(cp, int)``) already
+    coerce malformed input. A real ``kubectl get pods -o json`` always emits an integer count, but
+    a corrupt/forged status object propagated a raw ``ValueError`` out of the readiness gate
+    (same class as the orchestrator's BUG-023/029/037 ``int()`` hardening)."""
+    pods = json.dumps({"items": [{
+        "metadata": {"name": "vllm-prefill-0", "creationTimestamp": _ts(minutes_ago=4)},
+        "spec": {"containers": [{"name": "vllm", "ports": [{"containerPort": 8000}]}]},
+        "status": {
+            "phase": "Running",
+            "conditions": [{"type": "Ready", "status": "False"}],
+            "containerStatuses": [{"restartCount": "lots"}],   # forged non-numeric count
+        },
+    }]})
+    sr = classify_serving_readiness(pods, namespace="bench", now=_NOW)
+    assert isinstance(sr, ServingReadiness)
+    # The bad count coerces to 0 rather than crashing; the rest of the pod facts still classify.
+    assert sr.max_restart_count == 0
+    assert sr.pods and sr.pods[0]["role"] == "prefill"
+    assert sr.pods[0]["restart_count"] == 0
+
+
+def test_classify_real_count_still_read_among_malformed_siblings():
+    """A genuine integer restartCount in one container is still read even if a SIBLING container's
+    count is forged-non-numeric (the max ignores the bad one rather than aborting the whole pod)."""
+    pods = json.dumps({"items": [{
+        "metadata": {"name": "vllm-decode-0", "creationTimestamp": _ts(minutes_ago=4)},
+        "spec": {"containers": [{"name": "vllm", "ports": [{"containerPort": 8200}]}]},
+        "status": {
+            "phase": "Running",
+            "conditions": [{"type": "Ready", "status": "False"}],
+            "containerStatuses": [{"restartCount": "x"}, {"restartCount": 7}],
+        },
+    }]})
+    sr = classify_serving_readiness(pods, namespace="bench", now=_NOW)
+    assert sr.max_restart_count == 7
+
+
 def test_classify_unparseable_age_is_none():
     pods = json.dumps({"items": [{
         "metadata": {"name": "p", "creationTimestamp": "not-a-timestamp"},

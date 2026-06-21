@@ -406,6 +406,18 @@ class ServingReadiness:
         }
 
 
+def _as_int(value: Any) -> int:
+    """Coerce a (possibly forged/corrupt) count to a non-negative int — a non-numeric value
+    reads as 0 rather than crashing. A real ``kubectl get pods -o json`` always emits integer
+    ``restartCount``s, but a corrupt/forged status object must not abort the readiness gate
+    (the module's documented 'garbage pods_json degrades, never raises' invariant; same hardening
+    class as the orchestrator's BUG-023/029/037)."""
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _role_for_ports(ports: list[int]) -> str | None:
     """Infer the serving role from a container's exposed ports (8000 prefill / 8200 decode)."""
     for port in ports:
@@ -464,7 +476,7 @@ def classify_serving_readiness(
                  for c in (status.get("conditions") or []) if isinstance(c, dict)}
         container_statuses = status.get("containerStatuses") or []
         restart_count = max(
-            (int(cs.get("restartCount") or 0) for cs in container_statuses if isinstance(cs, dict)),
+            (_as_int(cs.get("restartCount")) for cs in container_statuses if isinstance(cs, dict)),
             default=0,
         )
         ports: list[int] = []
