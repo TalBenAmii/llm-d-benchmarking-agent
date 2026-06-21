@@ -1358,3 +1358,71 @@ async def test_replay_live_skips_frames_emitted_after_attach():
     ch.ws = rec2
     await ch.replay_live()
     assert "live" in [f["data"]["text"] for f in rec2.sent]
+
+
+async def test_reconnect_midturn_does_not_drop_missed_tail_evicted_during_attach():
+    """A reconnecting client's missed tail must NOT be lost when the bounded live ring evicts the
+    front of that tail during the handler's attach-time ready/history awaits.
+
+    The /ws handler captures the seq head (``through_seq``) BEFORE those awaits to avoid resending
+    frames delivered live afterwards (BUG-032). But it read the buffer for replay only AFTER the
+    awaits. The live ring is BOUNDED: a chatty background turn that emits a burst during the awaits
+    can EVICT the front of the missed tail ``(after_seq, through_seq]`` before replay_live reads the
+    buffer. Those frames were NOT delivered live (they predate this socket's attach) and now are
+    gone from the buffer, so they are NEVER replayed — a permanent gap in the cached pane (the
+    client neither de-dupes nor re-fetches; its cursor just jumps past the hole). This faithfully
+    reproduces the handler's order: capture cutoff+snapshot -> attach-time emits (eviction) -> replay.
+
+    The fix pins the missed tail with a snapshot taken synchronously at attach (``frames=``), so it
+    survives the eviction. The test asserts BOTH the defect (reading the post-await buffer drops the
+    evicted frames) and the fix (the attach-time snapshot replays them)."""
+    from app.agent.channel import Channel
+
+    class _Rec:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, frame):
+            self.sent.append(frame)
+
+    class _Sess:
+        id = "evict-tail"
+
+        def record_command(self, payload):
+            pass
+
+    # Small ring so an attach-time burst evicts the missed tail's front (the exact bounded-buffer
+    # condition; in production it's LIVE_BUFFER_MAX=500 vs a long, chatty streaming turn).
+    ch = Channel(_Sess(), buffer_max=5)
+    ch.begin_turn()
+    for i in range(1, 8):
+        await ch.emit("tool_result", {"id": f"t{i}"})   # seq 1..7; ring retains 3..7
+
+    # Client W1 had rendered through seq 5 and dropped; seqs 6,7 are the tail it MISSED while away.
+    after_seq = 5
+    # --- handler attach: capture the seq head AND a buffer snapshot, synchronously, BEFORE awaits.
+    replay_cutoff = ch.cur_seq                 # 7
+    replay_snapshot = ch.buffered_events       # pins seqs 3..7 (incl. the missed 6,7)
+    # Incremental window check passes at attach (cursor still within the retained ring).
+    assert ch.min_buffered_seq is not None and ch.min_buffered_seq - 1 <= after_seq <= ch.cur_seq
+
+    rec = _Rec()
+    ch.ws = rec
+    # --- attach-time awaits (ready/history send): a chatty turn emits a burst that EVICTS 6,7.
+    for i in range(8, 13):
+        await ch.emit("output", {"line": str(i)})   # seq 8..12 -> live to rec; ring now holds 8..12
+    assert [f.get("seq") for f in rec.sent] == [8, 9, 10, 11, 12], "burst was delivered live"
+    assert ch.min_buffered_seq == 8, "the missed tail (6,7) was evicted from the bounded ring"
+
+    # Defect: replaying from the CURRENT (post-await) buffer silently drops the evicted 6,7.
+    rec.sent.clear()
+    await ch.replay_live(after_seq, through_seq=replay_cutoff)  # no snapshot -> reads live buffer
+    assert [f.get("seq") for f in rec.sent] == [], (
+        "post-await buffer no longer holds the missed tail -> frames 6,7 are silently dropped")
+
+    # Fix: the attach-time snapshot pins the missed tail so it survives the eviction and replays.
+    rec.sent.clear()
+    await ch.replay_live(after_seq, through_seq=replay_cutoff, frames=replay_snapshot)
+    assert [f.get("seq") for f in rec.sent] == [6, 7], (
+        "the missed tail must be replayed from the attach-time snapshot, not lost to eviction")
+    assert [f["data"]["id"] for f in rec.sent] == ["t6", "t7"]
