@@ -233,6 +233,93 @@ def test_ws_typing_while_thinking_steers_the_same_turn():
                for m in s.messages)
 
 
+class _CancelSteerProvider:
+    """Counts every entry into ``chat()``. The first entry blocks until released (so a test can
+    queue a steer + cancel while the agent 'thinks'); ANY entry after the cancel-release is a
+    backstop turn wrongly resurrecting the cancelled run — flagged via ``entered`` and parked so
+    the test can observe it before the test-client teardown cancels it."""
+
+    def __init__(self, started, release, entered, released):
+        self.entries = 0
+        self._started = started
+        self._release = release
+        self._entered = entered   # set on the 2nd+ chat entry (the resurrecting backstop)
+        self._released = released  # set by the test once it has issued the cancel + release
+
+    async def chat(self, *, system, messages, tools, cache_key=None):
+        import asyncio
+        self.entries += 1
+        if self.entries == 1:
+            self._started.set()
+            await asyncio.to_thread(self._release.wait, 5)
+        else:
+            # A 2nd entry == a backstop turn ran another LLM call after the user cancelled.
+            self._entered.set()
+            await asyncio.Event().wait()   # park forever (an un-set event); the test tears it down
+        return AssistantTurn(text="ok", tool_calls=[])
+
+
+@pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
+def test_ws_cancel_with_queued_steer_does_not_resurrect_the_turn():
+    """A user who clicks Stop must actually STOP — even if a steer message was queued mid-turn.
+
+    The steer backstop (run_turn's `finally`) starts a fresh follow-up turn for any steer left
+    queued when the turn ends, so a steer sent in the closing-await tail still gets answered. But
+    when the turn ended because the user CANCELLED it (clicked Stop), that backstop would resurrect
+    the very turn the user just stopped: the cancel raises CancelledError mid-step (before the loop
+    drained the queued steer), the `finally` sees the leftover steer + an attached socket, and spawns
+    a backstop turn — so the agent keeps working right after the user asked it to stop. The cancel
+    must win: no backstop turn, the run stays ended."""
+    import threading
+    import time
+
+    from app.main import app
+
+    started, release, entered, released = (threading.Event() for _ in range(4))
+    with TestClient(app) as client:
+        app.state.provider = _CancelSteerProvider(started, release, entered, released)
+        with client.websocket_connect("/ws") as ws:
+            ready = ws.receive_json()
+            assert ready["type"] == "ready"
+            sid = ready["data"]["session_id"]
+            ws.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
+            assert started.wait(timeout=5)        # the agent is now thinking (blocked in chat)
+            # Queue a steer WHILE it's thinking (no gate open), then immediately CANCEL.
+            ws.send_json({"type": "user_message", "text": "actually do something else"})
+            s = app.state.sessions.get(sid)
+            for _ in range(150):                  # wait for the handler to queue the steer
+                if "actually do something else" in s.ctx.steer_messages:
+                    break
+                time.sleep(0.02)
+            assert "actually do something else" in s.ctx.steer_messages
+            ws.send_json({"type": "cancel"})      # the user clicks Stop
+            released.set()
+            release.set()                          # unblock the cancelled chat call
+
+            seen = []
+            for _ in range(80):
+                ev = ws.receive_json()
+                seen.append(ev["type"])
+                if ev["type"] == "done":
+                    break
+
+            # The cancel was honored end to end…
+            assert "cancelled" in seen, f"no cancelled frame after Stop: {seen}"
+            assert "done" in seen
+
+            # …and crucially the steer backstop did NOT resurrect the turn. A backstop would enter
+            # chat() a SECOND time (running the queued steer as a new LLM turn) — wait long enough
+            # that it would have, then confirm it didn't and that no run is registered.
+            assert not entered.wait(timeout=1.5), (
+                "a backstop turn resurrected the cancelled run (the queued steer started a new turn)"
+            )
+            assert app.state.provider.entries == 1, (
+                f"expected exactly one LLM call; the cancelled run was resurrected "
+                f"({app.state.provider.entries} chat entries)"
+            )
+            assert not app.state.runs.is_running(sid), "a run is still active after the user cancelled"
+
+
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_ws_approval_decisions_persist_and_replay():
     """A decided approval (Approve/Reject) is persisted and replayed as an `approval_decision`
