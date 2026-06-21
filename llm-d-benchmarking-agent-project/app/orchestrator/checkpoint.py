@@ -156,7 +156,14 @@ def parse_checkpoint(sweep_id: str, configmap: dict[str, Any] | None) -> SweepCh
     :class:`SweepCheckpoint`. A missing ConfigMap, missing/blank data key, or unparseable JSON
     yields an EMPTY checkpoint (a fresh sweep), never an error — so a first run and a corrupt
     checkpoint both degrade to "run everything", and the source of truth is rebuilt cleanly."""
-    if not configmap:
+    # ``kube.parse_items`` does NOT filter non-dict ``items`` elements (BUG-062), and
+    # ``CheckpointStore.load`` hands ``cms[0]`` (the first element of that unfiltered list)
+    # straight here. A forged/corrupt ``kubectl get configmaps -o json`` whose ``items[0]`` is a
+    # non-dict (a bare string / number / list) is TRUTHY, so it would sail past a falsy guard and
+    # AttributeError on ``configmap.get(...)`` — crashing ``reconstruct_sweep`` (the sweep restart-
+    # recovery path) and breaking this function's documented "never an error" contract. The single
+    # ``isinstance(..., dict)`` check covers BOTH absent (None) and non-dict — degrade to EMPTY.
+    if not isinstance(configmap, dict):
         return SweepCheckpoint(sweep_id=sweep_id)
     data = configmap.get("data") or {}
     blob = data.get(_PROGRESS_KEY)
