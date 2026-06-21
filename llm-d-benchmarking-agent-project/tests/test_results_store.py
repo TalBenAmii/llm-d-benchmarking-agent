@@ -98,6 +98,28 @@ def test_build_argv_push_defaults_and_options():
     assert argv[3:] == ["results", "push", "staging", "workspaces/run1", "-g", "team"]
 
 
+def test_build_argv_push_path_without_remote_does_not_skip_positional():
+    # Regression (positional-skip): `push` has TWO optional positionals — `remote` THEN `path`
+    # (interface/results.py: remote nargs='?' default 'staging', path nargs='?'). The agent may
+    # push an ad-hoc dir WITHOUT naming a remote (the schema/knowledge document `remote` as
+    # optional with default `staging`). If the builder appends only `path`, upstream argparse
+    # binds that path to the `remote` positional (verified) — the run dir becomes the remote name,
+    # so the WRONG store op runs (push to a remote named after the local dir, or a get_remote
+    # failure). The remote default MUST be emitted so `path` lands in the second slot.
+    argv = _store_argv({"command": "push", "path": "workspaces/run1"})
+    assert argv[3:] == ["results", "push", "staging", "workspaces/run1"], (
+        "a path-only push must emit the default remote first so the path is not "
+        "mis-bound to the remote positional"
+    )
+    # With a group too, ordering stays remote→path→-g.
+    argv = _store_argv({"command": "push", "path": "workspaces/run1", "group": "team"})
+    assert argv[3:] == ["results", "push", "staging", "workspaces/run1", "-g", "team"]
+    # A bare push (no remote, no path) still emits nothing extra (staged runs → default remote).
+    assert _store_argv({"command": "push"})[3:] == ["results", "push"]
+    # A push naming ONLY a remote (no path) is unchanged.
+    assert _store_argv({"command": "push", "remote": "prod"})[3:] == ["results", "push", "prod"]
+
+
 def test_build_argv_pull_requires_run_uid():
     argv = _store_argv({"command": "pull", "remote": "prod", "run_uid": "c6bc210e"})
     assert argv[3:] == ["results", "pull", "prod", "--run-uid", "c6bc210e"]
