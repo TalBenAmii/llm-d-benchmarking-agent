@@ -43,16 +43,27 @@ class ReportValidation:
     deviations: list[str] = field(default_factory=list)    # non-fatal (schema lags repo)
 
 
-# The full aggregate-statistics ladder carried by a BR v0.2 Statistics object. We keep
-# the ENTIRE percentile ladder (not just the round-number ones) so the analyzer's goodput
+# The canonical percentile ladder carried by a BR v0.2 Statistics object, low->high. This is
+# the SINGLE SOURCE OF TRUTH for the ladder: ``analysis.py`` imports ``_PERCENTILE_LADDER``
+# from here (do NOT re-declare it there — keeping two copies in sync is the documented
+# silent-floor drift bug). Each entry pairs a percentile name with the fraction-of-requests
+# at-or-below it, which the analyzer uses for goodput interpolation.
+#
+# We keep the ENTIRE ladder (not just the round-number rungs) so the analyzer's goodput
 # interpolation has the resolution it needs: a sub-p50 latency target must land between the
 # real low percentiles (p0p1..p25), not get floored to 0% because everything below p50 was
-# dropped. ``mean`` is kept for throughput floors and headline comparison; the percentiles
-# feed SLO verdicts (any percentile, incl. p99p9) and goodput estimation.
-_PCTL_KEYS = (
-    "mean",
-    "p0p1", "p1", "p5", "p10", "p25", "p50", "p75", "p90", "p95", "p99", "p99p9",
+# dropped.
+_PERCENTILE_LADDER: tuple[tuple[str, float], ...] = (
+    ("p0p1", 0.001), ("p1", 0.01), ("p5", 0.05), ("p10", 0.10), ("p25", 0.25),
+    ("p50", 0.50), ("p75", 0.75), ("p90", 0.90), ("p95", 0.95),
+    ("p99", 0.99), ("p99p9", 0.999),
 )
+
+# Aggregate-statistics keys we read off a Statistics object: ``mean`` (kept first, for
+# throughput floors and headline comparison) followed by the full percentile ladder above
+# (which feeds SLO verdicts, incl. p99p9, and goodput estimation). Derived from the SSOT so
+# the two never drift.
+_PCTL_KEYS = ("mean",) + tuple(name for name, _frac in _PERCENTILE_LADDER)
 
 
 def load_report(path: str | Path) -> dict[str, Any]:

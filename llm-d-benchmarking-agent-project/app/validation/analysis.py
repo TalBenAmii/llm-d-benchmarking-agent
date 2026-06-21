@@ -32,6 +32,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from app.dig import dig_dotted
+from app.validation.report import _PERCENTILE_LADDER
 
 # Latency SLO fields map onto the summary's latency.<key>; throughput floors onto
 # throughput.<key>. Each carries a canonical unit the target is expressed in.
@@ -46,13 +47,9 @@ _THROUGHPUT_SLOS: tuple[tuple[str, str, str], ...] = (
     ("throughput.output_token_rate", "throughput_floor_tok_s", "tokens/s"),
 )
 
-# Percentile ladder we can read off an aggregate Statistics object, low->high.
-# Values are the fraction-of-requests-below that the percentile represents.
-_PERCENTILE_LADDER: tuple[tuple[str, float], ...] = (
-    ("p0p1", 0.001), ("p1", 0.01), ("p5", 0.05), ("p10", 0.10), ("p25", 0.25),
-    ("p50", 0.50), ("p75", 0.75), ("p90", 0.90), ("p95", 0.95),
-    ("p99", 0.99), ("p99p9", 0.999),
-)
+# Percentile ladder we read off an aggregate Statistics object, low->high (name -> fraction
+# of requests at-or-below). Imported from ``report.py`` (the single source of truth) so the
+# two ladders cannot drift apart — the documented silent-floor bug.
 
 # Multipliers to convert a reported latency unit into milliseconds.
 _TO_MS: dict[str, float] = {
