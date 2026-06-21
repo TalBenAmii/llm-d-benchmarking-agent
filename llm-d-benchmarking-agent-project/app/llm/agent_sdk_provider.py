@@ -223,6 +223,10 @@ class AgentSdkProvider(LLMProvider):
         self._prewarm_task: asyncio.Task | None = None
         self._prewarm_fp: tuple[int, tuple[str, ...]] | None = None
         self._prewarm_at: float = 0.0
+        # Strong refs to in-flight background spare-disconnect tasks (_discard_prewarm). A bare
+        # create_task is only weakly held by the loop, so without this set a cleanup task can be
+        # GC'd mid-disconnect and silently cancelled, leaking the spare subprocess (BUG-033 class).
+        self._cleanup_tasks: set[asyncio.Task] = set()
 
     def _server(self, tools: list[dict[str, Any]]) -> Any:
         key = tuple(t["name"] for t in tools)
@@ -317,28 +321,53 @@ class AgentSdkProvider(LLMProvider):
         self._prewarm_at = time.monotonic()
         self._prewarm_task = asyncio.create_task(self._connect_client(system, tools))
 
+    @staticmethod
+    async def _disconnect_spare(task: asyncio.Task) -> None:
+        """Await a prewarm connect task and disconnect the client it produced. Tolerates a
+        connect that never completed (nothing to disconnect) and a disconnect that throws."""
+        try:
+            client = await task
+        except Exception:  # noqa: BLE001 — connect never completed; nothing to disconnect
+            return
+        with contextlib.suppress(Exception):
+            await client.disconnect()
+
     def _discard_prewarm(self) -> None:
         """Clear the prewarm slot and, if it held a connect task, disconnect the (soon-to-be)
-        client in the background so an unadopted spare subprocess is never leaked."""
+        client in the BACKGROUND so an unadopted spare subprocess is never leaked. Used on the
+        hot path (start_prewarm / mismatched-or-stale adopt) where we must not block the turn on
+        the prior spare's teardown. The cleanup task is TRACKED (CPython only weakly references a
+        bare task, so a fire-and-forget one can be GC'd and silently cancelled mid-disconnect,
+        leaking the subprocess — the BUG-033 hazard); it self-discards from the set when done.
+        For the SHUTDOWN path, which must actually wait for the disconnect, use ``aclose``."""
         task = self._prewarm_task
         self._prewarm_task = None
         self._prewarm_fp = None
         if task is None:
             return
-
-        async def _cleanup() -> None:
-            try:
-                client = await task
-            except Exception:  # noqa: BLE001 — connect never completed; nothing to disconnect
-                return
-            with contextlib.suppress(Exception):
-                await client.disconnect()
-
-        asyncio.create_task(_cleanup())
+        cleanup = asyncio.create_task(self._disconnect_spare(task))
+        self._cleanup_tasks.add(cleanup)
+        cleanup.add_done_callback(self._cleanup_tasks.discard)
 
     async def aclose(self) -> None:
-        """Disconnect any prewarmed spare connection (graceful shutdown). Idempotent."""
-        self._discard_prewarm()
+        """Disconnect any prewarmed spare connection (graceful shutdown). Idempotent.
+
+        AWAITS the disconnect (unlike the background ``_discard_prewarm``): the shutdown caller
+        does ``await provider.aclose()`` and then the event loop tears down WITHOUT pumping it
+        again, so deferring the disconnect to a fire-and-forget task would leave the spare CLI
+        subprocess connected/orphaned on every SIGTERM. Also reaps any in-flight background
+        cleanup task from a prior ``_discard_prewarm`` so nothing is left dangling at shutdown."""
+        task = self._prewarm_task
+        self._prewarm_task = None
+        self._prewarm_fp = None
+        if task is not None:
+            await self._disconnect_spare(task)
+        # Drain any still-running background cleanups (displaced spares) so shutdown waits for
+        # their disconnect too rather than abandoning them as the loop stops.
+        pending = list(self._cleanup_tasks)
+        if pending:
+            with contextlib.suppress(Exception):
+                await asyncio.gather(*pending, return_exceptions=True)
 
     async def chat(self, *, system, messages, tools, cache_key=None) -> AssistantTurn:
         # cache_key is accepted for the provider-agnostic interface but ignored — the CLI caches
