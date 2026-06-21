@@ -66,10 +66,15 @@ def _workloads(repo: Path, harnesses: list[str]) -> dict[str, list[str]]:
         hdir = prof / h
         if not hdir.is_dir():
             continue
-        # Profile files are e.g. `sanity_random.yaml.in`; the CLI takes `sanity_random.yaml`.
-        names = sorted(f.name.removesuffix(".in") for f in hdir.glob("*.yaml.in"))
+        # Profile files are usually templates (`sanity_random.yaml.in`), but some ship as a
+        # plain rendered `*.yaml` (no `.in`). The CLI takes the `*.yaml` name for BOTH: it
+        # looks for `<name>` first and only falls back to `<name>.in` (upstream
+        # step_05_render_profiles), so a plain `*.yaml` profile is a valid `-w` value too —
+        # collect both and dedupe by their CLI name so neither kind is silently dropped.
+        names = {f.name.removesuffix(".in") for f in hdir.glob("*.yaml.in")}
+        names |= {f.name for f in hdir.glob("*.yaml")}
         if names:
-            out[h] = names
+            out[h] = sorted(names)
     return out
 
 

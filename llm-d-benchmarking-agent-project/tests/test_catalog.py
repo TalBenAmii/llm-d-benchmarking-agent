@@ -42,3 +42,35 @@ def test_missing_repo_yields_empty(tmp_path):
     empty = build_catalog(tmp_path / "nope")
     assert empty["present"] is False
     assert empty["specs"] == [] and empty["harnesses"] == []
+
+
+def _profile(tmp_path, harness, name):
+    d = tmp_path / "workload" / "profiles" / harness
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text("load: {}\n")
+
+
+def test_plain_yaml_profile_is_catalogued(tmp_path):
+    """A profile that ships as a plain ``*.yaml`` (no ``.in`` template) is still a valid
+    ``-w`` value — upstream step_05_render_profiles resolves ``<name>`` before ``<name>.in`` —
+    so the catalog must list it too, not only the ``*.yaml.in`` templates. Regression: the
+    glob used to be ``*.yaml.in`` only, silently dropping plain-yaml profiles (e.g. the real
+    repo's ``guide_predicted-latency-routing_1.yaml``) so the allowlist/plan rejected them."""
+    _profile(tmp_path, "inference-perf", "sanity_random.yaml.in")  # template
+    _profile(tmp_path, "inference-perf", "guide_plain_1.yaml")     # plain, no .in
+    cat = build_catalog(tmp_path)
+    wl = cat["workloads_by_harness"]["inference-perf"]
+    assert "guide_plain_1.yaml" in wl       # the plain profile is NOT dropped
+    assert "sanity_random.yaml" in wl       # the template still resolves to its CLI name
+    assert "guide_plain_1.yaml" in cat["workloads"]
+    # No `.yaml.in` ever leaks into a CLI name.
+    assert not any(n.endswith(".yaml.in") for n in cat["workloads"])
+
+
+def test_workload_present_in_both_forms_is_deduped(tmp_path):
+    """If a profile exists as both ``foo.yaml`` and ``foo.yaml.in``, the catalog lists the
+    single CLI name once (the two globs must not produce a duplicate)."""
+    _profile(tmp_path, "inference-perf", "foo.yaml.in")
+    _profile(tmp_path, "inference-perf", "foo.yaml")
+    cat = build_catalog(tmp_path)
+    assert cat["workloads_by_harness"]["inference-perf"].count("foo.yaml") == 1
