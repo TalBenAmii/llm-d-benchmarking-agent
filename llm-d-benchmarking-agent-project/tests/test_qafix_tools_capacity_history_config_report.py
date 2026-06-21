@@ -183,6 +183,36 @@ def test_classify_gpu_count_shortfall_is_infeasible_not_feasible():
     assert idle.feasible is True
 
 
+def test_classify_fma_method_is_inconclusive_not_feasible():
+    # BUG-030/035 class, the fma early-return path: for an `fma` (fast model actuation)
+    # deployment the upstream run_capacity_planner returns EARLY with NO sizing at all —
+    # "Deployment method is fma -- skipping vLLM capacity validation" — and the bridge falls
+    # back to the framing log lines. classify saw no FAIL/ERROR/skip/sized marker and read the
+    # un-evaluated run as feasible:true (the `examples/fma` catalog spec sets fma.enabled:true,
+    # so the agent would tell the user a deployment "fits" though capacity was never checked).
+    # It must downgrade to INCONCLUSIVE (feasible=None), like every other un-sized path.
+    diags = [
+        "Validating vLLM configuration against Capacity Planner "
+        "(deployment will continue even if validation fails)",
+        "Deployment method is fma -- skipping vLLM capacity validation",
+    ]
+    v = classify_diagnostics(diags)
+    assert v.feasible is None
+    assert v.sizing_evaluated is False
+    assert v.will_fail is False
+    assert "fma" in v.inconclusive_reason
+    # A genuine fit (the real KV-cache fit lines) must STILL read feasible:true — the fma
+    # marker must not false-match a sized run.
+    fit = classify_diagnostics(
+        [
+            "[decode] Allocatable KV cache memory: 30.00 GB",
+            "[decode] Per-request KV cache (max_model_len=4096): 0.50 GB",
+            "[decode] Max concurrent requests (worst case, each at max_model_len): 60",
+        ]
+    )
+    assert fit.feasible is True and fit.sizing_evaluated is True
+
+
 # ---- #3 : locate_and_parse_report generated_at -------------------------------
 
 def _write_min_report(path: Path, *, end: str | None) -> None:

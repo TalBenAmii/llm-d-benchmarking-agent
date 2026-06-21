@@ -54,6 +54,13 @@ _GPU_SKIP_MARKERS = ("skipping gpu memory checks", "skipping memory checks")
 # under ignoreFailedValidation this surfaces only as a WARNING, but NO fit verdict was produced, so
 # feasibility was not evaluated (same effect as a skip). capacity_validator.py:305.
 _SIZE_FAILED_MARKER = "cannot estimate model memory or kv cache"
+# The deployment method is `fma` (fast model actuation): run_capacity_planner returns EARLY with
+# NO sizing at all — "Deployment method is fma -- skipping vLLM capacity validation"
+# (capacity_validator.py:419). Like the skip/threw markers, this means feasibility was NOT
+# evaluated, so a clean run must downgrade to inconclusive rather than read as feasible:true (the
+# same un-evaluated-reads-feasible class as BUG-030/035, but the FMA early-return path). The
+# `examples/fma` spec sets fma.enabled:true, so this is reachable from a real catalog spec.
+_FMA_SKIP_MARKER = "skipping vllm capacity validation"
 # The lines that prove a method's KV-cache/VRAM arithmetic actually ran to a FIT verdict
 # (capacity_validator.py:280-302, the fits branch). The "...available GPU memory" line is ONLY the
 # GPU-COUNT summary, emitted BEFORE sizing and independent of whether it ran — keying sizing-proof
@@ -142,6 +149,7 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
     any_sized = False          # a method's VRAM/KV-cache arithmetic actually ran
     replica_skip = False       # >=1 method skipped for 0 replicas / disabled
     gpu_skip = False           # sizing bypassed (unknown GPU memory / model architecture)
+    fma_skip = False           # deployment method is fma -> capacity validation skipped entirely
 
     for line in diags:
         low = line.lower()
@@ -157,6 +165,10 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
         if any(m in low for m in _GPU_SKIP_MARKERS) or _SIZE_FAILED_MARKER in low:
             # Sizing was bypassed (skipped) OR threw (cannot-estimate) — either way no fit verdict.
             gpu_skip = True
+        if _FMA_SKIP_MARKER in low:
+            # fma deployment method: the planner returns early with NO sizing at all, so
+            # feasibility was NOT evaluated (BUG-030/035 class, the fma early-return path).
+            fma_skip = True
         if _ERROR_TAG in line:
             errors.append(line)
         elif _WARNING_TAG in line:
@@ -173,7 +185,9 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
     #   * the VRAM/KV-cache memory-fit check being skipped ("...skipping (gpu) memory checks.")
     #     because the accelerator memory or model architecture was unknown; or
     #   * the sizing computation THROWING ("Cannot estimate model memory or KV cache ...") — under
-    #     ignoreFailedValidation that's only a WARNING, so without this it would read as feasible.
+    #     ignoreFailedValidation that's only a WARNING, so without this it would read as feasible; or
+    #   * the deployment method being `fma`, which returns early skipping ALL capacity validation
+    #     ("...skipping vLLM capacity validation") — no sizing ran, so it is NOT a fit verdict.
     # `any_sized` keys on the FIT-path KV-cache lines (_SIZED_MARKERS), NOT the "...available GPU
     # memory" GPU-COUNT summary (which is emitted before sizing and is NOT a fit verdict — BUG-030).
     # When a method was skipped for 0 replicas yet ANOTHER method DID size, that other method
@@ -181,14 +195,20 @@ def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
     # A hard ERROR / will-fail is authoritative and wins below; we only downgrade an otherwise
     # CLEAN run to inconclusive (real-2 #2: a clean run with sizing bypassed must not read as
     # feasible:true).
-    sizing_bypassed = gpu_skip or (replica_skip and not any_sized)
+    sizing_bypassed = fma_skip or gpu_skip or (replica_skip and not any_sized)
     sizing_evaluated = not sizing_bypassed
     inconclusive_reason = ""
     if hard_infeasible:
         feasible: bool | None = False
     elif sizing_bypassed:
         feasible = None
-        if replica_skip and not any_sized:
+        if fma_skip:
+            inconclusive_reason = (
+                "Capacity validation skipped — the deployment method is fma (fast model "
+                "actuation), which the planner does NOT size, so feasibility was NOT evaluated. "
+                "The KV-cache/VRAM pre-flight does not apply to an fma deployment."
+            )
+        elif replica_skip and not any_sized:
             inconclusive_reason = (
                 "VRAM sizing skipped (spec has 0 decode/prefill replicas) — feasibility NOT "
                 "evaluated. Set decode_replicas/prefill_replicas (>=1) so the planner sizes "
