@@ -507,14 +507,13 @@ def recommend_next_steps(
     n_runs: int,
     has_slo: bool,
     any_slo_met: bool | None,
-    on_sweep: bool,
     history: HistoryContext | None = None,
 ) -> list[dict[str, Any]]:
     """Rank the recommended post-run next steps over the validated analyzer facts.
 
     Inputs are FACTS already derived from schema-validated reports (how many runs were
-    analyzed, whether SLO targets were supplied and met, whether this was a sweep) plus
-    the read-only :class:`HistoryContext`. Returns an ordered list of
+    analyzed — ``n_runs >= 2`` is a sweep/A-B — and whether SLO targets were supplied and
+    met) plus the read-only :class:`HistoryContext`. Returns an ordered list of
     ``{action, tool, priority, reason}`` dicts — highest-value first, with save-to-trend
     and compare-to-baseline prioritized. No side effects, no narrative; the agent turns
     the top item into a single concrete offer."""

@@ -398,7 +398,7 @@ def _actions(steps):
 
 def test_next_steps_single_run_nothing_saved_leads_with_save_baseline():
     steps = recommend_next_steps(
-        n_runs=1, has_slo=False, any_slo_met=None, on_sweep=False,
+        n_runs=1, has_slo=False, any_slo_met=None,
         history=HistoryContext(already_stored=False, comparable_prior=0, total_stored=0),
     )
     acts = _actions(steps)
@@ -414,7 +414,7 @@ def test_next_steps_already_saved_skips_save_and_offers_compare():
     # This exact run is already in the store and a comparable prior run exists -> the lead is
     # to COMPARE, not to save again.
     steps = recommend_next_steps(
-        n_runs=1, has_slo=False, any_slo_met=None, on_sweep=False,
+        n_runs=1, has_slo=False, any_slo_met=None,
         history=HistoryContext(already_stored=True, comparable_prior=1, total_stored=2),
     )
     acts = _actions(steps)
@@ -426,7 +426,7 @@ def test_next_steps_already_saved_skips_save_and_offers_compare():
 def test_next_steps_no_comparable_prior_does_not_offer_compare():
     # First-ever run: nothing comparable to compare against yet.
     steps = recommend_next_steps(
-        n_runs=1, has_slo=False, any_slo_met=None, on_sweep=False,
+        n_runs=1, has_slo=False, any_slo_met=None,
         history=HistoryContext(already_stored=False, comparable_prior=0, total_stored=0),
     )
     assert "compare_to_baseline" not in _actions(steps)
@@ -434,7 +434,7 @@ def test_next_steps_no_comparable_prior_does_not_offer_compare():
 
 def test_next_steps_missed_slo_invites_rerun_after_save_compare():
     steps = recommend_next_steps(
-        n_runs=1, has_slo=True, any_slo_met=False, on_sweep=False,
+        n_runs=1, has_slo=True, any_slo_met=False,
         history=HistoryContext(already_stored=False, comparable_prior=1, total_stored=1),
     )
     acts = _actions(steps)
@@ -445,7 +445,7 @@ def test_next_steps_missed_slo_invites_rerun_after_save_compare():
 
 def test_next_steps_single_met_slo_offers_sweep_not_rerun():
     steps = recommend_next_steps(
-        n_runs=1, has_slo=True, any_slo_met=True, on_sweep=False,
+        n_runs=1, has_slo=True, any_slo_met=True,
         history=HistoryContext(),
     )
     acts = _actions(steps)
@@ -454,7 +454,7 @@ def test_next_steps_single_met_slo_offers_sweep_not_rerun():
 
 def test_next_steps_sweep_nudges_save_each_treatment_not_recompare():
     steps = recommend_next_steps(
-        n_runs=3, has_slo=False, any_slo_met=None, on_sweep=True,
+        n_runs=3, has_slo=False, any_slo_met=None,
         history=HistoryContext(),
     )
     acts = _actions(steps)
@@ -468,8 +468,8 @@ def test_next_steps_offers_analyze_with_plots_above_teardown():
     # The richer menu (J2): the analysis-plots step is always available, ranked above teardown
     # (never first), so "what next" is more than "save / run again / tear down".
     for kw in (
-        dict(n_runs=1, has_slo=False, any_slo_met=None, on_sweep=False, history=HistoryContext()),
-        dict(n_runs=3, has_slo=False, any_slo_met=None, on_sweep=True, history=HistoryContext()),
+        dict(n_runs=1, has_slo=False, any_slo_met=None, history=HistoryContext()),
+        dict(n_runs=3, has_slo=False, any_slo_met=None, history=HistoryContext()),
     ):
         steps = recommend_next_steps(**kw)
         acts = _actions(steps)

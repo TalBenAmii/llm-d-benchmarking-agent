@@ -146,7 +146,6 @@ async def analyze_results(
         n_runs=len(valid_entries),
         has_slo=slo_targets is not None,
         any_slo_met=any_slo_met,
-        on_sweep=len(valid_entries) >= 2,
         history=_history_context(ctx, valid_entries),
     )
 
