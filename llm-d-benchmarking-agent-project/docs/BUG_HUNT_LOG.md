@@ -838,6 +838,76 @@ guard from the loop's result-clamp step.
   omitted), preserving the `through_seq` cap + `after_seq` cursor.
 - **Regression test:** `tests/test_ws.py::test_reconnect_midturn_does_not_drop_missed_tail_evicted_during_attach`.
 
+## Round 18 (2026-06-21) — subagent wave 6 (provenance / units / cancel): 3 fixed (BUG-049 med, BUG-050 high, BUG-051 med-high)
+A sixth subagent wave over three disjoint areas — the content-addressed provenance bundle-id basis, the A/B +
+sweep summary-comparison unit normalization, and the WS per-turn cancel-vs-queued-steer backstop. Three real
+defects fixed + merged to `main`. BUG-050 is on a SEPARATE code path from `evaluate_slo` (which already
+canonicalizes units); BUG-051 is distinct from the cancel handler's intentional inline await.
+
+## BUG-049 — content-addressed bundle id collides for two different runs at the same report path (optional `run_uid`)
+- **Status:** FIXED
+- **Severity:** medium (two genuinely-different validated runs collapse onto ONE provenance node — a
+  silently overwritten bundle, a broken/lost lineage; no error)
+- **Where:** `app/storage/provenance.py::_compute_bundle_id` (~line 180), call site (~line 234), overwrite at
+  `BundleStore.write`/`list` (~line 294 / ~line 320).
+- **Trigger:** the content-addressed `bundle_id` was keyed only on `{run_uid, report_path, repo_shas}`, but
+  `run_uid` (= `report_summary.get("run_uid")` = `run.get("uid")`) is OPTIONAL / not schema-required. With
+  `run_uid=None`, two genuinely-different validated runs written to the SAME `report_path` (a re-benchmark, or
+  an autotune trial overwriting the same run dir) with the same repo SHAs produced an IDENTICAL `bundle_id`
+  despite differing content/digest, so `BundleStore.write` silently OVERWROTE the first bundle — two distinct
+  runs collapsing onto one provenance node. The module docstring explicitly promises "a genuinely different
+  run does not collide." The sibling `history.compute_record_id` folds in metric values so it lacks this hole.
+- **Root cause:** the id basis omitted the run's content fingerprint, relying on an optional `run_uid` to
+  distinguish runs; when absent, path+SHAs alone are not unique across distinct runs at one path.
+- **Fix:** mix the already-computed `report_digest` (sha256 of validated report bytes + summary) into the id
+  basis — same run → same digest (idempotent), different run → different digest (collision broken); no new I/O.
+- **Regression test:** `tests/test_provenance.py::test_build_bundle_id_no_collision_for_different_runs_at_same_path`.
+
+## BUG-050 — A/B + sweep `compare_summaries` does NO unit conversion → crowns the slower config as the winner
+- **Status:** FIXED
+- **Severity:** high (the headline A/B + sweep comparison can declare the WRONG winner — the user is told the
+  slower config is faster — with a nonsense delta percentage)
+- **Where:** `app/validation/report.py::compare_summaries` (per-metric value loop ~line 570) +
+  `_build_metric_row` (best chooser ~line 509, `delta_pct` ~line 504).
+- **Trigger:** the BR v0.2 `Units` enum permits the SAME latency/throughput metric in either unit (e.g.
+  latency in `s` OR `ms`; both schema-valid). `evaluate_slo` converts to canonical ms via `_TO_MS`, but
+  `compare_summaries` (a SEPARATE code path — the headline A/B + sweep comparison) did NO conversion: it fed
+  each run's raw number straight into the min/max winner chooser and the `(v-base)/base` delta. So a run
+  reporting TTFT `0.5` (seconds = 500 ms) compared against one reporting `200` (ms) yields `0.5 < 200` → the
+  500 ms run is crowned the WINNER (best) over the 200 ms run, with a `+39900%` nonsense delta (truth: the
+  200 ms run is faster, correct delta `-60%`).
+- **Root cause:** `compare_summaries` compared raw metric numbers without normalizing the per-run units onto a
+  canonical unit, conflating values reported in different (both schema-valid) units.
+- **Fix:** add a canonical unit per metric to `_COMPARE_METRICS` (latency→ms, token throughput→tokens/s,
+  request rate→queries/s) + a `_CANONICAL_CONVERSIONS` table + a `_to_canonical()` helper; normalize every
+  run's value onto the metric's canonical unit BEFORE the winner/delta math. The row's `units` is set to
+  canonical only when at least one value was actually normalized (else `None` — a non-conforming report
+  degrades to raw numbers rather than a falsely-asserted unit). Also fixed the now-4-tuple unpack at the
+  cross-harness name lookup.
+- **Regression test:** `tests/test_sweep.py::test_compare_summaries_normalizes_mixed_latency_units_for_winner`.
+
+## BUG-051 — STOP is resurrected by a queued steer: the cancel backstop spawns a FRESH turn after a hard-abort
+- **Status:** FIXED
+- **Severity:** medium-high (the agent keeps working — another full LLM turn + tool dispatch, concurrency
+  slot, tokens/quota, possibly a new cluster op — right after the user clicked STOP; the opposite of the
+  requested hard-abort)
+- **Where:** `app/main.py` `/ws` per-turn `run_turn` `finally` steer-backstop (~line 949), interleaving the
+  `except asyncio.CancelledError` handler (~line 919) and the `CancelIn` control-frame handler (~line 1151) →
+  `app.state.runs.cancel(session.id)`.
+- **Trigger:** when a steer (`session.ctx.steer_messages`) is queued while the loop is busy in a step, it
+  isn't drained until the next step boundary (`loop.py:321`). A cancel control frame raises `CancelledError`
+  into the running turn mid-step, BEFORE that drain. `run_turn`'s `finally` runs for every exit (incl.
+  cancellation), saw leftover steers non-empty + `channel.ws` not `None` (the cancel arrived over the
+  still-attached socket), and spawned `asyncio.create_task(run_turn(followup))` — a FRESH turn running the
+  queued steer. So the agent keeps working right after the user clicked STOP.
+- **Root cause:** the `finally` steer-backstop did not distinguish a cancellation from a normal turn exit, so
+  leftover queued steers survived the abort and were resurrected as a follow-up turn.
+- **Fix:** a `was_cancelled` flag set in the `CancelledError` handler; in `finally`, when cancelled, drop the
+  leftover steers (`steer_messages=[]`) and SKIP the backstop entirely (forgetting the channel if nothing
+  attached/pending) instead of spawning a follow-up. Distinct from the "Considered but NOT changed" note about
+  the cancel handler's intentional inline `await`.
+- **Regression test:** `tests/test_ws.py::test_ws_cancel_with_queued_steer_does_not_resurrect_the_turn`.
+
 ---
 
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
