@@ -70,6 +70,21 @@ def test_parse_items_empty_and_garbage():
     assert parse_items(json.dumps({"kind": "List", "items": None})) == []
 
 
+def test_parse_items_drops_non_dict_elements():
+    # Defense-in-depth at the SOURCE: a forged/corrupt `kubectl get ... -o json` whose `items`
+    # carries non-dict elements (a bare string / number / list / null) must be filtered out, so
+    # NO consumer (controller.classify_job_status, classify_failure, parse_checkpoint, the chaos
+    # decorator's _run_id_of) can AttributeError on a `.get` of a non-dict. Mirrors the sibling
+    # parsers (readiness.diagnostics._parse_items, tools.probe._items_from_json).
+    out = json.dumps({
+        "kind": "List",
+        "items": [{"metadata": {"name": "good"}}, "bad-string", 42, None, ["nested"]],
+    })
+    items = parse_items(out)
+    assert items == [{"metadata": {"name": "good"}}]
+    assert all(isinstance(i, dict) for i in items)
+
+
 # ---- RealKubeClient against the CaptureRunner -----------------------------
 
 def _ctx(tmp_path, *, canned=None):
@@ -158,6 +173,24 @@ async def test_list_jobs_parses_and_passes_selector(tmp_path):
     assert [j["metadata"]["name"] for j in jobs] == ["j1"]
     argv = runner.calls[-1]["argv"]
     assert argv == ["kubectl", "get", "jobs", "-n", "bench", "-o", "json", "-l", "run-id=abc"]
+
+
+async def test_list_jobs_filters_forged_non_dict_items(tmp_path):
+    # End-to-end at the boundary: a forged `kubectl get jobs -o json` with a non-dict element
+    # must NOT reach a consumer's `.get`. The source filter in parse_items drops it, so the only
+    # remaining UNGUARDED consumer — the chaos decorator's _run_id_of (a bare `job.get(...)`) —
+    # can iterate the result without AttributeError. (Before the fix, ChaosKubeClient.list_jobs
+    # raised AttributeError on the bare string element.)
+    from app.orchestrator.chaos import ChaosKubeClient, ChaosPlan
+
+    jobs_json = json.dumps({"kind": "List", "items": [{"metadata": {"name": "j1"}}, "forged"]})
+    ctx, runner = _ctx(tmp_path, canned={"get jobs": jobs_json})
+    kube = RealKubeClient(ctx)
+    assert [j["metadata"]["name"] for j in await kube.list_jobs(namespace="bench")] == ["j1"]
+
+    chaos = ChaosKubeClient(kube, ChaosPlan(injections=[]))
+    jobs = await chaos.list_jobs(namespace="bench")  # must not raise on the forged element
+    assert [j["metadata"]["name"] for j in jobs] == ["j1"]
 
 
 async def test_list_pods_argv(tmp_path):

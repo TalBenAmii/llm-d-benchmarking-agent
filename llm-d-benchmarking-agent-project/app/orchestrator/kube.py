@@ -41,7 +41,15 @@ def parse_items(output: str) -> list[dict[str, Any]]:
     except json.JSONDecodeError:
         return []
     if isinstance(data, dict) and "items" in data:
-        return list(data.get("items") or [])
+        # Drop any non-dict element at the SOURCE so EVERY consumer (controller.status/diagnose/
+        # reconstruct, CheckpointStore.load, the chaos decorator's _run_id_of) is protected — a
+        # forged/corrupt `kubectl get ... -o json` whose `items` carries a bare str/number/list
+        # would otherwise reach a consumer's `it.get(...)` and AttributeError out of the
+        # watch/reconstruct loop. kubectl `items` elements are always JSON objects, so this
+        # never drops a legitimate item; it mirrors the sibling parsers (readiness.diagnostics.
+        # _parse_items, tools.probe._items_from_json) and makes the per-consumer guards
+        # (BUG-029/062/063) belt-and-suspenders rather than the sole line of defense.
+        return [it for it in (data.get("items") or []) if isinstance(it, dict)]
     if isinstance(data, dict) and data.get("kind"):
         return [data]
     return []
