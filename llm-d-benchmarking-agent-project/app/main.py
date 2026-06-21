@@ -164,6 +164,26 @@ async def graceful_shutdown(app: FastAPI) -> dict[str, Any]:
         return {"cancelled": [], "count": 0}
     summary = await runs.shutdown()
     log.info("shutdown.runs_cancelled", extra={"count": summary["count"]})
+    # Cancel the background tasks NOT held in the run registry: the read-only environment
+    # pre-probe (`_prewarm_env`, BUG-033) kicked off on a brand-new chat connect. It runs real
+    # subprocesses (`kubectl get nodes`, `kind get clusters`, …) via the runner but is tracked
+    # only in `background_tasks`, never `runs.register` — so `runs.shutdown()` above does NOT
+    # reach it. Left uncancelled, a SIGTERM that lands mid-probe ORPHANS its child process group
+    # (the very leak this handler exists to prevent). Cancelling unwinds the runner's
+    # `CancelledError` path, which SIGKILLs the child's process group, and we AWAIT the unwind so
+    # shutdown doesn't return before the reap completes. Done BEFORE the provider close below —
+    # the pre-probe uses the runner, not the provider, so order vs. aclose() is independent, but
+    # we keep all subprocess-reaping cancellation in one phase ahead of connection teardown.
+    background = getattr(app.state, "background_tasks", None)
+    pending = [t for t in list(background) if not t.done()] if background else []
+    if pending:
+        for t in pending:
+            t.cancel()
+        log.info("shutdown.background_cancelled", extra={"count": len(pending)})
+        # Absorb each task's outcome (the expected CancelledError, or any error it raised) so a
+        # misbehaving probe can't abort the rest of teardown — the provider close below must run.
+        with contextlib.suppress(Exception):
+            await asyncio.gather(*pending, return_exceptions=True)
     # Disconnect any prewarmed spare LLM connection (the Agent SDK provider keeps one warm
     # subprocess for the next turn) so SIGTERM leaves nothing connected. Best-effort + duck-typed:
     # only the Agent SDK provider implements aclose(); other providers have nothing to close.
