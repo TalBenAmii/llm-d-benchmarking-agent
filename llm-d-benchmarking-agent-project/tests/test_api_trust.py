@@ -283,6 +283,60 @@ def test_cors_not_installed_for_empty_origins():
         assert r.headers.get("access-control-allow-origin") is None
 
 
+def test_cors_wildcard_origin_never_reflects_arbitrary_origin_with_credentials():
+    """SECURITY regression: ``CORS_ALLOW_ORIGINS=*`` must NOT turn into "reflect any origin WITH
+    credentials". Starlette, given ``allow_origins=["*"]`` + ``allow_credentials=True``, refuses
+    the literal ``*`` and instead echoes the request's own Origin back together with
+    ``Access-Control-Allow-Credentials: true`` — letting every website on the internet make
+    authenticated cross-origin reads of the API. ``install_cors`` must drop credentials for the
+    wildcard so the response is a safe literal ``*`` that browsers won't pair with credentials.
+
+    BEFORE the fix: ACAO == "https://evil.example.com" and ACAC == "true" (the vuln).
+    AFTER the fix:  ACAO == "*" and no ACAC (safe; credentials disabled for the wildcard)."""
+    from fastapi import FastAPI
+
+    throwaway = FastAPI()
+
+    @throwaway.get("/probe")
+    async def _probe():  # pragma: no cover - trivial
+        return {"ok": True}
+
+    # This is exactly what Settings(cors_allow_origins="*").cors_origins_list produces.
+    assert Settings(cors_allow_origins="*").cors_origins_list == ["*"]
+
+    main_mod.install_cors(throwaway, ["*"])
+    with TestClient(throwaway) as client:
+        evil = "https://evil.example.com"  # an origin the operator never intended to allow
+        r = client.get("/probe", headers={"Origin": evil})
+        # The attacker's origin must NOT be reflected back...
+        assert r.headers.get("access-control-allow-origin") != evil
+        # ...the wildcard may be returned, but ONLY without credentials.
+        if r.headers.get("access-control-allow-credentials") == "true":
+            assert r.headers.get("access-control-allow-origin") not in (evil, "*")
+
+
+def test_cors_explicit_origin_list_keeps_credentials():
+    """A non-wildcard explicit allowlist still gets credentialed CORS (the intended use): the
+    configured origin is reflected WITH ``Access-Control-Allow-Credentials: true``, while an
+    unlisted origin is not reflected at all."""
+    from fastapi import FastAPI
+
+    throwaway = FastAPI()
+
+    @throwaway.get("/probe")
+    async def _probe():  # pragma: no cover - trivial
+        return {"ok": True}
+
+    main_mod.install_cors(throwaway, ["https://app.example.com"])
+    with TestClient(throwaway) as client:
+        allowed = client.get("/probe", headers={"Origin": "https://app.example.com"})
+        assert allowed.headers.get("access-control-allow-origin") == "https://app.example.com"
+        assert allowed.headers.get("access-control-allow-credentials") == "true"
+
+        denied = client.get("/probe", headers={"Origin": "https://evil.example.com"})
+        assert denied.headers.get("access-control-allow-origin") is None
+
+
 # ---------------------------------------------------------------------------
 # Defaults: everything OFF -> the API is open exactly as today.
 # ---------------------------------------------------------------------------

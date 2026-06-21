@@ -208,12 +208,21 @@ def install_cors(target: FastAPI, origins: list[str]) -> None:
     """Wire CORS (Phase 12) onto ``target`` — but ONLY when ``origins`` is non-empty, so the
     default (empty CORS_ALLOW_ORIGINS) keeps today's behavior: no CORS middleware, no CORS
     headers on responses. Factored out so the wiring can be exercised on a throwaway app in a
-    test without reloading this module (a reload would rebind the shared ``app`` and leak)."""
+    test without reloading this module (a reload would rebind the shared ``app`` and leak).
+
+    SECURITY: never pair the wildcard origin (``"*"``) with ``allow_credentials=True``. Starlette
+    refuses to emit a literal ``Access-Control-Allow-Origin: *`` once credentials are allowed and
+    instead REFLECTS the request's own ``Origin`` back (with ``Access-Control-Allow-Credentials:
+    true``) for ANY origin — so ``CORS_ALLOW_ORIGINS=*`` would silently let every website on the
+    internet make authenticated cross-origin reads of the API. When the wildcard is configured we
+    therefore drop credentials, yielding a safe ``Access-Control-Allow-Origin: *`` that browsers
+    will not pair with credentials. An explicit origin allowlist keeps credentials enabled."""
     if origins:
+        wildcard = "*" in origins
         target.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
-            allow_credentials=True,
+            allow_credentials=not wildcard,
             allow_methods=["*"],
             allow_headers=["*"],
         )
