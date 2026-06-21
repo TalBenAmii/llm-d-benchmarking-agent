@@ -119,6 +119,63 @@ async def test_cancel_no_active_run_is_idempotent(tmp_path):
     assert runs.is_running("ghost") is False
 
 
+async def test_shutdown_cancels_run_registered_during_the_sweep(tmp_path):
+    """A turn registered DURING shutdown's awaited cancellation sweep must still be cancelled —
+    otherwise it survives a SIGTERM and orphans its K8s Job / subprocess (the exact failure
+    ``shutdown`` exists to prevent).
+
+    Concrete interleaving (the steer backstop firing mid-shutdown): two turns A and B are both
+    in-flight when SIGTERM lands. ``shutdown`` snapshots the live handles once ([A, B]) and starts
+    cancelling A, *awaiting* its unwind. While that await yields the loop, B finishes its last step
+    NORMALLY and — in ``run_turn``'s ``finally`` — the steer backstop spawns a follow-up turn C and
+    ``runs.register(B, C)``. C is registered AFTER the snapshot, so the single-pass sweep never sees
+    it; C keeps running past shutdown. We model this by having A's cancellation handler register C
+    (deterministic, no sleeps): the new handle appears strictly during the sweep's await.
+    """
+    runs = RunRegistry()
+
+    # C: the follow-up turn the backstop spawns mid-shutdown. It parks forever unless cancelled —
+    # standing in for an approved benchmark run that must not survive SIGTERM.
+    async def _followup() -> None:
+        await asyncio.Event().wait()
+
+    c_task: asyncio.Task | None = None
+
+    # A: the first in-flight turn. Its unwind (driven BY shutdown's await) registers C on the same
+    # session — exactly what the steer backstop does from run_turn's finally while a sibling turn is
+    # being cancelled. Registering during the cancel means C lands AFTER shutdown snapshotted [A, B].
+    async def _turn_a() -> None:
+        nonlocal c_task
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            c_task = asyncio.create_task(_followup())
+            runs.register("S", c_task)  # backstop replaces this session's handle mid-sweep
+            raise
+
+    # B: a second, independent in-flight turn so the sweep's snapshot has >1 entry and the await
+    # that cancels A (the first) is where C sneaks in before the sweep reaches the rest.
+    async def _turn_b() -> None:
+        await asyncio.Event().wait()
+
+    a_task = asyncio.create_task(_turn_a())
+    b_task = asyncio.create_task(_turn_b())
+    runs.register("S", a_task)
+    runs.register("B", b_task)
+    await asyncio.sleep(0)  # let both tasks park on their events
+
+    summary = await runs.shutdown()
+
+    # The follow-up turn C was registered during the sweep; shutdown must have cancelled it too.
+    assert c_task is not None, "the mid-sweep backstop turn was never spawned"
+    assert c_task.cancelled(), (
+        "a turn registered during shutdown's awaited sweep survived SIGTERM (orphaned run)"
+    )
+    # And the registry is empty afterwards — no live handle leaks past shutdown.
+    assert runs.active_handles() == [], "an in-flight run leaked past shutdown"
+    assert "S" in summary["cancelled"] and "B" in summary["cancelled"]
+
+
 # --- cancel TOOL semantics --------------------------------------------------------------
 
 

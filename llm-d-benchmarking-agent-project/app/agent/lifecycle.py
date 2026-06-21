@@ -152,19 +152,39 @@ class RunRegistry:
         """Graceful-shutdown handler (Phase 16): cancel EVERY in-flight turn so a SIGTERM
         doesn't orphan K8s Jobs / leak subprocesses. Returns a structured summary so a caller
         (or a test) can assert what happened. Plain coroutine — a test invokes it DIRECTLY; no
-        OS signal required. Idempotent: a second call finds nothing left to cancel."""
-        handles = self.active_handles()
+        OS signal required. Idempotent: a second call finds nothing left to cancel.
+
+        Cancelling a handle AWAITS its unwind, and that await yields the event loop — so another
+        coroutine can REGISTER a fresh in-flight run mid-sweep (the steer backstop in
+        ``run_turn``'s ``finally`` does exactly this: when one turn is being cancelled, a sibling
+        turn finishing normally spawns a follow-up turn and ``register``s it). A single snapshot
+        taken once at the top would never see that late arrival, so it would survive SIGTERM and
+        orphan its Job/subprocess — the very thing this handler exists to prevent. So we re-sweep:
+        keep cancelling whatever is active until a pass finds nothing left. The set strictly
+        shrinks each pass (a cancelled handle's task is done and won't re-appear active), and a
+        backstop only re-spawns from a turn ending NORMALLY — which can't happen once every live
+        turn is cancelled — so this terminates. ``_seen`` guards against re-counting a session
+        whose handle was replaced mid-sweep."""
         cancelled: list[str] = []
-        log.info("run.shutdown.begin", extra={"in_flight": len(handles)})
-        for handle in handles:
-            handle.cancelled = True
-            await self._cancel_handle(handle, timeout=timeout)
-            cancelled.append(handle.session_id)
-        # Anything that completed on its own during the sweep is forgotten lazily; clear the
-        # cancelled ones now so a re-entrant call is a clean no-op.
-        for sid in cancelled:
-            h = self._runs.get(sid)
-            if h is not None and h.task.done():
+        seen: set[int] = set()  # id() of handles already cancelled, so we don't double-count
+        passes = 0
+        while True:
+            handles = [h for h in self.active_handles() if id(h) not in seen]
+            if not handles:
+                break
+            passes += 1
+            log.info("run.shutdown.begin", extra={"in_flight": len(handles), "pass": passes})
+            for handle in handles:
+                seen.add(id(handle))
+                handle.cancelled = True
+                await self._cancel_handle(handle, timeout=timeout)
+                cancelled.append(handle.session_id)
+        # Anything that completed (cancelled or on its own) during the sweep is forgotten now so a
+        # re-entrant call is a clean no-op. Sweep every still-tracked entry, not just the names we
+        # cancelled, so a handle replaced mid-sweep (same session id) doesn't leave a stale done
+        # task behind.
+        for sid, h in list(self._runs.items()):
+            if h.task.done():
                 self._runs.pop(sid, None)
         log.info("run.shutdown.end", extra={"cancelled": len(cancelled)})
         return {"cancelled": cancelled, "count": len(cancelled)}
