@@ -370,7 +370,16 @@ auth bypass, env-leak, or path-escape — the metachar screen, fail-closed defau
 path constraints, `re.fullmatch` anchoring, quota-before-approval ordering, constant-time token compare, and
 the GET-only/`/healthz`/`/readyz` auth exemptions all hold under adversarial probing. One latent defect:
 
-### SECURITY OBSERVATION (latent, NOT exploitable today; NEEDS MAINTAINER DECISION — not patched)
+### SECURITY OBSERVATION (latent, NOT exploitable today) — **RESOLVED by BUG-042 (Round 16)**
+- **Resolution:** fixed in Round 16 as **BUG-042** — read-only-trigger detection is now **region-aware**
+  (`pre_tokens` → `pre_regions: list[(tokens, effective_flags)]`; a trigger is honored only against its OWN
+  region's flag-dict), so a subcommand-OWN trigger sitting in the global pre-region no longer downgrades a
+  mutating subcommand. The genuine global `--version` trigger and the intentional nested-subcommand
+  propagation are preserved. **Nuance retained (honesty):** this was LATENT, not live-exploitable under the
+  current pinned upstream — the subparser's `--dry-run` uses `default=argparse.SUPPRESS`, so a global-position
+  `-n` IS honored as a real dry-run today; the fix is defense-in-depth so the security gate doesn't depend on
+  an unobservable upstream default in a read-only repo we don't control. The original observation is preserved
+  below for the record.
 - **What:** a `read_only_trigger` flag in the **leading global region** downgrades an otherwise-MUTATING
   subcommand to `read_only` → **auto-run, no approval, no quota**. Reproduced:
   `validate(["llmdbenchmark","--version","standup","-p","myns"])` → `mode=read_only,
@@ -587,6 +596,126 @@ no new defect (see the Verified NON-bugs note).
   terminal condition among malformed siblings still classifies; an all-malformed `conditions` degrades to
   PENDING, never raises.
 - **Regression test:** `tests/test_orchestrator_controller.py::test_classify_survives_malformed_conditions`.
+
+---
+
+## Round 16 (2026-06-21) — subagent-orchestrated waves 2-4: 6 fixed (BUG-038..043) + known-open #1 RESOLVED
+Three subagent waves over disjoint areas — session/orchestrator persistence, the tool-layer date/catalog
+paths, the security allowlist read-only-trigger region logic, and the persisted-render path (share + WS
+history). Six real defects fixed + merged to `main`; the previously-logged **known-open #1** security item
+(global-region `read_only_trigger` downgrade, Round 8) is RESOLVED by BUG-042 (region-aware detection).
+Two clean areas re-reviewed with no defect (see the Verified-clean note for round 16, below).
+
+## BUG-038 — `session.persist()` writes `state.json` non-atomically (torn read / truncated transcript)
+- **Status:** FIXED
+- **Severity:** medium-high (a reader can observe a torn JSON file → a running chat reads as GONE / drops
+  from the sidebar; a crash mid-write truncates the whole transcript permanently)
+- **Where:** `app/agent/session.py::persist()` (~line 194).
+- **Trigger:** `persist()` was the LONE store writing `state.json` directly via `write_text` (every sibling
+  store uses temp-then-replace). It fires on nearly every turn event while `SessionManager.load()`/`list()`
+  read concurrently → a reader could catch a partial write (`JSONDecodeError`), and a crash mid-write left
+  the file truncated.
+- **Root cause:** a non-atomic single `write_text` on a hot, concurrently-read path — the same class as
+  BUG-003 (`share.py`), whose fix overlooked session persistence.
+- **Fix:** serialize to a local, write `state.json.tmp`, then `tmp.replace(path)` (atomic rename) — matching
+  the sibling stores. A reader now sees either the prior complete snapshot or the new complete one, never a
+  torn file; a crash mid-write leaves the prior snapshot intact.
+- **Regression test:** `tests/test_sessions.py::test_persist_is_atomic_crash_mid_write_preserves_prior_snapshot`.
+
+## BUG-039 — a sweep checkpoint-write failure for ONE treatment sinks the ENTIRE sweep
+- **Status:** FIXED
+- **Severity:** medium-high (one failed checkpoint write aborts every other treatment's result, violating
+  the documented per-treatment isolation; `checkpoint=True` is the default)
+- **Where:** `app/orchestrator/controller.py::run_sweep` — `_persist_in_flight` / `_persist_completed`
+  (~lines 399 / 428).
+- **Trigger:** the checkpoint ConfigMap writes ran OUTSIDE `_one`'s per-treatment `try/except`. Those are
+  mutating `kubectl apply`s that genuinely raise (a `QuotaError` mid-sweep, `ApprovalRejected`, a transient
+  apply error); an uncaught error propagated through `asyncio.gather` and aborted the WHOLE sweep, destroying
+  every other treatment's result.
+- **Root cause:** the checkpoint writes were unguarded and sat outside the isolation boundary that protects
+  each treatment, so a single write failure escaped per-treatment containment.
+- **Fix:** `_safe_checkpoint_write` wraps `store.write` in `contextlib.suppress(Exception)` — like the
+  existing `_safe_metric` / `_tail_logs` helpers. The cluster is the source of truth, so a missed checkpoint
+  write only degrades to a re-run-on-resume, never a lost sweep.
+- **Regression test:** `tests/test_orchestrator_checkpoint.py::test_checkpoint_write_failure_for_one_treatment_does_not_sink_the_sweep`.
+
+## BUG-040 — `_filter_by_date` crashes the WHOLE tool-layer history list/trend on a corrupt `stored_at`
+- **Status:** FIXED
+- **Severity:** medium (a single corrupt record breaks `result_history` list/trend for EVERY record the
+  moment any `start_date`/`end_date` is supplied)
+- **Where:** `app/tools/history.py::_filter_by_date` (~line 73).
+- **Trigger:** it compared `r.stored_at` directly (`>= lo`); a corrupt on-disk record (`stored_at` null or a
+  string, bypassing the validated `add()` path) → a non-`ToolError` `TypeError` that escaped the handler and
+  broke the list/trend for every record whenever a date filter was applied.
+- **Root cause:** the tool-layer date path did a raw comparison with no coercion — the same class as BUG-020,
+  but on a date path BUG-020 didn't cover.
+- **Fix:** compare via `_as_num(r.stored_at)` (the BUG-020 helper) → a corrupt value coerces to `0.0`
+  (oldest) instead of raising; real records still filter correctly.
+- **Regression test:** `tests/test_history.py::test_tool_list_and_trend_date_filter_survive_corrupt_stored_at`.
+
+## BUG-041 — `_workloads` catalogs only `*.yaml.in` templates → valid rendered `*.yaml` profiles refused
+- **Status:** FIXED
+- **Severity:** medium (the agent's allowlist refuses valid workloads → SessionPlan validation fails them as
+  "not in the catalog for any harness")
+- **Where:** `app/tools/catalog.py::_workloads` (~line 70).
+- **Trigger:** it enumerated only `*.yaml.in` templates, so plain rendered `*.yaml` profiles never entered
+  the catalog. Real dropped files: `inference-perf/guide_multimodal-serving_1.yaml`,
+  `guide_predicted-latency-routing_1.yaml`. Upstream `-w` resolution accepts a plain `*.yaml` (it looks for
+  `<name>` first, then falls back to `<name>.in`), so the agent rejected workloads the CLI would have run.
+- **Root cause:** the glob covered only the template form, not the rendered form upstream also accepts.
+- **Fix:** collect both forms into a set — `{name.removesuffix(".in") for *.yaml.in} | {name for *.yaml}`,
+  sorted. `glob *.yaml` does NOT match `*.yaml.in`, so there is no double-count.
+- **Regression test:** `tests/test_catalog.py::test_plain_yaml_profile_is_catalogued` (+ a dedup guard test).
+
+## BUG-042 — a global-region `read_only_trigger` downgrades a mutating subcommand → bypasses the approval gate (latent)
+- **Status:** FIXED (security hardening — LATENT today; see the nuance below)
+- **Severity:** medium (security defense-in-depth — auto-run bypass of the approval gate; NOT a live-execution
+  bypass under the current pinned upstream — see the nuance)
+- **Where:** `app/security/allowlist.py` — the read-only-trigger detection in `_walk` / `_walk_subcommand`
+  (~lines 379 / 398).
+- **Trigger:** the pre-region (global / leading) tokens were matched against the MERGED leaf flag-dict
+  (`{**global_flags, **sub.flags}`), so a subcommand-OWN `read_only_trigger` (`-n` / `--dry-run`, declared
+  only on the mutating subcommands `plan`/`standup`/`smoketest`/`run`/`teardown`/`experiment`) was honored
+  when it sat in the GLOBAL pre-region → command downgraded to `read_only` → `requires_approval=False` →
+  auto-run, bypassing the approval gate.
+- **Root cause:** trigger detection was region-blind — a trigger declared on a subcommand was matchable from
+  the global region because the matcher saw the merged flag-dict rather than each region's own flags.
+- **Fix:** make detection region-aware — thread `pre_tokens` → `pre_regions: list[(tokens, effective_flags)]`;
+  a trigger is honored only against its OWN region's flag-dict. This preserves (a) subcommand-region triggers
+  still downgrade, (b) the intentional nested-subcommand propagation (each level carries its `merged_flags`),
+  and (c) the genuine global `--version` trigger.
+- **IMPORTANT NUANCE (recorded honestly):** under the CURRENT pinned upstream the subparser's `--dry-run`
+  uses `default=argparse.SUPPRESS`, so a global-position `-n` IS honored as a real dry-run today → this is
+  NOT a live-execution bypass currently. It is a defense-in-depth hardening that becomes a live bypass only
+  if upstream drops `SUPPRESS`. Rationale: a security gate must not depend on an unobservable upstream default
+  in a read-only repo we don't control. This RESOLVES the previously-logged **known-open #1** item (Round 8).
+- **Regression tests:** `tests/test_allowlist.py::test_global_position_dry_run_does_not_bypass_approval`
+  (7 parametrized subcommands), `::test_subcommand_region_trigger_still_downgrades`,
+  `::test_nested_pre_token_propagation_is_region_aware`,
+  `::test_version_after_other_global_flag_is_read_only`.
+
+## BUG-043 — `_history_items` crashes (HTTP 500 + un-reopenable chat) on a non-dict transcript element
+- **Status:** FIXED
+- **Severity:** medium (a non-dict element → HTTP 500 on the share route AND tears down the WS history emit
+  on reconnect, leaving the chat UN-REOPENABLE)
+- **Where:** `app/main.py::_history_items` (~line 392; reached by `create_share` ~:656 and the WS history
+  emit ~:996).
+- **Trigger:** it walked `messages`/`approvals`/`in_flight_approvals`/`commands`/`card_results` + each
+  `tool_calls` + each `tool_results.results` with `x.get()` and NO per-element type check. `SessionManager.load`
+  rebuilds these from JSON unchecked, so a non-dict element (a torn write, a hand edit, a forward-incompatible
+  format) raised an uncaught `AttributeError` → HTTP 500 on `create_share`, and on the WS path the crash
+  PRECEDES the receive loop, so the chat became un-reopenable.
+- **Root cause:** the render path trusted every persisted element to be a dict — the same class as
+  BUG-011/020-023, here on the persisted-render path.
+- **Fix:** a `_dicts()` filter applied to every source list + an `isinstance` guard on a non-dict
+  `tool_durations`; a malformed row is skipped and the render degrades gracefully.
+- **Regression test:** `tests/test_share.py::test_share_survives_corrupt_session_transcript`.
+
+### Verified clean (no bug) — round 16
+- **`app/llm/` layer full review** — usage accounting, SDK message threading, and context-compaction pairing
+  were reviewed end-to-end: NO bug.
+- **FastAPI REST surface re-fuzzed** — history/jobs/share with empty/traversal/over-long/NUL inputs returned
+  clean 4xx/200 with no 500s; the one real defect on the persisted-render path is BUG-043.
 
 ---
 
