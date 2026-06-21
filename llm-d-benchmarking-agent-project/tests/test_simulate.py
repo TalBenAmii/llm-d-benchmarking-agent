@@ -57,7 +57,12 @@ async def test_simrunner_execute_is_noop_success(tmp_path):
     assert res.exit_code == 0
     assert res.duration_s == 0.0
     assert res.real_argv == ["llmdbenchmark", "standup"]
-    assert "simulate" in res.output.lower()
+    # Captured output is EMPTY — mirrors the canonical test fake (CaptureRunner) and a real
+    # command that produced no stdout, so output-parsing consumers don't mistake a synthetic
+    # banner for real DATA. The "this was simulated" signal rides the `command` event's
+    # `simulated` flag + the SIMULATE_NOTE prompt cue, NOT the captured output text.
+    assert res.output == ""
+    assert res.lines == []
     # Nothing spawned: a real CommandRunner would have raised resolving the missing venv.
 
 
@@ -128,3 +133,33 @@ def test_locate_report_synthesizes_in_simulate(tmp_path):
     real = _ctx(tmp_path, simulate=False, runner=SimRunner({}))
     out2 = locate_and_parse_report(real, results_dir=str(empty))
     assert out2["found"] is False
+
+
+async def test_simrunner_output_does_not_fabricate_parsed_data(tmp_path, monkeypatch):
+    """SimRunner's RESULT contract must mirror the canonical test fake (CaptureRunner) and a
+    real command that produced no stdout: an EMPTY ``output``/``lines``. SimRunner used to bake
+    two human-readable ``[simulate] …`` lines into the captured output, so any read-only
+    consumer that parses ``res.output`` as DATA (not just for display) silently fabricated
+    structured results in SIMULATE mode.
+
+    Concrete trigger: ``probe_environment(checks=["kind_clusters"])`` with ``kind`` on PATH.
+    ``_probe_kind`` reports every non-"No kind clusters" stdout line as a cluster name, so the
+    old SimRunner output turned into phantom clusters
+    (``["[simulate] (no-op) would run: kind get clusters", "[simulate] exit_code=0"]``) — a
+    success-shaped lie the agent could act on (e.g. "you already have a cluster, skipping
+    standup"). The probe-honesty PROMPT cue (D5) can't undo a corrupt structured tool result.
+    """
+    from app.tools.probe import probe_environment
+
+    # 1) Raw contract: a SimRunner no-op carries no captured stdout (matches CaptureRunner /
+    #    a real command with empty output), so output-parsing consumers see nothing to parse.
+    res = await SimRunner({}).execute(["kind", "get", "clusters"], None)
+    assert res.exit_code == 0
+    assert res.output == ""
+    assert res.lines == []
+
+    # 2) End-to-end: the kind-clusters probe must NOT invent clusters in SIMULATE mode.
+    monkeypatch.setattr("app.tools.probe.shutil.which", lambda name: "/usr/bin/" + name)
+    ctx = _ctx(tmp_path, simulate=True, runner=SimRunner({}))
+    out = await probe_environment(ctx, checks=["kind_clusters"])
+    assert out["kind_clusters"]["clusters"] == []
