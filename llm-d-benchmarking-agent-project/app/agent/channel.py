@@ -240,7 +240,19 @@ class Channel:
         untouched so its real awaited future is preserved.
         """
         loop = asyncio.get_event_loop()
-        for entry in in_flight or []:
+        # ``in_flight`` is loaded straight off disk (``Session.load`` -> ``data.get(...)``) with NO
+        # per-element type check, and this runs on the WS reconnect path (main.py) BEFORE the
+        # history emit and the receive loop. A corrupt / hand-edited / forward-incompatible
+        # state.json whose ``in_flight_approvals`` carries a NON-DICT element (a torn string, a
+        # scalar) would make ``entry.get(...)`` raise AttributeError, crashing the reconnect and
+        # PERMANENTLY bricking reload of that one chat — the exact WS-reconnect blast radius BUG-043
+        # closed for ``_history_items``/share but left open here (this path runs first). Skip
+        # non-dict elements (and coerce a non-list ``in_flight``) so a malformed row degrades
+        # instead of being fatal, matching BUG-043's ``_dicts`` guard.
+        entries = in_flight if isinstance(in_flight, (list, tuple)) else []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
             rid = entry.get("request_id")
             if not rid or rid in self.pending:
                 continue
