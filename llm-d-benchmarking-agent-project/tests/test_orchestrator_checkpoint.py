@@ -97,6 +97,21 @@ def test_parse_checkpoint_tolerates_absent_or_corrupt_configmap():
     assert parse_checkpoint(SWEEP, corrupt).treatments == {}         # unparseable → empty
 
 
+@pytest.mark.parametrize("bad", ["not-a-configmap", 7, ["a", "b"], "x"])
+def test_parse_checkpoint_survives_non_dict_configmap(bad):
+    """BUG-062 sibling: ``kube.parse_items`` does NOT filter non-dict ``items`` elements, and
+    ``CheckpointStore.load`` hands ``cms[0]`` (the first element of that unfiltered list) straight
+    to ``parse_checkpoint``. A forged/corrupt ``kubectl get configmaps -o json`` whose ``items[0]``
+    is a non-dict (a bare string / number / list) is TRUTHY, so it bypassed the ``not configmap``
+    guard and raised ``AttributeError: 'str' object has no attribute 'get'`` — crashing
+    ``reconstruct_sweep`` (the sweep restart-recovery path) and breaking the documented "never an
+    error" contract. Fails before the fix (raises); passes after (degrades to an empty checkpoint,
+    exactly like the absent/corrupt-JSON cases above)."""
+    cp = parse_checkpoint(SWEEP, bad)  # must NOT raise
+    assert cp.sweep_id == SWEEP
+    assert cp.treatments == {}
+
+
 def test_record_completed_is_not_downgraded_by_a_later_in_flight():
     cp = SweepCheckpoint(sweep_id=SWEEP)
     cp.record_completed("t1", succeeded=True, dead_lettered=False, fault_kind=None)
