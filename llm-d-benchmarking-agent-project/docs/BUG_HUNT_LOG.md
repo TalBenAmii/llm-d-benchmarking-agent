@@ -1178,6 +1178,38 @@ reset; a single probe hunter confirmed quota restored and found BUG-059.
 
 ---
 
+## Round 24 (2026-06-21) — subagent wave 11 (meta-review sibling): 1 fixed (BUG-063 med)
+A 3rd adversarial meta-review re-audited the prior wave's eight fixes (BUG-055..062), verified seven of them
+sound, and surfaced the still-unfixed SIBLING of BUG-062 in the checkpoint path — filed and fixed below as
+BUG-063.
+
+> **Noted, not yet filed (being fixed separately):** the meta-review also flagged that
+> `app/tools/report_locate.py`'s `results_dir` parameter — like the now-fixed `session_id` (BUG-055) — is
+> still joined as a **raw agent-supplied path with no containment**, a path-traversal sibling. Tracked for a
+> separate fix, not part of this round.
+
+## BUG-063 — a non-dict top-level ConfigMap element crashes `parse_checkpoint`, aborting sweep recovery
+- **Status:** FIXED
+- **Severity:** medium (a forged/corrupt `configmaps` array element raises `AttributeError` and aborts
+  `reconstruct_sweep` — the restarted-orchestrator sweep-recovery path — breaking the function's documented
+  "never an error" contract)
+- **Where:** `app/orchestrator/checkpoint.py::parse_checkpoint` (~line 159).
+- **Trigger:** `app/orchestrator/kube.py::parse_items` does NOT filter non-dict elements from its `items`
+  list, and `CheckpointStore.load` hands `cms[0]` (the first element of that unfiltered list) straight to
+  `parse_checkpoint`, which had only a FALSY `if not configmap:` guard. A non-dict element (bare string /
+  number / list from a forged or corrupt `kubectl get configmaps -o json`) is TRUTHY, sails past the falsy
+  guard, and `configmap.get("data")` raises `AttributeError`.
+- **Root cause:** the unfixed SIBLING of BUG-062 (and the same robustness class as BUG-029/062) — the falsy
+  guard caught the absent/None case but not a truthy non-dict, so a malformed top-level ConfigMap crashed the
+  recovery path the restarted orchestrator depends on.
+- **Fix:** replace `if not configmap:` with `if not isinstance(configmap, dict):` — this subsumes the
+  absent/None case AND degrades any non-dict to an empty checkpoint, restoring the "never an error" contract.
+- **Regression test:** `tests/test_orchestrator_checkpoint.py::test_parse_checkpoint_survives_non_dict_configmap`
+  (the existing `::test_parse_checkpoint_tolerates_absent_or_corrupt_configmap` only covered
+  None/empty-data/bad-JSON, never a non-dict).
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
