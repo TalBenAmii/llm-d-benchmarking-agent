@@ -64,6 +64,15 @@ def _effective_namespace(data: dict[str, Any]) -> str | None:
     return data.get("namespace") or (data.get("approved_plan") or {}).get("namespace")
 
 
+def _bounded_append(seq: list, item: object, limit: int) -> None:
+    """Append item, then drop oldest so the list never exceeds ``limit`` (in-place, preserves
+    identity). The in-place ``del`` keeps the SAME list object so JSON persistence and any
+    held reference stay valid."""
+    seq.append(item)
+    if len(seq) > limit:
+        del seq[: len(seq) - limit]
+
+
 # Keep the executed-command trail bounded so a long session's snapshot stays small.
 _COMMANDS_MAX = 500
 # Renderable tool results are richer than command rows (a full report summary + chart paths),
@@ -146,19 +155,13 @@ class Session:
                 + self.total_cache_read_tokens + self.total_cache_write_tokens)
 
     def record_command(self, payload: dict[str, Any]) -> None:
-        self.commands.append(payload)
-        if len(self.commands) > _COMMANDS_MAX:
-            del self.commands[: len(self.commands) - _COMMANDS_MAX]
+        _bounded_append(self.commands, payload, _COMMANDS_MAX)
 
     def record_approval(self, entry: dict[str, Any]) -> None:
-        self.approvals.append(entry)
-        if len(self.approvals) > _COMMANDS_MAX:
-            del self.approvals[: len(self.approvals) - _COMMANDS_MAX]
+        _bounded_append(self.approvals, entry, _COMMANDS_MAX)
 
     def record_card_result(self, entry: dict[str, Any]) -> None:
-        self.card_results.append(entry)
-        if len(self.card_results) > _CARD_RESULTS_MAX:
-            del self.card_results[: len(self.card_results) - _CARD_RESULTS_MAX]
+        _bounded_append(self.card_results, entry, _CARD_RESULTS_MAX)
 
     def record_tool_duration(self, tool_call_id: str | None, seconds: float) -> None:
         """Persist a tool call's wall-clock run time (seconds), keyed by id, for the replayed
