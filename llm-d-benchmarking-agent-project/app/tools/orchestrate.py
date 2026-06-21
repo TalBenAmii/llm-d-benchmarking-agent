@@ -8,6 +8,7 @@ workload, retry budget) is the agent's; this is mechanism.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import uuid
 from collections.abc import Awaitable, Callable
@@ -191,13 +192,26 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
+def _name_fallback_slug(name: str) -> str:
+    """A short, DNS-safe, NAME-DERIVED slug for a treatment whose name slugs to nothing (e.g.
+    all-punctuation / non-ASCII — the schema's ``name`` field has no pattern constraint). It is
+    a pure function of the NAME (not the treatment's position), so the SAME name always yields
+    the SAME run-id across a sweep and its later same-``sweep_id`` resume (the checkpoint can
+    then skip the completed treatment). Distinct empty-slug names hash to distinct slugs, so the
+    caller's run-id collision check stays a backstop, not the primary distinguisher."""
+    return "t" + hashlib.sha1(name.encode("utf-8")).hexdigest()[:6]
+
+
 def _sweep_run_id(sweep_id: str, name: str, index: int) -> str:
     """Stable, DNS-safe run-id for a treatment: ``{sweep_id}-{slug(name)}`` truncated to the
     Job-name budget. A PURE function of (sweep_id, name) — so a resume maps the same treatment
-    name to the same run-id (and the cluster checkpoint can skip it). Falls back to the 1-based
-    index when the name slugs to nothing."""
+    name to the same run-id (and the cluster checkpoint can skip it) regardless of the
+    treatment's POSITION in the list. When the name slugs to nothing, fall back to a stable
+    name-derived hash slug (NOT the 1-based index, which would shift when treatments are
+    reordered / inserted between a sweep and its resume — re-running an already-completed
+    treatment as a duplicate Job)."""
     budget = _RUN_ID_BUDGET - len(sweep_id) - 1   # minus the joining '-'
-    slug = _slug(name)[:max(budget, 0)].strip("-") or f"t{index}"
+    slug = _slug(name)[:max(budget, 0)].strip("-") or _name_fallback_slug(name)
     return f"{sweep_id}-{slug}"
 
 

@@ -159,6 +159,51 @@ async def test_sweep_resumes_skipping_completed_treatments(tmp_path):
     assert submitted == {f"{sid}-t2", f"{sid}-t3"}
 
 
+def test_sweep_run_id_is_pure_in_sweep_id_and_name_for_empty_slug_names():
+    """_sweep_run_id is documented as 'a PURE function of (sweep_id, name)' so that a resume
+    maps the SAME treatment name to the SAME run-id (and the cluster checkpoint can skip it).
+    For a name that slugs to nothing (e.g. all punctuation/non-ASCII — schema-allowed: the
+    `name` field has no pattern), the fallback must NOT depend on the treatment's POSITION in
+    the list: otherwise reordering / inserting a treatment between a sweep and its same-sweep_id
+    resume shifts the index, yields a different run-id, and the already-completed treatment is
+    re-run as a DUPLICATE Job — breaking the resume idempotency invariant."""
+    sid = "sw-fixed"
+    empty_slug_name = "###"            # _slug("###") == "" → the fallback path
+    # Same (sweep_id, name) at two different positions must give the same run-id.
+    assert _sweep_run_id(sid, empty_slug_name, 1) == _sweep_run_id(sid, empty_slug_name, 5)
+    # And it must not depend on the index at all: a third position agrees too.
+    assert _sweep_run_id(sid, empty_slug_name, 2) == _sweep_run_id(sid, empty_slug_name, 1)
+    # Distinct empty-slug names must still map to DISTINCT run-ids (no fallback collision).
+    assert _sweep_run_id(sid, "###", 1) != _sweep_run_id(sid, "***", 1)
+
+
+async def test_sweep_resume_reordered_empty_slug_treatment_is_skipped_not_rerun(tmp_path):
+    """End-to-end resume idempotency for an empty-slug-named treatment under REORDERING: a
+    treatment whose name slugs to nothing is completed + checkpointed in pass 1, then a resume
+    (same sweep_id) supplies the SAME treatments in a DIFFERENT order. The completed treatment
+    must be SKIPPED (its run-id is stable per name), not re-submitted as a duplicate Job."""
+    sid = "swreorder"
+    empty_name = "###"
+    done_run_id = _sweep_run_id(sid, empty_name, 1)
+    checkpoint = SweepCheckpoint(sweep_id=sid)
+    checkpoint.record_completed(done_run_id, succeeded=True, dead_lettered=False, fault_kind=None)
+    cm = build_configmap_manifest(sid, checkpoint, namespace="bench")
+    canned_cm = json.dumps({"items": [cm]})
+
+    ctx, runner = _ctx(tmp_path, canned={"get configmaps": canned_cm, "get jobs": SUCCEEDED_JOB})
+    # Resume with the completed empty-slug treatment now at a DIFFERENT position (was index 1,
+    # now index 2). With an index-dependent fallback its run-id would change and it would re-run.
+    res = await dispatch(ctx, "orchestrate_sweep", {
+        "namespace": "bench", "spec": "cicd/kind", "sweep_id": sid,
+        "treatments": [{"name": "x"}, {"name": empty_name}],
+        "max_parallel": 2, "max_attempts": 1, "poll_interval": 0,
+    })
+    # The completed empty-slug treatment is resumed (skipped), only "x" runs fresh.
+    assert res["resumed"] == [empty_name]
+    submitted = {rid.rsplit("-a", 1)[0] for rid in _applied_run_ids(runner)}
+    assert submitted == {_sweep_run_id(sid, "x", 1)}  # NOT the empty-slug treatment
+
+
 async def test_sweep_checkpoint_false_writes_no_configmap(tmp_path):
     ctx, runner = _ctx(tmp_path, canned={"get jobs": SUCCEEDED_JOB})
     res = await dispatch(ctx, "orchestrate_sweep", {
