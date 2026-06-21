@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +16,26 @@ import jsonschema
 import yaml
 
 from app.dig import dict_or_empty, dig_dotted
+
+# The §3.4-standard-metric + multi-turn session-performance extraction cluster lives in a
+# sibling module (report_metrics.py) to keep this file's load/validate/summarize/compare
+# concerns separate from the catalog-driven metric pull. We import the cluster back and
+# RE-EXPORT it so the established ``from app.validation.report import extract_standard_metrics``
+# / ``extract_session_performance`` import sites keep working. The stat-ladder primitives
+# ``_stat`` / ``_PCTL_KEYS`` are OWNED by that module (its extractors and this file's
+# ``summarize_report`` share them); we import them back here. The import direction is one-way
+# (report -> report_metrics) so there is NO cycle. See ``_PERCENTILE_LADDER`` below for the
+# percentile-ladder SSOT that stays here.
+from app.validation.report_metrics import (
+    _PCTL_KEYS,
+    _STANDARD_METRICS_CATALOG,  # noqa: F401  (re-export)
+    _extract_standard_metric,  # noqa: F401  (re-export for callers/tests)
+    _load_catalog_section,  # noqa: F401  (re-export)
+    _native_stat,  # noqa: F401  (re-export)
+    _stat,
+    extract_session_performance,
+    extract_standard_metrics,
+)
 
 
 class ReportError(RuntimeError):
@@ -61,9 +80,15 @@ _PERCENTILE_LADDER: tuple[tuple[str, float], ...] = (
 
 # Aggregate-statistics keys we read off a Statistics object: ``mean`` (kept first, for
 # throughput floors and headline comparison) followed by the full percentile ladder above
-# (which feeds SLO verdicts, incl. p99p9, and goodput estimation). Derived from the SSOT so
-# the two never drift.
-_PCTL_KEYS = ("mean",) + tuple(name for name, _frac in _PERCENTILE_LADDER)
+# (which feeds SLO verdicts, incl. p99p9, and goodput estimation). The tuple itself is OWNED
+# by report_metrics.py (imported above) because both that module's extractors and this file's
+# ``summarize_report`` consume it, and report_metrics may not import the ladder back from here
+# (that would cycle). We keep the SSOT ladder here and ASSERT the imported key tuple is exactly
+# ``mean`` + the ladder names, so the projection can never silently drift from the SSOT — the
+# documented sub-p50 silent-floor bug if a low rung were ever dropped on one side.
+assert ("mean",) + tuple(name for name, _frac in _PERCENTILE_LADDER) == _PCTL_KEYS, (
+    "report_metrics._PCTL_KEYS drifted from report._PERCENTILE_LADDER (SSOT)"
+)
 
 
 def load_report(path: str | Path) -> dict[str, Any]:
@@ -121,235 +146,6 @@ def validate_report(report: dict[str, Any], schema_path: str | Path) -> ReportVa
         errors=fatal[:50],
         deviations=deviations[:50],
     )
-
-
-def _stat(metric: Any) -> dict[str, Any] | None:
-    """Extract {units, mean, full percentile ladder} from a metric object, if present.
-
-    Carries the whole ladder (``_PCTL_KEYS``) so downstream SLO evaluation and goodput
-    interpolation see every reported percentile, not a lossy subset.
-    """
-    if not isinstance(metric, dict):
-        return None
-    out: dict[str, Any] = {}
-    if "units" in metric:
-        out["units"] = metric["units"]
-    for k in _PCTL_KEYS:
-        if k in metric:
-            out[k] = metric[k]
-    return out or None
-
-
-# ---- §3.4 standard metrics (KV-cache hit rate / schedule delay / GPU util) --
-#
-# The proposal lists these among the Results Analyzer's "standard metrics" but, unlike
-# the request-level latency/throughput numbers, they are resource/serving metrics a
-# harness MAY or may not emit, under either the BR v0.2 standardized ResourceMetrics
-# object OR a harness-native per-metric observability entry. WHICH field name carries
-# WHICH metric (the discovery judgment) lives as DATA in knowledge/standard_metrics.yaml;
-# the code here is pure mechanism — it reads that catalog and extracts the first present
-# candidate, NEVER fabricating a value the report doesn't carry (thin code / thick agent).
-
-_STANDARD_METRICS_CATALOG = (
-    Path(__file__).resolve().parents[2] / "knowledge" / "standard_metrics.yaml"
-)
-
-
-@lru_cache(maxsize=8)
-def _load_catalog_section(path: str, section: str) -> dict[str, Any]:
-    """Load (and cache) one top-level mapping ``section`` from a knowledge YAML catalog.
-    Missing file / malformed YAML / a missing-or-non-mapping section → empty (no crash)."""
-    p = Path(path)
-    if not p.exists():
-        return {}
-    try:
-        data = yaml.safe_load(p.read_text())
-    except yaml.YAMLError:
-        return {}
-    section_val = data.get(section) if isinstance(data, dict) else None
-    return dict_or_empty(section_val)
-
-
-def _native_stat(entry: Any) -> dict[str, Any] | None:
-    """Pull a {units, mean, percentiles} stats dict from a harness-native observability entry.
-
-    Harness-native entries (e.g. ``vllm_prefix_cache_hit_rate``) carry their stats under an
-    ``aggregated`` block (cluster-wide) and/or a ``components[].statistics`` block (per pod).
-    We prefer the cluster-wide ``aggregated`` and fall back to the first component's
-    ``statistics``. Returns ``_stat``-shaped output (units + ladder), or None.
-    """
-    if not isinstance(entry, dict):
-        return None
-    agg = entry.get("aggregated")
-    out = _stat(agg)
-    if out:
-        return out
-    comps = entry.get("components")
-    if isinstance(comps, list):
-        for c in comps:
-            if isinstance(c, dict):
-                out = _stat(c.get("statistics"))
-                if out:
-                    return out
-    return None
-
-
-def _extract_standard_metric(
-    observability: dict[str, Any], spec: dict[str, Any]
-) -> dict[str, Any] | None:
-    """Extract ONE catalogued metric from a report's ``results.observability`` block.
-
-    Tries, in catalog-preference order: each standardized ResourceMetrics field name across
-    every ``components[].aggregate`` block, then each harness-native top-level key. Returns a
-    structured value (the picked stat ladder + provenance) or None when the metric is absent
-    everywhere — it is NEVER fabricated.
-    """
-    components = observability.get("components")
-    comp_list = components if isinstance(components, list) else []
-
-    # 1) Standardized ResourceMetrics fields under components[].aggregate.
-    for field_name in spec.get("standardized") or []:
-        for comp in comp_list:
-            if not isinstance(comp, dict):
-                continue
-            agg = comp.get("aggregate")
-            if not isinstance(agg, dict):
-                continue
-            stat = _stat(agg.get(field_name))
-            if stat:
-                return {
-                    "label": spec.get("label"),
-                    "value": stat,
-                    "source": "standardized",
-                    "field": field_name,
-                    "component_label": comp.get("component_label"),
-                    "direction": spec.get("direction"),
-                    "proxy": bool(spec.get("proxy", False)),
-                }
-
-    # 2) Harness-native per-metric observability entries (vendor metric keys).
-    for key in spec.get("native") or []:
-        stat = _native_stat(observability.get(key))
-        if stat:
-            return {
-                "label": spec.get("label"),
-                "value": stat,
-                "source": "native",
-                "field": key,
-                "direction": spec.get("direction"),
-                "proxy": bool(spec.get("proxy", False)),
-            }
-
-    return None
-
-
-def extract_standard_metrics(
-    report: dict[str, Any], *, catalog_path: str | Path | None = None
-) -> dict[str, Any]:
-    """Surface the §3.4 standard metrics (KV-cache hit rate / schedule delay / GPU util).
-
-    Reads the field-name catalog (knowledge/standard_metrics.yaml) and mechanically pulls
-    each metric from the report's ``results.observability`` block, in BR v0.2 standardized
-    form first then harness-native. Metrics absent from the report are OMITTED (never
-    fabricated). Returns ``{metric_name: {label, value, source, field, direction, ...}}``
-    containing only the metrics actually present — an empty dict when none are.
-    """
-    if not isinstance(report, dict):
-        return {}
-    results = report.get("results", {})
-    observability = results.get("observability", {}) if isinstance(results, dict) else {}
-    if not isinstance(observability, dict):
-        return {}
-    catalog = _load_catalog_section(
-        str(catalog_path) if catalog_path is not None else str(_STANDARD_METRICS_CATALOG),
-        "metrics",
-    )
-    out: dict[str, Any] = {}
-    for name, spec in catalog.items():
-        if not isinstance(spec, dict):
-            continue
-        found = _extract_standard_metric(observability, spec)
-        if found is not None:
-            out[name] = found
-    return out
-
-
-# ---- session-level metrics (multi-turn inference-perf) ---------------------
-#
-# Multi-turn workloads carry a SECOND results block, results.session_performance.sessions,
-# alongside the per-request request_performance: session counts plus per-session Statistics
-# distributions (rate, duration, events/tokens per session). It is present ONLY for
-# multi-turn runs; single-turn reports omit it entirely, so a single-turn report must yield
-# None here (never a fabricated zero). WHICH field names carry the session data — and how to
-# read them — is DATA in knowledge/standard_metrics.yaml under the top-level
-# ``session_performance`` key (thin code / thick agent). The code below is pure mechanism: it
-# reads that catalog and copies through each present scalar / extracts each present
-# distribution via the same _stat() ladder used for latency/throughput. The committed JSON
-# Schema lags here (Results has additionalProperties:false), so a multi-turn report surfaces
-# session_performance as a NON-FATAL additionalProperties deviation under validate_report —
-# validation still passes; we do not touch validate_report.
-
-
-def extract_session_performance(
-    report: dict[str, Any], *, catalog_path: str | Path | None = None
-) -> dict[str, Any] | None:
-    """Surface the multi-turn ``results.session_performance.sessions`` stats block.
-
-    Reads the session field-name catalog (knowledge/standard_metrics.yaml →
-    ``session_performance``) and mechanically pulls, from the report's
-    ``results.session_performance.sessions`` block: each catalogued integer scalar (copied
-    through) and each catalogued distribution (a Statistics object → the ``_stat`` units +
-    percentile ladder, with the field's informational ``label``/``unit_hint``/``direction``
-    attached as provenance). Returns ``None`` — not ``{}`` — when the block is absent or
-    yields nothing, so single-turn reports stay ``None``. A value the report does not carry
-    is NEVER fabricated.
-    """
-    if not isinstance(report, dict):
-        return None
-    results = report.get("results")
-    sp = results.get("session_performance") if isinstance(results, dict) else None
-    sessions = sp.get("sessions") if isinstance(sp, dict) else None
-    if not isinstance(sessions, dict):
-        return None
-
-    catalog = _load_catalog_section(
-        str(catalog_path) if catalog_path is not None else str(_STANDARD_METRICS_CATALOG),
-        "session_performance",
-    )
-    scalars_spec = catalog.get("scalars")
-    dists_spec = catalog.get("distributions")
-
-    out: dict[str, Any] = {}
-
-    scalars: dict[str, Any] = {}
-    for name in scalars_spec if isinstance(scalars_spec, list) else []:
-        if not isinstance(name, str):
-            continue
-        v = sessions.get(name)
-        if isinstance(v, int) and not isinstance(v, bool):
-            scalars[name] = v
-    if scalars:
-        out["scalars"] = scalars
-
-    dists: dict[str, Any] = {}
-    if isinstance(dists_spec, dict):
-        for name, meta in dists_spec.items():
-            if not isinstance(name, str):
-                continue
-            stat = _stat(sessions.get(name))
-            if stat is None:
-                continue
-            meta = dict_or_empty(meta)
-            dists[name] = {
-                "label": meta.get("label"),
-                "value": stat,
-                "unit_hint": meta.get("unit_hint"),
-                "direction": meta.get("direction"),
-            }
-    if dists:
-        out["distributions"] = dists
-
-    return out or None
 
 
 def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
