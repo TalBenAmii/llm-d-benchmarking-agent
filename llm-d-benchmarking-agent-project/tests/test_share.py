@@ -208,6 +208,37 @@ def test_create_400_for_empty_chat(client_with_share):
     assert client.post(f"/api/sessions/{s.id}/share").status_code == 400
 
 
+def test_share_survives_corrupt_session_transcript(client_with_share):
+    """BUG: a corrupt/forward-incompatible state.json whose ``messages`` (or any of the
+    persisted command/approval/card-result trails) carries a NON-DICT element must NOT 500 the
+    share route — ``_history_items`` reconstructs from disk with no per-element type check
+    (same class as BUG-011/020-023), so a torn/hand-edited element used to escape as an uncaught
+    AttributeError/TypeError. The render now coerces non-dict shapes away and degrades to the
+    rows it can render instead of crashing the whole transcript / share / WS reconnect."""
+    client, _ = client_with_share
+    s = _seed_chat(client)
+    # Inject malformed elements across every list _history_items walks: a non-dict message, a
+    # scalar tool_calls, a non-dict tool_calls element, and a torn tool_results block.
+    s.messages = [
+        {"role": "user", "content": "hi"},
+        "TORN-NON-DICT-MESSAGE",
+        {"role": "assistant", "tool_calls": "not-a-list"},
+        {"role": "assistant", "tool_calls": ["scalar-tool-call"]},
+        {"role": "tool_results", "results": 5},
+        {"role": "tool_results", "results": ["scalar-result"]},
+    ]
+    s.approvals = ["torn-approval"]
+    s.in_flight_approvals = ["torn-pending"]
+    s.commands = ["torn-command"]
+    s.card_results = ["torn-card-result"]
+    s.persist()
+    r = client.post(f"/api/sessions/{s.id}/share")
+    # The real user message is still shareable, so this mints (200) rather than 400 — and never 500.
+    assert r.status_code == 200, f"corrupt transcript must not 500 the share route (got {r.status_code})"
+    items = client.get(f"/api/share/{r.json()['token']}").json()["items"]
+    assert any(it.get("role") == "user" and it.get("text") == "hi" for it in items)
+
+
 def test_read_404_for_malformed_token(client_with_share):
     client, _ = client_with_share
     assert client.get("/api/share/not-a-valid-token").status_code == 404

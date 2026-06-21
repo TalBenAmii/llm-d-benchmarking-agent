@@ -387,18 +387,31 @@ def _history_items(session) -> list[dict[str, Any]]:
     so the trail is never silently truncated. (Sessions persisted before commands carried a
     ``tool_call_id`` degrade gracefully — every command keys to None and leads instead.)
     """
+    # The transcript + every trail list below is reconstructed from on-disk JSON with NO
+    # per-element type check (SessionManager.load), so a corrupt / hand-edited / forward-
+    # incompatible state.json can carry a NON-DICT element (a torn string, a scalar). Every walk
+    # here does ``x.get(...)``, which would escape as an uncaught AttributeError/TypeError and
+    # 500 the share route (and tear down the WS history emit on reconnect, bricking that chat) —
+    # the same one-corrupt-file blast radius as BUG-011/020-023. ``_dicts`` filters each source
+    # to its dict elements up front so a malformed row is simply skipped, not fatal for the whole
+    # transcript. (``derive_title``/``SessionManager.list`` already guard ``isinstance(m, dict)``;
+    # this brings the resume/share render to parity.)
+    def _dicts(seq: Any) -> list[dict[str, Any]]:
+        return [x for x in (seq or []) if isinstance(x, dict)] if isinstance(seq, (list, tuple)) else []
+
     approvals_by_tc: dict[str, list[dict[str, Any]]] = {}
-    for a in getattr(session, "approvals", []) or []:
+    for a in _dicts(getattr(session, "approvals", [])):
         approvals_by_tc.setdefault(a.get("tool_call_id"), []).append(a)
     pending_by_tc: dict[str, list[dict[str, Any]]] = {}
-    for p in getattr(session, "in_flight_approvals", []) or []:
+    for p in _dicts(getattr(session, "in_flight_approvals", [])):
         pending_by_tc.setdefault(p.get("tool_call_id"), []).append(p)
     commands_by_tc: dict[str | None, list[dict[str, Any]]] = {}
-    for c in getattr(session, "commands", []) or []:
+    for c in _dicts(getattr(session, "commands", [])):
         commands_by_tc.setdefault(c.get("tool_call_id"), []).append(c)
     card_results_by_tc: dict[str | None, list[dict[str, Any]]] = {}
-    for cr in getattr(session, "card_results", []) or []:
+    for cr in _dicts(getattr(session, "card_results", [])):
         card_results_by_tc.setdefault(cr.get("tool_call_id"), []).append(cr)
+    messages = _dicts(getattr(session, "messages", []))
     # Defensive fallback source for the report/analysis CARDS: the LLM-facing ``tool_results``
     # already carry each card tool's result in ``messages``. When ``card_results`` has NO entry
     # for a card-rendering tool call (e.g. the run predated the persist-card-results fix, or the
@@ -406,10 +419,10 @@ def _history_items(session) -> list[dict[str, Any]]:
     # this message copy so the rich card + its clickable charts still replay instead of degrading
     # to bare metric tiles. Keyed by tool_call_id; the value is the (possibly clamped) result.
     tool_results_by_tc: dict[str | None, dict[str, Any]] = {}
-    for m in session.messages:
+    for m in messages:
         if m.get("role") != "tool_results":
             continue
-        for r in m.get("results", []) or []:
+        for r in _dicts(m.get("results")):
             tool_results_by_tc[r.get("tool_call_id")] = r
 
     def _command_item(c: dict[str, Any]) -> dict[str, Any]:
@@ -423,7 +436,7 @@ def _history_items(session) -> list[dict[str, Any]]:
     for c in commands_by_tc.get(None, []):
         items.append(_command_item(c))
     rendered_tcs.add(None)
-    for m in session.messages:
+    for m in messages:
         role = m.get("role")
         if role == "user":
             # System-injected user messages are agent-only context the human never typed — skip
@@ -440,7 +453,7 @@ def _history_items(session) -> list[dict[str, Any]]:
         elif role == "assistant":
             if m.get("content"):
                 items.append({"role": "assistant", "text": m["content"]})
-            for tc in m.get("tool_calls") or []:
+            for tc in _dicts(m.get("tool_calls")):
                 tc_id = tc.get("id")
                 # The UI badges a replayed tool row READ-ONLY/MUTATING; derive it from the modes of the
                 # commands that ran under this call (old sessions without tool_call ids → read-only).
@@ -449,8 +462,10 @@ def _history_items(session) -> list[dict[str, Any]]:
                     for c in commands_by_tc.get(tc_id, [])
                 )
                 # The persisted wall-clock run time → the replayed action row shows the SAME
-                # duration badge a live run does (None when absent on a pre-feature snapshot).
-                tc_dur = (getattr(session, "tool_durations", None) or {}).get(tc_id)
+                # duration badge a live run does (None when absent on a pre-feature snapshot, or
+                # when a corrupt snapshot stored a non-dict tool_durations).
+                durations = getattr(session, "tool_durations", None)
+                tc_dur = durations.get(tc_id) if isinstance(durations, dict) else None
                 items.append({"role": "tool_call", "name": tc.get("name"),
                               "input": tc.get("input"), "mutating": tc_mutating,
                               "duration_s": tc_dur})
