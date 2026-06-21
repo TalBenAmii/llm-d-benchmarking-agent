@@ -20,7 +20,7 @@ from app.agent.loop import AgentLoop
 from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.session import Session, SessionManager, derive_title
 from app.config import Settings, get_settings
-from app.llm.provider import AssistantTurn, Usage
+from app.llm.provider import AssistantTurn, ToolCall, Usage
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
 from app.tools.context import ToolContext
@@ -376,6 +376,68 @@ async def test_loop_usage_event_carries_context_estimate(tmp_path):
     assert ctx_est["system_chars"] > 0, "the cached system prompt should dominate a tiny turn"
     assert ctx_est["total_chars"] == ctx_est["system_chars"] + ctx_est["history_chars"]
     assert ctx_est["total_tokens_est"] == ctx_est["total_chars"] // 4
+
+
+# ---- (3d) compaction re-fires MID-TURN, not only once at turn start ------------------------
+
+async def test_compaction_runs_mid_turn_when_a_long_turn_crosses_the_threshold(tmp_path, monkeypatch):
+    """A single ``run_turn`` replays the WHOLE transcript on EVERY step, and one long multi-step
+    turn can append many large tool results — so the replayed context can blow far past the
+    compaction threshold WITHIN the turn. Compaction must therefore be re-evaluated before each
+    step, not only once at turn start: otherwise the very mechanism meant to bound the transcript
+    is structurally unable to fire while the turn that overflows it is still running, and the
+    growing history is re-sent in full to the provider every step (eventually a context-overflow
+    error).
+
+    Reproduction: the model calls a tool every step for many steps; each tool result is
+    budget-sized. The transcript starts tiny (below the threshold, so the start-of-turn compaction
+    is a no-op) and crosses the threshold only several steps in. The OLD large tool results must
+    be elided to stubs by end-of-turn — proving compaction ran AFTER the transcript grew, i.e.
+    mid-turn.
+
+    Fails before the fix (compaction is called once, before the loop, so the early results are
+    never elided and the transcript ends far over the threshold); passes after (compaction is
+    re-checked each step).
+    """
+    session = _session(tmp_path)
+
+    # Drive a tool call per step for enough steps that the replayed transcript crosses the
+    # threshold partway through, then a final text-only step ends the turn.
+    n_steps = 20
+    turns = [AssistantTurn(text="step", tool_calls=[ToolCall(f"c{i}", "list_catalog", {})])
+             for i in range(n_steps)]
+    turns.append(AssistantTurn(text="done", tool_calls=[]))
+
+    # Each tool result is large (budget-sized) so a handful of steps push the transcript over the
+    # threshold. dispatch is patched so the test is fully hermetic (no real tool / repo).
+    big = "B" * 6_000
+
+    async def fake_dispatch(ctx, name, raw_input):
+        return {"data": big}
+
+    monkeypatch.setattr("app.agent.loop.dispatch", fake_dispatch)
+
+    async def emit(t, p):
+        pass
+
+    async def request_approval(kind, payload):
+        return True
+
+    await AgentLoop(_ScriptedProvider(turns)).run_turn(
+        session, "go", emit=emit, request_approval=request_approval)
+
+    # OLD large tool results (those behind the recency window at end-of-turn) must have been
+    # elided to stubs — which can only happen if compaction ran AFTER the transcript grew past
+    # the threshold, i.e. mid-turn. Count elided vs un-elided OLD tool results.
+    keep_from = max(0, len(session.messages) - _RECENT_MESSAGES_KEPT)
+    old_results = [r for m in session.messages[:keep_from] if m.get("role") == "tool_results"
+                   for r in m["results"]]
+    assert old_results, "the long turn should have produced tool results behind the recency window"
+    elided = [r for r in old_results if r["content"].startswith(_ELIDED_PREFIX)]
+    assert elided, (
+        "old large tool results were never compacted: compaction only ran once at turn start, "
+        "before the transcript grew — it must be re-evaluated mid-turn"
+    )
 
 
 # ---- (4) usage-total accounting guard (recon flagged loop.py ~95) --------------------------

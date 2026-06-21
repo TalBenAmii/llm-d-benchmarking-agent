@@ -119,9 +119,13 @@ class AgentLoop:
         # Context management: compact OLD, superseded tool-result blobs in place once the
         # replayed transcript grows past the threshold (mechanism in app/agent/context_mgmt.py).
         # Never breaks tool-call/result pairing and never touches the recent window.
-        reclaimed = compact_messages(session.messages)
-        if reclaimed:
-            log.info("turn.compacted", extra={"session_id": session.id, "chars_reclaimed": reclaimed})
+        def _compact() -> None:
+            reclaimed = compact_messages(session.messages)
+            if reclaimed:
+                log.info("turn.compacted",
+                         extra={"session_id": session.id, "chars_reclaimed": reclaimed})
+
+        _compact()
 
         log.info("turn.start", extra={"session_id": session.id, "user_chars": len(user_text)})
 
@@ -162,6 +166,16 @@ class AgentLoop:
                     log.info("turn.abandoned", extra={
                         "session_id": session.id, "tool_calls": tool_calls_made})
                     break
+                # Re-compact BEFORE every step, not only once at turn start. A single user turn
+                # replays the WHOLE transcript on every step and a long multi-step turn appends
+                # many large tool results — so the replayed context can blow past the threshold
+                # WITHIN the turn. A start-of-turn-only compaction can never fire while the turn
+                # that overflows it is still running, leaving the growing history re-sent in full
+                # to the provider every step (eventually a context-overflow error). compact_messages
+                # is idempotent and a cheap no-op below the threshold, so re-checking each step only
+                # acts once the transcript actually crosses it — and never breaks tool-call/result
+                # pairing or touches the recent window.
+                _compact()
                 try:
                     turn = await agent_turn.chat(session.messages, on_text=on_text)
                 except Exception as exc:  # provider/network error
