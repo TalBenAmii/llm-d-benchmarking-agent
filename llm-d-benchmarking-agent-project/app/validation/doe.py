@@ -164,7 +164,16 @@ def _expand(factors: list[Factor]) -> list[dict[str, Any]]:
 
 
 def _hashable(value: Any) -> Any:
-    return value if isinstance(value, (str, int, float, bool)) or value is None else str(value)
+    """A signature key for ONE level value, used to dedupe treatment payloads.
+
+    The value is paired with its concrete TYPE name so DISTINCT levels that merely compare
+    equal in Python are kept apart. Without the type tag, ``1`` (int), ``1.0`` (float) and
+    ``True`` (bool) all collide in the dedupe set (``1 == 1.0 == True`` with equal hashes), so
+    a factor like ``levels=[1, True]`` or ``levels=[1, 1.0]`` would silently drop a genuinely
+    distinct treatment. A true repeat (same type AND value, e.g. ``[10, 10]``) still dedupes,
+    since both the type tag and the value match."""
+    base = value if isinstance(value, (str, int, float, bool)) or value is None else str(value)
+    return (type(base).__name__, base)
 
 
 def _dedupe_name(name: str, taken: set[str]) -> str:

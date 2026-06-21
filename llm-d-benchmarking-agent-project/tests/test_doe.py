@@ -129,6 +129,30 @@ def test_duplicate_levels_are_deduped():
     assert sorted(r["rate"] for r in result.run_treatments) == [10, 20]
 
 
+def test_distinct_levels_equal_in_python_are_not_deduped():
+    """REGRESSION: levels that merely COMPARE equal in Python (``1 == 1.0 == True``) but are
+    DISTINCT values must each yield their own treatment. The payload-dedup signature keys on
+    the raw value only, and ``1``/``1.0``/``True`` share a hash and compare equal, so without a
+    type tag the dedupe set silently collapsed them — dropping a genuinely distinct treatment.
+
+    Fails before the fix (each case returns 1 treatment); passes after (2)."""
+    # int 1 vs bool True: distinct levels, distinct names (k1 / kon) — both must survive.
+    r = build_doe_experiment(name="x", run_factors=[{"name": "k", "key": "a.b", "levels": [1, True]}])
+    assert len(r.run_treatments) == 2
+    vals = [(t["a.b"], type(t["a.b"]).__name__) for t in r.run_treatments]
+    assert (1, "int") in vals and (True, "bool") in vals
+
+    # int 1 vs float 1.0: distinct levels, distinct names (k1 / k1-0) — both must survive.
+    r2 = build_doe_experiment(name="x", run_factors=[{"name": "k", "key": "a.b", "levels": [1, 1.0]}])
+    assert len(r2.run_treatments) == 2
+    types2 = {type(t["a.b"]).__name__ for t in r2.run_treatments}
+    assert types2 == {"int", "float"}
+
+    # A GENUINE repeat (same type AND value) must STILL dedupe — the fix must not regress this.
+    r3 = build_doe_experiment(name="x", run_factors=[{"name": "k", "key": "a.b", "levels": [10, 10, 20]}])
+    assert len(r3.run_treatments) == 2
+
+
 def test_single_factor_run_only():
     result = build_doe_experiment(
         name="load",
