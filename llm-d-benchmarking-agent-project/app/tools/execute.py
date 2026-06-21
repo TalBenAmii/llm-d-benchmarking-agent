@@ -182,6 +182,120 @@ _SUBCOMMAND_FLAGS: dict[str, tuple[str, tuple[str, ...], bool, bool]] = {
 }
 
 
+def _argv_positionals(
+    argv: list[str],
+    *,
+    namespace: str | None,
+    harness: str | None,
+    workload: str | None,
+    models: str | None,
+    kubeconfig: str | None,
+    flags: dict[str, Any],
+) -> None:
+    """Core post-subcommand positionals/overrides shared by the non-``results`` subcommands.
+
+    ``models`` (Phase 28) ⇒ ``-m <id>`` OVERRIDES the spec's scenario-default model. Upstream
+    spells it ``--models`` on standup/plan/experiment but ``--model`` on run; ``-m`` is the one
+    short form valid on all, so we always emit ``-m``. The SAME id must reach
+    check_capacity(overrides={'model': …}). WHICH model is judgment (knowledge/model_override.md).
+
+    ``kubeconfig`` (Phase 29) ⇒ ``-k <path>`` targets a NON-DEFAULT kubeconfig FILE (upstream
+    ``--kubeconfig`` / ``LLMDBENCH_KUBECONFIG``), valid on every subcommand. A plain non-secret
+    path; the cluster URL/token route stays BACKEND-ONLY (see ``execute_llmdbenchmark``) and is
+    NEVER an argv token. WHEN/WHICH cluster is judgment (knowledge/preconditions.md).
+
+    ``flags["repo_path"]`` (Phase 46) ⇒ ``--llmd-repo-path <path>`` points the KUSTOMIZE deploy
+    method (``-t kustomize``) at a LOCAL llm-d clone instead of the upstream clone — the CLI
+    fallback for the scenario block's ``kustomize.repoPath``. The kustomize.* BLOCK itself is
+    authored as a scenario (DOTTED keys) + gated via plan/--dry-run, NOT here.
+    WHICH guide/overlay/repo is judgment (knowledge/deploy_path_playbook.md).
+    """
+    if namespace:
+        argv += ["-p", namespace]
+    if harness:
+        argv += ["-l", harness]
+    if workload:
+        argv += ["-w", workload]
+    if models:
+        argv += ["-m", str(models)]
+    if kubeconfig:
+        argv += ["-k", str(kubeconfig)]
+    if flags.get("methods"):
+        argv += ["-t", str(flags["methods"])]
+    if flags.get("repo_path"):
+        argv += ["--llmd-repo-path", str(flags["repo_path"])]
+    if flags.get("output"):
+        argv += ["-r", str(flags["output"])]
+    if flags.get("endpoint_url"):
+        argv += ["-U", str(flags["endpoint_url"])]
+    # experiment (DoE sweep) extras — emitted only when present, so other subcommands are unaffected.
+    if flags.get("experiments"):
+        argv += ["-e", str(flags["experiments"])]
+    if flags.get("overrides"):
+        argv += ["-o", str(flags["overrides"])]
+    if flags.get("parallelism") is not None:
+        argv += ["-j", str(flags["parallelism"])]
+
+
+def _argv_subcommand_flags(argv: list[str], subcommand: str, flags: dict[str, Any]) -> None:
+    """The single-flag, subcommand-guarded emissions, driven by the ``_SUBCOMMAND_FLAGS`` table
+    (stack / parallel / gateway_class / step / dataset / generate_config / run_config / debug /
+    analyze). Each row carries its CLI flag, accepting-subcommand guard, valued/bare shape, and
+    explicit-0 handling; per-flag rationale sits on the rows. PURE MECHANISM — no if/elif on a
+    value (WHICH value to set lives in the per-flag knowledge/*.md). ``monitoring`` is NOT here —
+    its True/False (BooleanOptionalAction) asymmetry needs a real branch (see _argv_toggles)."""
+    for key, (cli_flag, accepts, takes_value, allow_falsy) in _SUBCOMMAND_FLAGS.items():
+        value = flags.get(key)
+        present = value is not None if allow_falsy else bool(value)
+        if not present or (accepts and subcommand not in accepts):
+            continue
+        if takes_value:
+            argv += [cli_flag, str(value)]
+        else:
+            argv.append(cli_flag)
+
+
+def _argv_toggles(argv: list[str], subcommand: str, flags: dict[str, Any]) -> None:
+    """Boolean/asymmetric toggles + the per-phase CLI timeouts + the run-flags tail.
+
+    ``flags["monitoring"]`` (Phase 27) is SUBCOMMAND-AWARE: ``True`` ⇒ ``--monitoring`` (standup/
+    run/experiment/plan, all of which accept it); ``False`` ⇒ ``--no-monitoring`` only for
+    ``standup`` (the sole subcommand whose argparse — BooleanOptionalAction — accepts the opt-out;
+    run/experiment/plan are store_true, so an opt-out there just omits the flag); None/absent emits
+    nothing. WHETHER to set it is judgment (knowledge/observability.md).
+
+    The per-phase CLI timeout keys (Phase 38) emit ``--*-timeout <seconds>`` per the
+    ``_PHASE_TIMEOUT_FLAGS`` table — a DEEPER bound the CLI enforces internally, which must stay
+    BELOW the runner's per-command ``timeout_s`` ceiling so the two layers don't fight. A key set
+    on a non-accepting subcommand emits NOTHING. WHEN/WHAT to set is judgment
+    (knowledge/phase_timeouts.md).
+
+    ``flags["skip"]`` (Phase 36) ⇒ ``-z`` (run-only upstream): SKIP execution and only collect +
+    analyze data from an EXISTING run in the same workspace (knowledge/collect_only.md).
+    """
+    if flags.get("stop_on_error"):
+        argv.append("--stop-on-error")
+    if flags.get("skip_teardown"):
+        argv.append("--skip-teardown")
+    if flags.get("skip_smoketest"):
+        argv.append("--skip-smoketest")
+    monitoring = flags.get("monitoring")
+    if monitoring is True:
+        argv.append("--monitoring")
+    elif monitoring is False and subcommand == "standup":
+        argv.append("--no-monitoring")
+    for key, (cli_flag, accepts) in _PHASE_TIMEOUT_FLAGS.items():
+        value = flags.get(key)
+        if value is not None and subcommand in accepts:
+            argv += [cli_flag, str(value)]
+    if flags.get("list_endpoints"):
+        argv.append("--list-endpoints")
+    if flags.get("skip"):
+        argv.append("-z")
+    if flags.get("dry_run"):
+        argv.append("--dry-run")
+
+
 def build_argv(
     subcommand: str,
     *,
@@ -196,153 +310,26 @@ def build_argv(
     extra: list[str] | None = None,
 ) -> list[str]:
     """Assemble the logical argv. Global flags (``--spec``, ``--workspace``) precede the
-    subcommand; everything else follows it.
+    subcommand; everything else follows it. PURE MECHANISM throughout — no if/elif on a VALUE;
+    WHICH value to set for any knob is the agent's judgment in the per-flag ``knowledge/*.md``.
 
-    ``store`` (Phase 50) drives the OPTIONAL git-like CLI Results Store: when
-    ``subcommand == "results"`` and ``store`` is set, we emit the upstream-exact nested
-    store-command shape (``results init`` / ``results remote add <name> <uri>`` /
-    ``results status`` / ``results add <paths...>`` / ``results ls <remote>`` /
-    ``results push [remote] [path] [-g group]`` / ``results pull [remote] --run-uid <uid>``)
-    and NOTHING else — ``results`` accepts no namespace/harness/model/run-flags. This store is
-    SEPARATE from the agent's own local history store (the result_history tool); WHEN to reach
-    for it (team GCS sharing) is judgment in knowledge/history.md, never an if/elif on a value
-    here. ``--spec`` is still emitted globally before ``results`` because the upstream CLI errors
-    without it even for the store. init/status/ls/remote-ls auto-run (read-only); add/rm/push/
-    pull/remote-add/remote-rm are approval-gated (mutating) per security/allowlist.yaml.
-
-    ``models`` (Phase 28) emits ``-m <id>`` after the subcommand to OVERRIDE the spec's
-    scenario-default model for THIS standup (or plan/run/experiment). Upstream spells this
-    ``--models`` on standup/plan/experiment but ``--model`` on run; ``-m`` is the single short
-    form valid on all of them, so we always emit ``-m``. Omitted ⇒ the spec's default model
-    stands. WHICH model is the agent's judgment (knowledge/model_override.md), not Python's —
-    this is pure mechanism. The SAME id must be passed to check_capacity(overrides={'model': …})
-    so the pre-flight validates the identical model (HF config lookup + gated-access).
-
-    ``kubeconfig`` (Phase 29) emits ``-k <path>`` after the subcommand to target a NON-DEFAULT
-    kubeconfig FILE (upstream ``--kubeconfig``, sourced from ``LLMDBENCH_KUBECONFIG``) — i.e. a
-    remote cluster instead of the ambient context. It is valid on every subcommand. PURE
-    MECHANISM: we emit whatever path the agent chose; WHEN/WHICH cluster to target is judgment
-    (knowledge/preconditions.md), never an if/elif on the value. It is a plain (non-secret) file
-    path; the cluster URL/token route stays BACKEND-ONLY (see ``execute_llmdbenchmark``) and is
-    NEVER an argv token. Omitted ⇒ the ambient kube context stands.
-
-    ``flags["monitoring"]`` is SUBCOMMAND-AWARE (Phase 27): ``True`` emits ``--monitoring`` for
-    standup/run/experiment/plan; ``False`` emits ``--no-monitoring`` only for ``standup`` (the
-    sole subcommand whose upstream argparse — BooleanOptionalAction — accepts it; run/experiment/
-    plan are store_true, so an opt-out there just omits the flag); ``None``/absent emits nothing
-    (scenario defaults). Whether to set it is the agent's judgment (knowledge/observability.md),
-    not Python's.
-
-    ``flags["step"]`` (Phase 31) emits ``-s <spec>`` to RE-RUN a single step or step range —
-    e.g. ``'5'``, ``'5-9'``, ``'3,7'``, ``'3-5,9'`` (the upstream step-list grammar: numbers,
-    ``N-M`` ranges, and comma-separated combos). Valid upstream on standup/smoketest/run/teardown
-    only; ``None``/absent emits nothing (the whole phase runs). WHICH step to re-run after a
-    mid-phase failure is the agent's judgment (knowledge/step_select.md), not Python's.
-
-    ``flags["dataset"]`` (Phase 41) emits ``-x <url>`` to REPLAY a real dataset instead of the
-    synthetic workload profile. It is SUBCOMMAND-AWARE: upstream ``-x``/``--dataset`` exists ONLY
-    on ``run`` and ``experiment`` (standup/plan/smoketest/teardown reject it), so we emit it for
-    those two ONLY; omitted/None emits nothing (the synthetic profile still drives the load). This
-    is pure MECHANISM — WHETHER to replay a dataset, and WHICH one, is the agent's judgment in
-    knowledge/dataset_replay.md, never an if/elif on the value here. We set NO env var: the CLI
-    itself derives LLMDBENCH_RUN_DATASET_DIR/_FILE from the URL during profile rendering.
-
-    The per-phase CLI timeout keys (Phase 38) — ``flags["wait_timeout"]``,
-    ``flags["data_access_timeout"]``, ``flags["standalone_deploy_timeout"]``,
-    ``flags["gateway_deploy_timeout"]``, ``flags["modelservice_deploy_timeout"]``,
-    ``flags["kustomize_deploy_timeout"]``, ``flags["pvc_bind_timeout"]``,
-    ``flags["fma_teardown_timeout"]`` — each emit the matching ``--*-timeout <seconds>`` CLI
-    flag, but ONLY on the subcommand(s) upstream accepts it on (the ``_PHASE_TIMEOUT_FLAGS``
-    table: standup owns the deploy/bind timeouts; run+experiment own wait/data-access; teardown
-    owns fma). These are the CLI's OWN per-phase bound — a DEEPER timeout the CLI enforces
-    internally — and must stay BELOW the runner's per-command ``timeout_s`` ceiling so the two
-    layers do not fight. Emission is pure MECHANISM (no if/elif on the value); WHEN/WHAT to set
-    is the agent's judgment in knowledge/phase_timeouts.md. Omitted ⇒ nothing emitted (the CLI's
-    own defaults / env stand) and the runner deadline still bounds the whole process.
-
-    ``flags["debug"]`` (Phase 37) emits a bare short ``-d`` to start the harness pods with
-    ``sleep infinity`` INSTEAD of running the load (the upstream ``--debug`` mode, env
-    ``LLMDBENCH_DEBUG``) — so a user can exec into a stuck/misbehaving harness pod and poke at
-    it. It is SUBCOMMAND-GUARDED to ``run``/``experiment`` ONLY: upstream defines ``-d`` as
-    ``--debug`` on the ``run`` and ``experiment`` subparsers, but ``-d`` on ``teardown`` means
-    ``--deep`` (a DIFFERENT, DESTRUCTIVE full-namespace wipe). Emitting an unguarded ``-d``
-    would therefore turn a debug request into a deep teardown — so we NEVER emit it outside
-    run/experiment. A debug launch still creates a REAL harness pod, so it stays MUTATING and
-    approval-gated (it is NOT a read-only trigger like ``-z``/``--analyze``). This is pure
-    MECHANISM — WHEN to debug, and the boundary that the in-pod ``kubectl/oc exec -it … -- bash``
-    is a MANUAL, user-driven step the agent NEVER drives, is judgment in
-    knowledge/harness_debug.md, never an if/elif on the value. Omitted/None/False emits nothing.
-
-    ``flags["analyze"]`` (Phase 40) emits a bare ``--analyze`` ONLY on ``run``. Upstream defines
-    ``--analyze`` (store_true, env ``LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY=1``) SOLELY on the
-    ``run`` subparser (llmdbenchmark/interface/run.py) — the shared parser and experiment/standup/
-    plan do NOT carry it — so we guard on ``subcommand == "run"`` and emit nothing elsewhere. When
-    set, the CLI runs its optional workstation matplotlib analysis on the collected results,
-    producing three EXTRA plot families UNDER ``analysis/`` — per-request distributions
-    (``analysis/distributions/``), session-lifecycle bar charts (``analysis/session/``), and
-    Prometheus time-series (``analysis/graphs/``) — IN ADDITION to the harness's own PNGs. These
-    are SUPPLEMENTARY visualizations; they do NOT change the run's mutating mode and do NOT touch
-    the agent's own SLO/goodput/Pareto math. This is pure MECHANISM — WHEN to ask for it is the
-    agent's judgment (knowledge/analysis.md), never an if/elif on the value. Omitted/None/False
-    emits nothing.
-
-    ``flags["generate_config"]`` / ``flags["run_config"]`` (Phase 42) drive the CLI's OWN
-    run-config round-trip, in addition to the agent's in-workspace write_and_validate_config.
-    Both are upstream ``run``-ONLY, so we emit them only for ``subcommand == "run"``:
-    ``generate_config`` => ``--generate-config`` (GENERATE a reusable run-config YAML from the
-    current settings under ``--workspace`` — anchored to ctx.workspace by execute_llmdbenchmark —
-    and EXIT; it deploys nothing, so the allowlist auto-runs it like ``--dry-run``);
-    ``run_config`` => ``-c <path>`` (REPLAY a previously generated run-config — run-only mode —
-    where ``<path>`` is the workspace-relative file ``--generate-config`` wrote). PURE MECHANISM:
-    WHEN to generate vs reuse vs author in-workspace is judgment in
-    knowledge/runconfig_roundtrip.md, never an if/elif on the value. No env var is set (the CLI
-    consumes ``--generate-config``/``run_config`` directly). Omitted ⇒ nothing emitted.
-
-    ``flags["repo_path"]`` (Phase 46) emits ``--llmd-repo-path <path>`` — a real ``standup``
-    argparse flag — pointing the KUSTOMIZE deploy method (``-t kustomize``) at a LOCAL llm-d
-    clone instead of letting upstream clone ``https://github.com/llm-d/llm-d.git`` into
-    ``workspace/llm-d``. It is the CLI fallback for the scenario block's ``kustomize.repoPath``
-    (see llm-d-benchmark/docs/kustomize.md). Pure MECHANISM — we emit whatever path the agent
-    supplied; WHICH guide/overlay/patches/repo to deploy is the agent's judgment in
-    knowledge/deploy_path_playbook.md, never an if/elif on the value here. The kustomize.* config
-    BLOCK itself (guideName/repoPath/repoRef/patches/overlayPath/extraHelmValues/
-    guideVariableOverrides) is NOT built here — it is AUTHORED as a scenario via
-    write_and_validate_config(artifact_type='scenario') using DOTTED ``kustomize.*`` keys, then
-    GATED through plan/--dry-run. Omitted ⇒ nothing emitted (the block's repoPath / the default
-    upstream clone stands).
-
-    ``flags["stack"]`` (Phase 33) emits ``--stack <names>`` to restrict a MULTI-STACK scenario
-    (N model pools behind one gateway, e.g. ``guides/multi-model-wva`` whose stacks are
-    ``qwen3-06b``/``llama-31-8b``) to a SUBSET — a single stack name, or a comma-separated list
-    (``NAME[,NAME...]``). It is SUBCOMMAND-AWARE: upstream ``--stack`` exists ONLY on
-    standup/smoketest/run/teardown (plan/experiment reject it), so we emit it for those four
-    ONLY; omitted/None emits nothing (every stack of the scenario is operated on). Pure
-    MECHANISM — WHICH stack(s) to target is the agent's judgment in knowledge/multi_stack.md,
-    never an if/elif on the value here.
-
-    ``flags["parallel"]`` (Phase 33) emits ``--parallel <int>`` to CAP how many stacks are
-    deployed/smoketested in parallel (the upstream per-pool max-parallel-stacks knob, an int
-    defaulting to 4). It is SUBCOMMAND-AWARE: upstream ``--parallel`` exists ONLY on
-    standup/smoketest/experiment (run uses the SEPARATE ``--parallelism``/``-j`` harness-pod
-    count, teardown/plan have neither), so we emit it for those three ONLY; ``None``/absent emits
-    nothing (the default 4 stands). We guard with ``is not None`` (like the existing
-    ``parallelism``→``-j`` line) so an explicit ``0`` is honored. This is DISTINCT from
-    ``flags["parallelism"]``→``-j`` above (number of parallel harness PODS, not stacks) — do NOT
-    conflate them. Pure MECHANISM — HOW MANY stacks to deploy at once (i.e. whether to cap below
-    4 on a small/Kind node) is the agent's judgment in knowledge/multi_stack.md, never an
-    if/elif on the value here.
-
-    ``flags["gateway_class"]`` (Phase 32) emits ``--gateway-class <provider>`` to choose the
-    gateway PROVIDER, OVERRIDING the scenario's ``gateway.className`` for this command. It is
-    emitted UNCONDITIONALLY across subcommands — upstream registers ``--gateway-class`` on ALL
-    SIX (plan/standup/smoketest/run/teardown/experiment, verified in
-    llmdbenchmark/interface/*.py), each defaulting to ``LLMDBENCH_GATEWAY_CLASS`` — so there is
-    no subcommand guard and, deliberately, no judgment branch here. This is PURE MECHANISM: we
-    emit whatever provider the agent chose; WHICH provider (one of istio / agentgateway / gke /
-    epponly / data-science-gateway-class) lives entirely in knowledge/gateway_class.md, never an
-    if/elif on the value. Upstream applies it ONLY on the modelservice deploy path (it is ignored
-    by kustomize/standalone/fma per the standup help). Omitted/None ⇒ nothing emitted and the
-    spec's scenario ``gateway.className`` stands."""
+    Emission order (each delegated to a focused helper; per-flag rationale lives on the helper /
+    the ``_SUBCOMMAND_FLAGS`` + ``_PHASE_TIMEOUT_FLAGS`` table rows):
+      1. ``llmdbenchmark`` + global ``--spec`` / ``--workspace``, then the subcommand token.
+      2. ``results`` early-return (Phase 50): the OPTIONAL git-like Results Store takes its OWN
+         nested store-command and NONE of the positionals below — emit it via
+         ``_build_results_store_argv`` and return, so namespace/harness/model/run-flags never leak
+         onto a store invocation. ``--spec`` still precedes it (upstream errors without it). This
+         store is SEPARATE from the agent's local history store (result_history); WHEN to use it
+         is judgment (knowledge/history.md).
+      3. ``_argv_positionals`` — namespace/harness/workload + the -m/-k/-t/--llmd-repo-path/-r/-U
+         overrides and the DoE -e/-o/-j extras.
+      4. ``_argv_subcommand_flags`` — the table-driven single flags (stack/parallel/gateway_class/
+         step/dataset/generate_config/run_config/debug/analyze).
+      5. ``_argv_toggles`` — stop/skip booleans, the subcommand-aware --monitoring/--no-monitoring,
+         the per-phase --*-timeout flags, and --list-endpoints/-z/--dry-run.
+      6. ``extra`` passthrough, appended last.
+    """
     flags = flags or {}
     argv: list[str] = ["llmdbenchmark"]
     if spec:
@@ -350,121 +337,16 @@ def build_argv(
     if flags.get("workspace"):
         argv += ["--workspace", str(flags["workspace"])]
     argv.append(subcommand)
-    # Results Store (Phase 50): the `results` subcommand takes its OWN nested store-command and
-    # NONE of the namespace/harness/model/run-flag emission below — emit it and return early so
-    # those never leak onto a store invocation. PURE MECHANISM (see _build_results_store_argv).
     if subcommand == "results" and store:
         argv += _build_results_store_argv(store)
         argv += list(extra or [])
         return argv
-    if namespace:
-        argv += ["-p", namespace]
-    if harness:
-        argv += ["-l", harness]
-    if workload:
-        argv += ["-w", workload]
-    # Model override (Phase 28): select a model per standup, OVERRIDING the spec's scenario
-    # default. PURE MECHANISM — we emit whatever id the agent chose; WHICH model is judgment
-    # (knowledge/model_override.md), never an if/elif on the value. Always the short ``-m``
-    # (the one form valid across standup/plan/run/experiment, where upstream uses --models on
-    # standup/plan/experiment but --model on run). Omitted ⇒ the spec's default model stands.
-    if models:
-        argv += ["-m", str(models)]
-    # Cluster access (Phase 29): target a NON-DEFAULT kubeconfig FILE for this command, OVERRIDING
-    # the ambient kube context. PURE MECHANISM — we emit whatever path the agent chose; WHEN/WHICH
-    # cluster to target is judgment (knowledge/preconditions.md), never an if/elif on the value.
-    # `-k` is the short form of --kubeconfig and is valid on every subcommand (standup/run/
-    # smoketest/teardown/plan/experiment/results). A plain (non-secret) file path; the cluster
-    # URL/token route stays BACKEND-ONLY (see execute_llmdbenchmark) and is NEVER an argv token.
-    # Omitted ⇒ the ambient context stands.
-    if kubeconfig:
-        argv += ["-k", str(kubeconfig)]
-    if flags.get("methods"):
-        argv += ["-t", str(flags["methods"])]
-    # Kustomize local-clone path (Phase 46): point the `-t kustomize` deploy method at a LOCAL
-    # llm-d clone via the real standup `--llmd-repo-path` flag (the CLI fallback for the
-    # scenario block's kustomize.repoPath). PURE MECHANISM — WHICH repo/guide/overlay is the
-    # agent's judgment (knowledge/deploy_path_playbook.md), never an if/elif on the value.
-    # Omitted ⇒ nothing emitted (upstream clones llm-d into workspace/ unless repoPath is set).
-    if flags.get("repo_path"):
-        argv += ["--llmd-repo-path", str(flags["repo_path"])]
-    if flags.get("output"):
-        argv += ["-r", str(flags["output"])]
-    if flags.get("endpoint_url"):
-        argv += ["-U", str(flags["endpoint_url"])]
-    # experiment (DoE sweep) extras — emitted only when present, so other subcommands are unaffected.
-    if flags.get("experiments"):
-        argv += ["-e", str(flags["experiments"])]
-    if flags.get("overrides"):
-        argv += ["-o", str(flags["overrides"])]
-    if flags.get("parallelism") is not None:
-        argv += ["-j", str(flags["parallelism"])]
-    # Single-flag, subcommand-guarded emissions (stack / parallel / gateway_class / step / dataset /
-    # generate_config / run_config / debug / analyze) — emitted in ONE data-driven loop over the
-    # _SUBCOMMAND_FLAGS table (sibling of the _PHASE_TIMEOUT_FLAGS loop below). The per-flag CLI
-    # flag, accepting-subcommand guard, valued/bare shape, and explicit-0 handling all live in that
-    # table; the per-flag rationale is on its rows. PURE MECHANISM — no if/elif on a value, no
-    # judgment (WHICH value to set lives in the per-flag knowledge/*.md). monitoring is NOT here —
-    # its True/False (BooleanOptionalAction) asymmetry stays a real branch below.
-    for key, (cli_flag, accepts, takes_value, allow_falsy) in _SUBCOMMAND_FLAGS.items():
-        value = flags.get(key)
-        present = value is not None if allow_falsy else bool(value)
-        if not present or (accepts and subcommand not in accepts):
-            continue
-        if takes_value:
-            argv += [cli_flag, str(value)]
-        else:
-            argv.append(cli_flag)
-    if flags.get("stop_on_error"):
-        argv.append("--stop-on-error")
-    if flags.get("skip_teardown"):
-        argv.append("--skip-teardown")
-    if flags.get("skip_smoketest"):
-        argv.append("--skip-smoketest")
-    # Monitoring (Phase 27): activate the metrics PRODUCER so results.observability gets
-    # populated (KV-cache hit rate / queue depth / GPU util / EPP-log snapshots). This is pure
-    # MECHANISM — the on/off + CRD opt-out JUDGMENT is the agent's, set into flags["monitoring"]
-    # from knowledge/observability.md (default ON; opt out on CRD-less clusters). It is also
-    # SUBCOMMAND-AWARE, mirroring the upstream argparse: standup uses BooleanOptionalAction so it
-    # accepts BOTH --monitoring and --no-monitoring; run/experiment/plan use store_true, so only
-    # --monitoring exists there — an explicit opt-out simply omits the flag (no scraping). We only
-    # ever emit a flag the agent explicitly set; an unset (None) monitoring touches nothing.
-    monitoring = flags.get("monitoring")
-    if monitoring is True:
-        argv.append("--monitoring")
-    elif monitoring is False and subcommand == "standup":
-        argv.append("--no-monitoring")
-    # Per-phase CLI timeouts (Phase 38): emit the CLI's OWN per-phase timeout flags (seconds)
-    # so a slow deploy / data-access / teardown phase can be given a longer DEEPER bound than
-    # the host's blunt per-command runner deadline. This is pure MECHANISM driven by the
-    # _PHASE_TIMEOUT_FLAGS table below (flags-key -> CLI flag + the upstream-accepting
-    # subcommands) — there is NO if/elif on the value. The table mirrors the upstream argparse:
-    # standup owns the five deploy/bind timeouts; run+experiment own --wait-timeout /
-    # --data-access-timeout; teardown owns --fma-teardown-timeout. A timeout key set on a
-    # subcommand that does not accept it emits NOTHING (guarded by the subcommand tuple, like
-    # dataset above), so an out-of-place key is silently dropped instead of producing a flag the
-    # CLI would reject. WHEN/WHAT to set — and the CRITICAL reconcile rule that each value must
-    # stay BELOW the runner's `timeout_s` ceiling for that subcommand (3600 standup/run, 900
-    # teardown, 14400 experiment) so the two timeout layers do not fight — is the agent's
-    # judgment in knowledge/phase_timeouts.md, never encoded here.
-    for key, (cli_flag, accepts) in _PHASE_TIMEOUT_FLAGS.items():
-        value = flags.get(key)
-        if value is not None and subcommand in accepts:
-            argv += [cli_flag, str(value)]
-    if flags.get("list_endpoints"):
-        argv.append("--list-endpoints")
-    # Collect-only / skip-execution mode (Phase 36): emit ``-z`` to SKIP the harness/load
-    # execution and only collect + analyze data from the EXISTING results of a prior run in
-    # the same workspace (upstream help: "Skip execution and only collect data from existing
-    # results"). This is pure MECHANISM — WHETHER to set it is the agent's judgment
-    # (knowledge/collect_only.md): use it to re-collect/re-analyze a run that already loaded,
-    # WITHOUT re-running the benchmark. Upstream defines ``-z``/``--skip`` on the ``run``
-    # subcommand ALONE (run.py), so the agent only sets it for a ``run``; we emit the short
-    # ``-z`` (the -m precedent). Emission is unconditional mechanism — no if/elif on the value.
-    if flags.get("skip"):
-        argv.append("-z")
-    if flags.get("dry_run"):
-        argv.append("--dry-run")
+    _argv_positionals(
+        argv, namespace=namespace, harness=harness, workload=workload,
+        models=models, kubeconfig=kubeconfig, flags=flags,
+    )
+    _argv_subcommand_flags(argv, subcommand, flags)
+    _argv_toggles(argv, subcommand, flags)
     argv += list(extra or [])
     return argv
 
