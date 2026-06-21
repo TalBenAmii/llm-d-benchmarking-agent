@@ -21,6 +21,8 @@ import datetime
 import html
 from typing import Any
 
+from app.dig import dig
+
 # The agent's hex logo as an INLINE <svg> element (HTML5 needs no xmlns; same mark as
 # ui/preview.html). Inlined, not a data URI / <img src>, so the document carries ZERO URLs at
 # all (not even the SVG namespace URI) — keeping the "no external asset link" guarantee airtight.
@@ -97,15 +99,6 @@ def _fmt_num(v: Any) -> str:
     return f"{v:.4g}"
 
 
-def _dig(obj: Any, *path: str) -> Any:
-    cur: Any = obj
-    for p in path:
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(p)
-    return cur
-
-
 def _d(v: Any) -> dict[str, Any]:
     """A non-dict child of the (untrusted, on-disk) bundle coerces to ``{}`` so a corrupt/forged
     bundle (e.g. ``"resolved_config": "oops"``) renders an empty section instead of crashing the
@@ -171,13 +164,13 @@ def _results(bundle: dict[str, Any]) -> str:
 
     add("requests", s.get("requests_total"))
     add("success %", s.get("success_rate_pct"))
-    add("TTFT mean", _stat_text(_dig(s, "latency", "ttft"), "mean"))
-    add("TTFT p99", _stat_text(_dig(s, "latency", "ttft"), "p99"))
-    add("latency mean", _stat_text(_dig(s, "latency", "request_latency"), "mean"))
-    add("per-token (TPOT)", _stat_text(_dig(s, "latency", "tpot"), "mean"))
-    add("total tok/s", _stat_text(_dig(s, "throughput", "total_token_rate"), "mean"))
-    add("output tok/s", _stat_text(_dig(s, "throughput", "output_token_rate"), "mean"))
-    add("req/s", _stat_text(_dig(s, "throughput", "request_rate"), "mean"))
+    add("TTFT mean", _stat_text(dig(s, "latency", "ttft"), "mean"))
+    add("TTFT p99", _stat_text(dig(s, "latency", "ttft"), "p99"))
+    add("latency mean", _stat_text(dig(s, "latency", "request_latency"), "mean"))
+    add("per-token (TPOT)", _stat_text(dig(s, "latency", "tpot"), "mean"))
+    add("total tok/s", _stat_text(dig(s, "throughput", "total_token_rate"), "mean"))
+    add("output tok/s", _stat_text(dig(s, "throughput", "output_token_rate"), "mean"))
+    add("req/s", _stat_text(dig(s, "throughput", "request_rate"), "mean"))
 
     tiles_html = "".join(
         f'<div class="tile"><div class="k">{_esc(k)}</div><div class="v">{_esc(v)}</div></div>'
@@ -203,7 +196,7 @@ def _stat_text(stat: Any, key: str) -> str | None:
 def _ladder(summary: dict[str, Any]) -> str:
     rows_html = []
     for label, (fam, key) in _LADDER_ROWS:
-        stat = _dig(summary, fam, key)
+        stat = dig(summary, fam, key)
         if not isinstance(stat, dict):
             continue
         units = stat.get("units")
@@ -297,7 +290,7 @@ def _reproduce(bundle: dict[str, Any]) -> str:
 def render_report_card(bundle: dict[str, Any]) -> str:
     """Render a single self-contained HTML report card for a provenance bundle."""
     bundle = bundle or {}
-    model = _esc(bundle.get("model") or _dig(bundle, "report_summary", "model") or "report")
+    model = _esc(bundle.get("model") or dig(bundle, "report_summary", "model") or "report")
     body = (
         _header(bundle)
         + _honesty_banner(bundle)

@@ -16,6 +16,8 @@ from typing import Any
 import jsonschema
 import yaml
 
+from app.dig import dig_dotted
+
 
 class ReportError(RuntimeError):
     pass
@@ -507,15 +509,6 @@ def _to_canonical(value: float, units: Any, canonical: str) -> tuple[float, bool
     return float(value) * mult, True
 
 
-def _dig(summary: dict[str, Any], dotted: str) -> Any:
-    cur: Any = summary
-    for part in dotted.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return cur
-
-
 def _stat_value(metric_obj: Any) -> tuple[float | None, str | None, Any]:
     """From a {units, mean, p50, ...} object, pick a representative stat (prefer mean)."""
     if not isinstance(metric_obj, dict):
@@ -572,7 +565,7 @@ def compare_summaries(entries: list[dict[str, Any]], *, baseline_index: int = 0)
         stat_used: str | None = None
         any_converted = False
         for s in summaries:
-            v, stat, u = _stat_value(_dig(s, dotted))
+            v, stat, u = _stat_value(dig_dotted(s, dotted))
             if v is None:
                 values.append(None)
                 continue
@@ -592,7 +585,7 @@ def compare_summaries(entries: list[dict[str, Any]], *, baseline_index: int = 0)
         rows.append(_build_metric_row(dotted, name, direction, stat_used, units, labels, values, baseline_index))
 
     for dotted, name, direction in _COMPARE_SCALARS:
-        raw = [_dig(s, dotted) for s in summaries]
+        raw = [dig_dotted(s, dotted) for s in summaries]
         values = [float(v) if isinstance(v, (int, float)) else None for v in raw]
         if sum(v is not None for v in values) < 2:
             continue
@@ -646,7 +639,7 @@ _HARNESS_THROUGHPUT = ("throughput.output_token_rate", "throughput.total_token_r
 def _present_metrics(summary: dict[str, Any], paths: tuple[str, ...]) -> list[str]:
     out = []
     for p in paths:
-        val, _, _ = _stat_value(_dig(summary, p))
+        val, _, _ = _stat_value(dig_dotted(summary, p))
         if val is not None:
             out.append(p)
     return out
@@ -723,7 +716,7 @@ def compare_across_harnesses(entries: list[dict[str, Any]]) -> dict[str, Any]:
         for h in sorted(measured_by[m]):
             # representative = first run of that harness that carries the metric.
             for r in by_harness[h]:
-                val, stat, units = _stat_value(_dig(r["summary"], m))
+                val, stat, units = _stat_value(dig_dotted(r["summary"], m))
                 if val is not None:
                     per_harness.append({"harness": h, "label": r["label"], "value": val,
                                         "stat": stat, "units": units})

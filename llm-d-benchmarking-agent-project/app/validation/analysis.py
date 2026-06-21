@@ -31,6 +31,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.dig import dig_dotted
+
 # Latency SLO fields map onto the summary's latency.<key>; throughput floors onto
 # throughput.<key>. Each carries a canonical unit the target is expressed in.
 # (metric_path, target_field, direction, canonical_unit)
@@ -115,15 +117,6 @@ class MetricVerdict:
     goodput_method: str | None = None        # how goodput_fraction was derived
 
 
-def _dig(summary: dict[str, Any], dotted: str) -> Any:
-    cur: Any = summary
-    for part in dotted.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return cur
-
-
 def _convert(value: float, units: str | None, table: dict[str, float]) -> float | None:
     """Convert ``value`` from its reported ``units`` into the table's canonical unit."""
     if units is None:
@@ -194,7 +187,7 @@ def evaluate_slo(summary: dict[str, Any], slo: SLOTargets) -> dict[str, Any]:
         target = getattr(slo, field_name)
         if target is None:
             continue
-        metric_obj = _dig(summary, path)
+        metric_obj = dig_dotted(summary, path)
         observed_raw = _stat(metric_obj, slo.percentile)
         units = metric_obj.get("units") if isinstance(metric_obj, dict) else None
         observed = _convert(observed_raw, units, _TO_MS) if observed_raw is not None else None
@@ -214,7 +207,7 @@ def evaluate_slo(summary: dict[str, Any], slo: SLOTargets) -> dict[str, Any]:
         target = getattr(slo, field_name)
         if target is None:
             continue
-        metric_obj = _dig(summary, path)
+        metric_obj = dig_dotted(summary, path)
         observed_raw = _stat(metric_obj, "mean")
         units = metric_obj.get("units") if isinstance(metric_obj, dict) else None
         observed = _convert(observed_raw, units, _TO_TOK_S) if observed_raw is not None else None
@@ -291,7 +284,7 @@ _INFORMATIONAL_OBJECTIVES: tuple[tuple[str, str, str], ...] = (
 
 
 def _objective_value(summary: dict[str, Any], path: str) -> float | None:
-    obj = _dig(summary, path)
+    obj = dig_dotted(summary, path)
     if not isinstance(obj, dict):
         return None
     for s in _STAT_PREFERENCE:
@@ -406,8 +399,8 @@ def pareto_analysis(
             continue
         dirs[name] = direction
         units = next(
-            (_dig(s, path).get("units") for s in summaries
-             if isinstance(_dig(s, path), dict) and _dig(s, path).get("units") is not None),
+            (dig_dotted(s, path).get("units") for s in summaries
+             if isinstance(dig_dotted(s, path), dict) and dig_dotted(s, path).get("units") is not None),
             None,
         )
         obj_meta[name] = {"path": path, "direction": direction, "units": units}
