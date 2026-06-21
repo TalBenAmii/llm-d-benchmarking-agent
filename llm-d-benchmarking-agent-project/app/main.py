@@ -13,9 +13,7 @@ import signal
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
-from fastapi.staticfiles import StaticFiles
 
 from app.agent import events as ws_events
 from app.agent.channel import Channel
@@ -50,12 +48,16 @@ from app.security.allowlist import Allowlist
 from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocket_authorized
 from app.security.runner import CommandRunner, SimRunner
 from app.storage.history import HistoryStore, available_metrics, trend
-from app.storage.provenance import BundleStore
 from app.storage.retention import readiness, run_gc, self_check
 from app.storage.share import ShareStore, is_valid_token
 from app.tools.context import ToolContext
 from app.tools.manage_runs import serialize_status
 from app.tools.probe import probe_environment
+from app.web.errors import first_validation_message as _first_validation_message
+from app.web.paths import resolve_artifact, resolve_bundle
+from app.web.share import redact_share_items as _redact_share_items
+from app.web.static import RevalidateStaticFiles, install_cors
+from app.web.views import history_record_view as _history_record_view
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
 _PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -201,30 +203,6 @@ def _active_session_ids(app: FastAPI) -> set[str]:
     return ids
 
 
-def install_cors(target: FastAPI, origins: list[str]) -> None:
-    """Wire CORS (Phase 12) onto ``target`` — but ONLY when ``origins`` is non-empty, so the
-    default (empty CORS_ALLOW_ORIGINS) keeps today's behavior: no CORS middleware, no CORS
-    headers on responses. Factored out so the wiring can be exercised on a throwaway app in a
-    test without reloading this module (a reload would rebind the shared ``app`` and leak).
-
-    SECURITY: never pair the wildcard origin (``"*"``) with ``allow_credentials=True``. Starlette
-    refuses to emit a literal ``Access-Control-Allow-Origin: *`` once credentials are allowed and
-    instead REFLECTS the request's own ``Origin`` back (with ``Access-Control-Allow-Credentials:
-    true``) for ANY origin — so ``CORS_ALLOW_ORIGINS=*`` would silently let every website on the
-    internet make authenticated cross-origin reads of the API. When the wildcard is configured we
-    therefore drop credentials, yielding a safe ``Access-Control-Allow-Origin: *`` that browsers
-    will not pair with credentials. An explicit origin allowlist keeps credentials enabled."""
-    if origins:
-        wildcard = "*" in origins
-        target.add_middleware(
-            CORSMiddleware,
-            allow_origins=origins,
-            allow_credentials=not wildcard,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
-
 # Auth (Phase 12) guards HTTP routes via an app-level dependency: a single registration
 # point (thin code) rather than per-route annotations that could be forgotten. It's a no-op
 # when AUTH_ENABLED is False (the default), so the API is open exactly as today. The
@@ -360,18 +338,6 @@ def _history_store() -> HistoryStore:
     return HistoryStore(get_settings().resolved_workspace_dir)
 
 
-def _history_record_view(rec) -> dict[str, Any]:
-    return {
-        "id": rec.id, "stored_at": rec.stored_at, "label": rec.label, "tags": rec.tags,
-        "model": rec.model, "run_uid": rec.run_uid, "spec": rec.spec,
-        "harness": rec.harness, "workload": rec.workload, "namespace": rec.namespace,
-        # Reproducibility: when this record has a provenance bundle, surface its id (+ the
-        # owning session id) so the sidebar can offer Reproduce / Export report-card.
-        "bundle_id": getattr(rec, "bundle_id", None),
-        "session_id": getattr(rec, "session_id", None),
-    }
-
-
 @app.get("/api/history", dependencies=[Depends(rate_limit)])
 async def list_history(tag: str | None = None, model: str | None = None) -> JSONResponse:
     """Stored historical results for the results-browser (newest first, summaries only)."""
@@ -393,78 +359,26 @@ async def history_trend(metric: str, tag: str | None = None, model: str | None =
 # Per-run chart images (e.g. the latency/throughput PNGs inference-perf renders into a
 # session's analysis/ dir) live under the gitignored workspace, which the /static mount does
 # NOT serve. This read-only route exposes them so the UI can show a run's charts inline next to
-# its summary. Hardened: image suffixes only, and the resolved path must stay INSIDE the named
-# session dir (defeats ../ traversal). Auth-gated by the app-level dependency; rate-limited like
-# the rest of /api. The chart paths come from locate_and_parse_report's `charts` field.
-_ARTIFACT_SUFFIXES = frozenset({".png", ".svg", ".jpg", ".jpeg", ".webp"})
-_ARTIFACT_MEDIA = {
-    ".png": "image/png", ".svg": "image/svg+xml", ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg", ".webp": "image/webp",
-}
-
-
+# its summary. Hardened (image suffixes only + INSIDE the named session dir — see
+# app.web.paths.resolve_artifact). Auth-gated by the app-level dependency; rate-limited like the
+# rest of /api. The chart paths come from locate_and_parse_report's `charts` field.
 @app.get("/api/sessions/{sid}/artifact", dependencies=[Depends(rate_limit)])
 async def session_artifact(sid: str, path: str) -> FileResponse:
     """Serve one image artifact from a session's workspace dir (read-only, image-only)."""
+    # Resolve the workspace HERE (so a test monkeypatching app.main.get_settings still steers
+    # which dir is served) and hand the pure resolver the already-resolved sessions root.
     sessions_root = (get_settings().resolved_workspace_dir / "sessions").resolve()
-    try:
-        base = (sessions_root / sid).resolve()
-        candidate = (base / path).resolve()
-        # `base` must be a real session dir directly under sessions_root, and `candidate` must not
-        # escape it — together these reject ../ traversal in either `sid` or `path`.
-        if base.parent != sessions_root or not base.is_dir() or not candidate.is_relative_to(base):
-            raise HTTPException(status_code=404, detail="artifact not found")
-        suffix = candidate.suffix.lower()
-        if suffix not in _ARTIFACT_SUFFIXES or not candidate.is_file():
-            raise HTTPException(status_code=404, detail="artifact not found")
-    except (OSError, ValueError):
-        # An over-long `sid`/`path` component (ENAMETOOLONG → OSError) or an embedded NUL byte
-        # (`%00` → ValueError "embedded null byte") during resolution must read as a clean 404 —
-        # never a 500. (HTTPException is neither, so the explicit 404s above propagate untouched.)
-        raise HTTPException(status_code=404, detail="artifact not found") from None
-    return FileResponse(candidate, media_type=_ARTIFACT_MEDIA[suffix])
-
-
-class _RevalidateStaticFiles(StaticFiles):
-    """Serve the UI assets with ``Cache-Control: no-cache`` so a browser reload ALWAYS picks up the
-    latest ``app.js`` / ``styles.css``.
-
-    The UI is a single-page app: it fetches ``/static/app.js`` once and never re-fetches it on
-    in-app navigation (new chat, new run). With the default static headers a browser will happily
-    keep serving a cached copy, so a shipped UI change stays invisible until a manual hard-refresh —
-    a real, repeated source of "I can't see the new button" confusion. ``no-cache`` does not disable
-    caching; it forces the browser to REVALIDATE every load (a cheap conditional request that still
-    returns 304 when nothing changed), so the first reload after a deploy gets the new bytes."""
-
-    async def get_response(self, path, scope):
-        response = await super().get_response(path, scope)
-        # Only tag real file responses (200/206/304); leave 404s etc. alone.
-        response.headers["Cache-Control"] = "no-cache, must-revalidate"
-        return response
+    candidate, media_type = resolve_artifact(sessions_root, sid, path)
+    return FileResponse(candidate, media_type=media_type)
 
 
 def _resolve_bundle(sid: str, bundle_id: str) -> dict[str, Any]:
-    """Locate one provenance bundle JSON under a session's ``bundles/`` dir, reusing the SAME
-    path-traversal hardening as ``session_artifact`` (``base.parent == sessions_root``,
-    ``is_relative_to``) PLUS the BundleStore's own ``_safe_id`` guard on the bundle id. A 404 for
-    a bad ``sid`` / ``bundle_id`` / missing bundle (never an info leak)."""
+    """Resolve one provenance bundle's JSON for the routes below — a thin wrapper that resolves
+    the workspace via the module-level ``get_settings`` (kept here so a test monkeypatching
+    ``app.main.get_settings`` still steers which dir is read, exactly as before) and delegates the
+    path-traversal hardening to ``app.web.paths.resolve_bundle``."""
     sessions_root = (get_settings().resolved_workspace_dir / "sessions").resolve()
-    try:
-        base = (sessions_root / sid).resolve()
-        if base.parent != sessions_root or not base.is_dir():
-            raise HTTPException(status_code=404, detail="bundle not found")
-    except (OSError, ValueError):
-        # Over-long `sid` (ENAMETOOLONG → OSError) or an embedded NUL byte (`%00` → ValueError) →
-        # clean 404, never a 500.
-        raise HTTPException(status_code=404, detail="bundle not found") from None
-    bundle = BundleStore(base).read(bundle_id)  # _safe_id inside rejects ../ and a/b ids
-    if bundle is None:
-        raise HTTPException(status_code=404, detail="bundle not found")
-    # Defense in depth: the resolved file must stay inside the session's bundles dir.
-    candidate = (base / "bundles" / f"{bundle_id}.json").resolve()
-    if not candidate.is_relative_to(base):
-        raise HTTPException(status_code=404, detail="bundle not found")
-    return bundle
+    return resolve_bundle(sessions_root, sid, bundle_id)
 
 
 @app.get("/api/sessions/{sid}/bundle/{bundle_id}", dependencies=[Depends(rate_limit)])
@@ -500,31 +414,9 @@ def _share_store() -> ShareStore:
     return ShareStore(get_settings().resolved_workspace_dir)
 
 
-# Fields on a card tool's ``result`` that carry server-internal absolute filesystem paths — the
-# located report's path (``<sessions_root>/<session_id>/.../benchmark_report*.json``), and the
-# directories a not-found probe searched. They drive nothing in the read-only viewer (the client
-# renders ``summary``/``charts`` only; charts are already session-relative), yet a public share is
-# UNAUTHENTICATED, so shipping them would disclose the host path layout AND the owning session id —
-# the very id the snapshot deliberately withholds (see read_share / shared_chat._PUBLIC_FIELDS).
-_SHARE_REDACT_RESULT_KEYS = ("report_path", "searched")
-
-
-def _redact_share_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Strip server-internal absolute paths from a PUBLIC share snapshot's tool_result rows.
-
-    The transcript replayed to the owner on resume legitimately carries the located report's
-    absolute path; a public share must not. Returns NEW item dicts (the live session is never
-    mutated) with the path-bearing keys removed from any ``tool_result`` result, leaving every
-    render-relevant field (summary, charts, metrics) intact."""
-    out: list[dict[str, Any]] = []
-    for it in items:
-        result = it.get("result") if it.get("role") == "tool_result" else None
-        if isinstance(result, dict) and any(k in result for k in _SHARE_REDACT_RESULT_KEYS):
-            scrubbed = {k: v for k, v in result.items() if k not in _SHARE_REDACT_RESULT_KEYS}
-            out.append({**it, "result": scrubbed})
-        else:
-            out.append(it)
-    return out
+# The PUBLIC-share path-redaction (constants + ``_redact_share_items``) lives in app.web.share;
+# imported above. Applied below before a snapshot is frozen so the unauthenticated link never
+# leaks the host path layout / owning session id those internal paths embed.
 
 
 @app.post("/api/sessions/{sid}/share", dependencies=[Depends(rate_limit)])
@@ -662,18 +554,7 @@ async def share_page(token: str) -> FileResponse:
     return FileResponse(get_settings().ui_dir / "index.html")
 
 
-app.mount("/static", _RevalidateStaticFiles(directory=str(get_settings().ui_dir)), name="static")
-
-
-def _first_validation_message(exc: ValidationError) -> str:
-    """A short, human-readable reason from a Pydantic validation error for the protocol
-    `error` event — the field path + message of the first error, without leaking internals."""
-    errs = exc.errors()
-    if not errs:
-        return "invalid frame"
-    e = errs[0]
-    loc = ".".join(str(p) for p in e.get("loc", ())) or "frame"
-    return f"{loc}: {e.get('msg', 'invalid')}"
+app.mount("/static", RevalidateStaticFiles(directory=str(get_settings().ui_dir)), name="static")
 
 
 @app.websocket("/ws")
