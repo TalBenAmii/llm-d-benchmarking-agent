@@ -185,14 +185,23 @@ def _discover_charts(report_path: Path, sessions_root: Path) -> list[dict[str, s
 
 
 def _find_report(roots: list[Path]) -> Path | None:
+    """Pick the report to summarize, honouring root PRECEDENCE.
+
+    ``roots`` is ordered most-specific-first (an explicit ``results_dir``, then an explicit
+    ``session_id`` dir, then the broad session workspace). The first root that contains ANY
+    report wins, and within that root the newest-by-mtime is chosen; later, broader roots are
+    only consulted as a FALLBACK. Merging every root into one global newest-by-mtime pool
+    would silently let an UNRELATED, more-recent report elsewhere in the workspace override the
+    run the caller explicitly pointed at via ``results_dir`` — returning another run's metrics
+    under the caller's chosen dir (a wrong-report selection)."""
     patterns = ["**/benchmark_report_v0.2*.yaml", "**/benchmark_report_v0.2*.json",
                 "**/benchmark_report_v0.2*.yml"]
-    candidates: list[Path] = []
     for root in roots:
         if not root or not root.exists():
             continue
+        candidates: list[Path] = []
         for pat in patterns:
             candidates.extend(root.glob(pat))
-    if not candidates:
-        return None
-    return max(candidates, key=lambda p: p.stat().st_mtime)
+        if candidates:
+            return max(candidates, key=lambda p: p.stat().st_mtime)
+    return None

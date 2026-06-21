@@ -80,3 +80,43 @@ def test_load_report_raises_reporterror_on_corrupt(tmp_path):
     # A missing file (OSError) is also a clean ReportError, never a bare OSError.
     with pytest.raises(ReportError):
         load_report(tmp_path / "does_not_exist.json")
+
+
+def test_find_report_honours_root_precedence_over_global_mtime(tmp_path):
+    """An EXPLICIT results_dir must win over a newer, unrelated report elsewhere in the
+    session workspace.
+
+    locate_and_parse_report searches [results_dir, session_id-dir, ctx.workspace] in that
+    most-specific-first order. The old _find_report merged every root into ONE global pool and
+    returned the single newest-by-mtime — so when the caller pointed at run A via results_dir
+    but the SAME workspace also held a LATER run B, it silently returned run B's report,
+    surfacing another run's metrics under the dir the caller explicitly chose. _find_report must
+    instead return the newest report from the FIRST root that contains any report; later, broader
+    roots are only a fallback."""
+    import os
+
+    from app.tools.report_locate import _find_report
+
+    workspace = tmp_path / "ws" / "sessions" / "sess1"
+    run_a = workspace / "results" / "runA"      # what the caller explicitly asks for
+    run_b = workspace / "results" / "runB"      # a later, unrelated run in the same workspace
+    run_a.mkdir(parents=True)
+    run_b.mkdir(parents=True)
+    rep_a = run_a / "benchmark_report_v0.2.yaml"
+    rep_b = run_b / "benchmark_report_v0.2.yaml"
+    rep_a.write_text("run: {uid: A}\n")
+    rep_b.write_text("run: {uid: B}\n")
+    os.utime(rep_a, (1000, 1000))               # run A is OLDER
+    os.utime(rep_b, (2000, 2000))               # run B is NEWER (the trap for global-max-mtime)
+
+    # roots ordered as locate_and_parse_report builds them: explicit results_dir first, then ws.
+    chosen = _find_report([run_a, workspace])
+    assert chosen == rep_a, (
+        f"explicit results_dir must win; got {chosen} (the newer, unrelated run B) instead of "
+        f"the run A report the caller pointed at"
+    )
+
+    # Fallback still works: with NO report under the first root, fall through to the workspace.
+    empty_first = tmp_path / "empty"
+    empty_first.mkdir()
+    assert _find_report([empty_first, workspace]) == rep_b  # newest within the fallback root
