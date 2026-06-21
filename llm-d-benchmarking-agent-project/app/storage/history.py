@@ -27,6 +27,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.dig import dig_dotted
+
 # Metrics we can build a trend over, mirroring the analyzer/comparator objective space.
 # (dotted summary path, direction-better). "lower"/"higher" = which way is an improvement;
 # used only to LABEL the trend factually, never to decide pass/fail.
@@ -86,21 +88,12 @@ class HistoryRecord:
         return asdict(self)
 
 
-def _dig(obj: Any, dotted: str) -> Any:
-    cur: Any = obj
-    for part in dotted.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return cur
-
-
 def _representative_value(summary: dict[str, Any], dotted: str) -> tuple[float | None, str | None, Any]:
     """Pull a single representative number for a metric out of a summary.
 
     Scalars (e.g. success_rate_pct) come straight through; metric objects use the first
     available preferred statistic (mean -> p50 -> ...). Returns (value, stat, units)."""
-    node = _dig(summary, dotted)
+    node = dig_dotted(summary, dotted)
     if isinstance(node, (int, float)):
         return float(node), "value", None
     if isinstance(node, dict):
