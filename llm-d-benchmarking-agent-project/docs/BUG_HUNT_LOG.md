@@ -908,6 +908,74 @@ canonicalizes units); BUG-051 is distinct from the cancel handler's intentional 
   the cancel handler's intentional inline `await`.
 - **Regression test:** `tests/test_ws.py::test_ws_cancel_with_queued_steer_does_not_resurrect_the_turn`.
 
+## Round 19 (2026-06-21) — subagent wave 7 (meta-review sibling / report precedence / tracing flags): 3 fixed (BUG-052 high, BUG-053 med, BUG-054 med)
+A seventh subagent wave over three disjoint areas — a 2nd adversarial meta-review of the newer fixes (which
+surfaced an unguarded sibling of BUG-044), the report-locator's search-root precedence vs a global mtime pick,
+and the unrecognized-flag advisory's handling of the soft-optional `tracing.*` knob family. Three real defects
+fixed + merged to `main`. The meta-review otherwise verified the six newer fixes 042/045/048/049/050/051 sound.
+
+## BUG-052 — corrupt non-dict in-flight-approval element crashes both approval mutators (unguarded sibling of BUG-044)
+- **Status:** FIXED
+- **Severity:** high (one user click after a BUG-044-survived corrupt element re-bricks the very chat BUG-044
+  kept usable — an `AttributeError` tears down the whole `/ws` handler, which only catches `WebSocketDisconnect`)
+- **Where:** `app/agent/session.py::record_in_flight_approval` (~line 177) + `clear_in_flight_approval`
+  (~line 183); unwrapped `channel.resolve` call sites in `app/main.py` `/ws` (~line 1134 / 1140 / 1163).
+- **Trigger:** sibling of BUG-044. Both mutators did `a.get("request_id")` over the raw `in_flight_approvals`
+  list, which `SessionManager.load` rebuilds from disk with NO per-element type check. BUG-044 guarded only
+  `Channel.restore_pending` (so the reconnect HANDSHAKE survives a corrupt non-dict element), but the corrupt
+  element REMAINS in `session.in_flight_approvals` and crashes these mutators one user-click later: the user
+  clicks Approve → `/ws` receive loop calls `channel.resolve(rid)` → `p["restored"]` true →
+  `session.clear_in_flight_approval(rid)` → `"TORN".get(...)` → `AttributeError`, and the `channel.resolve`
+  call sites in `/ws` are UNWRAPPED (only `WebSocketDisconnect` is caught), so it tears the whole handler down —
+  re-bricking the very chat BUG-044 kept usable. `record_in_flight_approval` independently crashes a resumed
+  turn that surfaces a NEW gate.
+- **Root cause:** the corrupt-element guard was applied at only ONE of the three consumers of the raw list; the
+  two approval mutators still iterated it assuming every element is a dict.
+- **Fix:** skip non-dict elements in both scans (the BUG-043 `_dicts` class); `clear_in_flight_approval` also
+  self-heals garbage out of the list while preserving a real gate. Found by a 2nd adversarial meta-review (the
+  other six newer fixes 042/045/048/049/050/051 verified sound).
+- **Regression test:** `tests/test_sessions.py::test_in_flight_approval_mutators_survive_corrupt_non_dict_element`.
+
+## BUG-053 — report locator overrides an explicit `results_dir` with a NEWER report elsewhere in the workspace
+- **Status:** FIXED
+- **Severity:** medium (an explicit `results_dir` (run A) is silently overridden by any newer report in the
+  broader workspace (run B) — the caller gets run B's metrics under the dir it explicitly pointed at; silent
+  wrong-data, no error)
+- **Where:** `app/tools/report_locate.py::_find_report` (~line 187), reached from `locate_and_parse_report`
+  (~line 30).
+- **Trigger:** `locate_and_parse_report` builds `search_roots` most-specific-first (`[explicit results_dir,
+  explicit session_id dir, broad ctx.workspace]`). `_find_report` flattened ALL roots into one candidate pool
+  and returned `max(candidates, key=mtime)` — so an explicit `results_dir` (run A) was silently overridden by
+  any NEWER `benchmark_report_v0.2*` elsewhere in `ctx.workspace` (a later run B in the same session),
+  returning run B's metrics under the dir the caller explicitly pointed at.
+- **Root cause:** the locator collapsed the precedence-ordered roots into a single global newest-by-mtime pick,
+  discarding the most-specific-first ordering the caller had encoded into `search_roots`.
+- **Fix:** iterate roots in precedence order; return the newest-by-mtime from the FIRST root that contains any
+  report; broader roots are consulted only as a fallback (preserves "newest within a run dir"). (Two lower-value
+  items in this path were surfaced-not-filed: `LocateReportInput.session_id` `..`-traversal — being fixed
+  separately — and non-deterministic mtime ties.)
+- **Regression test:** `tests/test_report_validation.py::test_find_report_honours_root_precedence_over_global_mtime`.
+
+## BUG-054 — unrecognized-flag advisory falsely flags every valid `tracing.*` sub-leaf as a bogus knob
+- **Status:** FIXED
+- **Severity:** medium (the tool tells users their valid, documented Phase-54 OpenTelemetry `tracing.*` config
+  is a bogus/typo flag — eroding trust in the advisory and nudging users to delete working config)
+- **Where:** `app/tools/config_artifact.py::unrecognized_flags` (~line 176), called from `author_scenario`
+  (~line 325 / 374).
+- **Trigger:** the advisory warns the agent when a scenario override key looks fabricated/unrecognized.
+  `_SOFT_OPTIONAL_KNOBS={"tracing"}` widened only the TOP-LEVEL name `tracing` into the validator's known keys,
+  but `unrecognized_flags` keys on each dotted key's LEAF segment. The `tracing.*` family (Phase-54
+  OpenTelemetry config) is rendered by upstream modelservice jinja behind `{% if is defined %}` guards and
+  appears in NO scenario example or stock `defaults.yaml` BY DESIGN, so its sub-leaves (`otlpEndpoint`,
+  `samplerArg`, `vllmDecode`, `vllmPrefill`, `routingProxy`, `sampler`, `collectDetailedTraces`) were never in
+  `known_leaf_keys` and got flagged — making the tool tell users their valid, documented tracing config is a
+  bogus/typo flag. Phase 54 fixed the validator but missed this parallel advisory.
+- **Root cause:** the soft-optional widening was matched against the top-level name while the advisory keyed on
+  leaf segments, so the family's sub-leaves fell outside the known-key set.
+- **Fix:** skip any dotted key whose ROOT segment is in `_SOFT_OPTIONAL_KNOBS` (`dotted.split(".",1)[0]`);
+  genuinely fabricated flags outside the family still surface.
+- **Regression test:** `tests/test_tracing_config.py::test_tracing_subkeys_are_not_falsely_flagged_as_unrecognized`.
+
 ---
 
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
