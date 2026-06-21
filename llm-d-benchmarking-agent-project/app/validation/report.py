@@ -694,8 +694,14 @@ def compare_across_harnesses(entries: list[dict[str, Any]]) -> dict[str, Any]:
         for r in runs:
             lat.update(_present_metrics(r["summary"], _HARNESS_LATENCY))
             thr.update(_present_metrics(r["summary"], _HARNESS_THROUGHPUT))
-        for m in lat | thr:
-            measured_by.setdefault(m, set()).add(h)
+        # The "unknown" pseudo-group (reports whose harness couldn't be read) stays VISIBLE in
+        # harness_view, but it must NOT count toward the cross-harness metric intersection: a
+        # metric measured by one REAL harness + one unknown-harness report is unique to that real
+        # harness, not "shared"/cross-validated by two harnesses. Counting it would tell the agent
+        # ttft was cross-validated when only inference-perf measured it.
+        if h != "unknown":
+            for m in lat | thr:
+                measured_by.setdefault(m, set()).add(h)
         harness_view[h] = {
             "runs": [
                 {"label": r["label"], "model": r["summary"].get("model"),
