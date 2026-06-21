@@ -521,6 +521,75 @@ One high-severity deploy-breaking defect:
 
 ---
 
+## Round 15 (2026-06-21) — capacity/channel/orchestrator wave 1: 3 fixed (BUG-035 high, BUG-036 med, BUG-037 low-med)
+A targeted wave over the capacity pre-flight verdict, the WS reconnect/re-emit path, and the stateless
+Job classifier. Three real defects fixed + merged to `main`; one latent label-length observation surfaced
+(below, in the design/latent section). A wave-2 UI hunter independently re-read all of `ui/app.js` and found
+no new defect (see the Verified NON-bugs note).
+
+## BUG-035 — capacity pre-flight reports `feasible:true` for a GPU-UNDER-provisioned spec
+- **Status:** FIXED
+- **Severity:** high (a confident WRONG "it fits" at the plan gate when the pod has too few GPUs for the
+  requested parallelism → user proceeds to a standup that can't even schedule/shard the model)
+- **Where:** `app/capacity/planner.py::classify_diagnostics` (~line 145).
+- **Trigger (reproduced):** a `check_capacity` run for a spec whose `TP×PP×DP` exceeds the pod's accelerator
+  count, under the DEFAULT `enforce=False` / `ignoreFailedValidation` path. Upstream
+  `capacity_validator.py` emits a `"<N> GPUs are required per replica"` line, but under
+  `ignoreFailedValidation` that line is tagged only `WARNING:` (not `ERROR:` / `DEPLOYMENT WILL FAIL`),
+  and the validator keeps SIZING as if the GPUs existed — emitting the `_SIZED_MARKERS` fit lines. So
+  `classify_diagnostics` saw no fail + sized-and-fit → `feasible=True`, directly disagreeing with the
+  `enforce=True` verdict for the same spec (which is `ERROR:` / infeasible).
+- **Root cause:** the classify loop only flipped `will_fail` on `_FAIL_MARKER`; the GPU-shortfall line
+  carries its won't-deploy verdict in a DIFFERENT string that the loop didn't recognize under the
+  non-enforcing path, so a sized-but-unschedulable spec read as a clean fit.
+- **Fix:** added `_GPU_SHORTFALL_MARKER = "gpus are required per replica"`; the classify loop now sets
+  `will_fail` on `_FAIL_MARKER` OR `_GPU_SHORTFALL_MARKER`. Conservative — it can only flip a false
+  `feasible:true` → `false`; the benign over-provisioned `"Some GPUs will be idle"` warning uses a
+  different string and is left untouched. DISTINCT from BUG-030 (which was KV-cache sizing keyed on the
+  wrong summary line); BUG-030's fix was re-verified and remains fully correct.
+- **Regression test:** `tests/test_qafix_tools_capacity_history_config_report.py::test_classify_gpu_count_shortfall_is_infeasible_not_feasible`
+  (fails before / passes after; also asserts the benign idle-GPU over-provisioned case stays feasible).
+
+## BUG-036 — `reemit_pending` re-buffers each pending gate on every reconnect → evicts the turn's real progress
+- **Status:** FIXED
+- **Severity:** medium (repeated reconnects to a parked-gate chat defeat the Phase-15 catch-up buffer; a
+  later full replay recovers nothing of the turn's progress)
+- **Where:** `app/agent/channel.py::reemit_pending` (~lines 255-281), reached from `app/main.py` on every
+  (re)connect that has a pending gate.
+- **Trigger:** reconnect repeatedly to a chat parked on an undecided approval. `reemit_pending` re-surfaced
+  each pending gate via `emit()`; because `APPROVAL_REQUEST` is NOT in `NON_TURN_EVENTS`, `emit()` bumped
+  `_seq` and appended to the bounded live ring on EVERY reconnect. Each reconnect therefore appended a
+  duplicate gate frame, evicting the turn's real progress events from the bounded deque — so a later full
+  `replay_live()` recovered nothing, defeating the catch-up buffer.
+- **Root cause:** the gate was already buffered + seq-stamped once by `request_approval` and persisted in
+  `session.in_flight_approvals`, so re-surfacing it should be a pure re-SEND, not a fresh `emit()` (which
+  re-seqs and re-buffers).
+- **Fix:** `reemit_pending` now sends each pending gate DIRECTLY to the attached socket via `ws.send_json`
+  (the same path `replay_live` uses) — seqless, not buffered, and a no-op when no socket is attached. The
+  client still de-dupes by `request_id`, so the re-send is idempotent. Adjacent to BUG-032 (which capped
+  `replay_live` at `through_seq`) but a different function.
+- **Regression test:** `tests/test_ws.py::test_channel_reemit_pending_does_not_pollute_buffer_or_seq`
+  (fails before: the re-emitted frame carried a seq; passes after: seqless).
+
+## BUG-037 — `classify_job_status` crashes on a non-dict element in `conditions` (AttributeError)
+- **Status:** FIXED
+- **Severity:** low-medium (a forged/corrupt kubectl JSON aborts the stateless watch/reconstruct loops,
+  violating the documented "classify never crashes" invariant — same class as BUG-029/BUG-023)
+- **Where:** `app/orchestrator/job.py::classify_job_status` — the `_cond` helper (~line 389).
+- **Trigger (reproduced):** `conditions = status.get("conditions", []) or []` only neutralizes a FALSY
+  value; a forged/corrupt status with a SCALAR `conditions`, or a list containing a non-dict element (a
+  bare string or `null`), made `_cond` call `c.get(...)` on a non-dict → `AttributeError`, which
+  propagates out of `classify` and aborts the stateless `watch()` / `reconstruct()` loops.
+- **Root cause:** the `(... or [])` fallback caught only a falsy `conditions`, never a truthy non-list or a
+  list with malformed elements — the same gap BUG-029 fixed in the sibling `classify_failure` and BUG-023
+  fixed for the counts in this very function, but this `conditions` iteration was missed.
+- **Fix:** `conditions = [c for c in raw if isinstance(c, dict)] if isinstance(raw, list) else []`. A real
+  terminal condition among malformed siblings still classifies; an all-malformed `conditions` degrades to
+  PENDING, never raises.
+- **Regression test:** `tests/test_orchestrator_controller.py::test_classify_survives_malformed_conditions`.
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
@@ -749,6 +818,12 @@ reachable through the agent's normal flow. The three storage crashes (A/B/C) wer
   fire-and-forget risks a race with an immediately-following new turn. Left as-is (low value / real risk).
 - **`scatterPlot`/`sparkline` non-finite hardening, font-link fail-loud assertion, resume-cursor
   empty-buffer flash** — either unreachable with real inputs or cosmetic; not worth the churn/risk now.
+- **`JobSpec.labels()` / `build_job_manifest` don't validate label VALUES against the K8s 63-char
+  label-value limit** (`app/orchestrator/job.py`) — `session_id` / `sweep_id` are stamped into label
+  values with no length check. Not cleanly triggerable today: normal sessions use a 12-char uuid hex,
+  and sweeps validate the `sweep_id`, so no current caller can exceed 63 chars. Left unfixed — noted
+  here for completeness (a future longer id source would need a length guard / truncation before this
+  becomes a real `kubectl apply` rejection). (Surfaced in Round 15, wave 1.)
 
 ## Verified NON-bugs (claims that didn't survive scrutiny)
 Logged so they aren't re-investigated. A background UI hunter flagged these; the code is correct:
@@ -760,6 +835,9 @@ Logged so they aren't re-investigated. A background UI hunter flagged these; the
 - **Share viewer renders a live, clickable approval gate (`ws.send` on null `ws`)** — not
   reachable: `create_share` strips every `approval_request` item at mint time
   (`app/main.py:602`), so a shared snapshot never contains a live gate.
+- **`ui/app.js` full re-read (Round 15, wave 2)** — a hunter did a line-by-line re-read of all 3266 lines
+  of `ui/app.js` plus the WS/event contract and found NO new defect; the BUG-019/024/025/026 fixes are all
+  present and hold.
 
 ## HTTP API probe — robustness confirmed (no bugs)
 Drove the REST surface like a user; all behaved correctly:
