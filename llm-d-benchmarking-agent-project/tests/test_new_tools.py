@@ -238,6 +238,21 @@ def test_search_knowledge_no_match_returns_empty_results(tool_ctx):
     assert "capacity" in out["valid_topics"]
 
 
+def test_search_knowledge_limit_one_keeps_top_hit(tool_ctx):
+    # The reserved repo-doc quota must NEVER evict the single highest-scoring result. With
+    # limit=1 and a query that matches both a strong knowledge guide AND a (lower-scoring) repo
+    # pointer, the one result returned must be that top-scoring hit — not the reserved repo_doc.
+    # Regression for the repo_quota=max(1, limit//3) crowd-out at limit=1.
+    out = probe.search_knowledge(tool_ctx, query="quickstart kind cpu only deploy", limit=1)
+    assert len(out["results"]) == 1
+    top = out["results"][0]
+    # Without the quota cap this came back as the score-24 repo_doc, dropping the score-67 guide.
+    full = probe.search_knowledge(tool_ctx, query="quickstart kind cpu only deploy", limit=5)
+    best_score = full["results"][0]["score"]
+    assert top["score"] == best_score, "limit=1 dropped the highest-scoring result"
+    assert top["kind"] == "knowledge"
+
+
 async def test_search_knowledge_in_tool_definitions_and_dispatch(tool_ctx):
     from app.tools.registry import tool_definitions
 

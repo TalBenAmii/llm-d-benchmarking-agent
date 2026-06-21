@@ -394,6 +394,13 @@ def search_knowledge(
     # for them (up to a third, >=1 when any matched) so a problem-driven query still surfaces the
     # right upstream doc. Mechanism only — the split is a fixed budget, not a per-topic decision.
     repo_quota = min(len(repo_hits), max(1, limit // 3)) if repo_hits else 0
+    # ...but the reserved slice must never EVICT the top-ranked knowledge guide: at a small limit
+    # (e.g. limit=1) max(1, limit//3) would leave 0 knowledge slots, returning only a (typically
+    # lower-scoring) repo pointer and dropping the single best guide. Keep at least one knowledge
+    # slot whenever knowledge matched, so the primary help always leads. The backfill below still
+    # fills any slot the other kind can't.
+    if knowledge_hits:
+        repo_quota = min(repo_quota, limit - 1)
     k_take = min(len(knowledge_hits), limit - repo_quota)
     chosen = knowledge_hits[:k_take] + repo_hits[:repo_quota]
     # Backfill any unused slots from whichever kind still has matches (deterministic order).
