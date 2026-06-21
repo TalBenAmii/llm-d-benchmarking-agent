@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.dig import dict_or_empty as _d
 from app.tools.context import ToolContext, ToolError
 from app.tools.json_tail import find_last_json
 
@@ -65,11 +66,8 @@ def _summarize_stack(components: list[dict[str, Any]]) -> dict[str, Any]:
     tools: list[str] = []
     # Defensive: `_parse_components` validates only that the stream is a JSON *list*, not that each
     # element is a dict. A garbled stream with a non-dict element (or a non-dict standardized/model/
-    # accelerator) must be coerced/skipped, never crash _summarize_stack with AttributeError. `_d`
-    # coerces any non-dict to {}.
-    def _d(v: Any) -> dict[str, Any]:
-        return v if isinstance(v, dict) else {}
-
+    # accelerator) must be coerced/skipped, never crash _summarize_stack with AttributeError.
+    # `_d` (dig.dict_or_empty, imported above) coerces any non-dict to {}.
     for comp in components:
         comp = _d(comp)
         std = _d(comp.get("standardized"))

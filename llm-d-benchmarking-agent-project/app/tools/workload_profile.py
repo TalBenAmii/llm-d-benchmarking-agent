@@ -27,6 +27,7 @@ from typing import Any
 
 import yaml
 
+from app.dig import dict_or_empty as _dict
 from app.tools.catalog import build_catalog
 from app.tools.context import ToolContext, ToolError
 
@@ -118,12 +119,8 @@ def _read_profile(
 
 
 # --- normalization helpers (pure; no judgment) ---------------------------------------------
-
-def _dict(value: Any) -> dict[str, Any]:
-    """``value`` if it is a mapping, else an empty dict — so callers can ``.get(...)`` defensively
-    without re-asserting the type on every lookup (a profile field may be absent or oddly-shaped)."""
-    return value if isinstance(value, dict) else {}
-
+# ``_dict`` = ``dig.dict_or_empty`` (imported as ``_dict``): coerce a possibly-absent/oddly-shaped
+# profile field to a mapping so callers can ``.get(...)`` defensively without re-asserting the type.
 
 def _num(value: Any) -> float | int | None:
     """A YAML scalar coerced to a number, or None for anything non-numeric (templated

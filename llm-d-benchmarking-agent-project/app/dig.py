@@ -11,6 +11,13 @@ Two entry points over one traversal:
 - ``dig(obj, *parts)``  — segment form: ``dig(s, "latency", "ttft")``
 - ``dig_dotted(obj, "latency.ttft")`` — dotted-string form (splits on ``.``)
 
+A third, even smaller sibling is a single-level coercer (not a traversal) the path-walk builds on:
+- ``dict_or_empty(v)`` — ``v`` if it is a mapping, else ``{}`` — so a caller can ``.get``
+  the children of an untrusted, on-disk value without re-asserting the type at every lookup.
+  Several layers had each copied this one-liner as a private ``_d``/``_dict``; this is the
+  single mechanism. Named ``dict_or_empty`` (not ``as_dict``) so it never reads like the
+  dataclass ``.as_dict()`` SERIALIZER methods elsewhere in app/.
+
 Deliberately stdlib-only and imports nothing from ``app`` so every layer (validation,
 storage, packaging) can use it without risking a circular import.
 """
@@ -37,3 +44,16 @@ def dig(obj: Any, *parts: str) -> Any:
 def dig_dotted(obj: Any, dotted: str) -> Any:
     """``dig`` for a single dotted path, e.g. ``dig_dotted(summary, "latency.ttft")``."""
     return dig(obj, *dotted.split("."))
+
+
+def dict_or_empty(value: Any) -> dict[str, Any]:
+    """``value`` if it is a mapping, else an empty ``dict``.
+
+    Lets callers read a possibly-missing-or-oddly-shaped child of an untrusted, disk-loaded
+    mapping with ``.get(...)`` defensively without re-asserting the type at every lookup —
+    the same "never crash on a malformed shape" contract as ``dig`` (which walks a path; this
+    coerces a single level). Several layers previously re-implemented this as a private
+    ``_d`` / ``_dict``; this is the single mechanism. Named ``dict_or_empty`` (not ``as_dict``)
+    so it never reads like the dataclass ``.as_dict()`` SERIALIZER methods elsewhere in app/.
+    """
+    return value if isinstance(value, dict) else {}

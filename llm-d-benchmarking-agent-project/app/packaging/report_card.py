@@ -21,6 +21,7 @@ import datetime
 import html
 from typing import Any
 
+from app.dig import dict_or_empty as _d
 from app.dig import dig
 
 # The agent's hex logo as an INLINE <svg> element (HTML5 needs no xmlns; same mark as
@@ -99,13 +100,10 @@ def _fmt_num(v: Any) -> str:
     return f"{v:.4g}"
 
 
-def _d(v: Any) -> dict[str, Any]:
-    """A non-dict child of the (untrusted, on-disk) bundle coerces to ``{}`` so a corrupt/forged
-    bundle (e.g. ``"resolved_config": "oops"``) renders an empty section instead of crashing the
-    whole card with ``AttributeError`` — same hardening class as the storage-layer fixes. The bundle
-    is read from disk with only a top-level ``isinstance(dict)`` check, so the child VALUES are not
-    type-validated and must be coerced here before any ``.get``/``.items``/``.values``."""
-    return v if isinstance(v, dict) else {}
+# ``_d`` (``dig.dict_or_empty``): coerce a non-dict child of the untrusted, on-disk bundle to ``{}``
+# so a corrupt/forged bundle (e.g. ``"resolved_config": "oops"``) renders an empty section instead of
+# crashing the card with ``AttributeError``. The bundle is read with only a top-level
+# ``isinstance(dict)`` check, so child VALUES must be coerced before any ``.get``.
 
 
 def _header(bundle: dict[str, Any]) -> str:

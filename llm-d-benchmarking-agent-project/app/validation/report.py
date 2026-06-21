@@ -16,7 +16,7 @@ from typing import Any
 import jsonschema
 import yaml
 
-from app.dig import dig_dotted
+from app.dig import dict_or_empty, dig_dotted
 
 
 class ReportError(RuntimeError):
@@ -156,7 +156,7 @@ def _load_catalog_section(path: str, section: str) -> dict[str, Any]:
     except yaml.YAMLError:
         return {}
     section_val = data.get(section) if isinstance(data, dict) else None
-    return section_val if isinstance(section_val, dict) else {}
+    return dict_or_empty(section_val)
 
 
 def _native_stat(entry: Any) -> dict[str, Any] | None:
@@ -328,7 +328,7 @@ def extract_session_performance(
             stat = _stat(sessions.get(name))
             if stat is None:
                 continue
-            meta = meta if isinstance(meta, dict) else {}
+            meta = dict_or_empty(meta)
             dists[name] = {
                 "label": meta.get("label"),
                 "value": stat,
@@ -350,10 +350,8 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     # Defensive: a present-but-non-dict child (e.g. a malformed/partial report summarized BEFORE
     # schema validation — compare_reports / compare_harness_runs summarize ahead of the validity
     # check) must degrade to {} at EVERY nesting level, never crash with AttributeError. `_d`
-    # coerces any non-dict to {} so each subsequent `.get` is on a guaranteed mapping.
-    def _d(v: Any) -> dict[str, Any]:
-        return v if isinstance(v, dict) else {}
-
+    # (dig.dict_or_empty) coerces any non-dict to {} so each subsequent `.get` is on a guaranteed mapping.
+    _d = dict_or_empty
     report = _d(report)
     run = _d(report.get("run"))
     scenario = _d(report.get("scenario"))
