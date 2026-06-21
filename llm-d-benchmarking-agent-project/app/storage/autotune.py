@@ -46,19 +46,6 @@ _SEARCH_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}$")
 
 
 @dataclass
-class AutotuneKnobBound:
-    """The declared search bound for ONE knob, mirrored from the approved AutotunePlan.
-    Mechanism only: it is the box the agent's candidate must fall inside. Picking the box
-    is the agent's judgment (knowledge/autotune_strategy.md + knowledge/sweep_playbook.md)."""
-
-    name: str
-    key: str
-    min: float
-    max: float
-    resolution: float | None = None
-
-
-@dataclass
 class Trial:
     """One recorded trial: the config used, the validated report summary, the SLO verdict,
     the objective value, and whether the run was SLO-feasible. Every number here derives
