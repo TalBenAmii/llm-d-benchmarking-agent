@@ -8,6 +8,7 @@ Secrets (LLM API keys) are excluded from the child environment.
 from __future__ import annotations
 
 import asyncio
+import codecs
 import contextlib
 import logging
 import os
@@ -34,6 +35,15 @@ _ENV_PASSTHROUGH = (
 )
 
 _MAX_CAPTURE_CHARS = 200_000  # keep a bounded tail in memory
+
+# Stdout is drained in fixed-size chunks rather than via line-buffered ``readline`` so a single
+# un-terminated line longer than asyncio's StreamReader limit (64 KiB) cannot raise — a real
+# shape (``kubectl get … -o json`` of a big object on one line, a base64 blob, a minified log
+# line). A line is flushed to ``on_line`` / the captured tail whenever a ``\n`` arrives, OR when
+# a still-open line passes ``_MAX_LINE_CHARS`` (so a child that never emits a newline cannot grow
+# an unbounded in-memory buffer — it is flushed in bounded segments instead).
+_READ_CHUNK = 65_536
+_MAX_LINE_CHARS = _MAX_CAPTURE_CHARS
 
 OnLine = Callable[[str], Awaitable[None]]
 
@@ -218,16 +228,40 @@ class CommandRunner:
         cap_chars = 0
         timed_out = False
 
-        async def _pump() -> None:
+        async def _emit_one(line: str) -> None:
             nonlocal cap_chars
+            if cap_chars < _MAX_CAPTURE_CHARS:
+                captured.append(line)
+                cap_chars += len(line) + 1
+            if on_line is not None:
+                await on_line(line)
+
+        async def _pump() -> None:
+            # Chunked drain (NOT ``async for … in proc.stdout``, which is line-buffered and
+            # raises ValueError once an un-terminated line passes the 64 KiB StreamReader
+            # limit). An ``IncrementalDecoder`` keeps a multibyte UTF-8 sequence whole across
+            # a chunk boundary; ``errors="replace"`` keeps non-UTF-8 bytes from raising.
             assert proc.stdout is not None
-            async for raw in proc.stdout:
-                line = raw.decode("utf-8", errors="replace").rstrip("\n")
-                if cap_chars < _MAX_CAPTURE_CHARS:
-                    captured.append(line)
-                    cap_chars += len(line) + 1
-                if on_line is not None:
-                    await on_line(line)
+            decoder = codecs.getincrementaldecoder("utf-8")("replace")
+            pending = ""  # the current, not-yet-newline-terminated line
+            while True:
+                chunk = await proc.stdout.read(_READ_CHUNK)
+                if not chunk:  # EOF
+                    break
+                pending += decoder.decode(chunk)
+                # Flush every complete (newline-terminated) line.
+                while "\n" in pending:
+                    line, pending = pending.split("\n", 1)
+                    await _emit_one(line.rstrip("\r"))
+                # A line that never sees a newline must not grow without bound: flush it in
+                # bounded segments (keeps memory bounded for a runaway child).
+                while len(pending) >= _MAX_LINE_CHARS:
+                    await _emit_one(pending[:_MAX_LINE_CHARS])
+                    pending = pending[_MAX_LINE_CHARS:]
+            # Flush any final decoder state + a trailing line with no terminating newline.
+            pending += decoder.decode(b"", final=True)
+            if pending:
+                await _emit_one(pending.rstrip("\r"))
 
         try:
             # Bound the WHOLE process lifecycle — both draining stdout AND the process exit —
