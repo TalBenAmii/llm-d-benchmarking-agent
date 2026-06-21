@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.tools.context import ToolContext
+from app.tools.context import ToolContext, ToolError
 from app.validation.report import load_report, summarize_report, validate_report
 
 
@@ -31,7 +31,7 @@ def locate_and_parse_report(
     if results_dir:
         search_roots.append(Path(results_dir))
     if session_id:
-        search_roots.append(ctx.workspace.parent / session_id)
+        search_roots.append(_session_root(ctx, session_id))
     search_roots.append(ctx.workspace)
 
     report_path = _find_report(search_roots)
@@ -91,6 +91,26 @@ def locate_and_parse_report(
 # ---- helpers --------------------------------------------------------------
 
 _CHART_SUFFIXES = (".png", ".svg")
+
+
+def _session_root(ctx: ToolContext, session_id: str) -> Path:
+    """Resolve ``<sessions_root>/<session_id>`` and CONTAIN it inside the sessions root.
+
+    ``session_id`` is an UNVALIDATED agent-supplied string. Without containment a value like
+    ``"../../../../etc"`` (or an absolute path) escapes ``ctx.workspace.parent`` (the per-session
+    ``sessions/`` dir) and lets ``_find_report`` glob+read a ``benchmark_report_v0.2*`` file
+    ANYWHERE on disk — a path-traversal arbitrary-file read. Mirrors the BUG-028 containment for
+    probe.py spec paths: resolve, then require the result to stay within the root. Raises
+    :class:`ToolError` (the loop relays it as a clean ``{"error": ...}``) on escape — never a raw
+    exception. The legitimate case (a plain session id) is unchanged."""
+    sessions_root = ctx.workspace.parent.resolve()
+    candidate = (ctx.workspace.parent / session_id).resolve()
+    if candidate != sessions_root and not candidate.is_relative_to(sessions_root):
+        raise ToolError(
+            f"invalid session_id {session_id!r}: must name a session within the sessions "
+            "root (no path traversal, absolute paths, or '..')"
+        )
+    return candidate
 
 
 def _report_generated_at(report: dict[str, Any], report_path: Path) -> tuple[str | None, str]:
