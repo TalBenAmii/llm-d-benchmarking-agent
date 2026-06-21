@@ -1,0 +1,6 @@
+{
+  // Open new integrated terminals in the actual project folder, not the
+  // monorepo container root. ${workspaceFolder} resolves to wherever this
+  // repo is checked out, so this stays correct across clones / devices.
+  "terminal.integrated.cwd": "${workspaceFolder}/llm-d-benchmarking-agent-project"
+}
