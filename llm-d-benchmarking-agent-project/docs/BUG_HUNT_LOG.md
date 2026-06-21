@@ -1414,6 +1414,49 @@ inflating `run_after`. The retry state machine itself was re-verified sound.
 
 ---
 
+## Round 29 (2026-06-21) — subagent wave 16 (public-share path leak)
+One fix. BUG-070 closes an info-disclosure leak in the public, unauthenticated share path: a card tool's
+result was frozen verbatim into the share snapshot, baking the server's filesystem layout + username AND the
+owning session id into the publicly-readable link. Plus two clean sub-sweeps (the approval-gate lifecycle and
+a 5th adversarial meta-review of BUG-066..069) that returned NO bug.
+
+**Verified clean (no bug) — round 29:** the approval-gate lifecycle (quota→approval→run→record ordering,
+double-resolve guard, restored-future path, orphaned-in_flight/half-run on reject, gate_surfaced/working-timer,
+multiple gates per turn, resolve-vs-create race, reconnect reemit) was thoroughly traced + probed — NO bug. And
+the 5th adversarial meta-review of BUG-066..069 (compaction/shutdown/lifecycle/restart) returned NO bug, with a
+full enumeration confirming EVERY `asyncio.create_task` in `app/` is tracked (run registry / background_tasks /
+owned inline via async-with-or-async-gen `finally`) so nothing is orphaned on shutdown.
+
+**Noted, not yet filed (→ BUG-071):** `shares/` is NOT in `retention.MANAGED_AREAS`, so share snapshots + their
+`.gist` token mappings accumulate without GC despite `share.py`'s docstring — being addressed separately (BUG-071).
+
+## BUG-070 — public share snapshot freezes server-internal report paths into an unauthenticated link
+- **Status:** FIXED
+- **Severity:** medium (info-disclosure — a public, unauthenticated share link discloses the server's
+  filesystem layout + username AND the owning session id, with no UI purpose)
+- **Where:** `app/main.py::create_share` (~line 716).
+- **Trigger:** a public, UNAUTHENTICATED share (`GET /api/share/{token}` and the offline export
+  `GET /api/share/{token}/page.html`) froze each card tool's result verbatim into the snapshot, including
+  `locate_and_parse_report`'s `report_path = <sessions_root>/<session_id>/.../benchmark_report_v0.2.json`
+  (`report_locate.py:67`) and a not-found probe's `searched` dirs (`report_locate.py:59`). Those were persisted
+  in `session.card_results` (`loop.py` ~289), replayed by `_history_items` → `_card_result_items`, and
+  `create_share` never scrubbed them — so the link disclosed the server's filesystem layout + username AND the
+  owning session id baked into the path, even though `read_share` strips `source_session_id` and
+  `shared_chat._PUBLIC_FIELDS` omits it. The read-only viewer renders only summary/charts (charts are already
+  session-relative), so the path fields were a pure leak with no UI purpose.
+- **Root cause:** `create_share` snapshotted card tool results verbatim and never scrubbed the path-bearing keys,
+  while the rest of the share path was already careful to omit the owning session id (`read_share` strips
+  `source_session_id`; `_PUBLIC_FIELDS` omits it) — the report-path fields were the one place the session id +
+  server filesystem layout still leaked into the unauthenticated snapshot.
+- **Fix:** `_redact_share_items()` in `app/main.py`, called in `create_share` after building items, returns NEW
+  item dicts (the live session is never mutated) with the path-bearing keys (`report_path`, `searched`) removed
+  from any `tool_result` `result`, preserving `summary`/`charts`/`metrics`; scoped to the share path only (owner
+  resume legitimately shows the owner their own paths).
+- **Regression test:**
+  `tests/test_share.py::test_share_snapshot_redacts_internal_report_paths`.
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
