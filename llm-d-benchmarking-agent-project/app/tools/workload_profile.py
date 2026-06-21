@@ -145,7 +145,7 @@ def _length_distribution(dist: Any) -> dict[str, Any] | None:
     return out or None
 
 
-def _token_shape(harness: str, raw: dict[str, Any]) -> dict[str, Any]:
+def _token_shape(raw: dict[str, Any]) -> dict[str, Any]:
     """Normalize input/output token-length shape + any shared/system-prefix reuse across the
     differing harness layouts. Records the raw key path each fact came from under ``_from``.
     Defensive: every lookup tolerates a missing/oddly-shaped key (returns what it can)."""
@@ -274,7 +274,7 @@ def _as_rate_list(value: Any) -> list[float | int]:
     return [v] if v is not None else []
 
 
-def _load_shape(harness: str, raw: dict[str, Any]) -> dict[str, Any]:
+def _load_shape(raw: dict[str, Any]) -> dict[str, Any]:
     """Normalize the LOAD shape (request rate / concurrency / QPS, sweep stages, per-stage and
     total duration, request count) across harness layouts. Records the raw key path each fact
     came from. Pure mechanism — never assumes a key exists."""
@@ -347,7 +347,7 @@ def _load_shape(harness: str, raw: dict[str, Any]) -> dict[str, Any]:
     return shape
 
 
-def _prompt_source(harness: str, raw: dict[str, Any]) -> dict[str, Any]:
+def _prompt_source(raw: dict[str, Any]) -> dict[str, Any]:
     """Normalize the PROMPT/DATASET source: synthetic vs a staged dataset, and whether a dataset
     file/url is required (so the agent knows a run needs a staged dataset). Records raw keys."""
     out: dict[str, Any] = {}
@@ -406,9 +406,9 @@ def inspect_workload_profile(
         "workload": workload,
         "harness": harness_name,
         "path": found["path"],
-        "token_shape": _token_shape(harness_name, raw),
-        "load_shape": _load_shape(harness_name, raw),
-        "prompt_source": _prompt_source(harness_name, raw),
+        "token_shape": _token_shape(raw),
+        "load_shape": _load_shape(raw),
+        "prompt_source": _prompt_source(raw),
     }
 
 
@@ -432,7 +432,7 @@ def estimate_run_duration(
     found = _read_profile(ctx, workload=workload, harness=harness)
     raw = found["raw"]
     harness_name = found["harness"]
-    load = _load_shape(harness_name, raw)
+    load = _load_shape(raw)
 
     base = {
         "workload": workload,

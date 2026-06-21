@@ -208,7 +208,7 @@ async def run_shell(
     else:
         res = await ctx.runner.run_shell(command, on_line=on_line, timeout=timeout)
 
-    _record_metric(ctx, mode=mode, auto_run=auto_run, duration_s=res.duration_s,
+    _record_metric(mode=mode, auto_run=auto_run, duration_s=res.duration_s,
                    exit_code=res.exit_code, timed_out=res.timed_out)
     return {
         "command": command,
@@ -238,7 +238,7 @@ async def _emit_command(ctx: ToolContext, *, argv: list[str], mode: str, auto_ru
 
 
 def _record_metric(
-    ctx: ToolContext, *, mode: str, auto_run: bool,
+    *, mode: str, auto_run: bool,
     duration_s: float, exit_code: int, timed_out: bool,
 ) -> None:
     """File the executed-shell fact into the metrics registry + structured log, mirroring the
