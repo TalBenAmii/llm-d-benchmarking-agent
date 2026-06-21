@@ -93,10 +93,20 @@ def _build_results_store_argv(store: dict[str, Any]) -> list[str]:
             out += ["-w", str(store["hardware"])]
     elif command == "push":
         # `results push [remote] [path] [-g group]` — publish staged (or an ad-hoc dir) to GCS.
-        if store.get("remote"):
-            out.append(str(store["remote"]))
-        if store.get("path"):
-            out.append(str(store["path"]))
+        # `remote` (nargs='?', default 'staging') and `path` (nargs='?') are TWO ORDERED optional
+        # positionals. A path-only push (no remote — the schema/knowledge document `remote` as
+        # optional, defaulting to 'staging') must STILL emit the remote slot first, else upstream
+        # argparse binds the path to the `remote` positional (the run dir becomes the remote name)
+        # and the WRONG store op runs. So when a `path` is given without a `remote`, emit the
+        # upstream default `staging` to hold the first slot; a bare push (neither) emits nothing.
+        remote = store.get("remote")
+        path = store.get("path")
+        if remote:
+            out.append(str(remote))
+        elif path:
+            out.append("staging")  # upstream push default — keeps `path` in the second positional
+        if path:
+            out.append(str(path))
         if store.get("group"):
             out += ["-g", str(store["group"])]
     elif command == "pull":
