@@ -1576,6 +1576,71 @@ restart → no waiting+lastState-only shape can ever occur) — NOT a bug.
 - **Regression test:**
   `tests/test_qafix_tools_capacity_history_config_report.py::test_classify_fma_method_is_inconclusive_not_feasible`.
 
+## Round 32 (2026-06-21) — subagent wave 19 (report-card render / results-push positional)
+Two fixes. BUG-075 hardens the public report-card HTML renderer against corrupt/forged on-disk bundles:
+`BundleStore.read` validates only the top-level shape, never the dict-typed CHILDREN, so a corrupt child
+(`"resolved_config":"oops"`, a list-typed `repos`, a non-dict per-repo status) made the renderer's
+`.get()`/`.items()`/`.values()` raise `AttributeError` → unhandled HTTP 500 on the public
+`report-card.html` download route — the same corrupt-input robustness class as BUG-009/010/011/043.
+BUG-076 fixes a positional-skip in the `results push` argv builder: a path-only push (no remote) emitted
+`["push","<path>"]`, and argparse bound the path to the FIRST positional (`remote`), so the intended dir
+was never pushed and — if a slashless dir name matched a real remote — the staged runs went to the WRONG
+remote (a partial allowlist bypass on a mutating, approval-gated push).
+
+**Verified clean (no bug) — round 32:** the server-side resource poller + kubectl-top parsing
+(`resource_poller.py`, `observe.py::_parse_top_table`, `probe.py` CPU/mem/GPU quantity parsing) is pure
+pass-through — NO unit conversion, aggregation, peak/avg, or windowing happens server-side (that math is
+client-side in `ui/app.js`, already cleared). The table parser is column-keyed, skips misaligned rows, and
+tolerates `<unknown>`/empty output — NOT a bug.
+
+## BUG-075 — corrupt/forged bundle child crashes the public report-card renderer (HTTP 500)
+- **Status:** FIXED
+- **Severity:** medium (unhandled HTTP 500 on the public report-card download route from a corrupt/forged
+  on-disk bundle; same corrupt-input robustness class as BUG-009/010/011/043)
+- **Where:** `app/packaging/report_card.py` render helpers — `_header` (~line 110), `_honesty_banner`
+  (~line 135), `_results` (~line 156), `_provenance` (~line 218), `_reproduce` (~line 271); served by
+  `app/main.py` `GET /api/sessions/{sid}/bundle/{bundle_id}/report-card.html`, which does NOT wrap
+  `render_report_card` in try/except.
+- **Trigger:** `BundleStore.read` (`provenance.py:324`) validates only that the bundle is a top-level dict
+  carrying a `"bundle_id"` — the dict-typed CHILDREN (`report_summary`, `repos`, `resolved_config`,
+  per-repo status) are never shape-validated. The renderer called `.get()`/`.items()`/`.values()` on those
+  children with no `isinstance` guard, so a corrupt/forged on-disk bundle (e.g. `"resolved_config":"oops"`,
+  `"repos":["a"]`, a non-dict per-repo status) raised `AttributeError` → unhandled HTTP 500 on the public
+  report-card download route.
+- **Root cause:** `provenance.py:247` already guards `resolved_config` with `isinstance`, but the renderer
+  trusted every dict-typed child to actually be a dict. A child of the wrong type slipped past the
+  top-level-only validation and crashed the section that treated it as a mapping. Same robustness class as
+  BUG-009/010/011/043 (corrupt/forged on-disk input reaching an unguarded crash path).
+- **Fix:** added a `_d()` helper (non-dict → `{}`) applied at every section entry that treats a bundle
+  child as a dict; a corrupt child now renders an EMPTY section instead of crashing, honoring the
+  "missing field omitted" contract. (All HTML interpolation sites confirmed XSS-safe — every text field
+  goes through `_esc`/`html.escape`; `shared_chat._embed_json` is breakout-safe; the BUG-070 `report_path`
+  redaction is intact.)
+- **Regression test:** `tests/test_report_card.py::test_report_card_survives_non_dict_children`.
+
+## BUG-076 — `results push` path-only argv skips the positional, pushing to the wrong remote (or failing)
+- **Status:** FIXED
+- **Severity:** medium (a path-only push targets the wrong remote or fails; partial allowlist bypass on a
+  mutating, approval-gated push)
+- **Where:** `app/tools/execute.py` `_build_results_store_argv`, the `push` branch (~line 94); upstream
+  `llm-d-benchmark/.../interface/results.py:73-88`.
+- **Trigger:** upstream `results push` has TWO ORDERED optional positionals — `remote` (`nargs='?'`,
+  default `staging`) then `path` (`nargs='?'`). The builder appended `remote` and `path` with two
+  INDEPENDENT `if` blocks, so a path-only push (no remote — the schema field + `knowledge/history.md`
+  document `remote` as optional, defaulting to `staging`) emitted `["push","<path>"]`. argparse then bound
+  the path to the FIRST positional (`remote`): the ad-hoc run dir became the remote NAME, so the intended
+  dir was never pushed and either `config.get_remote(<path>)` failed OR — if a slashless dir name matched a
+  real remote — the STAGED runs were pushed to the WRONG remote.
+- **Root cause:** the two `if` blocks couldn't express "fill the first positional slot so the second binds
+  correctly" — a classic argparse positional-skip. A slashless path also passes the allowlist
+  `remote_name` regex `^[A-Za-z0-9._-]+$`, so validation doesn't always catch it (a partial defense bypass
+  on a mutating, approval-gated push).
+- **Fix:** when `path` is given without `remote`, emit the upstream default `staging` to hold the first
+  positional so `path` lands in the second slot; a bare push (neither) emits nothing; remote-only and
+  remote+path are unchanged.
+- **Regression test:**
+  `tests/test_results_store.py::test_build_argv_push_path_without_remote_does_not_skip_positional`.
+
 ---
 
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
