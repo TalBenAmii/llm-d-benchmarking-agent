@@ -29,13 +29,18 @@ HELM_CHART_NAME = "llm-d-benchmarking-agent"
 
 # --- least-privilege RBAC the orchestrator requires when the agent runs in-cluster -------
 # Each rule = (apiGroups, resources, verbs). Namespaced (a Role, not a ClusterRole): the
-# agent only ever touches benchmark Jobs and their Pods in the namespaces it deploys into.
+# agent only ever touches benchmark Jobs + their Pods and its OWN per-sweep checkpoint ConfigMap
+# in the namespaces it deploys into. NEVER Secrets/Roles/RoleBindings.
 #
-#   RealKubeClient.apply()      -> create/patch Jobs            (kubectl apply)
-#   RealKubeClient.delete_job() -> delete/get Jobs              (kubectl delete job)
-#   RealKubeClient.list_jobs()  -> get/list/watch Jobs          (kubectl get jobs -w)
-#   RealKubeClient.list_pods()  -> get/list/watch Pods          (kubectl get pods)
-#   RealKubeClient.logs()       -> get Pods/log                 (kubectl logs)
+#   RealKubeClient.apply()            -> create/patch Jobs + ConfigMaps  (kubectl apply)
+#   RealKubeClient.delete_job()       -> delete/get Jobs                 (kubectl delete job)
+#   RealKubeClient.list_jobs()        -> get/list/watch Jobs             (kubectl get jobs -w)
+#   RealKubeClient.list_pods()        -> get/list/watch Pods             (kubectl get pods)
+#   RealKubeClient.logs()             -> get Pods/log                    (kubectl logs)
+#   RealKubeClient.list_configmaps()  -> get/list/watch ConfigMaps       (kubectl get configmaps -l)
+#     + CheckpointStore.write() applies the sweep ConfigMap (create-or-update) — the Phase 22 DOE
+#       sweep checkpoint/resume path (`orchestrate_sweep(checkpoint=True)`, ON BY DEFAULT). Without
+#       the configmaps rule, every in-cluster checkpointed sweep fails with a Forbidden error.
 ORCHESTRATOR_RBAC_RULES: tuple[dict[str, tuple[str, ...]], ...] = (
     {
         "apiGroups": ("batch",),
@@ -51,6 +56,13 @@ ORCHESTRATOR_RBAC_RULES: tuple[dict[str, tuple[str, ...]], ...] = (
         "apiGroups": ("",),
         "resources": ("pods/log",),
         "verbs": ("get",),
+    },
+    {
+        # The per-sweep checkpoint ConfigMap (read via `kubectl get configmaps -l`, written via
+        # `kubectl apply` = create-or-update). No delete — checkpoints are not pruned by the agent.
+        "apiGroups": ("",),
+        "resources": ("configmaps",),
+        "verbs": ("get", "list", "watch", "create", "patch"),
     },
 )
 

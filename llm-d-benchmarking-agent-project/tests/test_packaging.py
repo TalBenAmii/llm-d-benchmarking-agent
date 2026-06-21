@@ -97,10 +97,15 @@ def test_contract_rbac_is_the_orchestrators_verbs_and_no_more():
     assert set(by_res[("jobs",)]["verbs"]) >= {"create", "get", "list", "watch", "delete"}
     assert set(by_res[("pods",)]["verbs"]) == {"get", "list", "watch"}
     assert by_res[("pods/log",)]["verbs"] == ["get"]
+    # The Phase 22 sweep checkpoint/resume path reads + applies its OWN per-sweep ConfigMap
+    # (CheckpointStore via RealKubeClient); the Role must grant exactly that, no delete (BUG-034).
+    assert set(by_res[("configmaps",)]["verbs"]) == {"get", "list", "watch", "create", "patch"}
     all_verbs = {v for r in rules for v in r["verbs"]}
     all_res = {res for r in rules for res in r["resources"]}
     assert "*" not in all_verbs and "*" not in all_res
-    assert not (all_res & {"secrets", "configmaps", "roles", "rolebindings"})
+    # ConfigMaps are the agent's own checkpoints (managed-by labelled) — still NO Secrets/Roles.
+    assert not (all_res & {"secrets", "roles", "rolebindings"})
+    assert "delete" not in by_res[("configmaps",)]["verbs"]
 
 
 # ===========================================================================
