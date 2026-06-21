@@ -327,10 +327,19 @@ class CommandRunner:
 
 class SimRunner(CommandRunner):
     """Dry-run runner: never spawns a process and never resolves paths, so a missing
-    venv/repos can't raise. Every command is a synthetic success — it just streams a
-    couple of "[simulate] …" lines and returns ``exit_code=0``. This mirrors the test
-    harness's ``CaptureRunner`` but for the live app (SIMULATE mode), carrying no
-    command-specific knowledge."""
+    venv/repos can't raise. Every command is a synthetic ``exit_code=0`` success that
+    produces NO captured output — mirroring the test harness's ``CaptureRunner`` (and a
+    real command that ran but printed nothing). It carries no command-specific knowledge.
+
+    Why empty output (not a "[simulate] would run …" banner): some read-only consumers parse
+    ``RunResult.output`` as DATA, not just for display — e.g. ``probe_environment``'s
+    ``_probe_kind`` treats each non-"No kind clusters" stdout line as a real cluster NAME. A
+    synthetic banner baked into ``output`` therefore fabricated structured results in SIMULATE
+    mode (phantom kind clusters, a bogus current-context, etc.) — a success-shaped lie no
+    prompt cue can undo once it lands in a tool result. An empty output keeps SIMULATE-mode
+    consumers behaving exactly like the hermetic ``CaptureRunner`` flow tests. The "this was
+    simulated" signal rides the ``command`` event's ``simulated`` flag and the SIMULATE_NOTE
+    prompt cue, never the captured output."""
 
     async def execute(
         self,
@@ -343,21 +352,16 @@ class SimRunner(CommandRunner):
         extra_env: dict[str, str] | None = None,
     ) -> RunResult:
         # ``extra_env`` is accepted for signature parity with CommandRunner.execute but never
-        # used here — SimRunner spawns no process, so there is no child env to overlay.
-        lines = [
-            f"[simulate] (no-op) would run: {' '.join(logical_argv)}",
-            "[simulate] exit_code=0",
-        ]
-        if on_line is not None:
-            for line in lines:
-                await on_line(line)
+        # used here — SimRunner spawns no process, so there is no child env to overlay. No
+        # ``on_line`` lines are emitted: like CaptureRunner, a no-op with no output streams
+        # nothing, so a downstream parser never receives a synthetic line to misread.
         return RunResult(
             exit_code=0,
             duration_s=0.0,
             real_argv=list(logical_argv),
             cwd=str(cwd) if cwd else None,
-            output="\n".join(lines),
-            lines=lines,
+            output="",
+            lines=[],
             timed_out=False,
             deadline_s=timeout,
         )
