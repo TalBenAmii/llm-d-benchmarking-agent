@@ -1117,6 +1117,67 @@ reset; a single probe hunter confirmed quota restored and found BUG-059.
 
 ---
 
+## Round 23 (2026-06-21) — subagent wave 10 (knowledge limit / plan harness-pairing / classify non-dict): 3 fixed (BUG-060 med, BUG-061 med-high, BUG-062 low-med)
+
+## BUG-060 — `limit=1` knowledge search reserves the only slot for a repo pointer, evicting the top-ranked guide
+- **Status:** FIXED
+- **Severity:** medium (a `limit=1` knowledge query that matches both a strong own-guide and a weaker
+  upstream repo pointer returns ONLY the repo pointer — the primary help is silently dropped)
+- **Where:** `app/tools/knowledge_access.py::search_knowledge` (~line 396, the `repo_quota` computation).
+- **Trigger:** `repo_quota = min(len(repo_hits), max(1, limit // 3)) if repo_hits else 0` reserves a slice of
+  the result page for curated upstream repo-doc pointers. At `limit=1`, `max(1, 1//3) == 1`, so
+  `k_take = limit - repo_quota = 0` — zero knowledge slots — and a query matching both a strong knowledge
+  guide and a lower-scoring repo pointer returned ONLY the repo pointer, dropping the top guide entirely.
+- **Root cause:** the final score-sort can't recover the guide — it was excluded from `chosen` before the
+  sort ran. This contradicts the function's documented invariant ("the agent's OWN guides are the primary
+  help, so they lead").
+- **Fix:** after computing `repo_quota`, `if knowledge_hits: repo_quota = min(repo_quota, limit - 1)` so the
+  reserved repo slice can never evict the top-ranked knowledge guide; `limit >= 2` is unchanged, and backfill
+  still fills unused slots.
+- **Regression test:** `tests/test_new_tools.py::test_search_knowledge_limit_one_keeps_top_hit`.
+
+## BUG-061 — plan validation checks `workload` against the FLAT UNION of harnesses, never the chosen harness
+- **Status:** FIXED
+- **Severity:** medium-high (approval-integrity — a plan with a cross-harness `(harness, workload)` pairing
+  validates clean, then the executed run differs from the APPROVED plan and fails downstream)
+- **Where:** `app/validation/session_plan.py::validate_plan` (~line 153).
+- **Trigger:** it validated `plan.workload` against `set(catalog.get("workloads", []))` — the FLAT UNION
+  across all harnesses — never against the chosen harness. The catalog also carries
+  `workloads_by_harness` (a real partition: `dataset.yaml` is aiperf-only, `sharegpt.yaml`
+  vllm-benchmark-only, `agentic_code_generation.yaml` inference-perf-only), and
+  `inspect_workload_profile` already resolves per-harness, but the gate didn't. The allowlist `ref_catalog`
+  check is also union-only, so NO layer enforced the `(harness, workload)` pairing.
+- **Root cause:** a plan with `harness="inference-perf"`, `workload="dataset.yaml"` (an aiperf-only profile in
+  the union) validated clean, then the run uses `-w dataset` against inference-perf which has no such profile —
+  the executed run differs from the APPROVED plan and fails downstream.
+- **Fix:** when `workloads_by_harness` is present AND lists the chosen harness, scope the suffix-tolerant
+  workload membership check to that harness's profiles (rejecting cross-harness mismatches); fall back to the
+  union otherwise (partial/absent catalog — preserves prior behavior).
+- **Regression test:** `tests/test_schemas.py::test_session_plan_rejects_workload_from_wrong_harness`.
+
+## BUG-062 — a non-dict top-level Job element crashes `classify_job_status`, aborting the recovery loop
+- **Status:** FIXED
+- **Severity:** low-medium (a forged or forward-incompatible `items` array element raises `AttributeError`
+  and aborts the stateless `watch()`/`reconstruct()` loop the orchestrator's recovery depends on)
+- **Where:** `app/orchestrator/job.py::classify_job_status` (~line 380).
+- **Trigger:** `app/orchestrator/kube.py::parse_items` (line 44) returns `list(data.get("items") or [])` with
+  NO per-element type filter (unlike its siblings `readiness`/`diagnostics._parse_items` and
+  `tools/probe._items_from_json`, which both `isinstance(i, dict)`-filter). Its output feeds `list_jobs`, and
+  `controller.status()`/`reconstruct()` pass each element straight to `classify_job_status`, whose first line
+  `job_obj.get("metadata", ...)` assumes a dict. A non-dict element (bare string / null / number from a forged
+  or forward-incompatible `items` array) raised `AttributeError` and aborted the recovery loop.
+- **Root cause:** `classify_job_status` had been hardened only for malformed CHILDREN (BUG-023 counts,
+  BUG-037 conditions); the sibling `classify_failure` already filters non-dict pods at the top (BUG-029) —
+  this was the missing twin.
+- **Fix:** a top-level `if not isinstance(job_obj, dict): return JobStatus(name="", phase=ABSENT)` guard so a
+  malformed top-level Job degrades to ABSENT instead of crashing. (Deeper root cause = `kube.parse_items` not
+  filtering; the fix is at the only unguarded consumer — `list_pods->classify_failure` and
+  `list_configmaps->checkpoint` already filter — to keep blast radius minimal and match the BUG-029 pattern; a
+  future defense-in-depth pass could filter in `parse_items` itself.)
+- **Regression test:** `tests/test_orchestrator_controller.py::test_classify_survives_non_dict_job_obj`.
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
