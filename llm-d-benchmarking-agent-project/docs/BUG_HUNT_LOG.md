@@ -1311,6 +1311,47 @@ logic/security/concurrency/infra/correctness is effectively exhaustive; remainin
 
 ---
 
+## Round 27 (2026-06-21) — subagent wave 14 (shutdown-sweep race)
+One fix (BUG-067 closes a graceful-shutdown race: the SIGTERM turn-cancellation sweep took a single snapshot,
+so a sibling turn finishing normally during the awaited cancellation could register a fresh follow-up turn that
+the one-pass sweep never sees → it survives SIGTERM and orphans its Job/subprocess). Plus a cross-cutting
+time/clock/TTL/age/deadline sweep that returned NO BUG.
+
+**Verified clean (no bug) — round 27:** a cross-cutting time/clock/TTL/age/deadline sweep (prewarm TTL, watch
+`max_wait`, quota UTC-day window, rate-limiter refill, retention age, runner timeout, pod age, channel timer,
+persisted timestamps) found every site uses the correct clock (monotonic vs wall), units, comparison direction,
+and rollover/skew handling — NO bug.
+
+## BUG-067 — graceful-shutdown turn-cancellation sweep snapshots once, missing a turn registered mid-sweep
+- **Status:** FIXED
+- **Severity:** medium-high (a turn can survive SIGTERM and orphan its K8s Job / leak its subprocess — the exact
+  failure `graceful_shutdown` exists to prevent)
+- **Where:** `app/agent/lifecycle.py::RunRegistry.shutdown` (~lines 151-170).
+- **Trigger:** the graceful-shutdown handler (Phase 16) cancels every in-flight turn so a SIGTERM doesn't orphan
+  K8s Jobs / leak subprocesses. It took a SINGLE snapshot `handles = self.active_handles()`, then cancelled each
+  with `await self._cancel_handle(...)`. That await yields the event loop, and `run_turn`'s `finally`
+  steer-backstop (`app/main.py` ~967-973) calls `app.state.runs.register(session.id, backstop)` whenever a turn
+  ends NORMALLY with a queued steer — so a sibling turn finishing normally DURING the awaited cancellation of
+  another turn registers a fresh follow-up turn that is NOT in the one-time snapshot. The single-pass sweep never
+  cancels it → it survives SIGTERM and orphans its Job/subprocess. Reproduced deterministically (no sleeps): turns
+  A,B in-flight at SIGTERM; shutdown snapshots [A,B], cancels A; during A's unwind await, B finishes normally and
+  its finally spawns follow-up C via `register()`; C is registered after the snapshot, so the sweep (reaching B,
+  now a no-op) never sees C → C survives.
+- **Root cause:** a one-time snapshot of the active set cannot see a handle registered after the snapshot is taken
+  but before the sweep finishes — and the steer-backstop deliberately registers such a handle as a normally-ending
+  sibling turn unwinds during the awaited cancellation of another.
+- **Fix:** re-sweep until a pass finds nothing active (an `id()`-keyed `seen` set avoids re-counting; the active set
+  strictly shrinks each pass — a cancelled handle's task is done and won't reappear, and a backstop only spawns from
+  a turn ending normally which can't happen once every live turn is cancelled, so it terminates); the end-of-sweep
+  cleanup now forgets EVERY done handle (not just the cancelled names) so a same-session handle replaced mid-sweep
+  leaves nothing stale. Found by a dedicated app-level concurrency/shared-state hunt (which confirmed
+  `SessionManager._sessions`, the running check-then-register, the `run_semaphore` async-with, and
+  channels/background_tasks all sound).
+- **Regression test:**
+  `tests/test_run_lifecycle.py::test_shutdown_cancels_run_registered_during_the_sweep`.
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
