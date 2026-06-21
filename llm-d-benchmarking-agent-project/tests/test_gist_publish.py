@@ -75,6 +75,31 @@ def test_publish_reuses_an_existing_gist_without_re_uploading(tmp_path, monkeypa
     assert not any(a[:2] == ["gist", "create"] for a in calls)   # no second upload
 
 
+def test_publish_records_the_mapping_even_when_url_derivation_fails(tmp_path, monkeypatch):
+    """A `gh api` hiccup AFTER the gist was created must NOT orphan a live gist: the token→gist-id
+    mapping has to be recorded the moment the gist exists, so the gist stays revocable (and a retry
+    reuses it) instead of leaking an unrevocable, unrecorded gist on every transient failure."""
+    token = _seed(tmp_path)
+
+    def flaky_gh(args):
+        if args[:2] == ["gist", "create"]:
+            return "https://gist.github.com/octocat/deadbeefcafef00d"  # the gist is now LIVE
+        if args[0] == "api":                                          # raw-url lookup hiccups
+            raise gist_publish.GistPublishError("gh api failed", reason="gh-failed")
+        raise AssertionError(f"unexpected gh args: {args}")
+
+    monkeypatch.setattr(gist_publish, "_gh", flaky_gh)
+
+    with pytest.raises(gist_publish.GistPublishError):
+        gist_publish.publish(token, workspace=tmp_path, ui_dir=_UI_DIR)
+
+    # The gist is live, so its id MUST be recorded — otherwise neither revoke() nor the script can
+    # ever delete it, and a retry would create a second orphaned gist.
+    mapping = gist_publish.mapping_path(tmp_path, token)
+    assert mapping.exists(), "a created gist was left unrecorded → unrevocable orphan"
+    assert mapping.read_text().strip() == "deadbeefcafef00d"
+
+
 def test_publish_raises_not_shared_for_an_unknown_token(tmp_path):
     with pytest.raises(gist_publish.GistPublishError) as exc:
         gist_publish.publish("a" * 32, workspace=tmp_path, ui_dir=_UI_DIR)
