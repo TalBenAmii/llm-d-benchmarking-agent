@@ -19,9 +19,11 @@ Why a snapshot rather than a live reference to the session:
 
 This module is pure **mechanism**, mirroring :class:`~app.storage.history.HistoryStore` and
 :class:`~app.storage.provenance.BundleStore`: token minting, a filesystem-safe id guard, and
-write / read / delete over per-token JSON files. No judgment, no LLM, no new managed area
-(``shares/`` lives under the same workspace the session + history stores use and is GC-eligible
-exactly like them).
+write / read / delete over per-token JSON files. No judgment, no LLM. ``shares/`` lives under the
+same workspace the session + history stores use and is GC-eligible exactly like them: it is a
+managed retention area (see ``app.storage.retention.MANAGED_AREAS``), and the GC prunes a share's
+snapshot together with its optional ``<token>.gist`` mapping so a pruned snapshot never leaves a
+dangling mapping behind.
 """
 from __future__ import annotations
 
