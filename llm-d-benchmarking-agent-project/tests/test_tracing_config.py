@@ -27,6 +27,7 @@ from app.tools.config_artifact import (
     _SOFT_OPTIONAL_KNOBS,
     _build_scenario_document,
     _scenario_reference,
+    unrecognized_flags,
     validate_scenario_structure,
     write_and_validate_config,
 )
@@ -113,6 +114,41 @@ def test_validator_accepts_tracing_via_soft_optional_even_without_example():
     base_keys = {"name", "vllmCommon", "schedulerName"}
     reference = {"knob_keys": sorted(base_keys | _SOFT_OPTIONAL_KNOBS)}
     assert validate_scenario_structure(doc, reference) == []
+
+
+def test_tracing_subkeys_are_not_falsely_flagged_as_unrecognized():
+    """REGRESSION: the ``unrecognized_flags`` ADVISORY must NOT flag the documented, upstream-real
+    ``tracing.*`` sub-knobs as fabricated/unrecognized.
+
+    The soft-optional union only added the TOP-LEVEL name ``tracing`` to ``known_leaf_keys`` — but
+    the advisory keys on each dotted key's LEAF segment, and the tracing SUB-leaves
+    (``otlpEndpoint``, ``samplerArg``, ``vllmDecode`` …) appear in NO scenario example or stock
+    defaults BY DESIGN (the jinja renders them behind ``is defined`` guards — exactly why the
+    soft-optional knob exists). So every valid tracing.* knob was being reported as
+    ``unrecognized_flags`` → the tool then attached the ``unrecognized_flags_note`` telling the
+    agent to warn the user the config is likely a typo / nonexistent flag. These ARE the real
+    upstream fields (config/templates/jinja/13_ms-values.yaml.j2)."""
+    # A reference exactly as _scenario_reference unions it for a repo where NO example/default sets
+    # any tracing sub-leaf: only the top-level ``tracing`` name is in known_leaf_keys.
+    reference = {"known_leaf_keys": sorted({"vllmCommon", "flags", "enabled"} | _SOFT_OPTIONAL_KNOBS)}
+    flagged = unrecognized_flags(_TRACING_OVERRIDES, reference)
+    assert flagged == [], (
+        "documented upstream tracing.* knobs were falsely flagged as unrecognized: " f"{flagged}"
+    )
+
+
+def test_unrecognized_flags_still_flags_a_genuinely_fabricated_flag():
+    """The fix must NOT blanket-mute the advisory: a fabricated flag with NO soft-optional root
+    (the sim-1 ``enablePrefixCachingV2`` case) is still surfaced so the agent can warn the user."""
+    reference = {"known_leaf_keys": sorted({"vllmCommon", "flags", "enforceEager"} | _SOFT_OPTIONAL_KNOBS)}
+    flagged = unrecognized_flags(
+        {
+            "vllmCommon.flags.enforceEager": True,  # corroborated → not flagged
+            "vllmCommon.flags.enablePrefixCachingV2": True,  # fabricated → flagged
+        },
+        reference,
+    )
+    assert flagged == ["vllmCommon.flags.enablePrefixCachingV2"]
 
 
 def test_validator_still_rejects_a_typoed_tracing_key():
