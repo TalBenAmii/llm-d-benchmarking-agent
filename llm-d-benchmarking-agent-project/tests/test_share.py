@@ -12,6 +12,8 @@ Two layers, both hermetic (no cluster, no network):
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -194,6 +196,62 @@ def test_pending_approval_is_filtered_from_snapshot(client_with_share):
     roles = [it["role"] for it in client.get(f"/api/share/{token}").json()["items"]]
     assert "approval_request" not in roles      # filtered out
     assert "approval_decision" in roles         # decided gates are kept (informative + safe)
+
+
+def _seed_chat_with_report_card(client, *, session_id_marker):
+    """A chat that ran a benchmark: a card-rendering tool result persisted in ``card_results``
+    whose ``report_path`` is the absolute host path UNDER the per-session dir (so it embeds the
+    session id) and a not-found probe's ``searched`` roots — exactly what locate_and_parse_report
+    persists. ``session_id_marker`` is a distinctive token planted in those paths."""
+    s = client.app.state.sessions.create()
+    s.messages = [
+        {"role": "user", "content": "show me the benchmark results"},
+        {"role": "assistant", "content": "Here they are.",
+         "tool_calls": [{"id": "tc1", "name": "locate_and_parse_report", "input": {}}]},
+    ]
+    report_path = f"/home/operator/ws/sessions/{session_id_marker}/runs/benchmark_report_v0.2.json"
+    s.card_results = [{
+        "tool_call_id": "tc1", "name": "locate_and_parse_report",
+        "result": {
+            "found": True,
+            "report_path": report_path,                                  # absolute internal path
+            "searched": [f"/home/operator/ws/sessions/{session_id_marker}"],
+            "summary": {"model": "tiny", "requests_total": 120},         # render-relevant — keep
+            "charts": [{"path": "runs/latency.png", "title": "latency"}],
+        },
+    }]
+    s.title = "benchmark results"
+    s.persist()
+    return s
+
+
+def test_share_snapshot_redacts_internal_report_paths(client_with_share):
+    """BUG: a card-rendering tool result (locate_and_parse_report) is persisted with its absolute
+    ``report_path`` (under <sessions_root>/<session_id>/…) and search roots, and _history_items
+    replays the FULL result into the snapshot. A public, UNAUTHENTICATED share therefore disclosed
+    the host filesystem layout AND the owning session id — the very id the snapshot deliberately
+    withholds. The share path must scrub those path-bearing keys while keeping the render-relevant
+    summary/charts."""
+    client, _ = client_with_share
+    marker = "0123456789abcdef0123456789abcdef"        # stands in for the owning session id
+    s = _seed_chat_with_report_card(client, session_id_marker=marker)
+
+    token = client.post(f"/api/sessions/{s.id}/share").json()["token"]
+
+    # The PUBLIC JSON transcript must not carry the internal paths or the embedded session id.
+    body = client.get(f"/api/share/{token}").json()
+    raw = json.dumps(body)
+    assert "report_path" not in raw, "report_path (absolute host path) leaked into the public share"
+    assert marker not in raw, "owning session id leaked via an internal path in the share snapshot"
+    assert s.id not in raw, "the real session id must never appear in the public snapshot"
+    # The render-relevant card data survives the scrub (the report still renders).
+    tr = next(it for it in body["items"] if it.get("role") == "tool_result")
+    assert tr["result"]["summary"]["requests_total"] == 120
+    assert tr["result"]["charts"]                      # session-relative charts kept
+
+    # The offline single-file export inlines the SAME snapshot — it must be scrubbed too.
+    page = client.get(f"/api/share/{token}/page.html").text
+    assert "report_path" not in page and marker not in page
 
 
 def test_create_404_for_unknown_session(client_with_share):
