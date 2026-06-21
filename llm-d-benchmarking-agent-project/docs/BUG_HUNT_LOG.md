@@ -1210,6 +1210,70 @@ BUG-063.
 
 ---
 
+## Round 25 (2026-06-21) — subagent wave 12 (parse_items source-filter / cross-harness unknown) + 1 abandoned false-positive
+Two fixes (BUG-064 closes the non-dict-`items`-element robustness class at its source; BUG-065 stops the
+`unknown` pseudo-harness from polluting cross-harness metric attribution) plus one investigated-and-dropped
+false positive recorded so it is not re-chased.
+
+## BUG-064 — `parse_items` lacks a per-element type filter, leaving an unguarded non-dict-element residual consumer
+- **Status:** FIXED
+- **Severity:** low-medium (only reachable through the chaos drill against a real cluster returning corrupt
+  JSON — double-gated behind `chaos_enabled=true` + the `run_resilience_drill` tool — but a genuine
+  `AttributeError` crash there)
+- **Where:** `app/orchestrator/kube.py::parse_items` (~line 44).
+- **Trigger:** `parse_items` returned `list(data.get("items") or [])` with **no per-element type filter**,
+  unlike its siblings (`readiness/diagnostics._parse_items`, `tools/probe._items_from_json`, which
+  `isinstance`-filter). The crashing production consumers were already guarded one-by-one
+  (`classify_failure` BUG-029, `classify_job_status` BUG-062, `parse_checkpoint` BUG-063), but the chaos
+  decorator's `ChaosKubeClient._run_id_of` remained an **unguarded residual consumer**: a non-dict `items`
+  element → `"forged".get("metadata")` → `AttributeError`.
+- **Root cause:** the defensive guards had been applied per-consumer rather than at the shared source, so any
+  not-yet-hardened consumer of `parse_items` (here `_run_id_of`) inherited the same non-dict-element crash
+  class.
+- **Fix:** Path A (source filter — the minimal complete closure of the non-dict-element class):
+  `return [it for it in (data.get("items") or []) if isinstance(it, dict)]`. `kubectl` `items` are always
+  JSON objects so no legitimate item is dropped, and the per-consumer guards (BUG-029/062/063) become
+  belt-and-suspenders.
+- **Regression test:** `tests/test_orchestrator.py::test_parse_items_drops_non_dict_elements` (+
+  `::test_list_jobs_filters_forged_non_dict_items`).
+
+## BUG-065 — the `unknown` pseudo-harness pollutes cross-harness metric attribution (false "cross-validated")
+- **Status:** FIXED
+- **Severity:** medium (reports a WRONG cross-harness fact — tells the agent a metric was cross-validated by
+  ≥2 harnesses when only one REAL harness measured it)
+- **Where:** `app/validation/report.py::compare_across_harnesses` (~line 694, the `measured_by` population
+  loop), reached by the tool `app/tools/multiharness.py::compare_harness_runs`.
+- **Trigger:** `compare_across_harnesses` groups runs by harness, using `"unknown"` for reports whose
+  `scenario.load.standardized.tool` couldn't be read (kept VISIBLE by design, never dropped). But the
+  metric-attribution map `measured_by` was built over EVERY group including `"unknown"`. So a metric M
+  measured by one REAL harness (e.g. `inference-perf`) AND one unknown-harness report had
+  `len(measured_by[M]) == 2` → classified as `shared` (cross-validated by ≥2 harnesses) and excluded from
+  `unique_metrics` (which needs `len == 1`); the unknown report also showed up as a `per_harness` entry under
+  that metric's `cross_metrics` row. Realistic trigger: a session that ran 2+ harnesses where one
+  BR-v0.2-valid report has `scenario.load: null`/no tool (the schema permits a null load), so its harness
+  reads as `unknown`.
+- **Root cause:** `"unknown"` is a visibility placeholder for un-attributable reports, not a real harness, but
+  the attribution loop treated it as one — inflating the measured-by count and mislabeling single-harness
+  metrics as cross-validated.
+- **Fix:** skip the `"unknown"` group when populating `measured_by`, so `shared`/`unique`/`cross_metrics` are
+  over real harnesses only; `"unknown"` stays fully visible in `harness_view`/`harness_names`/`runs`. Distinct
+  from BUG-031 (skip-routing) and BUG-050 (unit normalization).
+- **Regression test:** `tests/test_multiharness.py::test_cross_harness_unknown_does_not_pollute_shared_metrics`.
+
+### Abandoned false-positive — `report_locate.py` `results_dir` containment (investigated, DROPPED, NOT shipped)
+A hunter proposed containing `report_locate.py`'s agent-supplied `results_dir` to `ctx.workspace` (a sibling of
+BUG-055's `session_id` `_session_root` containment). It was investigated and **dropped, not shipped**: unlike
+`session_id` (an identifier always within the sessions root), `results_dir` is a **free-form path argument by
+design** — the existing test `tests/test_simulate.py::test_locate_report_synthesizes_in_simulate` sets
+`ctx.workspace=<tmp>/ws/sessions/sim` and passes `results_dir=<tmp>/results` (deliberately OUTSIDE the
+workspace) and asserts `locate_and_parse_report` handles it gracefully (synthesize in SIMULATE / `found=False`
+in real), NOT raise. The containment made the full-suite hook go RED (the merge was correctly aborted, not
+bypassed). The read primitive is narrow anyway (only files literally named `benchmark_report_v0.2*.{yaml,json,yml}`).
+Net: treating `results_dir` as arbitrary is intended behavior; locking it down is a maintainer decision, not a
+bug. (The `session_id` containment, BUG-055, remains correct — it passed the full suite.)
+
+---
+
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
 The closest substitute for the (unavailable) Chrome UI drive: a throwaway instance with the REAL
 `claude-agent-sdk` provider (Max plan) but `SIMULATE=1` + a temp workspace + `UNRESTRICTED_TOOLS=0`
