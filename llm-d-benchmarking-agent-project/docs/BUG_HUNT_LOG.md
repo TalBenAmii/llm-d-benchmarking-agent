@@ -1641,6 +1641,46 @@ tolerates `<unknown>`/empty output — NOT a bug.
 - **Regression test:**
   `tests/test_results_store.py::test_build_argv_push_path_without_remote_does_not_skip_positional`.
 
+## Round 33 (2026-06-21) — subagent wave 20 (cot-trace nested-body cap)
+One fix. BUG-077 closes a hole in the cot-trace per-record body cap: the module's stated contract bounds
+each trace record so a runaway turn can't grow `cot_trace.jsonl` without limit (`_BODY_LIMIT=200_000`),
+but `_clip` truncated only when `isinstance(value, str)`. The "step" event (`app/agent/loop.py:239`)
+traces `tool_calls=[{"name","input"}]` — a LIST of DICTS — so `_clip` passed it through untouched, and a
+model tool call whose `input` nests a large body was written in FULL, bypassing the cap. Fix recurses
+through containers with a depth/cycle bound.
+
+**Verified clean (no bug) — round 33:** (1) the WS event taxonomy / `NON_TURN_EVENTS` classification is
+internally consistent — every `events.*` constant is correctly bucketed for buffer/seq/replay (no catch-up
+event wrongly excluded, no disposable event polluting the ring); (2) catalog building/enumeration beyond
+BUG-041 — the specs `*.yaml.j2`-only glob is correct because upstream resolves specs by name ONLY via
+`.yaml.j2` (no plain-`.yaml`-by-name variant, unlike workloads), and `harnesses` ↔ `workloads_by_harness`
+are fully consistent so BUG-061's gate can't wrongly reject (scenarios not ref-checked). NO bug.
+
+## BUG-077 — cot-trace per-record body cap bypassed by a large body nested in `tool_calls`
+- **Status:** FIXED
+- **Severity:** low-medium (unbounded per-record trace growth — memory/disk — when a model tool call nests
+  a large body; the `_BODY_LIMIT` contract is silently bypassed for the "step" event)
+- **Where:** `app/observability/cot_trace.py` `_clip` (~line 38), reached from `app/agent/loop.py:239` (the
+  "step" event traces `tool_calls=[{"name","input"}]`, where `input` is the model's tool-call dict).
+- **Trigger:** the module's stated contract bounds the per-record body so a runaway turn can't grow the
+  trace without limit (`_BODY_LIMIT=200_000`), but `_clip` truncated only when `isinstance(value, str)`.
+  For the step event `tool_calls` is a LIST of DICTS, so `_clip` passed it straight through — a model tool
+  call whose `input` nests a large body (e.g. `write_config`'s `content: dict[str, Any]`, `schemas.py:163`,
+  an arbitrary nested config the model emits) was written to `cot_trace.jsonl` in FULL, bypassing the cap →
+  unbounded per-record trace growth (memory/disk). Reproduced: a flat 700KB string body clips to ~200KB,
+  but the same blob NESTED in `tool_calls[0].input.content` wrote ~700KB un-clipped.
+- **Root cause:** `_clip` applied the per-string `_BODY_LIMIT` only to top-level string values; list/dict
+  bodies (the step event's `tool_calls`) were passed through whole, so any large string nested inside a
+  container escaped the cap entirely.
+- **Fix:** `_clip` delegates to a depth-bounded (depth=8, cycle-safe), container-recursive `_clip_at` that
+  applies the per-string limit throughout list/dict bodies; strings > limit get the truncation marker,
+  non-string scalars pass through, and the depth bound guarantees tracing can't blow the stack on a
+  degenerate/cyclic structure (preserving the never-break-a-live-turn promise). (Other cot_trace vectors
+  confirmed sound: `thinking` never enters `session.messages` — no share/transcript leak, no pairing break;
+  the artifact HTTP route is image-suffix-only so it can't serve `.jsonl`; `corr_id` uses asyncio-isolated
+  contextvars.)
+- **Regression test:** `tests/test_cot_trace.py::test_trace_bounds_a_nested_body`.
+
 ---
 
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
