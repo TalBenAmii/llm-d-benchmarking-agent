@@ -453,6 +453,37 @@ def find_reports(roots: list[str | Path], *, newest_only: bool = False) -> list[
     return [uniq[-1]] if newest_only else uniq
 
 
+def resolve_report_inputs(
+    sources: list[str] | None,
+    experiment_dir: str | None,
+    labels: list[str] | None,
+) -> list[tuple[str, Path | None]]:
+    """Resolve user-supplied report inputs to a list of ``(label, report_path|None)``.
+
+    Accepts the shapes the analyze/compare tools share: a DoE ``experiment_dir`` (one report
+    per run treatment) takes precedence; otherwise each entry in ``sources`` is a report file
+    or a directory searched for the newest report, paired with an explicit ``labels[i]`` (or a
+    derived fallback). Pure report-discovery mechanism — no judgment.
+    """
+    if experiment_dir:
+        paths = find_reports([experiment_dir])
+        return [(p.parent.name, p) for p in paths]
+    resolved: list[tuple[str, Path | None]] = []
+    for i, src in enumerate(sources or []):
+        p = Path(src)
+        report: Path | None
+        if p.is_file():
+            report = p
+        else:
+            found = find_reports([p], newest_only=True)
+            report = found[0] if found else None
+        label = (labels[i] if labels and i < len(labels) else None) or (
+            report.parent.name if report else src
+        )
+        resolved.append((label, report))
+    return resolved
+
+
 # Comparable metrics: (dotted path into a summary, human name, direction, canonical unit).
 # "lower"/"higher" = which way is better; used to pick the winning run per metric. The
 # canonical unit is what every run's value is normalized to BEFORE the delta/winner math,

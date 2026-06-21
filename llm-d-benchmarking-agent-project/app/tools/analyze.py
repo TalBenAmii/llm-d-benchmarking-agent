@@ -12,7 +12,6 @@ knowledge/analysis.md — this handler is resolution + the pure math in
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from app.tools.context import ToolContext
@@ -25,8 +24,8 @@ from app.validation.analysis import (
 )
 from app.validation.report import (
     ReportError,
-    find_reports,
     load_report,
+    resolve_report_inputs,
     summarize_report,
     validate_report,
 )
@@ -60,32 +59,6 @@ def _history_context(ctx: ToolContext, valid_entries: list[dict[str, Any]]) -> H
     )
 
 
-def _resolve(
-    sources: list[str] | None,
-    experiment_dir: str | None,
-    labels: list[str] | None,
-) -> list[tuple[str, Path | None]]:
-    """Resolve inputs to a list of (label, report_path|None). Mirrors compare_reports so
-    the analyzer accepts the same shapes (a sweep dir, or explicit run dirs/files)."""
-    if experiment_dir:
-        paths = find_reports([experiment_dir])
-        return [(p.parent.name, p) for p in paths]
-    resolved: list[tuple[str, Path | None]] = []
-    for i, src in enumerate(sources or []):
-        p = Path(src)
-        report: Path | None
-        if p.is_file():
-            report = p
-        else:
-            found = find_reports([p], newest_only=True)
-            report = found[0] if found else None
-        label = (labels[i] if labels and i < len(labels) else None) or (
-            report.parent.name if report else src
-        )
-        resolved.append((label, report))
-    return resolved
-
-
 async def analyze_results(
     ctx: ToolContext,
     *,
@@ -104,7 +77,7 @@ async def analyze_results(
         except Exception as exc:  # pydantic validation error (e.g. no targets set)
             return {"analyzed": False, "reason": f"invalid SLO targets: {exc}"}
 
-    entries = _resolve(sources, experiment_dir, labels)
+    entries = resolve_report_inputs(sources, experiment_dir, labels)
     schema_path = ctx.settings.benchmark_report_schema_path
 
     valid_entries: list[dict[str, Any]] = []   # {label, summary}

@@ -29,6 +29,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from app.dig import num_or_zero as _as_num
+
 # Filesystem-safe id length (we build paths from it). Mirrors history.compute_record_id.
 _ID_LEN = 16
 
@@ -282,15 +284,6 @@ def _safe_id(bid: str | None) -> bool:
     """Filesystem-safe bundle id (we build paths from it). Same guard shape as
     history._safe_id — alphanumeric, bounded length — so traversal (``../``, ``a/b``) is rejected."""
     return isinstance(bid, str) and bid.isalnum() and 0 < len(bid) <= 64
-
-
-def _as_num(v: Any) -> float:
-    """Crash-proof sort key: the value if a real number, else 0.0. A bundle is read straight from
-    on-disk JSON with no per-field type-check, so a forged/corrupt ``created_at`` (a truthy string)
-    would make ``list()``'s ``sorted(...)`` raise ``TypeError`` and break the WHOLE bundle list.
-    The old ``b.get('created_at') or 0.0`` only handled falsy values, not a truthy non-number.
-    ``bool`` is excluded — an ``int`` subclass, never a valid timestamp."""
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
 
 
 class BundleStore:

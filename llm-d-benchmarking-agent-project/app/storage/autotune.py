@@ -34,6 +34,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.dig import num_or_zero as _as_num
 from app.validation.analysis import SLOTargets, pareto_analysis
 
 # Reuse the DoE dotted-key regex VERBATIM so a knob `key` follows the same vocabulary the
@@ -83,15 +84,6 @@ def safe_search_id(search_id: str | None) -> bool:
 def valid_knob_key(key: str) -> bool:
     """A knob's dotted override key reuses the DoE key vocabulary."""
     return isinstance(key, str) and bool(_KEY_RE.fullmatch(key))
-
-
-def _as_num(v: Any) -> float:
-    """Crash-proof sort key: the value if a real number, else 0.0. ``Trial`` is built from on-disk
-    JSON with no type-check (the dataclass annotation isn't enforced), so a corrupt log with a
-    non-numeric ``index`` (null/string) would make ``load()``'s ``trials.sort(...)`` raise
-    ``TypeError`` — violating the documented "a corrupt log degrades to empty, never crashes"
-    contract. ``bool`` is excluded (an ``int`` subclass, never a valid index)."""
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
 
 
 class AutotuneStore:
