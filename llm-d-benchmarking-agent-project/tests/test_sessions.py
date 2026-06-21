@@ -229,6 +229,45 @@ def test_clear_in_flight_approval_removes_only_target(manager):
     assert [a["request_id"] for a in s.in_flight_approvals] == ["r2"]
 
 
+def test_in_flight_approval_mutators_survive_corrupt_non_dict_element(manager):
+    """Sibling of BUG-044, on the same WS-reconnect/restore path. ``in_flight_approvals`` is loaded
+    straight off disk with NO per-element type check, so a corrupt / hand-edited / forward-
+    incompatible state.json may carry a NON-DICT element (a torn string, a scalar). BUG-044 guarded
+    ``Channel.restore_pending`` so the reconnect HANDSHAKE survives, but the corrupt element stays in
+    the session list — and the very next action on the restored gate routes back through these two
+    mutators:
+
+      * ``clear_in_flight_approval`` (the user clicks Approve/Reject, or types a message that
+        declines a still-open gate -> ``Channel.resolve`` -> here), and
+      * ``record_in_flight_approval`` (a resumed turn surfaces a NEW gate -> ``request_approval``).
+
+    Both did ``a.get('request_id')`` over the raw list, raising ``AttributeError: 'str' object has
+    no attribute 'get'``. That raise is UNWRAPPED at the ``channel.resolve`` call sites in the WS
+    receive loop, so it tears the whole handler down — re-bricking the exact chat BUG-044 set out to
+    keep usable, just one click later. After the fix a non-dict element is skipped (and self-healed
+    out of the list on clear); a genuine gate among the garbage is still tracked / cleared."""
+    s = _seed(manager, "corrupt gates")
+    # A corrupt list as it would be loaded off disk: garbage interleaved with one REAL gate.
+    s.in_flight_approvals = [
+        "TORN-NON-DICT",
+        None,
+        7,
+        {"tool_call_id": "c1", "request_id": "r1", "kind": "session_plan", "payload": {}},
+    ]
+    # record: idempotency scan must not raise on the str/None/int; a NEW gate is appended.
+    s.record_in_flight_approval({"tool_call_id": "c2", "request_id": "r2", "kind": "command", "payload": {}})
+    rids = [a["request_id"] for a in s.in_flight_approvals if isinstance(a, dict)]
+    assert rids == ["r1", "r2"]
+    # record is still idempotent for the real gate despite the surrounding garbage.
+    s.record_in_flight_approval({"tool_call_id": "c1", "request_id": "r1", "kind": "session_plan", "payload": {}})
+    assert [a["request_id"] for a in s.in_flight_approvals if isinstance(a, dict)] == ["r1", "r2"]
+    # clear: must not raise on the corrupt elements; drops the target AND self-heals the garbage out.
+    s.clear_in_flight_approval("r1")
+    assert s.in_flight_approvals == [
+        {"tool_call_id": "c2", "request_id": "r2", "kind": "command", "payload": {}},
+    ]
+
+
 def test_in_flight_approvals_default_empty_on_legacy_state(manager):
     # A state.json persisted before the field existed must load with an empty in-flight list.
     s = _seed(manager, "legacy")
