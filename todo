@@ -1,6 +1,29 @@
-- make chat look like the design mock (floaty bubble style), so remove chat box background so it is the same background as the conversation and chatbox make it a little bit wider (like design mock size). make the background color similar to design mock. 
 
+- do we have lsp integration in python
 
-- add feature that makes the benchmark agents suggest next steps and provide the design of the feature to be similar to the mock design. (see 3 floating suggestion buttons in the mock design). all clickable suggestion that chat does like in welcome message, "🔖 Save provenance bundle", etc should be formated the same as the suggestion buttons.
+- go over all code base and find out ALL features/code (including even dead code) that we started implemnting but we didn't finished it so it doesn't manifested in our project (meaning the user can't use the feature.). make a report of these features. 
 
-![alt text](image.png) this still hasent resovled: ![alt text](image-1.png)
+- check if we can go between chats and runs will still be ran in parallel without any issue
+
+- do doc .md updates when session ends.
+
+- verify suggestions behvaior
+- verify ruff git pre-hook works
+- verify agent doesnt mentioned suggestions
+- check flickering fixed
+- debloat memory
+- verify ruff and green tests after commit
+-verfiy recent G7,etc
+- add G4 capability
+- do first end to end mock run
+- look if shell execution is working
+
+--allow to remove runs from trends
+-fix Provenance bundle capture
+-check the gone run when we go to another chat and back
+- complete open items list
+- add response available feature that light up the session in sidebar
+- make another view of sidebar sessions. make the new view as default. the new view should be sorted by last updated or last created (user can choose, it should work simialr to how vscode's copilot chat works).
+user could switch to the other view (which is the divide by namespace view.). it should also support the same sorting feature.
+- find bugs via interactive claude that sees ui
+- find if there is an indication of command approval request that was timeout

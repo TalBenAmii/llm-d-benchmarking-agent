@@ -13,6 +13,7 @@
   },
   "enabledPlugins": {},
   "worktree": {
-    "baseRef": "head"
+    "baseRef": "head",
+    "bgIsolation": "none"
   }
 }
