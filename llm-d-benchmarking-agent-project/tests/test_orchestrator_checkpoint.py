@@ -262,3 +262,42 @@ async def test_run_sweep_requires_namespace_with_sweep_id(tmp_path):
     orch = BenchmarkOrchestrator(kube, workspace=tmp_path)
     with pytest.raises(ValueError, match="namespace is required"):
         await orch.run_sweep([_spec("t1")], sweep_id=SWEEP, poll_interval=0)
+
+
+async def test_checkpoint_write_failure_for_one_treatment_does_not_sink_the_sweep(tmp_path):
+    """A checkpoint ConfigMap write (mutating `kubectl apply`, approval+quota gated) can raise
+    for one treatment — quota exhausted mid-sweep, approval declined, a transient apply error.
+    The sweep's per-treatment isolation must hold for that path too: the OTHER treatments must
+    still complete and the sweep must not abort.
+
+    Reproduces a checkpoint-only isolation gap distinct from
+    `test_sweep_isolates_a_raising_treatment` (which has no sweep_id, so the checkpoint-write
+    path never runs): there the raise is the JOB apply, INSIDE `_one`'s try/except; here it is
+    the CONFIGMAP apply in `_persist_in_flight`/`_persist_completed`, OUTSIDE it."""
+    from pathlib import Path
+
+    import yaml as _yaml
+
+    class _CheckpointApplyFails(FakeKubeClient):
+        async def apply(self, manifest_path, *, namespace):
+            m = _yaml.safe_load(Path(manifest_path).read_text())
+            # Fail only the checkpoint ConfigMap apply (the Job applies must succeed so the
+            # surviving treatments actually run). Mirrors a quota/approval/transient apply error
+            # hitting the checkpoint write specifically.
+            if m.get("kind") == "ConfigMap":
+                raise RuntimeError("simulated checkpoint ConfigMap apply failure")
+            return await super().apply(manifest_path, namespace=namespace)
+
+    kube = _CheckpointApplyFails()
+    _program_success(kube, ["t1", "t2", "t3"])
+    orch = BenchmarkOrchestrator(kube, workspace=tmp_path)
+
+    out = await orch.run_sweep([_spec("t1"), _spec("t2"), _spec("t3")], max_parallel=2,
+                               max_attempts=1, poll_interval=0, sweep_id=SWEEP, namespace=NS)
+
+    # Every treatment ran to a terminal outcome; the failing checkpoint write did NOT abort the
+    # sweep. (Before the fix, the un-caught ConfigMap-apply error propagated out of `gather` and
+    # the whole run_sweep raised RuntimeError, losing all results.)
+    assert [o.run_id for o in out.outcomes] == ["t1", "t2", "t3"]
+    assert sorted(out.succeeded) == ["t1", "t2", "t3"]
+    assert out.all_succeeded
