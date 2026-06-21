@@ -202,7 +202,7 @@ def _name_fallback_slug(name: str) -> str:
     return "t" + hashlib.sha1(name.encode("utf-8")).hexdigest()[:6]
 
 
-def _sweep_run_id(sweep_id: str, name: str, index: int) -> str:
+def _sweep_run_id(sweep_id: str, name: str) -> str:
     """Stable, DNS-safe run-id for a treatment: ``{sweep_id}-{slug(name)}`` truncated to the
     Job-name budget. A PURE function of (sweep_id, name) — so a resume maps the same treatment
     name to the same run-id (and the cluster checkpoint can skip it) regardless of the
@@ -307,7 +307,7 @@ async def orchestrate_sweep(
     specs: list[JobSpec] = []
     names_by_run_id: dict[str, str] = {}
     for i, t in enumerate(treatments, start=1):
-        run_id = _sweep_run_id(sweep_id, t["name"], i)
+        run_id = _sweep_run_id(sweep_id, t["name"])
         # The worst-case attempt Job name must be a valid DNS-1123 label (fail loudly here, not
         # opaquely at apply time). Truncation can collide two distinct names → reject so the
         # agent picks more distinct names (a silent merge would corrupt the checkpoint).
