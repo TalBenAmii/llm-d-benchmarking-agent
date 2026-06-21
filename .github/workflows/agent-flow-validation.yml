@@ -56,7 +56,9 @@ jobs:
       - name: Full test suite (gating)
         # Flow validation + every other test. Tests that need the read-only repos skip
         # cleanly when the submodules aren't checked out.
-        run: python -m pytest tests/ -v
+        # -n auto: parallelize across cores (~6.5x). The hermetic suite is xdist-safe;
+        # live-eval/integration jobs below stay serial on purpose.
+        run: python -m pytest tests/ -v -n auto
 
   quality-gates:
     # Phase 14: enforce code quality on the integrated tree — ruff (lint), mypy
@@ -94,7 +96,7 @@ jobs:
         env:
           # Parent dir holding llm-d / llm-d-benchmark, cloned in the step above.
           REPOS_DIR: ${{ github.workspace }}
-        run: python -m pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=85
+        run: python -m pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=85 -n auto
 
   live-eval:
     name: Live LLM eval (opt-in, non-gating)
