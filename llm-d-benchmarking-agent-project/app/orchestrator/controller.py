@@ -409,6 +409,8 @@ class BenchmarkOrchestrator:
             mutation still happened, so the next successful write and the live result are
             correct), a write failure must NEVER abort a run. Swallow it like the other
             best-effort side channels (``_safe_metric`` / ``_tail_logs``)."""
+            if store is None:  # never None at the call sites (both early-return) — narrows for mypy
+                return
             with contextlib.suppress(Exception):
                 await store.write(checkpoint, namespace=namespace)  # type: ignore[arg-type]
 

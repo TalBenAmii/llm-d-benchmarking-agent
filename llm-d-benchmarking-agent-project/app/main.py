@@ -428,10 +428,10 @@ def _history_items(session) -> list[dict[str, Any]]:
     def _dicts(seq: Any) -> list[dict[str, Any]]:
         return [x for x in (seq or []) if isinstance(x, dict)] if isinstance(seq, (list, tuple)) else []
 
-    approvals_by_tc: dict[str, list[dict[str, Any]]] = {}
+    approvals_by_tc: dict[str | None, list[dict[str, Any]]] = {}
     for a in _dicts(getattr(session, "approvals", [])):
         approvals_by_tc.setdefault(a.get("tool_call_id"), []).append(a)
-    pending_by_tc: dict[str, list[dict[str, Any]]] = {}
+    pending_by_tc: dict[str | None, list[dict[str, Any]]] = {}
     for p in _dicts(getattr(session, "in_flight_approvals", [])):
         pending_by_tc.setdefault(p.get("tool_call_id"), []).append(p)
     commands_by_tc: dict[str | None, list[dict[str, Any]]] = {}

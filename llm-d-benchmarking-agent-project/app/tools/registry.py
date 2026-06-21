@@ -717,7 +717,7 @@ async def dispatch(ctx: ToolContext, name: str, raw_input: dict[str, Any]) -> di
         # orphaned tool_call with no matching tool_result (poisoning the next turn). Drop ``ctx``
         # (``include_context=False``) — the human-readable ``msg`` already carries the validator's
         # message — then JSON-roundtrip as a belt-and-braces guarantee the result is serializable.
-        details = exc.errors(include_url=False, include_context=False)
+        details: list[Any] = exc.errors(include_url=False, include_context=False)
         try:
             details = json.loads(json.dumps(details, default=str))
         except (TypeError, ValueError):  # pragma: no cover — defensive last resort

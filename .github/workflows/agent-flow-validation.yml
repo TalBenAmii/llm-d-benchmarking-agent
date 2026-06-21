@@ -53,12 +53,16 @@ jobs:
       - name: Validate flows (readable summary)
         run: python scripts/validate_flows.py --show
 
-      - name: Full test suite (gating)
-        # Flow validation + every other test. Tests that need the read-only repos skip
-        # cleanly when the submodules aren't checked out.
-        # -n auto: parallelize across cores (~6.5x). The hermetic suite is xdist-safe;
+      - name: Flow replay suite (gating, hermetic)
+        # The golden-transcript flow replays: the real agent loop + real allowlist + real
+        # approval gating, capturing each flow's commands with nothing spawned — hermetic
+        # (no API key, no Docker, no kind, and NOT the llm-d / llm-d-benchmark repos).
+        # The REST of the suite reads repo truth (the BR v0.2 schema, specs, repo docs) and
+        # FAILS — not skips — without the sibling repos, so the FULL suite is gated by the
+        # quality-gates job below, which checks those repos out and sets REPOS_DIR.
+        # -n auto: parallelize across cores. The hermetic flow suite is xdist-safe;
         # live-eval/integration jobs below stay serial on purpose.
-        run: python -m pytest tests/ -v -n auto
+        run: python -m pytest tests/flows/ -v -n auto
 
   quality-gates:
     # Phase 14: enforce code quality on the integrated tree — ruff (lint), mypy
