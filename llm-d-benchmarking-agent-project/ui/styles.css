@@ -599,8 +599,8 @@ pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wra
    While a run is active the chat column narrows and the live resource view slides
    in on the right (Claude-style). One shared panel, reflecting the ACTIVE chat's
    run; collapses back to full width when no run is active. The body hosts the live
-   kubectl-top table today and is structured to host a Grafana/Prometheus dashboard
-   pane (iframe/link) later. Hidden until body.split is set. */
+   kubectl-top table plus, when GRAFANA_DASHBOARD_URL is set, an "Open Grafana" button
+   above it that opens the dashboard in a modal. Hidden until body.split is set. */
 .resource-side {
   flex: none; width: 0; height: 100%; overflow: hidden;
   display: flex; flex-direction: column;
@@ -644,12 +644,39 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 
 /* Optional dashboard pane (shown when a `resource_stats` event carries a `dashboard_url`). The
    iframe is the live embed; the link is a graceful fallback / "open in new tab" affordance. */
-.resource-dash { margin-bottom: 12px; }
-.resource-dash-frame {
-  width: 100%; height: 220px; border: 1px solid var(--border); border-radius: 9px;
-  background: var(--code-bg); display: block;
+/* Grafana: a full-width button above the metrics opens the operator's dashboard in a modal. */
+.resource-dash-btn {
+  display: block; width: 100%; margin-bottom: 12px; padding: 8px 12px;
+  font: 600 12px/1.2 var(--mono); color: var(--accent); text-align: center; cursor: pointer;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
+  transition: color .12s, border-color .12s, background .12s;
 }
-.resource-dash-link { display: inline-block; margin-top: 7px; font: 12px var(--mono); color: var(--accent); }
+.resource-dash-btn:hover { color: var(--text); border-color: var(--accent); }
+
+/* Grafana embed modal — large overlay; native <dialog> for Esc/focus. NB: never set `display` on
+   the dialog itself (a non-`none` value shows it when closed); the inner wrapper does the flex. */
+.grafana-modal {
+  width: 90vw; height: 85vh; max-width: 90vw; max-height: 85vh; padding: 0; overflow: hidden;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--panel); color: var(--text); box-shadow: var(--shadow);
+}
+.grafana-modal::backdrop { background: rgba(0, 0, 0, .6); }
+.grafana-modal-inner { display: flex; flex-direction: column; height: 100%; }
+.grafana-modal-head {
+  flex: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border); background: var(--panel);
+}
+.grafana-modal-title { font: 700 13px/1.2 var(--serif); color: var(--text); }
+.grafana-modal-tab { margin-left: auto; font: 12px var(--mono); color: var(--accent); text-decoration: none; }
+.grafana-modal-tab:hover { text-decoration: underline; }
+.grafana-modal-close {
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font: 13px/1 var(--mono);
+  border: 1px solid var(--border-strong); background: var(--panel-2); color: var(--text);
+}
+.grafana-modal-close:hover { border-color: var(--accent); color: var(--accent); }
+.grafana-modal-frame {
+  flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: var(--code-bg);
+}
 
 /* Responsive: on narrow screens the side panel overlays the chat instead of squeezing it. */
 @media (max-width: 900px) {

@@ -36,6 +36,7 @@ _ALL_CHECKS = [
     "kind_clusters", "kube_context", "cluster_info", "namespaces", "stack",
     "prometheus_crds",
     "metrics_server",
+    "grafana_dashboard",
     "node_capacity",
     "cluster_preconditions",
     "provider_detection",
@@ -120,6 +121,8 @@ async def probe_environment(
         out["prometheus_crds"] = await _probe_prometheus_crds(ctx)
     if "metrics_server" in wanted:
         out["metrics_server"] = await _probe_metrics_server(ctx)
+    if "grafana_dashboard" in wanted:
+        out["grafana_dashboard"] = _probe_grafana_dashboard(ctx)
     # node_capacity + provider_detection BOTH parse `kubectl get nodes -o json`; fetch it ONCE
     # here and hand the SAME RunResult to both probes so a single probe_environment call runs the
     # node list query just once. The probes still accept the pre-fetched result OPTIONALLY (None =>
@@ -291,6 +294,18 @@ async def _probe_metrics_server(ctx: ToolContext) -> dict[str, Any]:
         "installed": installed,
         "ready_replicas": ready_replicas,
     }
+
+
+def _probe_grafana_dashboard(ctx: ToolContext) -> dict[str, Any]:
+    """Report whether an external **Grafana** dashboard is wired up for the live run panel — i.e.
+    whether the operator set ``GRAFANA_DASHBOARD_URL`` (``Settings.metrics_dashboard_url``). PURE
+    MECHANISM: config introspection only — no cluster read, never raises. The agent uses this to
+    TAILOR its pre-run observability offer: when ``configured`` it can say "your Grafana embeds in
+    the run panel"; when not, it advises setting the env var. WHETHER/how to suggest Grafana (the
+    richer view) vs the metrics-server alternative (the convenient one it can install) is the agent's
+    judgment, grounded in knowledge/observability.md — there is NO suggestion branch here. The actual
+    URL is the operator's and is surfaced to the UI by the resource poller, not echoed in this fact."""
+    return {"configured": bool(ctx.settings.metrics_dashboard_url)}
 
 
 async def _probe_node_capacity(ctx: ToolContext, *, nodes_res: RunResult | None = None) -> dict[str, Any]:
