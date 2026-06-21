@@ -851,6 +851,15 @@ async def ws(websocket: WebSocket) -> None:
     # resend them (they'd double-render — the client only de-dupes approval cards). Capping the
     # replay at this cutoff sends only what the socket genuinely missed (BUG-032).
     replay_cutoff = channel.cur_seq
+    # Snapshot the live buffer NOW, synchronously, before the eviction-prone ready/history awaits
+    # below. The missed tail the reconnecting client must replay — (after_seq, replay_cutoff] — is
+    # fully fixed at this instant; nothing emitted during those awaits belongs in it (live emits go
+    # straight to this just-attached socket with seq > replay_cutoff). But the live ring is BOUNDED:
+    # a chatty background turn that emits a burst during the awaits can EVICT the front of that
+    # missed tail before replay_live reads the buffer, permanently dropping frames the client never
+    # received live and never gets replayed (no de-dup, no later re-fetch). Pin the tail here so it
+    # survives any such eviction.
+    replay_snapshot = channel.buffered_events
 
     busy = {"value": False}
 
@@ -1038,9 +1047,9 @@ async def ws(websocket: WebSocket) -> None:
     #   • full: a turn is still running and the client is rebuilding from history; replay the
     #     whole buffer below the freshly-replayed transcript (the original behavior).
     if incremental:
-        await channel.replay_live(after_seq, through_seq=replay_cutoff)
+        await channel.replay_live(after_seq, through_seq=replay_cutoff, frames=replay_snapshot)
     elif channel.turn_active:
-        await channel.replay_live(through_seq=replay_cutoff)
+        await channel.replay_live(through_seq=replay_cutoff, frames=replay_snapshot)
     # Re-surface any still-undecided approval (a gate the turn parked on while you were away),
     # AFTER the live replay so the live card lands at the bottom.
     if channel.pending:

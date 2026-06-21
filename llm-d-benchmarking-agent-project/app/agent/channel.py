@@ -143,7 +143,12 @@ class Channel:
             with contextlib.suppress(Exception):
                 await ws.send_json(frame)
 
-    async def replay_live(self, after_seq: int | None = None, through_seq: int | None = None) -> None:
+    async def replay_live(
+        self,
+        after_seq: int | None = None,
+        through_seq: int | None = None,
+        frames: list[dict[str, Any]] | None = None,
+    ) -> None:
         """Replay the buffered live events for the in-flight turn to the current socket.
 
         Called when a socket (re)attaches while a turn is running, so a client that dropped
@@ -165,6 +170,18 @@ class Channel:
         ``ws``), so replaying them too would double-render them on reconnect-mid-turn. Capping the
         replay at ``through_seq`` skips exactly those live-delivered frames. ``None`` = no cap.
 
+        ``frames`` is an optional snapshot of the buffer captured by the caller at the instant of
+        attach (``channel.buffered_events``, taken synchronously alongside ``through_seq``, BEFORE
+        the eviction-prone ``ready``/``history`` awaits). The missed tail a reconnecting client
+        must replay — exactly ``(after_seq, through_seq]`` — is fully determined at attach; nothing
+        emitted during those awaits belongs in it (live emits land directly on the now-attached
+        socket and carry seq > through_seq). But the live ring is BOUNDED: a chatty turn that emits
+        a burst during the attach awaits can EVICT the front of that missed tail before this method
+        reads ``self._buffer``, silently dropping frames the client never received live and never
+        gets replayed — a permanent gap in the cached pane (no de-dup, no later re-fetch). Passing
+        the attach-time snapshot pins the missed tail so it survives that eviction. ``None`` reads
+        the current (post-await, possibly-evicted) buffer — fine only when no cap/cursor applies.
+
         Approval gates are deliberately SKIPPED here: they're stateful (an
         ``approval_request`` in the buffer may already be decided, or may be the one currently
         blocking the turn), so re-surfacing them is owned solely by :meth:`reemit_pending`,
@@ -174,7 +191,8 @@ class Channel:
         ws = self.ws
         if ws is None:
             return
-        for frame in list(self._buffer):
+        source = frames if frames is not None else list(self._buffer)
+        for frame in source:
             if frame.get("type") == events.APPROVAL_REQUEST:
                 continue
             seq = frame.get("seq", 0)
