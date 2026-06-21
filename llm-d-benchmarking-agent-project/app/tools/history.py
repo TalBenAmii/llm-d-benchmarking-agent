@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.storage.history import HistoryRecord, available_metrics, trend
+from app.storage.history import HistoryRecord, _as_num, available_metrics, trend
 from app.tools.context import ToolContext
 from app.validation.report import (
     find_reports,
@@ -70,9 +70,14 @@ def _filter_by_date(
     except ValueError as exc:
         applied["error"] = f"could not parse date bound: {exc}"
         return records, applied
+    # Compare against the CRASH-PROOF coerced timestamp (BUG-020 class): a corrupt record whose
+    # on-disk ``stored_at`` is non-numeric (null/string — it bypasses the validated add() path)
+    # would otherwise raise ``TypeError`` here and break list/trend for EVERY record the moment a
+    # date bound is supplied. ``_as_num`` coerces it to 0.0, so the corrupt record is treated as
+    # oldest (mirrors how list()/trend() sort it) instead of crashing the whole filtered view.
     out = [
         r for r in records
-        if (lo is None or r.stored_at >= lo) and (hi is None or r.stored_at <= hi)
+        if (lo is None or _as_num(r.stored_at) >= lo) and (hi is None or _as_num(r.stored_at) <= hi)
     ]
     return out, applied
 

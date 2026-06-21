@@ -525,3 +525,36 @@ def test_list_and_trend_survive_corrupt_stored_at(tmp_path):
     assert recs[0].label == "good"  # valid 100.0 newest-first; corrupt (-> 0.0) sorts last
     # trend() sorts on the same key; it must complete (not raise) with the corrupt record present.
     assert isinstance(trend(recs, "ttft"), dict)
+
+
+async def test_tool_list_and_trend_date_filter_survive_corrupt_stored_at(tool_ctx, tmp_path):
+    """The result_history DATE filter (`_filter_by_date`) compares each record's stored_at against
+    the resolved bound. A corrupt record whose on-disk ``stored_at`` is non-numeric (null/string —
+    same BUG-020 class that bypasses the validated add() path) would make ``r.stored_at >= lo``
+    raise ``TypeError: '>=' not supported between NoneType and float`` — breaking list/trend for
+    EVERY record the moment ANY start_date/end_date is supplied (BUG-020's fix only hardened the
+    store's SORT key, not this tool-layer filter). The corrupt record must be treated as oldest
+    (coerced 0.0), not crash. tool_ctx's history store is rooted at tmp_path (ws.parent)."""
+    hdir = tmp_path / "history"
+    hdir.mkdir()
+    (hdir / "aaaaaaaa.json").write_text(json.dumps(
+        {"summary": {"model": "m", "run_uid": "good",
+                     "latency": {"ttft": {"units": "ms", "mean": 10.0}}},
+         "stored_at": time.time(), "label": "good", "tags": [], "model": "m"}))
+    (hdir / "bbbbbbbb.json").write_text(json.dumps(
+        {"summary": {"model": "m", "run_uid": "corrupt",
+                     "latency": {"ttft": {"units": "ms", "mean": 20.0}}},
+         "stored_at": None, "label": "corrupt", "tags": [], "model": "m"}))
+
+    # list WITH a date bound must not raise; both records are still returned (corrupt -> 0.0, so a
+    # start_date drops it as "before the window" — but the call SUCCEEDS rather than crashing).
+    listed = await history_tool.result_history(tool_ctx, action="list", start_date="1970-01-02")
+    assert isinstance(listed.get("n"), int)
+    # An open-ended (end-only) bound keeps both records and must also not raise.
+    both = await history_tool.result_history(tool_ctx, action="list", end_date="2999-01-01")
+    assert both["n"] == 2
+
+    # trend WITH a date bound takes the same filter path — it too must complete, not raise.
+    trended = await history_tool.result_history(
+        tool_ctx, action="trend", metric="ttft", end_date="2999-01-01")
+    assert "error" not in trended and isinstance(trended.get("points"), list)
