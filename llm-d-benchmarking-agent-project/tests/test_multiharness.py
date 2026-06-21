@@ -167,6 +167,27 @@ def test_cross_harness_unknown_harness_is_visible_not_dropped():
     assert out["n"] == 3
 
 
+def test_cross_harness_unknown_does_not_pollute_shared_metrics():
+    # A metric measured by ONE real harness plus an unknown-harness report must NOT be
+    # promoted to "shared" (cross-validated by two harnesses): only ONE *real* harness
+    # measured it. The "unknown" pseudo-group is visible (prior test) but must not count
+    # toward the cross-harness metric intersection, or the agent is told ttft was
+    # cross-validated when it was really measured by inference-perf alone.
+    entries = [
+        {"label": "ip", "summary": _summary("inference-perf", ttft_ms=120)},
+        {"label": "gl", "summary": _summary("guidellm", out_rate=400)},
+        {"label": "mystery", "summary": _summary(None, ttft_ms=99)},  # harness unknown, also has ttft
+    ]
+    out = compare_across_harnesses(entries)
+    # ttft is measured by exactly ONE real harness (inference-perf) -> unique to it, NOT shared.
+    assert "latency.ttft" not in out["shared_metrics"]
+    assert out["unique_metrics"].get("latency.ttft") == "inference-perf"
+    # cross_metrics rows are over shared (real-harness) metrics only -> no row keyed on a metric
+    # that only an unknown report shared, and no per-harness entry attributed to "unknown".
+    for row in out["cross_metrics"]:
+        assert all(ph["harness"] != "unknown" for ph in row["per_harness"])
+
+
 # ---- compare_harness_runs tool (real reports on disk) ----------------------
 
 async def test_compare_harness_runs_mixed_harnesses(tool_ctx, br_example, tmp_path):
