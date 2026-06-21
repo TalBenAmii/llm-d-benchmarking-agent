@@ -243,9 +243,13 @@ class Allowlist:
             # Validate the global-flags region (flags only, no positionals).
             self._walk(pre, flags=global_flags, positionals=[], base_mode=READ_ONLY, catalog=catalog)
 
-            # Validate the subcommand region; global flags remain acceptable here too.
+            # Validate the subcommand region; global flags remain acceptable here too. The pre
+            # region is tagged with the flag-dict that is EFFECTIVE there (the executable's
+            # global_flags) so a read_only_trigger is only honored where the flag actually takes
+            # effect — see _walk's region-aware read-only detection.
             mode = self._walk_subcommand(
-                subname, sub, post, global_flags=global_flags, pre_tokens=pre, catalog=catalog
+                subname, sub, post, global_flags=global_flags,
+                pre_regions=[(pre, global_flags)], catalog=catalog,
             )
             return self._allow(argv, mode, exe, entry, subname, sub)
         except _Reject as exc:
@@ -299,7 +303,7 @@ class Allowlist:
         tokens: list[str],
         *,
         global_flags: dict,
-        pre_tokens: list[str],
+        pre_regions: list[tuple[list[str], dict]],
         catalog: dict | None,
     ) -> str:
         """Validate the region AFTER a matched subcommand token and return the effective mode.
@@ -314,7 +318,19 @@ class Allowlist:
         PURE MECHANISM driven entirely by the YAML shape: a subcommand with no ``subcommands``
         key is single-level (every pre-existing entry), so this is strictly additive. The mode
         of the DEEPEST matched (leaf) subcommand wins, while any ``read_only_trigger`` flag at
-        any level still downgrades to read-only and global flags stay acceptable throughout."""
+        any level still downgrades to read-only and global flags stay acceptable throughout.
+
+        ``pre_regions`` is the list of leading-flag regions BEFORE this subcommand token, each
+        paired with the flag-dict that was EFFECTIVE in that region. A ``read_only_trigger`` in a
+        pre-region is honored ONLY if the flag is a trigger in *that region's own* flag-dict — so
+        a subcommand-OWN trigger (e.g. ``standup``'s ``-n``/``--dry-run``) sitting in the GLOBAL
+        pre-region (where only ``global_flags`` are effective) does NOT downgrade the command. This
+        closes an approval-gate bypass: upstream registers ``-n``/``--dry-run`` on BOTH the
+        top-level parser and each subparser, and whether a global-position ``-n`` actually takes
+        effect depends on an upstream ``default=argparse.SUPPRESS`` detail we don't control — so a
+        security gate must NOT treat a flag as a dry-run in a region where its effect is not
+        guaranteed. The INTENTIONAL nested propagation is preserved because each intermediate
+        region carries the flag-dict (``merged_flags``) effective at THAT level."""
         merged_flags = {**global_flags, **sub.get("flags", {})}
         nested = sub.get("subcommands")
         if nested:
@@ -331,11 +347,14 @@ class Allowlist:
             pre = tokens[:idx]
             post = tokens[idx + 1:]
             # Validate this level's leading flags (flags only — no positionals before the nested
-            # token); read_only_triggers among them propagate down via pre_tokens.
+            # token); read_only_triggers among them propagate down via pre_regions, tagged with
+            # THIS level's effective flags (merged_flags) so an intermediate-level trigger still
+            # counts — that is the intentional nested propagation.
             self._walk(pre, flags=merged_flags, positionals=[], base_mode=READ_ONLY, catalog=catalog)
             return self._walk_subcommand(
                 nested_name, nested_sub, post,
-                global_flags=merged_flags, pre_tokens=[*pre_tokens, *pre], catalog=catalog,
+                global_flags=merged_flags,
+                pre_regions=[*pre_regions, (pre, merged_flags)], catalog=catalog,
             )
         return self._walk(
             tokens,
@@ -343,8 +362,9 @@ class Allowlist:
             positionals=sub.get("positionals", []),
             base_mode=sub.get("mode", MUTATING),
             catalog=catalog,
-            # read_only_triggers from the global / outer region matter too:
-            pre_tokens=pre_tokens,
+            # read_only_triggers from the outer region(s) matter too — but each is judged against
+            # the flags that were EFFECTIVE where it appeared (see pre_regions above).
+            pre_regions=pre_regions,
         )
 
     def _find_subcommand_index(self, tokens: list[str], global_flags: dict) -> int | None:
@@ -372,11 +392,17 @@ class Allowlist:
         positionals: list,
         base_mode: str,
         catalog: dict | None,
-        pre_tokens: list[str] | None = None,
+        pre_regions: list[tuple[list[str], dict]] | None = None,
     ) -> str:
         """Walk a token region. Returns the effective mode. Raises _Reject on any
-        unrecognized flag/positional or bad value."""
-        read_only_triggered = self._has_read_only_trigger(pre_tokens or [], flags)
+        unrecognized flag/positional or bad value.
+
+        ``pre_regions`` carries the leading-flag regions from OUTER levels, each paired with the
+        flag-dict effective there; a read_only_trigger in a pre-region is honored only against its
+        OWN region's flags (so a subcommand-own trigger in the global pre-region is NOT honored)."""
+        read_only_triggered = any(
+            self._has_read_only_trigger(tokens_, flags_) for tokens_, flags_ in (pre_regions or [])
+        )
         pos_specs = list(positionals)
         repeated_matched = False  # did a head `repeated` spec consume at least one token?
         i = 0
