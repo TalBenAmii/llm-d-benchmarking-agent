@@ -106,8 +106,17 @@ def _dig(obj: Any, *path: str) -> Any:
     return cur
 
 
+def _d(v: Any) -> dict[str, Any]:
+    """A non-dict child of the (untrusted, on-disk) bundle coerces to ``{}`` so a corrupt/forged
+    bundle (e.g. ``"resolved_config": "oops"``) renders an empty section instead of crashing the
+    whole card with ``AttributeError`` — same hardening class as the storage-layer fixes. The bundle
+    is read from disk with only a top-level ``isinstance(dict)`` check, so the child VALUES are not
+    type-validated and must be coerced here before any ``.get``/``.items``/``.values``."""
+    return v if isinstance(v, dict) else {}
+
+
 def _header(bundle: dict[str, Any]) -> str:
-    summary = bundle.get("report_summary") or {}
+    summary = _d(bundle.get("report_summary"))
     model = bundle.get("model") or summary.get("model") or "model"
     created = bundle.get("created_at")
     when = ""
@@ -132,9 +141,9 @@ def _header(bundle: dict[str, Any]) -> str:
 
 
 def _honesty_banner(bundle: dict[str, Any]) -> str:
-    repos = bundle.get("repos") or {}
-    dirty = bool(bundle.get("dirty")) or any((s or {}).get("dirty") for s in repos.values())
-    unavailable = [n for n, s in repos.items() if (s or {}).get("unavailable")]
+    repos = _d(bundle.get("repos"))
+    dirty = bool(bundle.get("dirty")) or any(_d(s).get("dirty") for s in repos.values())
+    unavailable = [n for n, s in repos.items() if _d(s).get("unavailable")]
     if not dirty and not unavailable:
         return ""
     parts = ["⚠ Reproducibility warning."]
@@ -153,7 +162,7 @@ def _honesty_banner(bundle: dict[str, Any]) -> str:
 
 
 def _results(bundle: dict[str, Any]) -> str:
-    s = bundle.get("report_summary") or {}
+    s = _d(bundle.get("report_summary"))
     tiles: list[tuple[str, Any]] = []
 
     def add(label: str, value: Any) -> None:
@@ -215,10 +224,10 @@ def _ladder(summary: dict[str, Any]) -> str:
 
 
 def _provenance(bundle: dict[str, Any]) -> str:
-    repos = bundle.get("repos") or {}
+    repos = _d(bundle.get("repos"))
     chips = []
     for name, st in repos.items():
-        st = st or {}
+        st = _d(st)
         if st.get("unavailable"):
             chips.append(f'<span class="chip dirty">{_esc(name)} @ (unavailable)</span>')
             continue
@@ -234,7 +243,7 @@ def _provenance(bundle: dict[str, Any]) -> str:
         chips.append(f'<span class="{cls}">{label}</span>')
     repos_html = f'<div class="repo">{"".join(chips)}</div>' if chips else ""
 
-    cfg = bundle.get("resolved_config") or {}
+    cfg = _d(bundle.get("resolved_config"))
     if cfg.get("found") and cfg.get("body"):
         cfg_html = (
             f'<details><summary>Resolved run-config ({_esc(cfg.get("path"))})</summary>'
@@ -268,10 +277,10 @@ def _provenance(bundle: dict[str, Any]) -> str:
 
 def _reproduce(bundle: dict[str, Any]) -> str:
     cmd = bundle.get("regenerate_command") or ""
-    repos = bundle.get("repos") or {}
+    repos = _d(bundle.get("repos"))
     sha_bits = []
     for name, st in repos.items():
-        st = st or {}
+        st = _d(st)
         sha_bits.append(f"{name}@{st.get('sha') or '(unavailable)'}")
     caveat = (
         "Requires " + ", ".join(_esc(b) for b in sha_bits)
