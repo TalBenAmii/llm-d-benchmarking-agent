@@ -128,14 +128,9 @@ approval is kept), a synthetic report produced. Default `0` (real execution).
 - Don't auto-run live-LLM eval (`LLM_EVAL_LIVE=1`, `test_flows_live.py`, `make validate-live`) — spends
   Max-plan quota; only on explicit user request. The hook runs plain `pytest` (never live eval).
 
-## graphify (dev code-nav)
-A knowledge graph at `graphify-out/` backs code navigation: prefer `graphify query/explain/path`
-over raw grep for codebase questions, and run `graphify update .` after code changes. A post-commit
-hook keeps the graph current — so this is hands-off. Full usage detail → `docs/PROJECT_BRAIN_REFERENCE.md`.
-
 ## Capturing recurring conclusions (standing instruction to future-me)
 When you derive a conclusion you'd otherwise re-investigate on a later task (env/test/build setup, repo
 gotchas, locked design decisions), append a **1–2 line** summary to the relevant section above —
 **consolidate, don't duplicate, keep it tight** (this file loads into context every session). Reference
-material (status, doc map, run-locally, graphify detail, the **config/model-drift audit log**) lives in
+material (status, doc map, run-locally, the **config/model-drift audit log**) lives in
 `docs/PROJECT_BRAIN_REFERENCE.md` — keep it there, not here, so this file stays small.
