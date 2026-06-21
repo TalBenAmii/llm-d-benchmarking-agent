@@ -976,6 +976,81 @@ fixed + merged to `main`. The meta-review otherwise verified the six newer fixes
   genuinely fabricated flags outside the family still surface.
 - **Regression test:** `tests/test_tracing_config.py::test_tracing_subkeys_are_not_falsely_flagged_as_unrecognized`.
 
+## Round 20 (2026-06-21) — subagent wave 8 (traversal / readiness / stale-catalog): 3 fixed (BUG-055 high, BUG-056 low-med, BUG-057 med)
+An eighth subagent wave over three disjoint areas — the report-locator's `session_id` containment (an item
+surfaced-not-filed in Round 19's BUG-053), the serving-readiness restart-count coercion, and the repo-clone
+catalog-refresh fall-through. Three real defects fixed + merged to `main`.
+
+## BUG-055 — unvalidated `session_id` path traversal → agent-controllable arbitrary-file read of any benchmark report
+- **Status:** FIXED
+- **Severity:** high (security — an agent-supplied `session_id` of `../…` or an absolute path escaped the
+  per-session sessions root, yielding arbitrary-file read of any `benchmark_report_v0.2*.yaml/json` on disk)
+- **Where:** `app/tools/report_locate.py::locate_and_parse_report` (~line 33) + the
+  `LocateReportInput.session_id` schema (`app/tools/schemas.py` ~line 141, unvalidated).
+- **Trigger:** `session_id` is an UNVALIDATED agent-supplied string joined onto `ctx.workspace.parent` (the
+  per-session sessions root) to form a search root; `_find_report` then globs `**/benchmark_report_v0.2*`
+  under it and reads the newest match. A `session_id` of `../…` (or an absolute path) escaped the sessions
+  root → agent-controllable arbitrary-file read of any `benchmark_report_v0.2*.yaml/json` anywhere on disk.
+  Same class as BUG-028 (`probe.py` spec-path containment).
+- **Root cause:** the composed search root was never checked for containment within the sessions root before
+  being globbed — an agent-supplied id could traverse out of (or escape entirely) the per-session tree.
+- **Fix:** a new `_session_root(ctx, session_id)` helper resolves the composed path and requires
+  `candidate == sessions_root or candidate.is_relative_to(sessions_root)`, raising `ToolError` on escape
+  (the loop relays `ToolError` as a clean `{"error": …}`, never a raw exception); legitimate ids unchanged.
+- **Regression test:** `tests/test_report_validation.py::test_locate_rejects_session_id_path_traversal` (+
+  `test_locate_accepts_legitimate_session_id`).
+
+## BUG-056 — non-numeric `restartCount` in forged pods JSON raises out of the read-only readiness gate
+- **Status:** FIXED
+- **Severity:** low-medium (a forged/corrupt `kubectl get pods -o json` makes the read-only readiness gate
+  raise an opaque error instead of degrading — violating the module's "garbage pods_json degrades, never
+  raises" invariant)
+- **Where:** `app/readiness/diagnostics.py::classify_serving_readiness` (~line 467).
+- **Trigger:** the per-container restart tally did `int(cs.get("restartCount") or 0)` — the LONE unguarded
+  numeric coercion in that scan (`containerStatuses` are `isinstance(cs, dict)`-filtered and the port loop is
+  `isinstance(cp, int)`-guarded). A forged/corrupt `kubectl get pods -o json` with a non-numeric
+  `restartCount` (e.g. `"lots"`) raised `ValueError`, which escapes `_serving_readiness` /
+  `check_endpoint_readiness` (no `try/except` around the `classify_*` call) as an opaque error out of the
+  read-only readiness gate. Same hardening class as BUG-023/029/037.
+- **Root cause:** a single unguarded `int(...)` coercion in an otherwise type-guarded scan, with no
+  exception handling around the classify call upstream — one bad field broke the whole gate.
+- **Fix:** a local `_as_int()` helper (non-numeric → 0, clamped non-negative, `except (TypeError,
+  ValueError)`) mirroring the orchestrator's BUG-023; a bad count reads as `0`, and a real count among
+  malformed siblings is still read.
+- **Regression test:** `tests/test_serving_readiness.py::test_classify_survives_non_numeric_restart_count`
+  (+ `test_classify_real_count_still_read_among_malformed_siblings`). (`kube.py` itself audited clean: argv
+  assembly under `shell=False`, mutating-vs-readonly routing, label-scoped cleanup delete.)
+
+## BUG-057 — a rejected/denied later clone skips the catalog refresh, bricking every spec/ref check for the turn
+- **Status:** FIXED
+- **Severity:** medium (an early repo cloned OK but a later clone rejected at the gate skips the catalog
+  refresh, leaving the per-context catalog cache stale → `validate_plan` and the allowlist check reject every
+  valid spec/harness/workload/ref for the rest of the turn even though the repo is on disk)
+- **Where:** `app/tools/repos.py::ensure_repos` (~line 58).
+- **Trigger:** `ctx.catalog(refresh=True)` was the function's last, fall-through-only line, but
+  `ctx.run_command` raises mid-loop on `ApprovalRejected` (user rejects a clone at the gate), `ToolError`
+  (allowlist denial), or `QuotaError` — propagating straight out and SKIPPING the refresh. An EARLIER repo in
+  the same call (`llm-d-benchmark` is first in `_KNOWN_REPOS`) may already have cloned successfully, so the
+  per-context catalog cache (`ToolContext._catalog`) is left at its stale pre-clone snapshot (`present=False`,
+  empty lists). `plan.validate_plan` and the `catalog_for_allowlist` check (read inside EVERY
+  `run_command`/`run_readonly` allowlist validation) read `ctx.catalog()` WITHOUT refresh → they reject every
+  valid spec/harness/workload/ref for the rest of the turn even though the repo is on disk. Exactly the
+  `app/tools/CLAUDE.md:28` stale-catalog hazard, realized via an early-exit path.
+- **Root cause:** the refresh sat on the function's fall-through line, so any mid-loop raise (rejection,
+  denial, quota) bypassed it, leaving an already-cloned repo invisible to the catalog cache.
+- **Fix:** wrap the clone loop in `try/finally` and refresh the catalog in `finally` so it always runs before
+  return/raise.
+- **Regression test:**
+  `tests/test_repos.py::test_catalog_refreshed_even_when_a_later_clone_is_rejected` (+
+  `test_successful_clone_refreshes_catalog`).
+
+### Verified clean (no bug) — round 20
+- **`app/observability`** (`instrument.py` / `metrics.py` / `logctx.py` / `logging.py` / `cot_trace.py`):
+  metric names match the deploy alerts/scrape/dashboard, label cardinality is bounded, no double-count,
+  emission is exception-safe, `corr_id` contextvars are asyncio-isolated, and no secret leak.
+- **`app/orchestrator/kube.py`**: argv assembly / mutating-vs-readonly routing / label-scoped cleanup all
+  sound.
+
 ---
 
 ## Round 13 (2026-06-21) — LIVE agent-flow testing (real LLM, SIMULATE=1): clean, + 1 SIMULATE-scope observation
