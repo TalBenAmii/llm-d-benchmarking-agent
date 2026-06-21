@@ -557,6 +557,26 @@ and the BUG-019/032 socket/replay paths in a real end-to-end run.
 
 ---
 
+## Round 14 (2026-06-21) — REAL Chrome browser drive of the UI at http://127.0.0.1:8000 (the goal's modality)
+The goal asked specifically to use the Claude Code Chrome integration against the app. That literal feature
+is **officially unsupported here**: Anthropic's docs (code.claude.com/docs/en/chrome) state *"WSL … is also
+not supported,"* and it requires an interactively-installed Chrome **extension** + native-messaging host + a
+`claude --chrome` session — none of which exist in this headless WSL bg job. Faithful substitute that DOES
+work: a **real Google Chrome 149** (present on the box; driven via Playwright `channel="chrome"` headless —
+the earlier failure was only Playwright's *bundled chromium* host-validation on Ubuntu 26.04, unrelated to
+the real Chrome channel) pointed at the app on `:8000` (WSL-local, trivially reachable).
+
+**Drove the actual rendered UI end-to-end — ALL CLEAN (0 console errors, 0 uncaught JS exceptions throughout):**
+- Page load + visual inspection (screenshot): brand/sidebar/header/welcome card/suggestion chips/composer all render correctly.
+- Interactions: theme toggle (dark↔light), composer accepts text, new-chat, send→error path renders a clean error bubble ("LLM provider not configured").
+- Responsive: mobile (420×520) layout clean; the **builder dialog on a SHORT (900×400) viewport fits within the viewport with its action row reachable** — geometrically confirms the BUG-006/015 dialog-clipping fix holds (dlgBottom 380 ≤ vh 400, "Send to assistant" visible).
+- **Full provider-backed agent flow (real LLM, SIMULATE=1) rendered in Chrome:** SessionPlan **approval card** (use-case/spec/namespace/harness/workload/steps/notes + `mutating` badge + Approve/Reject) → clicked **Approve** → the 7-step workflow rail advanced to **all ✓** → **Report-Summary metrics card** rendered (Requests 120, Success 100%, throughput 5,000 tok/s, TTFT p50 130ms / p90 210ms, ITL 47ms — the `renderReportSummary` path) → suggested-next-steps chips + per-turn token footer. Validates the frontend fixes (BUG-019/024/025/032) in a real browser.
+- **Non-bugs (verified):** two missing-glyph `□` boxes in the headless screenshots are EMOJI the headless Linux Chrome has no font for — a chip's leading `✨` (U+2728) and a `✅`-like glyph after "100%". Confirmed via codepoints; they render fine on real user browsers (Win/Mac with emoji fonts). NOT product bugs.
+
+**Result:** the rendered UI + a complete live agent flow are clean in a real Chrome browser — no new bugs. The Chrome-interaction modality is now satisfied as faithfully as a headless WSL environment permits (the literal extension feature being Anthropic-documented-impossible here).
+
+---
+
 ## Candidates surfaced 2026-06-20 (verified by source) — A/B/C+D now FIXED (2026-06-21), E deliberately declined
 Two parallel hunters (orchestrator, storage) returned the findings below. Each was confirmed
 real against source — a missing-guard on **malformed/forged on-disk or kubectl JSON**, not
