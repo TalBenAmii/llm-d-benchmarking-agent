@@ -45,7 +45,7 @@ Everything below is a consequence of two rules (see [`CLAUDE.md`](../CLAUDE.md))
    │                            LLM provider (Anthropic | OpenAI-compatible)│
    │                                      │ emits schema-validated tool calls│
    │                                      ▼                                 │
-   │            tool registry (app/tools/registry.py) — 36 tools            │
+   │            tool registry (app/tools/registry.py)                       │
    │              dispatch: validate args (gate a) ─► handler                │
    │                                      │                                 │
    │                       ToolContext.run_command / run_readonly           │
@@ -105,7 +105,7 @@ returns validation errors to the model instead of raising, so it can self-correc
 `ToolContext` (`context.py`) bundles the shared dependencies (settings, allowlist, runner,
 per-session workspace, the approval/emit callbacks, the concurrency semaphore) and exposes
 the single command seam `run_command` / `run_readonly` that *every* execution passes
-through. The 36 tools and their schemas are catalogued in [`API.md`](API.md).
+through. The agent's tools and their schemas are catalogued in [`API.md`](API.md).
 
 ### Security — `app/security/` + `security/allowlist.yaml`
 - `allowlist.yaml` is **data**: a deny-by-default policy that is the single source of truth

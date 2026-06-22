@@ -93,11 +93,11 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 
 ---
 
-## 4. The 37 agent tools (authoritative list — `app/tools/registry.py`)
+## 4. The agent tools (authoritative list — `app/tools/registry.py`)
 
-> Note: the registry defines **37** tools (matches `CLAUDE.md`). Verify by reading
-> `app/tools/registry.py:build_registry`. (A 38th, `run_shell`, is registered ONLY when the
-> operator sets `UNRESTRICTED_TOOLS` — off by default, so the stable surface is 37.)
+> Note: `app/tools/registry.py:build_registry` is the authoritative count — read it (the
+> enumerated list below mirrors it). `run_shell` is registered as one extra tool ONLY when the
+> operator sets `UNRESTRICTED_TOOLS` — off by default.
 
 **Sensing / grounding (read-only, auto-run):** `probe_environment`, `list_catalog`,
 `inspect_workload_profile`, `estimate_run_duration`, `read_knowledge`, `search_knowledge`,
@@ -309,8 +309,8 @@ No open caveats. Five early findings (orphaned harness PNG charts behind `/stati
 sparkline until a result is stored; `/healthz`+`/readyz` wrongly auth-gated; `CLAUDE.md` tool-count
 drift; ambiguous latency units) were all **fixed on 2026-06-02** (`1515959`, merged `3363496`) — done.
 
-**Counts (current).** Verified against the running app: **36 agent tools** (matches `CLAUDE.md` /
-`registry.py:build_registry`; a 37th, `run_shell`, only with `UNRESTRICTED_TOOLS`), **11 trendable history metrics** (incl. `kv_cache_hit_rate`,
+**Counts (current).** Verified against the running app: the agent tools enumerated in §4
+(authoritative: `registry.py:build_registry`; `run_shell` adds one more only with `UNRESTRICTED_TOOLS`), **11 trendable history metrics** (incl. `kv_cache_hit_rate`,
 `gpu_utilization`, `schedule_delay`), **15 allowlisted executables**, **7 `/metrics` families**.
 All ROADMAP_V4 active phases (27–66) are merged; 7 are explicitly deferred (34/43/44/47/52/57/58 —
 see `ROADMAP_V4.md`).

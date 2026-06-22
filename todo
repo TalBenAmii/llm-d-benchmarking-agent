@@ -27,3 +27,24 @@
 user could switch to the other view (which is the divide by namespace view.). it should also support the same sorting feature.
 - find bugs via interactive claude that sees ui
 - find if there is an indication of command approval request that was timeout
+
+
+
+
+
+
+context management:
+- answer formating guidelines
+- make claude.md files on each folder describing the folder structure, etc (research ideal claude.md that antrophic recommands)
+-when implemnting keep on coding guidelines
+-you are working in agents view which makes sure you work on separte worktree. when you done implementing something you need to: 
+1. commit and merge into main, dont run tests and linting yourself, pre commit which should work only on main branch should execute when commiting to main (the merge commit)
+2. running adeversial code review that checks for conventions, refactor oportunities, etc (will be coding guidelines)
+3. update relevant docs that changes were relalted to
+- in plan mode: keep on grilling guidelines, make sure to seperate the implemntation into tasks.
+ allocate tasks to subagents so approximaly the tasks combined would take 100k-200k tokens. if one task takes more than 200k tokens, divide it to tasks that each will be at 100k-200k tokens range.
+- when in doubt, ALWAYS ask me quetions for clarfications
+ 
+ 
+ more: dont open worktree for everychange
+
