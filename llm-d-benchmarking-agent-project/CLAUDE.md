@@ -98,27 +98,23 @@ approval is kept), a synthetic report produced. Default `0` (real execution).
   + finding refactor candidates, use the `codebase-design` / `improve-codebase-architecture` skills.
 
 ## Working in a worktree + running the suite (established facts — reuse, don't re-derive)
-`tests/CLAUDE.md` has the tests-local quick reference. Key facts:
+The **finish loop** (worktree → review → commit → `--no-ff` merge to main; `merge-base==HEAD` and
+post-merge SHA-ancestry checks; the `git add -A` gitlink hazard; the main-only `ruff`+`pytest` hook
+gate with `--no-verify` bypass; feature branches aren't gated so no "green baseline" needed) lives in
+the **`finish-implementation` skill** — don't re-derive it here. `tests/CLAUDE.md` is the tests-local
+quick reference. Project-specific test-env facts:
 - **Git root = this monorepo** (`<repo-root>`); `llm-d-benchmarking-agent-project/` is a subdir.
   `llm-d/` + `llm-d-benchmark/` are **nested untracked repos, EMPTY in any worktree** → point
   catalog/report tests back at the primary copy via `REPOS_DIR=<repo-root>`.
 - **Branch worktrees off LOCAL `main` HEAD, not origin** (main is many commits ahead of origin and
-  other sessions commit to it). Verify `merge-base == main HEAD` before merging; re-check SHA ancestry
-  AFTER merging (concurrent-session hazard). Never `git add -A` at the monorepo root (grabs
-  `.claude/worktrees/*` gitlinks) — add specific paths.
-- **You don't run the suite or lint as a gate — the git hook does, at merge-to-main.** A local
-  `.git/hooks/{pre-commit,pre-merge-commit}` runs `ruff check .` **and** `pytest tests/` on every
-  commit/merge to `main` and blocks it if either is red (main-only; feature/worktree branches are
-  **not** gated). So there is **no need to establish a "green baseline" when you branch out** —
-  green is verified when the feature lands on `main`. Finish loop: commit on the branch → `--no-ff`
-  merge into main (the hook verifies green) → `git worktree remove`. Don't run the suite yourself
-  or record "ran it, green" notes. Bypass once with `--no-verify`. Hooks live in `.git/hooks` (not
-  version-controlled) — recreate on a fresh clone, and keep `core.hooksPath` **empty** (a stale
-  value silently disables every hook; it once pointed at a deleted dir → no hooks ran at all).
-- **To run the suite manually** (debugging a specific failure, *not* as a gate): point it at the
-  *populated* primary sibling repos — worktree siblings are EMPTY; the primary `.venv` is an
-  editable install → `PYTHONPATH` required; `conftest.py` resolves the bench repo via
-  `get_settings().bench_repo`, honoring `REPOS_DIR`. Healthy ≈ 1598 passed / 20 skipped in ~15–20s:
+  other sessions commit to it).
+- ⚠️ Keep `core.hooksPath` **empty** — a stale value silently disables every hook (it once pointed at
+  a deleted dir → no hooks ran). Hooks live in `.git/hooks` (not version-controlled) → recreate on a
+  fresh clone.
+- **To run the suite manually** (debugging a specific failure, *not* as a gate): worktree siblings are
+  EMPTY; the primary `.venv` is an editable install → `PYTHONPATH` required; `conftest.py` resolves the
+  bench repo via `get_settings().bench_repo`, honoring `REPOS_DIR`. Healthy ≈ 1598 passed / 20 skipped
+  in ~15–20s:
   ```bash
   cd <worktree>/llm-d-benchmarking-agent-project
   PYTHONPATH=<worktree>/llm-d-benchmarking-agent-project \
