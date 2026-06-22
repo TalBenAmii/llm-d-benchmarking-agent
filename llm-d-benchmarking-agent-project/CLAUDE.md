@@ -33,18 +33,18 @@ user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, 
 llm-d-benchmarking-agent-project/
 ├─ app/                   FastAPI backend — mechanism only (no judgment)
 │  ├─ main.py·config.py·paths.py·dig.py   app entry · settings+knowledge load · path resolve · safe dict/JSON accessors
-│  ├─ agent/        📁    the agent loop + system prompt (prompt-cache byte-stability)
-│  ├─ tools/        📁    the 37-tool registry (registry.py is authoritative); schemas/ = tool I/O + SessionPlan JSON schemas
-│  ├─ validation/   📁    the four determinism gates
-│  ├─ security/     📁    allowlist validator (pure; the policy itself is data in /security)
-│  ├─ orchestrator/ 📁    Kubernetes-native benchmark Job lifecycle + fault classification
-│  ├─ capacity/          capacity pre-flight — feasibility check run at the plan gate
-│  ├─ readiness/         endpoint/stack readiness (one deep module)
-│  ├─ packaging/         Helm/Kustomize deploy generation (the packaging contract)
-│  ├─ observability/     dependency-free metrics registry + Prometheus text exposition
-│  ├─ llm/               LLM provider integration (claude-agent-sdk / .env)
-│  ├─ storage/           session/run persistence
-│  └─ web/               pure, decorator-free HTTP/SSE helpers extracted from main
+│  ├─ agent/         📁   the agent loop + system prompt (prompt-cache byte-stability)
+│  ├─ tools/         📁   the 37-tool registry (registry.py is authoritative); schemas/ = tool I/O + SessionPlan JSON schemas
+│  ├─ validation/    📁   the four determinism gates
+│  ├─ security/      📁   allowlist validator (pure; the policy itself is data in /security)
+│  ├─ orchestrator/  📁   Kubernetes-native benchmark Job lifecycle + fault classification
+│  ├─ capacity/      📁   capacity pre-flight — feasibility check at the plan gate (pure, no-I/O half)
+│  ├─ readiness/     📁   endpoint/stack readiness — pure analyzer + thin probe layer
+│  ├─ packaging/     📁   deploy-artifact contract + shareable HTML report/chat + secret-gist publish
+│  ├─ observability/ 📁   dependency-free metrics + Prometheus exposition + structured logging / CoT trace
+│  ├─ llm/           📁   provider-agnostic LLM integration (anthropic / openai-compat / claude-agent-sdk)
+│  ├─ storage/       📁   persistence: history · provenance · autotune · share · retention/GC
+│  └─ web/           📁   pure, decorator-free HTTP/SSE helpers extracted from main
 ├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here
 ├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
 ├─ deploy/               Helm chart + Kustomize (base/overlays) + observability manifests
@@ -64,7 +64,7 @@ no `app/knowledge/` package.
 - **Coding conventions** (+ what the finish-time review checks) → **`coding-guidelines`** skill
 - **Finish loop** (commit → review → `--no-ff` merge to main; the `main`-only git hook gates ruff+pytest) → **`finish-implementation`** skill
 - **Test env + run commands + gotchas** → `tests/CLAUDE.md`
-- **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/PROJECT_BRAIN_REFERENCE.md`
+- **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/UPSTREAM_REUSE_PATHS.md`
 - **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `CONTEXT.md` (kept current by the `domain-modeling` skill); architecture/refactor vocabulary → `codebase-design` / `improve-codebase-architecture` skills
 - **Full doc map + run-locally quickstart** → `docs/README.md`
 - **SIMULATE=1** — dry-run toggle: the agent walks the WHOLE workflow but executes nothing (commands no-op → synthetic success; per-command approvals skipped, the upfront SessionPlan approval kept; a synthetic report is produced). Default `0` (real execution).
@@ -72,6 +72,7 @@ no `app/knowledge/` package.
 ## Capturing recurring conclusions (standing instruction to future-me)
 When you derive a conclusion you'd otherwise re-investigate later (env/build gotchas, locked decisions),
 put it where it belongs — tightly: a **folder-level fact** → that folder's `CLAUDE.md`; a **cross-cutting
-rule** → the right skill / global `~/.claude/CLAUDE.md`; **status / reference / audit** →
-`docs/PROJECT_BRAIN_REFERENCE.md`. Keep THIS file a map (structure + non-negotiables + pointers only).
+rule** → the right skill / global `~/.claude/CLAUDE.md`; **status / reference** →
+`docs/PROJECT_BRAIN_REFERENCE.md`; a **dated config/model-drift audit entry** → `docs/CONFIG_AUDIT_LOG.md`.
+Keep THIS file a map (structure + non-negotiables + pointers only).
 Consolidate, don't duplicate.
