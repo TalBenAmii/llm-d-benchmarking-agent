@@ -32,6 +32,10 @@ you branch — feature branches aren't gated; the `main`-only hook verifies gree
 - **Per-test timeout** is set in `pyproject.toml` as a deadlock backstop; a single test should never approach it.
 - **Never auto-run the live-LLM eval**: `LLM_EVAL_LIVE=1`, `tests/flows/test_flows_live.py`,
   `make validate-live` spend Max-plan quota → only on explicit user request. Plain `pytest` is safe and hermetic.
+  Two modes (both gated on explicit request): `LLM_EVAL_LIVE=1 pytest tests/flows/test_flows_live.py` (live set)
+  and `LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 pytest …` (simulate set) — error/safety flows are honest only live,
+  multi-step DEPLOY walks only in simulate. ⚠️ In a worktree the gitignored `.env` is absent → the provider raises
+  → every live test SKIPS silently; `cp <primary>/.env <worktree>/.env` first.
 - **Self-eval (`tests/eval/`)**: the LLM judge (`test_judge_live.py`) + bug-hunter
   (`test_bughunt_live.py`) share the SAME `LLM_EVAL_LIVE` switch (bughunt also needs `BUGHUNT=1`)
   and SPEND quota → never auto-run them. `make eval-shadow` is the always-safe hermetic entry

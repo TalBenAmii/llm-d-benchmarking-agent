@@ -24,6 +24,10 @@ for *you* editing these files; it is deliberately excluded from the runtime know
   `epp_headers.yaml` (`dropped_reason_enum` incl. `rejected-saturated`, `evicted-priority`, each with
   `cause`/`remedy`/`capacity_not_breakage`), `welllit_path_advisor.yaml` (10 archetypes + required fields),
   `readiness_probes.md` (startup-judgment phrases).
+- **`welllit_path_advisor.yaml` is snapshot-gated** by `tests/flows/catalog_snapshot.py`: every archetype's
+  `scenario` must be in the snapshot SPECS and each `benchmark_workload` in WORKLOADS. Adding an archetype whose
+  spec/workload isn't in the snapshot yet requires running `make snapshot-catalog` in the SAME change. (The other
+  advisor files — `usecase_to_profile.yaml`/`key_docs.yaml`/`deploy_path_playbook.md` — are free text, not gated.)
 - **`CLAUDE.md` / `README.md` here are NOT knowledge** — they're filtered out of the glob in
   `app/agent/prompt.py::_knowledge_sections` and `app/tools/knowledge_access.py::_knowledge_files`
   (and `read_knowledge` won't return them). Locked by `tests/test_knowledge_meta_excluded.py`. If you add

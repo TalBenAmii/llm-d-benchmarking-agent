@@ -39,6 +39,13 @@ is the authoritative list. Judgment about *what to do with* results lives in `kn
 - A `timeout_s` declared in `allowlist.yaml` **overrides** any `timeout=` you pass.
 - Result dicts are not schema-checked — a typo'd key silently misleads the agent; assert key presence in tests.
 
+## Audit note (don't re-litigate)
+A 2026-06-19 verified audit found the set genuinely lean — every result-cluster tool, `run_command` vs
+`execute_llmdbenchmark`, and `fetch_key_docs` vs `read_repo_doc` has a distinct role pinned by a live-eval flow;
+do NOT re-propose merging them. DEFERRED (only if advanced-GPU-flag coverage is wanted): `execute_llmdbenchmark`
+flag passthroughs (wva/deep/serviceaccount/release/non_admin/envvarspod/full_infra) — each needs an allowlist +
+`test_allowlist.py`/`test_command_events.py` entry, and the `-d`/`-r` flag collisions need disjoint keys.
+
 ## Scoped tests
 ```bash
 pytest tests/test_new_tools.py tests/test_schemas.py tests/test_command_events.py tests/test_allowlist.py

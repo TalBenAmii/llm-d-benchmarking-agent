@@ -14,7 +14,9 @@ caller/wirer; nothing here registers on the FastAPI `app`.
 - **`static.py::install_cors` — wildcard-credentials guard:** when origin `"*"` is configured it DROPS
   `allow_credentials` (else Starlette reflects any Origin back with credentials → authenticated cross-origin
   reads). Wires nothing when `origins` is empty. `RevalidateStaticFiles` forces `no-cache, must-revalidate`
-  so UI reloads pick up new `app.js`/`styles.css`.
+  so UI reloads pick up new `app.js`/`styles.css`. ⚠️ Dev gotcha: the chat UI is a single-page app that fetches
+  `/static/app.js` once — an already-open tab still needs ONE manual hard-reload (Ctrl+Shift+R) to see a UI change,
+  and changing this header itself requires a SERVER RESTART to take effect.
 - **`share.py::redact_share_items` — the public-share redaction boundary:** strips server-internal keys
   (`report_path`, `searched`) from `tool_result` rows before a snapshot is frozen (a public share is
   UNAUTHENTICATED). Returns NEW dicts (never mutates the live session).
