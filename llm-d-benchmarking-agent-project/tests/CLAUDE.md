@@ -1,7 +1,7 @@
 # tests/ — running & writing the suite
 
-Tests-local quick reference. The project `CLAUDE.md` has the full worktree mechanics; this is
-the dir-scoped cheat sheet so the env gotchas aren't re-derived each session.
+Tests-local quick reference. The `finish-implementation` skill has the finish-loop/merge mechanics;
+this is the dir-scoped env cheat sheet so the gotchas aren't re-derived each session.
 
 ## Run the full suite
 From the **primary** checkout:
@@ -16,7 +16,8 @@ PYTHONPATH=<worktree>/llm-d-benchmarking-agent-project \
 REPOS_DIR=<repo-root> \
 <repo-root>/llm-d-benchmarking-agent-project/.venv/bin/python -m pytest tests/
 ```
-**Healthy baseline ≈ 1598 passed / ~20 skipped in ~15–20s.** Establish green BEFORE changing anything.
+**Healthy baseline ≈ 1598 passed / ~20 skipped in ~15–20s.** No need to establish a green baseline when
+you branch — feature branches aren't gated; the `main`-only hook verifies green at merge.
 
 ## Run a scoped subset
 - One area: `pytest tests/test_orchestrator*.py` · one file: `pytest tests/test_allowlist.py` · one test: `pytest tests/test_foo.py::test_bar`.

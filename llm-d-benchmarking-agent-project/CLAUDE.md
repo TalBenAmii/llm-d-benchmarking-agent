@@ -1,132 +1,77 @@
-# CLAUDE.md — critical instructions for this project
+# CLAUDE.md — llm-d-benchmarking-agent (project map + non-negotiables)
 
-> **Project-scoped brain** — loads whenever you work inside `llm-d-benchmarking-agent-project/`.
-> The monorepo-root `CLAUDE.md` is a slim pointer; subsystem dirs carry their own scoped
-> `CLAUDE.md` that load additively (see "Layout").
+> Project-scoped brain (loads every session you work here); the monorepo-root `CLAUDE.md` is a slim
+> pointer. **This file is the map** — the folder tree plus the rules that must always apply. Folders
+> marked 📁 carry their own `CLAUDE.md` with file-level detail: open that one when you work there.
+> Everything else is a pointer to a reference doc, fetched on demand. Keep this file a map; don't
+> inline heavy detail.
 
 ## What this is
-A **local chat-based assistant agent** that helps non-experts run `llm-d-benchmark`.
-A user describes a use case ("benchmark a chat app with 500 concurrent users"); the agent
-interviews them, checks preconditions, deploys an llm-d stack if needed, runs a benchmark,
-and explains the results — driving the `llmdbenchmark` CLI on their behalf.
+A **local chat-based assistant agent** that helps non-experts run `llm-d-benchmark`: it interviews the
+user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, and explains the results
+— driving the `llmdbenchmark` CLI on their behalf.
 
-## Workspace (three sibling folders under `<repo-root>/`)
-`llm-d/` + `llm-d-benchmark/` = READ-ONLY upstream repos (deploy guides + the `llmdbenchmark`
-CLI `llmdbenchmark = llmdbenchmark.cli:cli`, installed into its own `.venv` by `./install.sh`);
-`llm-d-benchmarking-agent-project/` = THIS project, the only folder we write code in.
-
-## Non-negotiable rules
-1. **The two repos are READ-ONLY** (`llm-d/`, `llm-d-benchmark/`). Read their docs/specs/schemas
-   at runtime and shell out to their CLI; never edit. The agent may *clone* them if missing.
-   Hard-enforced by a `permissions.deny` rule in `.claude/settings.json`.
+## Non-negotiable rules (always apply)
+1. **`llm-d/` + `llm-d-benchmark/` are READ-ONLY** upstream repos — read their docs/specs/schemas and
+   shell out to their CLI; never edit (clone if missing). Hard-enforced by `permissions.deny`.
 2. **All new code lives under `llm-d-benchmarking-agent-project/` only.**
-3. **Thin code, thick agent.** Code = mechanism only (UI, agent loop, tools, security
-   allowlist, validation). All *judgment* (which spec/harness/workload, what flags, how to
-   read results) lives in the LLM + editable files under `knowledge/`. **Do not put
-   decision logic in Python `if/elif` branches** — put it in `knowledge/` and let the LLM
-   reason over it.
-4. **Determinism via validation, not scripting.** Constrain the LLM at the boundaries:
-   tool-call args validated against schemas; a `SessionPlan` approved before any mutation;
-   generated configs validated via the CLI's own `--dry-run`/`plan`; results parsed from
-   the repo's **Benchmark Report v0.2** schema, never scraped from logs.
-5. **Security: deny-by-default allowlist + per-action approval.** Commands run as argv
-   lists with `shell=False` (no shell string, ever). Read-only probes auto-run; every
-   mutating command requires explicit UI approval. The allowlist is **data**
-   (`security/allowlist.yaml`); `app/security/allowlist.py` is a pure validator with no
-   embedded per-command knowledge.
-6. **Secrets stay in the backend.** LLM API keys / HF tokens live only in backend env
-   (`.env`, gitignored). The browser never sees them; subprocess env is scrubbed.
-7. **Read repo truth at runtime; don't vendor copies.** The Benchmark Report schema, the
-   spec/harness/workload catalog, and repo docs are read live. The only schemas we author
-   are our own tool I/O and `SessionPlan`. If a repo path can't be resolved, fail loudly.
+3. **Thin code, thick agent** — code is mechanism; all judgment lives in the LLM + `knowledge/`. No
+   decision logic in Python `if/elif` branches.
+4. **Determinism at the boundaries** — schema-validated tool args; a `SessionPlan` approved before any
+   mutation; configs validated via the CLI's `--dry-run`/`plan`; results parsed from the Benchmark
+   Report v0.2 schema, never scraped from logs.
+5. **Security: deny-by-default allowlist** (policy is data in `security/allowlist.yaml`; `app/security`
+   is a pure validator); commands run as argv lists with `shell=False`; read-only probes auto-run,
+   mutations need explicit approval.
+6. **Secrets stay in the backend** (`.env`, gitignored; subprocess env scrubbed; browser never sees keys).
+7. **Read repo truth at runtime; don't vendor copies** — fail loudly if a repo path can't be resolved.
 
-## Reuse (don't reinvent) — key paths in `llm-d-benchmark/`
-- CLI entry: `pyproject.toml` → `llmdbenchmark = "llmdbenchmark.cli:cli"`
-- Specs: `config/specification/**/*.yaml.j2` (e.g. `cicd/kind`, `guides/optimized-baseline`)
-- Harnesses: `workload/harnesses/*` · Workloads: `workload/profiles/{harness}/*.yaml.in`
-- Benchmark Report v0.2 schema: `llmdbenchmark/analysis/benchmark_report/br_v0_2_json_schema.json`
-- Safe preview / config gen: CLI `plan`, `run --dry-run`, `run --generate-config`, `run --list-endpoints`
-- Bootstrap: `install.sh` (`--uv` fetches python3.11, builds `.venv`)
+> Full rationale + the conventions the finish-time review enforces → the **`coding-guidelines`** skill.
 
-## Layout of this project
-- `app/` — FastAPI backend (mechanism): `main.py`, `config.py`, `llm/`, `agent/`, `tools/`,
-  `security/`, `validation/`, `storage/`, `orchestrator/` (knowledge is loaded by
-  `app/config.py` + `app/agent/prompt.py` from the root `knowledge/` dir — there is no
-  `app/knowledge/` package)
-- `security/allowlist.yaml` — the deny-by-default policy (data)
-- `knowledge/` — the agent's editable brain (markdown/yaml; no Python)
-- `ui/` — static chat UI (`index.html`, `app.js`, `styles.css`)
-- `workspace/` — gitignored runtime scratch (per-session state, generated configs, logs)
-- `tests/` — pytest
+## Project structure (the map — open a folder's 📁 `CLAUDE.md` when working there)
+```
+llm-d-benchmarking-agent-project/
+├─ app/                   FastAPI backend — mechanism only (no judgment)
+│  ├─ main.py·config.py·paths.py·dig.py   app entry · settings+knowledge load · path resolve · safe dict/JSON accessors
+│  ├─ agent/        📁    the agent loop + system prompt (prompt-cache byte-stability)
+│  ├─ tools/        📁    the 37-tool registry (registry.py is authoritative); schemas/ = tool I/O + SessionPlan JSON schemas
+│  ├─ validation/   📁    the four determinism gates
+│  ├─ security/     📁    allowlist validator (pure; the policy itself is data in /security)
+│  ├─ orchestrator/ 📁    Kubernetes-native benchmark Job lifecycle + fault classification
+│  ├─ capacity/          capacity pre-flight — feasibility check run at the plan gate
+│  ├─ readiness/         endpoint/stack readiness (one deep module)
+│  ├─ packaging/         Helm/Kustomize deploy generation (the packaging contract)
+│  ├─ observability/     dependency-free metrics registry + Prometheus text exposition
+│  ├─ llm/               LLM provider integration (claude-agent-sdk / .env)
+│  ├─ storage/           session/run persistence
+│  └─ web/               pure, decorator-free HTTP/SSE helpers extracted from main
+├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here
+├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
+├─ deploy/               Helm chart + Kustomize (base/overlays) + observability manifests
+├─ scripts/              host bootstrap (install_prereqs.sh; kind cluster create/delete)
+├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
+├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
+├─ tools/                dev tooling (qa-fleet)
+├─ ui/                   static chat UI (index.html, app.js, styles.css)
+├─ docs/                 documentation (README index + proposals/ + superpowers/)
+└─ workspace/            gitignored runtime scratch (per-session state, generated configs, logs)
+```
+Knowledge is loaded by `app/config.py` + `app/agent/prompt.py` from the root `knowledge/` dir — there is
+no `app/knowledge/` package.
 
-**Subsystem-scoped `CLAUDE.md` files** (load additively when you work in that dir — read the
-local one BEFORE editing there; it carries the invariants that aren't obvious from the code):
-`app/agent/` (prompt-cache byte-stability), `app/tools/` (how to add a tool),
-`app/orchestrator/` (Job lifecycle / fault classification), `app/validation/` (the four
-determinism gates), `app/security/` (the allowlist validator contract), `knowledge/`
-(CORE vs on-demand), `tests/` (scoped runs + the worktree env gotchas).
-
-## What's built (status + feature set)
-The kind-quickstart MVP (probe → ensure repo → `install.sh --uv` → `standup --spec cicd/kind`
-→ `smoketest` → `run` → parse report → summarize → teardown) is **implemented & `pytest`-green**.
-Well past it now: a **K8s-native orchestrator** (`app/orchestrator/`), results analyzer
-(goodput/SLO/Pareto/DoE), multi-harness comparison, capacity pre-flight, cross-session trends,
-Prometheus/Grafana observability, hardened Helm/Kustomize deploy — exposing **37 tools**
-(`app/tools/registry.py` is authoritative). Host bootstrap (Docker daemon + kind via
-`scripts/install_prereqs.sh`, cluster create/delete) is agent-owned, approval-gated, and widened
-purely via `security/allowlist.yaml` (no per-command Python) — all obeying the thin-code/thick-agent
-+ determinism rules above. **Full inventory + how to verify each → `FEATURES.md` (read first);
-status/remaining/doc map → `docs/PROJECT_BRAIN_REFERENCE.md` + `ROADMAP_V4.md`.**
-
-**Simulate Mode (`SIMULATE=1`).** Dry-run toggle: the agent walks the WHOLE workflow
-(probe → plan → standup → smoketest → run → report) but executes nothing — every command a
-no-op returning synthetic success, per-command approvals skipped (the upfront SessionPlan
-approval is kept), a synthetic report produced. Default `0` (real execution).
-
-## Docs & run — pointers
-- **What the agent does + how to verify each feature** → `FEATURES.md` (read first).
-- **Full doc map** (`docs/README.md` index → ARCHITECTURE, API, DEPLOYMENT, USER_GUIDE, VALIDATION,
-  SECURITY, TROUBLESHOOTING, coverage catalogs, `INTERACTIVE_TEST_GUIDE.md`) and the **run-locally
-  quickstart** → `docs/README.md` + `docs/PROJECT_BRAIN_REFERENCE.md`.
-- **North star / design** → `llm-d-benchmarking-agent-proposal.md`, `plan.md`, `ROADMAP_V4.md`.
-- **Agent brain** — `knowledge/*.md|*.yaml` hold all *judgment* (loaded at runtime; not docs to edit
-  casually). See `knowledge/CLAUDE.md` before editing them.
-- **Domain glossary** → `CONTEXT.md` (project root): the canonical names for domain concepts (spec,
-  harness, workload, SessionPlan, goodput, dead-letter, …) + the wrong words to avoid. Use these terms
-  exactly; update it the moment a term is coined/sharpened (the `domain-modeling` skill maintains it).
-  For *architecture/refactor* vocabulary (module, interface, depth, seam, adapter, leverage, locality)
-  + finding refactor candidates, use the `codebase-design` / `improve-codebase-architecture` skills.
-
-## Working in a worktree + running the suite (established facts — reuse, don't re-derive)
-The **finish loop** (worktree → review → commit → `--no-ff` merge to main; `merge-base==HEAD` and
-post-merge SHA-ancestry checks; the `git add -A` gitlink hazard; the main-only `ruff`+`pytest` hook
-gate with `--no-verify` bypass; feature branches aren't gated so no "green baseline" needed) lives in
-the **`finish-implementation` skill** — don't re-derive it here. `tests/CLAUDE.md` is the tests-local
-quick reference. Project-specific test-env facts:
-- **Git root = this monorepo** (`<repo-root>`); `llm-d-benchmarking-agent-project/` is a subdir.
-  `llm-d/` + `llm-d-benchmark/` are **nested untracked repos, EMPTY in any worktree** → point
-  catalog/report tests back at the primary copy via `REPOS_DIR=<repo-root>`.
-- **Branch worktrees off LOCAL `main` HEAD, not origin** (main is many commits ahead of origin and
-  other sessions commit to it).
-- ⚠️ Keep `core.hooksPath` **empty** — a stale value silently disables every hook (it once pointed at
-  a deleted dir → no hooks ran). Hooks live in `.git/hooks` (not version-controlled) → recreate on a
-  fresh clone.
-- **To run the suite manually** (debugging a specific failure, *not* as a gate): worktree siblings are
-  EMPTY; the primary `.venv` is an editable install → `PYTHONPATH` required; `conftest.py` resolves the
-  bench repo via `get_settings().bench_repo`, honoring `REPOS_DIR`. Healthy ≈ 1598 passed / 20 skipped
-  in ~15–20s:
-  ```bash
-  cd <worktree>/llm-d-benchmarking-agent-project
-  PYTHONPATH=<worktree>/llm-d-benchmarking-agent-project \
-  REPOS_DIR=<repo-root> \
-  <repo-root>/llm-d-benchmarking-agent-project/.venv/bin/python -m pytest tests/
-  ```
-- Don't auto-run live-LLM eval (`LLM_EVAL_LIVE=1`, `test_flows_live.py`, `make validate-live`) — spends
-  Max-plan quota; only on explicit user request. The hook runs plain `pytest` (never live eval).
+## Reference — fetch on demand (NOT inlined here)
+- **What's built / status / feature set** → `FEATURES.md` (read first; how to verify each) + `docs/PROJECT_BRAIN_REFERENCE.md`; gaps → `ROADMAP_V4.md`
+- **Coding conventions** (+ what the finish-time review checks) → **`coding-guidelines`** skill
+- **Finish loop** (commit → review → `--no-ff` merge to main; the `main`-only git hook gates ruff+pytest) → **`finish-implementation`** skill
+- **Test env + run commands + gotchas** → `tests/CLAUDE.md`
+- **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/PROJECT_BRAIN_REFERENCE.md`
+- **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `CONTEXT.md` (kept current by the `domain-modeling` skill); architecture/refactor vocabulary → `codebase-design` / `improve-codebase-architecture` skills
+- **Full doc map + run-locally quickstart** → `docs/README.md`
+- **SIMULATE=1** — dry-run toggle: the agent walks the WHOLE workflow but executes nothing (commands no-op → synthetic success; per-command approvals skipped, the upfront SessionPlan approval kept; a synthetic report is produced). Default `0` (real execution).
 
 ## Capturing recurring conclusions (standing instruction to future-me)
-When you derive a conclusion you'd otherwise re-investigate on a later task (env/test/build setup, repo
-gotchas, locked design decisions), append a **1–2 line** summary to the relevant section above —
-**consolidate, don't duplicate, keep it tight** (this file loads into context every session). Reference
-material (status, doc map, run-locally, the **config/model-drift audit log**) lives in
-`docs/PROJECT_BRAIN_REFERENCE.md` — keep it there, not here, so this file stays small.
+When you derive a conclusion you'd otherwise re-investigate later (env/build gotchas, locked decisions),
+put it where it belongs — tightly: a **folder-level fact** → that folder's `CLAUDE.md`; a **cross-cutting
+rule** → the right skill / global `~/.claude/CLAUDE.md`; **status / reference / audit** →
+`docs/PROJECT_BRAIN_REFERENCE.md`. Keep THIS file a map (structure + non-negotiables + pointers only).
+Consolidate, don't duplicate.

@@ -96,3 +96,20 @@ workarounds built for old model limitations"):
   `graphifyy` binary. **Net now: zero git hooks beyond the `main`-scoped pre-commit/pre-merge lint+test gate.**
   (The unmerged `worktree-graphify-runtime-tool` prototype branch + its OPEN_ITEMS / PROPOSAL_GAP_REPORT
   entries were left intact as a record.)
+- **2026-06-22 — config reconstruction (Claude Code = Opus 4.8).** Reorganized the per-turn config to cut
+  always-on bloat: created a global `~/.claude/CLAUDE.md` (reply format, ask-when-in-doubt + precedence,
+  plan-mode task-sizing, web-search, and the project-`CLAUDE.md`-as-folder-map convention); moved coding
+  conventions into a `coding-guidelines` skill and the commit→review→merge definition-of-done into a
+  `finish-implementation` skill; pruned ~16 now-redundant/historical auto-memories (live open-risks kept).
+  Rewrote the project `CLAUDE.md` into a **folder map + non-negotiables + on-demand pointers** — relocated
+  "what's built" (already covered above), the upstream reuse paths (below), and the test-env/finish-loop
+  prose (now in `tests/CLAUDE.md` + the `finish-implementation` skill).
+
+## Upstream reuse paths (`llm-d-benchmark/`) — relocated from CLAUDE.md
+Read at runtime; never vendor copies. Key entry points when generating configs / picking specs:
+- CLI entry: `pyproject.toml` → `llmdbenchmark = "llmdbenchmark.cli:cli"`
+- Specs: `config/specification/**/*.yaml.j2` (e.g. `cicd/kind`, `guides/optimized-baseline`)
+- Harnesses: `workload/harnesses/*` · Workloads: `workload/profiles/{harness}/*.yaml.in`
+- Benchmark Report v0.2 schema: `llmdbenchmark/analysis/benchmark_report/br_v0_2_json_schema.json`
+- Safe preview / config gen: CLI `plan`, `run --dry-run`, `run --generate-config`, `run --list-endpoints`
+- Bootstrap: `install.sh` (`--uv` fetches python3.11, builds `.venv`)
