@@ -6,8 +6,9 @@ is the authoritative list. Judgment about *what to do with* results lives in `kn
 
 ## How to add a tool (the pattern to copy)
 1. **Handler** — `app/tools/<name>.py`: `async def my_tool(ctx: ToolContext, *, arg: str) -> dict[str, Any]`.
-2. **Input schema** — a Pydantic model in `app/tools/schemas.py`; every `Field(..., description=...)`
-   is **exposed to the LLM** in the JSON Schema, so write the description for the model (point it at
+2. **Input schema** — a Pydantic model in the `app/tools/schemas/` package (drop it in the module for
+   the tool's family, e.g. `schemas/execute.py`); every `Field(..., description=...)` is **exposed to
+   the LLM** in the JSON Schema, so write the description for the model (point it at
    `read_knowledge('<topic>')` for judgment), not as an impl note.
 3. **Register** — in `registry.py::build_registry()` add a `ToolSpec(name, _DESCRIPTIONS[name],
    InputModel, handler)` and a `_DESCRIPTIONS[name]` entry. `dispatch()` (`registry.py`) validates
@@ -27,12 +28,20 @@ is the authoritative list. Judgment about *what to do with* results lives in `kn
   never in argv or the result. Emitted command events carry argv only, never env.
 - **After cloning repos, call `ctx.catalog(refresh=True)`** or later tools see the stale (empty) catalog.
 
-## Key files
+## Infra files (not tools)
 - `registry.py` — `build_registry()` (name→`ToolSpec`) + `dispatch()` (validate → handler). Authoritative.
 - `context.py` — `ToolContext` DI container + thin `run_command`/`run_readonly` delegators; `ToolError`/`ApprovalRejected`/`QuotaError`.
 - `command_exec.py` — `CommandExecutor`: validate → quota → approval → run → record. Tools don't touch it directly.
-- `schemas.py` — every tool's Pydantic input model.
-- `execute.py` · `orchestrate.py` · `analyze.py` · `capacity.py` · `config_artifact.py` · `repos.py` · `command.py` · `probe.py` · `knowledge_access.py` — the individual tools.
+- `schemas/` — package of Pydantic input models, one module per tool family (`execute.py`, `orchestrate.py`, `probe.py`, `analysis.py`, `config.py`, `command.py`, `provenance.py`, `autotune.py`, `docs.py`).
+- `probe_parse.py` — pure parser for `probe.py` output. · `json_tail.py` — tail-of-JSON helper.
+
+## Tool index (35 flat files → 38 tools, grouped by workflow phase)
+The files sit flat; this is the map. `registry.py` is the source of truth for the registered set/order.
+- **Probe & discover** — `probe.py` (probe_environment · list_catalog · advise_accelerators) · `workload_profile.py` (inspect_workload_profile · estimate_run_duration) · `discover.py` (discover_stack) · `capacity.py` (check_capacity) · `check_endpoint_readiness` lives in `app/readiness/`.
+- **Knowledge & advice** — `knowledge_access.py` (read_knowledge · search_knowledge · read_repo_doc · fetch_key_docs) · `convert_guide.py` (convert_guide_to_scenario) · `suggest.py` (suggest_next_steps).
+- **Plan, config & setup** — `plan.py` (propose_session_plan) · `repos.py` (ensure_repos · run_setup) · `config_artifact.py` (write_and_validate_config) · `doe.py` (generate_doe_experiment) · `hf_secret.py` (provision_hf_secret).
+- **Run & orchestrate** — `execute.py` (execute_llmdbenchmark) · `command.py` (run_command) · `shell.py` (run_shell — only when `UNRESTRICTED_TOOLS`) · `orchestrate.py` (orchestrate_benchmark_run · orchestrate_sweep) · `observe.py` (observe_run_metrics) · `cancel.py` (cancel_run) · `manage_runs.py` (manage_orchestrated_runs) · `resilience.py` (run_resilience_drill).
+- **Analyze & results** — `report_locate.py` (locate_and_parse_report) · `analyze.py` (analyze_results) · `compare.py` (compare_reports) · `multiharness.py` (compare_harness_runs) · `history.py` (result_history) · `aggregate_runs.py` (aggregate_runs) · `autotune.py` (autotune_search) · `reproducibility.py` (export_run_bundle · reproduce_run).
 
 ## Gotchas
 - Schema validation errors are **returned, not raised** — surface your own enum/range errors as a dict with `"error"`, don't raise mid-handler.

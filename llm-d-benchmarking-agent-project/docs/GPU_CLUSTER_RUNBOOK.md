@@ -255,5 +255,5 @@ at one with `KUBECONFIG=…` and the same flow applies.
   hands-on companion for making it real on a small GPU.
 - `knowledge/vllm_overrides.md` — the per-knob scenario-override guide (the judgment behind §3).
 - `knowledge/capacity.md` / `knowledge/accelerators.yaml` — GPU sizing + accelerator detection.
-- `INTERACTIVE_TEST_GUIDE.md` — the by-hand feature walk-through (CPU/kind oriented; this runbook
+- `docs/INTERACTIVE_TEST_GUIDE.md` — the by-hand feature walk-through (CPU/kind oriented; this runbook
   is its GPU counterpart).

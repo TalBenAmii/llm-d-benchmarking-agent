@@ -24,6 +24,23 @@ you branch — feature branches aren't gated; the `main`-only hook verifies gree
 - Flow replays (deterministic golden transcripts): `pytest tests/flows/`.
 - The per-subsystem `CLAUDE.md` files list the exact scoped command for each area.
 
+## Where the tests live (area → files)
+The unit suite is **flat** (`tests/test_*.py`, ~120 files); names mirror the `app/` subsystem they
+exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` the symbol for the rest):
+- **tools** (`app/tools/`) — `test_<toolname>.py` mirrors each tool: `test_analyze*.py`, `test_autotune.py`, `test_doe.py`, `test_workload_profile.py`, `test_catalog.py`, `test_repos.py`, `test_hf_secret.py`, `test_command_events.py`, `test_convert_guide.py`, `test_multiharness.py`, `test_aggregate_runs.py`, `test_manage_runs.py`, plus `test_new_tools.py` / `test_schemas.py` (registry + schema coverage).
+- **orchestrator** — `test_orchestrator*.py`, `test_chaos_injection.py`, `test_resilience*.py`, `test_jobs_api.py`.
+- **agent loop** — `test_deterministic_msgs.py`, `test_context_mgmt.py`, `test_tool_result_budget.py`, `test_events.py`, `test_loop.py`, `test_streaming_turn.py`, `test_suggest*.py`/`test_suggestions.py`, `test_ws*.py`, `test_prewarm.py`.
+- **validation gates** — `test_report_validation.py`, `test_standard_metrics.py`, `test_runconfig_roundtrip.py`, `test_scenario_overrides.py`, `test_model_override.py`.
+- **security / allowlist** — `test_allowlist.py`, `test_api_trust.py`, `test_governance.py`, `test_concurrency.py`, `test_sessions.py`, `test_unrestricted_shell.py`, `test_qafix_infra_*.py`, `test_product_boundary.py`.
+- **capacity** — `test_capacity.py`, `test_capacity_gated.py`.
+- **readiness** — `test_endpoint_readiness.py`, `test_gateway_readiness.py`, `test_serving_readiness.py`, `test_gateway_class.py`.
+- **packaging / sharing** — `test_packaging.py`, `test_report_card.py`, `test_share.py`, `test_shared_chat_export.py`, `test_gist_publish.py`, `test_publish_shared_chat.py`, `test_cloud_results_sink.py`.
+- **storage** — `test_retention.py`, `test_results_store.py`, `test_history.py`, `test_run_lifecycle.py`, `test_provenance.py`.
+- **observability** — `test_metrics.py`, `test_cot_trace.py`, `test_logging.py`, `test_tracing_config.py`, `test_resource_*.py`, `test_monitoring_activate.py`, `test_ops_docs.py`.
+- **llm providers** — `test_agent_sdk_provider.py`, `test_provider_pack.py`, `test_llm_caching_usage.py`.
+- **UI / HTTP e2e** — `test_ui_*.py`, `test_readyz.py`, `test_static_cache.py`, `test_streaming_turn.py`.
+- **subdirs** — `tests/flows/` (golden-transcript replays) · `tests/eval/` (LLM-judge/bughunt — gated, never auto-run) · `tests/integration/` (opt-in).
+
 ## Gotchas (the time-wasters)
 - **Empty sibling repos in worktrees** (`conftest.py`): `llm-d/` + `llm-d-benchmark/` are untracked
   nested repos, EMPTY in any worktree → catalog/report tests fail unless `REPOS_DIR` points at primary.
