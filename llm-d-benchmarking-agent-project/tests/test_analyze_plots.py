@@ -25,6 +25,7 @@ from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.execute import build_argv
 from app.tools.probe import _discover_charts, read_knowledge
 from app.tools.schemas import ExecuteInput
+from tests._helpers import _argv
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[1] / "knowledge"
 
@@ -88,10 +89,6 @@ def test_execute_schema_accepts_analyze_flag():
 # ---------------------------------------------------------------------------
 # allowlist — --analyze permitted on `run`, but does NOT downgrade the mode
 # ---------------------------------------------------------------------------
-
-
-def _argv(subcommand, *rest):
-    return ["llmdbenchmark", "--spec", "cicd/kind", subcommand, *rest]
 
 
 def _run(*rest):

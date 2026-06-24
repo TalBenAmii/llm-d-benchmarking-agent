@@ -26,6 +26,7 @@ import pytest
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.execute import build_argv
 from app.tools.schemas import ExecuteInput
+from tests._helpers import _argv
 
 # The closed provider set the CLI advertises on every subcommand.
 PROVIDERS = ["epponly", "istio", "agentgateway", "gke", "data-science-gateway-class"]
@@ -96,10 +97,6 @@ def test_execute_schema_accepts_gateway_class_flag():
 # ---------------------------------------------------------------------------
 # allowlist — --gateway-class permitted, value-constrained (DATA)
 # ---------------------------------------------------------------------------
-
-
-def _argv(subcommand, *rest):
-    return ["llmdbenchmark", "--spec", "cicd/kind", subcommand, *rest]
 
 
 def _run_args(subcommand):

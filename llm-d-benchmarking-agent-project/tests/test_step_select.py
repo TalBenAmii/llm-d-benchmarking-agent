@@ -21,6 +21,7 @@ import pytest
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.execute import build_argv
 from app.tools.schemas import ExecuteInput
+from tests._helpers import _argv
 
 # A representative spread of the upstream step-list grammar: a single step, a range, a comma
 # list, and a combo of both.
@@ -85,10 +86,6 @@ def test_step_lives_in_flags_dict_on_schema():
 # ---------------------------------------------------------------------------
 # allowlist — -s/--step permitted + value-pinned on the four accepting subcommands (DATA)
 # ---------------------------------------------------------------------------
-
-
-def _argv(subcommand, *rest):
-    return ["llmdbenchmark", "--spec", "cicd/kind", subcommand, *rest]
 
 
 # Minimal required extra args so a subcommand validates on its own merits (not step-related).

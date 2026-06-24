@@ -27,6 +27,7 @@ from app.tools.execute import build_argv
 from app.tools.registry import dispatch
 from app.tools.schemas import ExecuteInput
 from app.validation.report import summarize_report
+from tests._helpers import _argv
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 
@@ -83,10 +84,6 @@ def test_execute_schema_accepts_monitoring_flag():
 # ---------------------------------------------------------------------------
 # allowlist — exactly the right flags are permitted per subcommand (DATA)
 # ---------------------------------------------------------------------------
-
-
-def _argv(subcommand, *rest):
-    return ["llmdbenchmark", "--spec", "cicd/kind", subcommand, *rest]
 
 
 def test_allowlist_permits_monitoring_on_standup_run_experiment_plan(allowlist, catalog):

@@ -25,6 +25,10 @@ async def _approve_all(kind, payload):
     return True
 
 
+def _argv(subcommand, *rest):
+    return ["llmdbenchmark", "--spec", "cicd/kind", subcommand, *rest]
+
+
 def _real_repo_ctx(tmp_path, *, canned=None):
     """A ToolContext wired to the REAL repos/allowlist but with a CaptureRunner that fakes the
     bridge subprocess (CaptureRunner bypasses path resolution, so no real venv/tool is needed). No
