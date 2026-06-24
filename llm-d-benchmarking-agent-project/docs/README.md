@@ -22,7 +22,7 @@ config, alert rules (`alerts.rules.yaml`), and a Grafana dashboard.
 
 Project root: [`README.md`](../README.md) (overview), [`CLAUDE.md`](../CLAUDE.md) (working
 rules), [`FEATURES.md`](../FEATURES.md) (live, evidence-backed feature inventory),
-[`plan.md`](../plan.md) (design + status), and [`ROADMAP_V4.md`](../ROADMAP_V4.md)
+[`plan.md`](history/plan.md) (design + status), and [`ROADMAP_V4.md`](../ROADMAP_V4.md)
 (remaining/deferred work). The agent's *judgment* lives in [`knowledge/`](../knowledge/).
 
 ## Design in one line
@@ -53,4 +53,4 @@ upstream as a module in `llm-d-benchmark` (proposal §5.3 / §10). What's in pla
   least-privilege RBAC ([DEPLOYMENT.md](DEPLOYMENT.md)).
 
 Open items before a formal upstream PR are tracked in [`ROADMAP_V4.md`](../ROADMAP_V4.md) and
-[`plan.md`](../plan.md) ("Deferred / next").
+[`plan.md`](history/plan.md) ("Deferred / next").
