@@ -53,7 +53,7 @@ llm-d-benchmarking-agent-project/
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ tools/                dev tooling (qa-fleet)
 ├─ ui/                   static chat UI (index.html, app.js, styles.css)
-├─ docs/                 documentation (README index + proposals/ + superpowers/)
+├─ docs/                 documentation (README index + proposals/)
 └─ workspace/            gitignored runtime scratch (per-session state, generated configs, logs)
 ```
 Knowledge is loaded by `app/config.py` + `app/agent/prompt.py` from the root `knowledge/` dir — there is
