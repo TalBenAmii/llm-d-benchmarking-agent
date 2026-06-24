@@ -7,6 +7,7 @@ here. No cluster, no GPU, no network.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -24,6 +25,14 @@ from app.storage.provenance import (
     regenerate_command,
 )
 from app.validation.report import load_report, summarize_report, validate_report
+
+# When the suite runs INSIDE a git hook (e.g. the main-branch pre-commit gate), git exports
+# GIT_DIR / GIT_INDEX_FILE / … into the environment. The tests below shell out to the real git
+# binary against a throwaway tmp repo; an inherited GIT_INDEX_FILE would make their `git add` stage
+# into the REAL index — corrupting the very commit that triggered the hook. Scrub every GIT_* var so
+# these subprocesses stay hermetic regardless of how the suite was launched.
+_HERMETIC_GIT_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
 
 # ---- helpers ---------------------------------------------------------------
 
@@ -87,20 +96,21 @@ def test_knowledge_hash_missing_dir_is_stable(tmp_path):
 async def test_capture_repo_state_clean_then_dirty(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "t@t"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, env=_HERMETIC_GIT_ENV)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=repo, check=True, env=_HERMETIC_GIT_ENV)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True, env=_HERMETIC_GIT_ENV)
     (repo / "f.txt").write_text("one")
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=_HERMETIC_GIT_ENV)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True, env=_HERMETIC_GIT_ENV)
 
     real_sha = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        ["git", "rev-parse", "--short", "HEAD"], cwd=repo, capture_output=True, text=True,
+        check=True, env=_HERMETIC_GIT_ENV,
     ).stdout.strip()
 
     # A real read-only runner that shells out with the given cwd (mirrors the tool's path).
     async def run(argv, *, cwd=None, timeout=None, quiet=False):
-        r = subprocess.run(argv, cwd=cwd, capture_output=True, text=True)
+        r = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, env=_HERMETIC_GIT_ENV)
         return _FakeResult(r.returncode == 0, r.stdout, r.returncode)
 
     clean = await capture_repo_state(repo, run)
