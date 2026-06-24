@@ -24,6 +24,7 @@ import pytest
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.execute import build_argv
 from app.tools.schemas import ExecuteInput
+from tests._helpers import _argv
 
 # Real stack names from the upstream multi-model-wva scenario (config/scenarios/examples).
 STACK_ONE = "qwen3-06b"
@@ -149,10 +150,6 @@ def test_execute_schema_accepts_stack_and_parallel_flags():
 # ---------------------------------------------------------------------------
 # allowlist — --stack / --parallel permitted, value-constrained (DATA)
 # ---------------------------------------------------------------------------
-
-
-def _argv(subcommand, *rest):
-    return ["llmdbenchmark", "--spec", "cicd/kind", subcommand, *rest]
 
 
 def _run_args(subcommand):

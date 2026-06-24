@@ -44,5 +44,6 @@ you branch — feature branches aren't gated; the `main`-only hook verifies gree
 
 ## Fixtures / fakes worth knowing
 - `conftest.py` — resolves the bench repo (`REPOS_DIR`-aware), schema/example paths, the allowlist, and a `tool_ctx` (ToolContext on real repos + an isolated temp workspace).
+- `_helpers.py` — shared verbatim input-builders (`_real_repo_ctx`/`_ctx`/`_session`/`_approve_all`/`_argv`); import these instead of re-pasting a ToolContext/Session/argv builder into a new test.
 - `orchestrator_fakes.py` — in-memory `FakeKubeClient` + `make_job`/`make_pod`; the whole Job lifecycle runs with no cluster.
 - `tests/integration/` — opt-in (`LLMD_SIM_INTEGRATION=1`); skipped by default.

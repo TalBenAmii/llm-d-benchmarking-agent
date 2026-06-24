@@ -19,6 +19,7 @@ import pytest
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.execute import build_argv
 from app.tools.schemas import ExecuteInput
+from tests._helpers import _argv
 
 # A real trace URL from the upstream README's `-x DATASET` example family.
 DATASET_URL = (
@@ -77,10 +78,6 @@ def test_execute_schema_accepts_dataset_flag():
 # ---------------------------------------------------------------------------
 # allowlist — -x/--dataset permitted (value-constrained) on run + experiment (DATA)
 # ---------------------------------------------------------------------------
-
-
-def _argv(subcommand, *rest):
-    return ["llmdbenchmark", "--spec", "cicd/kind", subcommand, *rest]
 
 
 @pytest.mark.parametrize("flag", ["-x", "--dataset"])

@@ -23,6 +23,7 @@ from app.capacity.planner import _OVERRIDE_PATHS, apply_overrides
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.execute import build_argv
 from app.tools.schemas import ExecuteInput
+from tests._helpers import _argv
 
 MODEL = "meta-llama/Llama-3.1-8B"  # a model NOT pinned by cicd/kind (which serves opt-125m)
 
@@ -76,10 +77,6 @@ def test_execute_schema_models_defaults_to_none():
 # ---------------------------------------------------------------------------
 # allowlist — the override is permitted AND its value is pinned (DATA)
 # ---------------------------------------------------------------------------
-
-
-def _argv(subcommand, *rest):
-    return ["llmdbenchmark", "--spec", "cicd/kind", subcommand, *rest]
 
 
 @pytest.mark.parametrize(

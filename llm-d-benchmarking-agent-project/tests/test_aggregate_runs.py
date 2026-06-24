@@ -30,10 +30,10 @@ from app.config import get_settings
 from app.security.allowlist import READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunnerError
 from app.tools.aggregate_runs import _parse_bridge_output, aggregate_runs
-from app.tools.context import ToolContext, ToolError
+from app.tools.context import ToolError
 from app.tools.registry import dispatch, tool_definitions
 from app.validation.report import load_report
-from tests.flows.harness import CaptureRunner
+from tests._helpers import _real_repo_ctx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
@@ -149,24 +149,6 @@ def test_runner_wrapper_missing_venv_errors_clearly(tmp_path):
 # ============================================================================
 # (B) THE TOOL end-to-end (real plan resolution + faked bridge via CaptureRunner)
 # ============================================================================
-
-def _real_repo_ctx(tmp_path, *, canned=None):
-    s = get_settings()
-    runner = CaptureRunner(s.repo_paths, canned=canned or {})
-    emitted: list = []
-
-    async def emit(t, p):
-        emitted.append((t, p))
-
-    ctx = ToolContext(
-        settings=s,
-        allowlist=Allowlist.from_file(ALLOWLIST_PATH),
-        runner=runner,
-        workspace=tmp_path / "ws",
-        emit=emit,
-    )
-    return ctx, runner, emitted
-
 
 _OK_BRIDGE = json.dumps({
     "ok": True,

@@ -15,13 +15,10 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from app.config import Settings
-from app.security.allowlist import Allowlist
 from app.tools import probe
-from app.tools.context import ToolContext
 from app.tools.execute import execute_llmdbenchmark
 from app.tools.probe import _parse_cpu_quantity, probe_environment
-from tests.flows.catalog_snapshot import frozen_catalog
+from tests._helpers import _ctx
 from tests.flows.harness import CaptureRunner
 
 # A single-node Kind cluster: 4 allocatable cores — far below the harness default of 16.
@@ -49,27 +46,6 @@ MILLICORE_NODE_JSON = json.dumps({
         "status": {"allocatable": {"cpu": "1500m"}, "capacity": {"cpu": "2"}},
     }],
 })
-
-
-async def _approve_all(kind, payload):
-    return True
-
-
-def _ctx(tmp_path, *, nodes_json: str, emit=None):
-    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    runner = CaptureRunner(settings.repo_paths, canned={"kubectl get nodes": nodes_json})
-    ctx = ToolContext(
-        settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
-        runner=runner,
-        workspace=tmp_path / "ws",
-        emit=emit,
-        request_approval=_approve_all,
-    )
-    frozen = frozen_catalog()
-    ctx._catalog = frozen
-    ctx.catalog = lambda *, refresh=False: frozen
-    return ctx, runner
 
 
 def _last_run_call(runner: CaptureRunner):

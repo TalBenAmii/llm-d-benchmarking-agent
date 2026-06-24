@@ -96,9 +96,6 @@ class SLOTargets(BaseModel):
             raise ValueError("at least one SLO target must be set")
         return self
 
-    def is_empty(self) -> bool:
-        return False
-
 
 @dataclass
 class MetricVerdict:

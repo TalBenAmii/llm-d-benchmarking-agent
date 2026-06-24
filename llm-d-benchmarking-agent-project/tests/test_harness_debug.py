@@ -27,6 +27,7 @@ from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.execute import build_argv
 from app.tools.probe import read_knowledge
 from app.tools.schemas import ExecuteInput
+from tests._helpers import _argv
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[1] / "knowledge"
 ALLOWLIST_PATH = Path(__file__).resolve().parents[1] / "security" / "allowlist.yaml"
@@ -95,10 +96,6 @@ def test_execute_schema_accepts_debug_flag():
 # ---------------------------------------------------------------------------
 # allowlist — -d/--debug permitted on run+experiment ONLY, and a debug launch is MUTATING
 # ---------------------------------------------------------------------------
-
-
-def _argv(subcommand, *rest):
-    return ["llmdbenchmark", "--spec", "cicd/kind", subcommand, *rest]
 
 
 def _run(*rest):

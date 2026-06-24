@@ -22,6 +22,7 @@ import pytest
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.execute import _PHASE_TIMEOUT_FLAGS, build_argv
 from app.tools.schemas import ExecuteInput
+from tests._helpers import _argv
 
 # (flags-key, CLI flag, accepting subcommands) — the authoritative mapping this phase introduces.
 # Verified against llm-d-benchmark/llmdbenchmark/interface/{standup,run,experiment,teardown}.py.
@@ -128,10 +129,6 @@ def test_execute_schema_accepts_timeout_flags():
 # ---------------------------------------------------------------------------
 # allowlist — each --*-timeout permitted (value-pinned positive int) on its subcommand(s) (DATA)
 # ---------------------------------------------------------------------------
-
-
-def _argv(subcommand, *rest):
-    return ["llmdbenchmark", "--spec", "cicd/kind", subcommand, *rest]
 
 
 # Minimal required positional args per subcommand so the validate() is realistic.
