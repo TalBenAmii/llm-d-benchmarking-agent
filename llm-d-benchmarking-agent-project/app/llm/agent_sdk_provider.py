@@ -71,6 +71,13 @@ _DENY_MESSAGE = (
 )
 
 
+async def _deny_tool(tool_name: str, input_data: dict[str, Any], context: Any) -> Any:
+    # can_use_tool callback: deny EVERY tool — the host app executes tools itself. We read the
+    # tool_use blocks off the assistant message, so nothing is lost by refusing execution here.
+    from claude_agent_sdk import PermissionResultDeny
+    return PermissionResultDeny(message=_DENY_MESSAGE, interrupt=False)
+
+
 # Effort levels the SDK/CLI accepts. Anything else falls back to None (the CLI's own default),
 # so a typo can never crash a turn — it just declines to override the effort.
 _EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
@@ -210,10 +217,9 @@ class AgentSdkProvider(LLMProvider):
         self._cli_path = settings.claude_cli_path or None
         # Reasoning-quality + chain-of-thought options, resolved ONCE (stable for the process).
         # Merged into every ClaudeAgentOptions below so the one-shot and persistent-client paths
-        # are byte-identical. ``_thinking_active`` tells the loop whether to expect thinking blocks.
+        # are byte-identical.
         self._reasoning_opts = {**_thinking_options(settings.agent_sdk_thinking),
                                 **_effort_option(settings.agent_sdk_effort)}
-        self._thinking_active = "thinking" in self._reasoning_opts
         self._server_cache: tuple[tuple[str, ...], Any] | None = None
         # Single-slot connection prewarm (see _PREWARM_TTL_S). Holds a background ``connect()``
         # task for the NEXT turn's client, its (system, tools) fingerprint, and when it started —
@@ -249,14 +255,7 @@ class AgentSdkProvider(LLMProvider):
         the ~0.5s connect is paid. The client comes back empty (no conversation state); the
         turn's first ``chat()`` seeds the full history, so a prewarmed client is interchangeable
         with one connected at turn start."""
-        from claude_agent_sdk import (
-            ClaudeAgentOptions,
-            ClaudeSDKClient,
-            PermissionResultDeny,
-        )
-
-        async def _deny(tool_name: str, input_data: dict[str, Any], context: Any) -> Any:
-            return PermissionResultDeny(message=_DENY_MESSAGE, interrupt=False)
+        from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
         options = ClaudeAgentOptions(
             model=self._model,
@@ -266,7 +265,7 @@ class AgentSdkProvider(LLMProvider):
             allowed_tools=[],
             setting_sources=[],
             permission_mode="default",
-            can_use_tool=_deny,
+            can_use_tool=_deny_tool,
             max_turns=1,
             include_partial_messages=True,   # stream text deltas to the UI (see _consume)
             env=dict(_NEUTRALIZE_ENV),
@@ -375,18 +374,12 @@ class AgentSdkProvider(LLMProvider):
         from claude_agent_sdk import (
             AssistantMessage,
             ClaudeAgentOptions,
-            PermissionResultDeny,
             ResultMessage,
             TextBlock,
             ThinkingBlock,
             ToolUseBlock,
             query,
         )
-
-        async def _deny(tool_name: str, input_data: dict[str, Any], context: Any) -> Any:
-            # Deny EVERY tool: the host app executes tools itself. We read the tool_use blocks
-            # off the assistant message, so nothing is lost by refusing execution here.
-            return PermissionResultDeny(message=_DENY_MESSAGE, interrupt=False)
 
         options = ClaudeAgentOptions(
             model=self._model,
@@ -396,7 +389,7 @@ class AgentSdkProvider(LLMProvider):
             allowed_tools=[],                      # auto-approve nothing
             setting_sources=[],                    # ignore ~/.claude/CLAUDE.md + project/local settings
             permission_mode="default",
-            can_use_tool=_deny,
+            can_use_tool=_deny_tool,
             max_turns=1,                           # exactly one assistant turn
             env=dict(_NEUTRALIZE_ENV),
             cli_path=self._cli_path,               # None => the SDK auto-discovers `claude` on PATH

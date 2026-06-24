@@ -396,8 +396,8 @@ def pareto_analysis(
             continue
         dirs[name] = direction
         units = next(
-            (dig_dotted(s, path).get("units") for s in summaries
-             if isinstance(dig_dotted(s, path), dict) and dig_dotted(s, path).get("units") is not None),
+            (d.get("units") for s in summaries
+             if isinstance(d := dig_dotted(s, path), dict) and d.get("units") is not None),
             None,
         )
         obj_meta[name] = {"path": path, "direction": direction, "units": units}
