@@ -51,7 +51,6 @@ llm-d-benchmarking-agent-project/
 ├─ scripts/              host bootstrap (install_prereqs.sh; kind cluster create/delete)
 ├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
-├─ tools/                dev tooling (qa-fleet)
 ├─ ui/                   static chat UI (index.html, app.js, styles.css)
 ├─ docs/                 documentation (README index + proposals/)
 └─ workspace/            gitignored runtime scratch (per-session state, generated configs, logs)
