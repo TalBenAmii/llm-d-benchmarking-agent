@@ -162,7 +162,6 @@ class Allowlist:
     """Loads the policy once and validates argv lists against it."""
 
     def __init__(self, policy: dict[str, Any]):
-        self._policy = policy
         self._executables: dict[str, Any] = policy.get("executables", {})
         self._value_constraints: dict[str, Any] = policy.get("value_constraints", {})
         # Schema-validate the governance fields (timeout_s / quota) AT STARTUP so a

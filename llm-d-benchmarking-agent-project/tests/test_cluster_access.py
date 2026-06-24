@@ -27,6 +27,7 @@ from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.tools.context import ToolContext
 from app.tools.execute import build_argv, execute_llmdbenchmark
 from app.tools.schemas import ExecuteInput
+from tests._helpers import _approve_all
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 
@@ -171,10 +172,6 @@ def _ctx(tmp_path, *, emit=None):
     ctx._catalog = frozen
     ctx.catalog = lambda *, refresh=False: frozen
     return ctx, runner
-
-
-async def _approve_all(kind, payload):
-    return True
 
 
 def _last_run_call(runner: CaptureRunner):

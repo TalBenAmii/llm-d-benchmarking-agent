@@ -14,12 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from app.config import get_settings
-from app.security.allowlist import READ_ONLY, Allowlist
-from app.tools.context import ToolContext, ToolError
+from app.security.allowlist import READ_ONLY
+from app.tools.context import ToolError
 from app.tools.discover import _parse_components, _summarize_stack, discover_stack
 from app.tools.registry import dispatch, tool_definitions
-from tests.flows.harness import CaptureRunner
+from tests._helpers import _real_repo_ctx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
@@ -70,27 +69,6 @@ _BR_COMPONENTS = [
     },
 ]
 _BR_OUTPUT = json.dumps(_BR_COMPONENTS, indent=2)
-
-
-def _real_repo_ctx(tmp_path, *, canned=None):
-    """A ToolContext wired to the REAL repos/allowlist but a CaptureRunner that fakes the
-    llm-d-discover subprocess (CaptureRunner bypasses path resolution, so no real venv/tool is
-    needed). No approval channel — discover_stack is read-only and must auto-run."""
-    s = get_settings()
-    runner = CaptureRunner(s.repo_paths, canned=canned or {})
-    emitted: list = []
-
-    async def emit(t, p):
-        emitted.append((t, p))
-
-    ctx = ToolContext(
-        settings=s,
-        allowlist=Allowlist.from_file(ALLOWLIST_PATH),
-        runner=runner,
-        workspace=tmp_path / "ws",
-        emit=emit,
-    )
-    return ctx, runner, emitted
 
 
 # ---- pure parsing / summarizing -------------------------------------------------

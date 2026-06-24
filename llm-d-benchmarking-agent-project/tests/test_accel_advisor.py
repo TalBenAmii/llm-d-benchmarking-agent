@@ -21,15 +21,13 @@ import yaml
 from app.config import Settings
 from app.security.allowlist import Allowlist
 from app.tools import probe
-from app.tools.context import ToolContext
 from app.tools.probe import (
     _ACCELERATOR_RESOURCE_KEYS,
     _node_accelerator_summaries,
     advise_accelerators,
 )
 from app.tools.registry import dispatch, tool_definitions
-from tests.flows.catalog_snapshot import frozen_catalog
-from tests.flows.harness import CaptureRunner
+from tests._helpers import _ctx
 
 # A GPU node advertising nvidia.com/gpu under capacity + allocatable, with real cpu/memory.
 GPU_NODE_JSON = json.dumps({
@@ -75,27 +73,6 @@ GAUDI_NODE_JSON = json.dumps({
         },
     }],
 })
-
-
-async def _approve_all(kind, payload):
-    return True
-
-
-def _ctx(tmp_path, *, nodes_json: str, emit=None):
-    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    runner = CaptureRunner(settings.repo_paths, canned={"kubectl get nodes": nodes_json})
-    ctx = ToolContext(
-        settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
-        runner=runner,
-        workspace=tmp_path / "ws",
-        emit=emit,
-        request_approval=_approve_all,
-    )
-    frozen = frozen_catalog()
-    ctx._catalog = frozen
-    ctx.catalog = lambda *, refresh=False: frozen
-    return ctx, runner
 
 
 # ---- (1) node-advertised-resource extraction (the mechanism) ---------------

@@ -195,9 +195,6 @@ class MetricsRegistry:
     def metrics(self) -> Iterable[_Metric]:
         return list(self._metrics.values())
 
-    def render(self) -> str:
-        return render_prometheus(self)
-
 
 def render_prometheus(registry: MetricsRegistry) -> str:
     """Render a registry into the Prometheus text exposition format (v0.0.4). Stable, sorted

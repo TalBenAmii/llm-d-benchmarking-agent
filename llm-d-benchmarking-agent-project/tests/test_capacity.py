@@ -21,13 +21,12 @@ from app.capacity.planner import (
     plan_config_for_spec,
     resolve_scenario_file,
 )
-from app.config import get_settings
 from app.security.allowlist import READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunnerError
 from app.tools.capacity import _parse_bridge_output, check_capacity
-from app.tools.context import ToolContext, ToolError
+from app.tools.context import ToolError
 from app.tools.registry import dispatch, tool_definitions
-from tests.flows.harness import CaptureRunner
+from tests._helpers import _real_repo_ctx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
@@ -155,27 +154,6 @@ def test_parse_bridge_empty_is_not_ok():
 
 
 # ---- the tool end-to-end (real plan_config + faked bridge) --------------------
-
-def _real_repo_ctx(tmp_path, *, canned=None):
-    """A ToolContext wired to the REAL repos (so plan_config resolution is genuine) but
-    with a CaptureRunner that fakes the bridge subprocess. No approval channel needed —
-    capacity_check is read-only and must auto-run."""
-    s = get_settings()
-    runner = CaptureRunner(s.repo_paths, canned=canned or {})
-    emitted: list = []
-
-    async def emit(t, p):
-        emitted.append((t, p))
-
-    ctx = ToolContext(
-        settings=s,
-        allowlist=Allowlist.from_file(ALLOWLIST_PATH),
-        runner=runner,
-        workspace=tmp_path / "ws",
-        emit=emit,
-    )
-    return ctx, runner, emitted
-
 
 _FEASIBLE_BRIDGE = json.dumps({
     "ok": True,

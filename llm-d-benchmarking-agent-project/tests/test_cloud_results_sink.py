@@ -21,6 +21,7 @@ from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.tools.context import ToolContext
 from app.tools.execute import build_argv, execute_llmdbenchmark
 from app.tools.schemas import ExecuteInput
+from tests._helpers import _approve_all
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 
@@ -66,10 +67,6 @@ def test_cloud_sink_does_not_disturb_other_flags():
 # ---------------------------------------------------------------------------
 # execute_llmdbenchmark — LOCAL stays the default (ACCEPTANCE: default local)
 # ---------------------------------------------------------------------------
-
-
-async def _approve_all(kind, payload):
-    return True
 
 
 def _ctx(tmp_path):

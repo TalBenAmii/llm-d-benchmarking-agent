@@ -13,12 +13,9 @@ from pathlib import Path
 import pytest
 
 from app.agent.loop import AgentLoop
-from app.agent.session import Session
 from app.config import get_settings
 from app.llm.provider import AssistantTurn, ToolCall
-from app.security.allowlist import Allowlist
-from app.security.runner import CommandRunner
-from app.tools.context import ToolContext
+from tests._helpers import _session
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,14 +31,6 @@ class CountingProvider:
         turn = self._turns[self.calls]
         self.calls += 1
         return turn
-
-
-def _session(tmp_path) -> Session:
-    s = get_settings()
-    al = Allowlist.from_file(PROJECT_ROOT / "security" / "allowlist.yaml")
-    runner = CommandRunner(s.repo_paths)
-    ctx = ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
-    return Session(id="t", ctx=ctx)
 
 
 async def test_abandoned_turn_stops_before_first_llm_call(tmp_path):
