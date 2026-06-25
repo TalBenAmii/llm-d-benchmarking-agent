@@ -14,7 +14,7 @@ Thin-code / thick-agent split (the whole point of this module):
   command, the ``ai.`` prefix, the default inference-perf / sanity_random.yaml harness) — is
   DATA in ``knowledge/convert_guide.md`` (mirroring upstream ``skills/convert-guide/references/
   mappings.md`` + ``templates.md``). The LLM reads the guide itself (via the read-only
-  ``read_repo_doc`` / ``run_command git clone`` / its own file reads), resolves the mapping
+  ``read_repo_doc`` / ``run_shell 'git clone …'`` / its own file reads), resolves the mapping
   using that knowledge, and supplies the already-resolved ``env`` map + chosen harness/profile/
   scenario name to this tool. There is NO mapping ``if/elif`` in this Python.
 

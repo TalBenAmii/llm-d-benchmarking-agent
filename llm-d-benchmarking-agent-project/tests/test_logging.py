@@ -168,7 +168,7 @@ async def test_corr_id_propagates_loop_tool_and_runner_within_one_turn(tmp_path)
     # command exits 0 regardless of where pytest is launched.
     turns = [
         AssistantTurn(text="Checking.", tool_calls=[ToolCall(
-            "tc1", "run_command", {"argv": ["git", "status", "-s"]})]),
+            "tc1", "run_shell", {"command": "git status -s"})]),
         AssistantTurn(text="Done.", tool_calls=[]),
     ]
 
@@ -212,20 +212,20 @@ async def test_corr_id_propagates_loop_tool_and_runner_within_one_turn(tmp_path)
     ctx_recs = [r for r in by_logger.get("app.tools.context", []) if r["message"] == "command.exec"]
     assert ctx_recs, "no command.exec record under the corr_id"
     cmd = ctx_recs[0]
-    assert cmd["exe"] == "git"
+    assert cmd["exe"] == "bash"  # run_shell runs `bash -lc <command>` (bounded-cardinality label)
     assert cmd["mode"] == "read_only"
     assert cmd["exit_code"] == 0
     assert "duration_s" in cmd
-    assert cmd["tool"] == "run_command"  # the loop bound the tool name for this dispatch
+    assert cmd["tool"] == "run_shell"  # the loop bound the tool name for this dispatch
 
     # The command RUNNER emitted its own record, under the SAME corr_id (propagated purely
     # via contextvars — nothing was threaded through).
     runner_recs = [r for r in by_logger.get("app.security.runner", [])
                    if r["message"] == "runner.exec.start"]
     assert runner_recs, "no runner.exec.start record under the corr_id"
-    # The runner logs the RESOLVED binary path (e.g. /usr/bin/git); the tool layer logs the
-    # logical argv[0] (git). Both are git — assert by basename.
-    assert Path(runner_recs[0]["exe"]).name == "git"
+    # The runner logs the RESOLVED binary path. run_shell runs `bash -lc "git status -s"`, so the
+    # OS-level binary is bash (the tool layer logs exe="bash" to match) — assert by basename.
+    assert Path(runner_recs[0]["exe"]).name == "bash"
 
     # ALL THREE layers share one and the same corr_id (the crux of the acceptance criterion).
     assert {"app.agent.loop", "app.tools.context", "app.security.runner"} <= set(by_logger)

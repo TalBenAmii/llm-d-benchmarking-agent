@@ -129,7 +129,7 @@ def test_every_feature_tool_has_live_coverage():
     (via required_tools, or — for execute_llmdbenchmark — required_subcommands). This is the
     test-enforced contract behind "live eval covers all project features": adding a new feature tool
     without a live flow that exercises it fails here. Pure-plumbing tools the agent uses incidentally
-    (probe/catalog/knowledge-fetch/session-plan/repos/setup/report/run_command) are exempted — they
+    (probe/catalog/knowledge-fetch/session-plan/repos/setup/report/run_shell) are exempted — they
     aren't a user's standalone ask and are exercised across many flows already."""
     from app.tools.registry import REGISTRY
 
@@ -138,7 +138,7 @@ def test_every_feature_tool_has_live_coverage():
     # pick one from natural language would be a brittle, low-signal assertion.
     plumbing = {
         "probe_environment", "list_catalog", "propose_session_plan", "ensure_repos", "run_setup",
-        "locate_and_parse_report", "run_command",
+        "locate_and_parse_report", "run_shell",
         "read_knowledge", "search_knowledge", "read_repo_doc", "fetch_key_docs",
         # UI-affordance mechanism: the agent calls suggest_next_steps to render its "what next?"
         # offer as buttons (the structured analog of an approval card) — not a feature a user asks

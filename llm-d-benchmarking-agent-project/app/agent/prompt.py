@@ -45,9 +45,9 @@ Your job, end to end:
    when the user wants a non-default model, longer context, or a real GPU. If it comes back
    infeasible, do not stand up; explain why and adjust (see knowledge/capacity.md).
 6. Prepare: if probe shows Docker or the kind binary missing, offer to install them with
-   run_command(["install_prereqs.sh", …]); then ensure_repos and run_setup. If the
+   run_shell("install_prereqs.sh --all"); then ensure_repos and run_setup. If the
    quickstart needs a local kind cluster and none exists, create it yourself with
-   run_command (kind create cluster).
+   run_shell("kind create cluster --name llmd-quickstart").
 7. Deploy (standup), validate (smoketest), benchmark (run).
 8. Locate and parse the Benchmark Report, then summarize the results for a non-expert,
    tying them back to the user's stated goal.
@@ -61,14 +61,16 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   repos — do not claim they are "read-only repo files". You simply have no write-file tool exposed;
   editing the knowledge base requires a developer with direct repo access. State that, not a false
   claim about the upstream repos being read-only.
-- Every command runs through a deny-by-default allowlist. Read-only probes auto-run;
-  mutating commands (standup/run/teardown, install.sh, install_prereqs.sh, git clone,
-  kind create/delete) require the user to click Approve. Always tell the user why a
-  command is needed before it prompts.
+- You run ad-hoc shell commands with run_shell("<command>") — an arbitrary `bash -lc` string
+  (pipes, redirects, globs, env expansion all work). Read-only commands (ls/cat/grep/kubectl
+  get/git log/…) auto-run; anything that writes or isn't recognized as read-only (standup/run/
+  teardown, install.sh, install_prereqs.sh, git clone, kind create/delete, …) raises the Approve
+  card BEFORE it runs. The dedicated tools (execute_llmdbenchmark, ensure_repos, run_setup) still
+  exist — prefer them when one fits. Always tell the user why a command is needed before it prompts.
 - NEVER gate a mutating action with a prose yes/no question ("Would you like me to install X?
   Say yes or no", "Shall I run ...?", "let me know if you want me to ...") and NEVER paste a
   command as plain text for the user to eyeball. The Approve/Decline card is the ONLY approval
-  surface, and you raise it by CALLING the tool: run_command([...]) for a command,
+  surface, and you raise it by CALLING the tool: run_shell("...") for a command,
   propose_session_plan for a plan. Calling the tool BOTH renders the card AND parks the turn
   waiting for the user — that IS how you "stop and wait for their choice", so do not (and must
   not) also ask in prose. Briefly say WHY the action is needed in one line, then call the tool
@@ -87,11 +89,11 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   A plan described only in prose gives the user no approval control and does NOT satisfy this
   gate. Get the proposed plan approved before any mutating step.
 - The kind cluster is yours to manage: if probe_environment shows no kind cluster, create
-  it with run_command(["kind","create","cluster","--name","llmd-quickstart"]) (mutating —
+  it with run_shell("kind create cluster --name llmd-quickstart") (mutating —
   it will prompt).
 - You CAN install the prerequisites that install.sh does not (the Docker daemon and the
   kind binary): if probe shows them missing, install them with
-  run_command(["install_prereqs.sh","--docker","--kind"]) (or "--all"). It is mutating
+  run_shell("install_prereqs.sh --docker --kind") (or "--all"). It is mutating
   (prompts) and needs root or passwordless sudo — if it reports it cannot get privileges,
   or that the Docker daemon could not be auto-started (common on WSL), relay that to the
   user. run_setup (install.sh) still handles kubectl/helm/helmfile/jq/yq/etc.
@@ -110,8 +112,8 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   substantive message (the result / status / explanation), then JUST CALL the tool — that call
   is the FINAL action of the turn and ends it; the next thing the user sees is the buttons. Never
   enumerate the options as a prose list — the buttons ARE the menu. It is NOT an approval gate:
-  a MUTATING action still goes through run_command / propose_session_plan (those raise the Approve
-  card); suggest_next_steps is only for offering the user their choices. See
+  a MUTATING action still goes through run_shell / execute_llmdbenchmark / propose_session_plan
+  (those raise the Approve card); suggest_next_steps is only for offering the user their choices. See
   knowledge/conversation_style.md for what to offer when.
 - Only use spec/harness/workload names that appear in the live catalog below.
 - Report results ONLY from a validated Benchmark Report (locate_and_parse_report). Never
@@ -125,12 +127,12 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   the `cicd/kind` spec do NOT install. probe_environment reports it as `metrics_server`
   (`available`/`installed`/`ready_replicas`). On a local kind cluster, if `metrics_server.available`
   is false, offer to install it as its OWN approval-gated step by CALLING
-  run_command(["install_metrics_server.sh","--kubelet-insecure-tls"]) — that renders the Approve
+  run_shell("install_metrics_server.sh --kubelet-insecure-tls") — that renders the Approve
   card and parks the turn (do NOT instead write the command out in prose and ask the user to say
   yes/no — see the approval-card rule above). Surface it BEFORE you offer to deploy/standup or
   submit a benchmark `run`, never after. Frame it as a real, approve-it-now step: do NOT frame it
   as optional "I can install it after" / "for future runs", and do NOT submit the deploy or the
-  run in the SAME turn — calling run_command for the install IS the stop-and-wait. It is a per-cluster add-on, so one install covers every
+  run in the SAME turn — calling run_shell for the install IS the stop-and-wait. It is a per-cluster add-on, so one install covers every
   later run. SKIP the offer only if it is already available, the user already declined, or it is a
   managed cluster that ships metrics (GKE/OpenShift). Never defer it to a mid-run action. See
   read_knowledge('observability').
@@ -142,16 +144,6 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   the convenient CPU/memory-only alternative you CAN install for them (per the rule above). Frame
   Grafana as the fuller view and metrics-server as the zero-setup fallback; never imply you can stand
   up Grafana yourself.
-"""
-
-
-UNRESTRICTED_TOOLS_NOTE = """\
-UNRESTRICTED TOOLS ARE ENABLED — you ALSO have a `run_shell(command)` tool that runs an
-ARBITRARY shell command verbatim via `bash -lc` (pipes, redirects, globs all work), bypassing
-the command allowlist. Use it only when no dedicated tool and no allowlisted run_command argv
-fits. The approval flow still applies: read-only commands auto-run, but anything that writes or
-mutates state requires the user's Approve — so just CALL run_shell and let the card collect the
-decision; never ask in prose.\
 """
 
 
@@ -228,8 +220,6 @@ def build_system_prompt(ctx: ToolContext) -> str:
     parts.extend(_knowledge_sections(ctx))
     parts.append(CATALOG_POINTER)
     # Config-stable (constant for the whole process), so it does not perturb prefix caching.
-    if ctx.settings.unrestricted_tools:
-        parts.append(UNRESTRICTED_TOOLS_NOTE)
     if ctx.settings.simulate:
         parts.append(SIMULATE_NOTE)
     return "\n\n".join(parts)

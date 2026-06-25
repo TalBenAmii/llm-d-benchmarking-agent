@@ -1,7 +1,7 @@
-"""Tests for the generic run_command tool, the fetch_key_docs context tool, the vetted
-install_prereqs.sh prerequisite installer, the UPSTREAM llm-d guide client-prereq installer
-install-deps.sh, and the per-cluster install_metrics_server.sh installer (allowlist + runner
-wiring)."""
+"""Tests for the fetch_key_docs context tool, the vetted install_prereqs.sh prerequisite
+installer, the UPSTREAM llm-d guide client-prereq installer install-deps.sh, and the
+per-cluster install_metrics_server.sh installer (allowlist + runner resolution wiring — these
+scripts stay allowlisted; the agent now invokes them via run_shell)."""
 from __future__ import annotations
 
 import os
@@ -9,67 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from app.tools import command, probe
-from app.tools.context import ApprovalRejected, ToolError
+from app.tools import probe
 from app.tools.registry import dispatch
 
-# ---- run_command (the generic allowlisted-command tool) -------------------
-
-async def test_run_command_denies_non_allowlisted(tool_ctx):
-    with pytest.raises(ToolError):
-        await command.run_command(tool_ctx, argv=["rm", "-rf", "/"])
-
-
-async def test_run_command_denies_bad_cluster_name(tool_ctx):
-    with pytest.raises(ToolError):
-        await command.run_command(tool_ctx, argv=["kind", "create", "cluster", "--name", "Bad_Name"])
-
-
-async def test_run_command_mutating_requires_approval(tool_ctx):
-    # A valid mutating command must hit the approval gate; rejecting it raises (no exec).
-    async def reject(kind, payload):
-        assert kind == "command"
-        return False
-
-    tool_ctx.request_approval = reject
-    with pytest.raises(ApprovalRejected):
-        await command.run_command(tool_ctx, argv=["kind", "create", "cluster", "--name", "llmd-quickstart"])
-
-
-async def test_run_command_install_prereqs_requires_approval(tool_ctx):
-    # Installing prerequisites is mutating — it must route through the approval gate too.
-    async def reject(kind, payload):
-        return False
-
-    tool_ctx.request_approval = reject
-    with pytest.raises(ApprovalRejected):
-        await command.run_command(tool_ctx, argv=["install_prereqs.sh", "--all"])
-
-
-async def test_run_command_install_deps_requires_approval(tool_ctx):
-    # The UPSTREAM llm-d guide client-prereq installer is mutating — approval-gated too.
-    async def reject(kind, payload):
-        return False
-
-    tool_ctx.request_approval = reject
-    with pytest.raises(ApprovalRejected):
-        await command.run_command(tool_ctx, argv=["install-deps.sh"])
-
-
-async def test_run_command_install_metrics_server_requires_approval(tool_ctx):
-    # The per-cluster metrics-server installer is mutating — it must route through approval too.
-    async def reject(kind, payload):
-        return False
-
-    tool_ctx.request_approval = reject
-    with pytest.raises(ApprovalRejected):
-        await command.run_command(tool_ctx, argv=["install_metrics_server.sh", "--kubelet-insecure-tls"])
-
-
-async def test_run_command_schema_requires_argv(tool_ctx):
-    result = await dispatch(tool_ctx, "run_command", {})
-    assert result.get("error") == "invalid arguments"
-
+# ---- allowlist + runner resolution for the vetted install scripts ----------
 
 def test_install_prereqs_resolves_to_executable_project_script(tool_ctx):
     # The `project-script` runner invoke type must resolve install_prereqs.sh to the real

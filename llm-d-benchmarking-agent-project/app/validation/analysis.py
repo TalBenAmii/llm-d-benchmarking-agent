@@ -567,6 +567,6 @@ def recommend_next_steps(
         "re-run with --analyze to write the latency-distribution / session / time-series plots")
 
     # 5) Teardown is always available but lowest priority (don't lead with it).
-    add("teardown", "run_command", "tear down the stack when you're done to free resources")
+    add("teardown", "execute_llmdbenchmark", "tear down the stack when you're done to free resources")
 
     return steps

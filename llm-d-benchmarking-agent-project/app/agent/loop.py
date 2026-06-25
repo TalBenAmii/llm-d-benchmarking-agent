@@ -145,7 +145,7 @@ class AgentLoop:
         log.info("turn.start", extra={"session_id": session.id, "user_chars": len(user_text)})
 
         system = build_system_prompt(ctx)
-        tools = tool_definitions(ctx)
+        tools = tool_definitions()
         tool_calls_made = 0
         # One user "press enter" runs this loop = several LLM calls; per-turn tokens are the SUM
         # of usage across all of them. Track the running turn total + a call counter so the live

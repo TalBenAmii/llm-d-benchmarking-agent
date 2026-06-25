@@ -109,5 +109,5 @@ class ConvertGuideInput(BaseModel):
         description="Optional guide URL/path, recorded only as a provenance header comment in "
                     "the .sh (e.g. 'https://github.com/llm-d/llm-d/tree/main/guides/"
                     "inference-scheduling'). Not fetched by this tool — you read the guide "
-                    "yourself via read_repo_doc / run_command git clone / your own file reads.",
+                    "yourself via read_repo_doc / run_shell 'git clone …' / your own file reads.",
     )

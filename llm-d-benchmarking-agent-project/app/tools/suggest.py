@@ -7,7 +7,8 @@ draw them as the same floating suggestion pills the welcome chips use. Clicking 
 
 This is the structured analog of the approval-card rule: the agent stops asking "want me to…?"
 in prose and instead CALLS this tool, exactly as it raises an Approve/Decline card by calling
-run_command / propose_session_plan. The chips ride the tool RESULT (``suggestions``), so the
+run_shell / execute_llmdbenchmark / propose_session_plan. The chips ride the tool RESULT
+(``suggestions``), so the
 existing tool-result-card path renders them live AND replays them on resume/reload — no separate
 event or persistence machinery needed (the payload is tiny and survives the feed-back clamp).
 """
