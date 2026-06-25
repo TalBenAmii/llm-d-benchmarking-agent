@@ -3,8 +3,7 @@
 > Project-scoped brain (loads every session you work here); the monorepo-root `CLAUDE.md` is a slim
 > pointer. **This file is the map** — the folder tree plus the rules that must always apply. Folders
 > marked 📁 carry their own `CLAUDE.md` with file-level detail: open that one when you work there.
-> Everything else is a pointer to a reference doc, fetched on demand. Keep this file a map; don't
-> inline heavy detail.
+> Everything else is a pointer to a reference doc, fetched on demand.
 
 ## What this is
 A **local chat-based assistant agent** that helps non-experts run `llm-d-benchmark`: it interviews the
@@ -20,12 +19,11 @@ user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, 
 4. **Determinism at the boundaries** — schema-validated tool args; a `SessionPlan` approved before any
    mutation; configs validated via the CLI's `--dry-run`/`plan`; results parsed from the Benchmark
    Report v0.2 schema, never scraped from logs.
-5. **Security: the mutating→approval gate is the agent's guardrail.** The agent runs ad-hoc commands via
-   `run_shell` (arbitrary `bash -lc`, gated by the read-only/mutating classifier + approval, NOT the
-   allowlist). The **deny-by-default allowlist** (data in `security/allowlist.yaml`; `app/security` is a
-   pure validator) governs the DEDICATED command tools (execute_llmdbenchmark, probes, orchestrator) via
-   the executor. Read-only probes auto-run; mutations need explicit approval (a per-session UI toggle can
-   auto-approve commands; the SessionPlan gate always prompts). Subprocess env is scrubbed either way.
+5. **Security: the mutating→approval gate is the guardrail.** Mutations need explicit approval; read-only
+   probes auto-run; subprocess env is scrubbed. The deny-by-default allowlist (data in
+   `security/allowlist.yaml`; `app/security` = pure validator) governs the dedicated command tools;
+   `run_shell` is gated by the read-only/mutating classifier instead. Detail → `app/security/CLAUDE.md` +
+   the `coding-guidelines` skill.
 6. **Secrets stay in the backend** (`.env`, gitignored; subprocess env scrubbed; browser never sees keys).
 7. **Read repo truth at runtime; don't vendor copies** — fail loudly if a repo path can't be resolved.
 

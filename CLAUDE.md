@@ -10,10 +10,9 @@ This directory is a **container**, not the project. It holds:
 ```
 
 ## Critical gotcha (applies everywhere)
-**`llm-d/` and `llm-d-benchmark/` are READ-ONLY.** We read their docs/specs/schemas at
-runtime and shell out to their CLI; we never modify them. (Enforced by a `permissions.deny`
-rule in `.claude/settings.json` — Edit/Write to those paths is hard-blocked.) All new code
-lives under `llm-d-benchmarking-agent-project/` only.
+**`llm-d/` + `llm-d-benchmark/` are READ-ONLY** (hard-enforced by a `permissions.deny` rule in
+`.claude/settings.json`): read their docs/specs/schemas and shell out to their CLI at runtime; never
+edit. All new code lives under `llm-d-benchmarking-agent-project/` only.
 
 ## Where the real instructions live
 Work happens inside **`llm-d-benchmarking-agent-project/`** — see its `CLAUDE.md` for the

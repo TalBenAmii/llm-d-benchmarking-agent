@@ -11,5 +11,30 @@
       "Write(**/llm-d-benchmark/**)"
     ]
   },
-  "enabledPlugins": {}
+  "enabledPlugins": {},
+  "_comment": "Guardrails for this repo. (1) permissions.deny hard-blocks Edit/Write to the READ-ONLY upstream repos llm-d/ and llm-d-benchmark/. (2) PreToolUse hooks add an explanatory message when those edits are denied, and deny the agent from running pytest/ruff/make test|lint directly — those run automatically via the local git pre-commit hook on commits to main, not on demand.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "c=$(jq -r '.tool_input.command // \"\"'); if printf '%s' \"$c\" | grep -qE -e '(^|[;&|]|&&|\\|\\|)[[:space:]]*([./[:alnum:]_-]*/)?(pytest|ruff)([[:space:]]|$)' -e 'python[0-9]*[[:space:]]+-m[[:space:]]+(pytest|ruff)([[:space:]]|$)' -e '(^|[;&|]|&&|\\|\\|)[[:space:]]*make[[:space:]]+(test|lint)([[:space:]]|$)'; then jq -n '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:\"pytest/ruff run automatically via the git pre-commit hook on commits to main \\u2014 do not run them directly here; just git commit (bypass with --no-verify if needed).\"}}'; fi",
+            "statusMessage": "Checking command policy (pytest/ruff run via git hooks)"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "p=$(jq -r '.tool_input.file_path // \"\"'); if printf '%s' \"$p\" | grep -qE '(^|/)(llm-d|llm-d-benchmark)/'; then jq -n '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:\"llm-d/ and llm-d-benchmark/ are READ-ONLY upstream repos \\u2014 never edit. Read their docs/specs and shell out to their CLI; all new code lives under llm-d-benchmarking-agent-project/.\"}}'; fi",
+            "statusMessage": "Checking read-only-repo policy"
+          }
+        ]
+      }
+    ]
+  }
 }
