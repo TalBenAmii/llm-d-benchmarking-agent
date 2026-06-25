@@ -11,7 +11,7 @@ tool with the resolved `env` map.
 ## Workflow
 
 1. **Read the guide.** Use `read_repo_doc` for an in-repo guide path, or
-   `run_command(['git','clone',...])` then read the cloned files, or fetch the URL the user
+   `run_shell("git clone ...")` then read the cloned files, or fetch the URL the user
    gave. A guide is either **Helm-values-based** (`ms-*/values.yaml` ModelService +
    `gaie-*/values.yaml` GAIE + `helmfile.yaml(.gotmpl)`) or **kustomize-based**
    (`kustomization.yaml` + JSON patches). Track each value's source file + line numbers for the

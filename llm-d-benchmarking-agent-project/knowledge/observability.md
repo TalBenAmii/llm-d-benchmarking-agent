@@ -75,14 +75,14 @@ or submit the `run` — never after, never as a mid-run action. It is a real, ac
 user approves THEN: do not frame it as optional "I'll do it after" / "for future runs", do not do it
 silently (it is mutating and approval-gated), and do not submit the deploy or the run in the same
 turn — STOP and let the user decide on the install first. The vetted installer is a project script
-run via `run_command`:
+run via `run_shell`:
 
 - **kind / any self-signed-kubelet cluster** (the quickstart path):
-  `run_command(argv=["install_metrics_server.sh", "--kubelet-insecure-tls"])`
+  `run_shell("install_metrics_server.sh --kubelet-insecure-tls")`
   The `--kubelet-insecure-tls` flag is REQUIRED on kind — without it the metrics-server pod
   fails its TLS handshake to the kubelet and never becomes Ready.
 - **a normal cluster with proper kubelet certs**:
-  `run_command(argv=["install_metrics_server.sh"])` (pin a release with `--version vX.Y.Z`).
+  `run_shell("install_metrics_server.sh")` (pin a release with `--version vX.Y.Z`).
 
 The script applies the pinned metrics-server manifest into `kube-system`, waits for the rollout,
 and verifies `kubectl top` responds. It is idempotent (safe to re-run). Best timing: right after

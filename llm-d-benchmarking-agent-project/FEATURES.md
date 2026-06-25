@@ -96,8 +96,8 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 ## 4. The agent tools (authoritative list — `app/tools/registry.py`)
 
 > Note: `app/tools/registry.py:build_registry` is the authoritative count — read it (the
-> enumerated list below mirrors it). `run_shell` is registered as one extra tool ONLY when the
-> operator sets `UNRESTRICTED_TOOLS` — off by default.
+> enumerated list below mirrors it). `run_shell` (arbitrary `bash -lc`) is the agent's always-on
+> ad-hoc command tool — gated by the read-only/mutating classifier + approval, NOT the allowlist.
 
 **Sensing / grounding (read-only, auto-run):** `probe_environment`, `list_catalog`,
 `inspect_workload_profile`, `estimate_run_duration`, `read_knowledge`, `search_knowledge`,
@@ -108,7 +108,8 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 `generate_doe_experiment`, `convert_guide_to_scenario`.
 
 **Mutating (approval-gated):** `ensure_repos`, `run_setup`, `execute_llmdbenchmark`,
-`run_command`, `orchestrate_benchmark_run`, `orchestrate_sweep` (parallel DoE-treatment Jobs
+`run_shell` (arbitrary `bash -lc` — read-only commands auto-run, mutating/unknown ones prompt),
+`orchestrate_benchmark_run`, `orchestrate_sweep` (parallel DoE-treatment Jobs
 under a concurrency cap, with per-treatment retry/dead-letter + checkpoint/resume — the
 proposal's parallel-treatment scheduling), `manage_orchestrated_runs` (list **read-only** /
 stop / reap the orchestrator's K8s Jobs ON the cluster — `stop` deletes a still-running Job,
@@ -190,7 +191,7 @@ result.
 |---|---|---|
 | Prometheus metrics endpoint (agent's own counters/histograms/gauges) | `app/observability/metrics.py`, `GET /metrics` | 🟢 `curl /metrics` — exposes `llmdbench_agent_commands_total`, `_command_duration_seconds`, `llmdbench_orchestrator_run_attempts_total`, `_run_faults_total`, `_runs_in_flight`, `_runs_submitted_total`, `_runs_terminal_total`. |
 | Live cluster resource usage during a run (`kubectl top`) | `app/tools/observe.py`, `observe_run_metrics` tool | 🔵 Call it while a run is in flight (needs the in-cluster metrics-server, which kind / the `cicd/kind` spec do NOT install — add it separately). |
-| Per-cluster metrics-server installer (enables the live stats above) | `scripts/install_metrics_server.sh`, `install_metrics_server.sh` allowlist exec | 🔵 `probe_environment` reports `metrics_server.available` up front (pre-flight); on kind where it is false the agent OFFERS `run_command(["install_metrics_server.sh","--kubelet-insecure-tls"])` BEFORE the run (mutating → approval). Judgment in `knowledge/observability.md`; rule in `app/agent/prompt.py` HARD_RULES. |
+| Per-cluster metrics-server installer (enables the live stats above) | `scripts/install_metrics_server.sh`, `install_metrics_server.sh` allowlist exec | 🔵 `probe_environment` reports `metrics_server.available` up front (pre-flight); on kind where it is false the agent OFFERS `run_shell("install_metrics_server.sh --kubelet-insecure-tls")` BEFORE the run (mutating → approval). Judgment in `knowledge/observability.md`; rule in `app/agent/prompt.py` HARD_RULES. |
 | Grafana dashboard + Prometheus scrape config + **alert rules** | `deploy/observability/{grafana-dashboard.json,prometheus-scrape.yaml,alerts.rules.yaml}` | ⚪ Files render/import directly. |
 
 ---
@@ -310,7 +311,7 @@ sparkline until a result is stored; `/healthz`+`/readyz` wrongly auth-gated; `CL
 drift; ambiguous latency units) were all **fixed on 2026-06-02** (`1515959`, merged `3363496`) — done.
 
 **Counts (current).** Verified against the running app: the agent tools enumerated in §4
-(authoritative: `registry.py:build_registry`; `run_shell` adds one more only with `UNRESTRICTED_TOOLS`), **11 trendable history metrics** (incl. `kv_cache_hit_rate`,
+(authoritative: `registry.py:build_registry`; `run_shell` is the agent's always-on ad-hoc command tool), **11 trendable history metrics** (incl. `kv_cache_hit_rate`,
 `gpu_utilization`, `schedule_delay`), **15 allowlisted executables**, **7 `/metrics` families**.
 All ROADMAP_V4 active phases (27–66) are merged; 7 are explicitly deferred (34/43/44/47/52/57/58 —
 see `ROADMAP_V4.md`).

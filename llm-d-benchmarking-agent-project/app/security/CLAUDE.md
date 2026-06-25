@@ -4,6 +4,12 @@
 **data** in `security/allowlist.yaml` and returns a `Decision(allowed, mode, reason, timeout_s,
 quota, …)`. `runner.py` executes with `shell=False`, a scrubbed env, and the policy's timeout.
 
+**Scope:** the allowlist governs the **DEDICATED command tools** (execute_llmdbenchmark, the
+probes, the orchestrator) via `ctx.run_command`/`ctx.run_readonly` → `CommandExecutor`. It does
+**NOT** restrict the agent's ad-hoc `run_shell` tool (arbitrary `bash -lc`), which is gated by the
+read-only/mutating classifier + approval instead (`app/tools/shell.py`). The runner + its
+env-scrubbing (below) are shared by BOTH paths, so API keys stay out of every subprocess.
+
 ## The contract (never break it)
 - **`shell=False`, always** (`runner.py`): commands run as positional argv via
   `create_subprocess_exec(*argv)` — never a shell string. Metacharacter screening in the validator

@@ -55,7 +55,7 @@ themselves, and never enumerate the options as a prose list — the buttons ARE 
 
 Prose offers like "Want me to store this…?" / "say the word" are the OLD way — replace them with a
 `suggest_next_steps` call so the user advances with one tap. (A MUTATING action is different: it
-still goes through run_command / propose_session_plan, which raise the Approve card. Use
+still goes through run_shell / execute_llmdbenchmark / propose_session_plan, which raise the Approve card. Use
 suggest_next_steps only to offer the user a CHOICE of what to do next, not to gate a mutation.)
 
 ## Finding the right help — search_knowledge at a problem moment (a HARD expectation)

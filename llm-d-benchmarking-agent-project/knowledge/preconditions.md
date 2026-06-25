@@ -7,7 +7,7 @@ structured result and reason about it — do not assume.
 - `container_runtime.daemon_up == false` → Docker/Podman is installed but not running. If
   `socket_permission_error == true`, it's a permissions issue (docker group / rootless),
   not a "down" daemon — explain the fix. To (re)start the Docker daemon you may run
-  `run_command argv=["install_prereqs.sh","--docker"]` (it skips the install if docker is
+  `run_shell("install_prereqs.sh --docker")` (it skips the install if docker is
   already present and just tries to start it); on WSL/Docker-Desktop it may still need to
   be started manually. Never run raw `sudo` — only the pinned `install_prereqs.sh` is
   allowlisted.
@@ -16,11 +16,11 @@ structured result and reason about it — do not assume.
   most of them (kubectl, helm, helmfile, jq, yq, kustomize, skopeo, crane, and uv→Python
   3.11). It does NOT install `docker` or `kind` — but you can, with the vetted installer:
   - `tools.docker == false` (and no podman) → install Docker Engine with
-    `run_command argv=["install_prereqs.sh","--docker"]` (mutating; needs root or
+    `run_shell("install_prereqs.sh --docker")` (mutating; needs root or
     passwordless sudo). Relay any warning the installer prints (e.g. daemon couldn't
     auto-start, or the user must re-login for docker-group membership).
   - `tools.kind == false` → install the kind binary with
-    `run_command argv=["install_prereqs.sh","--kind"]` (combine as `--docker --kind` or
+    `run_shell("install_prereqs.sh --kind")` (combine as `--docker --kind` or
     `--all` to do both at once).
 
 ## Guide-based deploy: the UPSTREAM client prerequisites (install-deps.sh)
@@ -31,8 +31,8 @@ When the user wants to deploy a published **llm-d well-lit-path guide** (the gui
 exactly this — `helpers/client-setup/install-deps.sh` in the llm-d repo (allowlisted as the
 bare `install-deps.sh`). OFFER to run it when those client tools are missing **before** a
 guide-based deploy:
-- `run_command argv=["install-deps.sh"]` → install the basic guide client tools.
-- `run_command argv=["install-deps.sh","--dev"]` → also install `chart-testing` (ct), the
+- `run_shell("install-deps.sh")` → install the basic guide client tools.
+- `run_shell("install-deps.sh --dev")` → also install `chart-testing` (ct), the
   Helm chart-testing tool (only needed if the user will lint/test charts).
 It is **mutating** (needs root or passwordless sudo) → the user must Approve; relay any warning
 it prints. Know the THREE distinct install steps and pick the right one — do NOT conflate them:
@@ -46,7 +46,7 @@ it prints. Know the THREE distinct install steps and pick the right one — do N
   already ran and the client tools are present, you do NOT also need `install-deps.sh`.
 - `venv.exists == false` → run `run_setup` before any `llmdbenchmark` command.
 - `kind_clusters.clusters` empty (but `kind` is present) → no local cluster yet. For the
-  quickstart, create one yourself: `run_command argv=["kind","create","cluster","--name","llmd-quickstart"]`.
+  quickstart, create one yourself: `run_shell("kind create cluster --name llmd-quickstart")`.
 - `kind_clusters.clusters` non-empty → a local cluster exists; it may host a stack.
 - `kube_context` / `cluster_info.reachable` → whether kubectl can talk to a cluster.
 
