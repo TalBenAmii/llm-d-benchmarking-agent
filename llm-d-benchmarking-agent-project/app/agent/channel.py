@@ -207,6 +207,19 @@ class Channel:
         """Surface an Approve/Reject gate and block until the user (now or after reconnecting)
         decides. If no socket is attached the emit is a no-op and the turn simply pauses — the
         card is re-surfaced via :meth:`reemit_pending` when a socket reattaches."""
+        # Per-session auto-approve (the UI toggle): when on, COMMAND gates run without prompting.
+        # The session-plan gate is NEVER auto-approved — that "are you sure" always stands. We
+        # record the auto-decision (same shape as a real one) so the transcript replays an
+        # (auto-)approved card on resume, then return True WITHOUT minting a Future / emitting an
+        # APPROVAL_REQUEST / parking the turn — so there is no pending gate to reconcile.
+        if kind == "command" and self.session.auto_approve:
+            self.session.record_approval({
+                "tool_call_id": self.session.ctx.current_tool_call_id,
+                "request_id": uuid.uuid4().hex[:8],
+                "kind": kind, "payload": payload, "approved": True, "auto": True,
+            })
+            self.session.persist()
+            return True
         rid = uuid.uuid4().hex[:8]
         tool_call_id = self.session.ctx.current_tool_call_id
         fut: asyncio.Future = asyncio.get_running_loop().create_future()

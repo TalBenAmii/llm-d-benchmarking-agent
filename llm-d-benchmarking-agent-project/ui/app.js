@@ -19,6 +19,7 @@ const themeBtn = document.getElementById("theme-toggle");
 const convList = document.getElementById("conv-list");
 const newChatBtn = document.getElementById("new-chat");
 const debugBtn = document.getElementById("debug-toggle");
+const autoApproveBtn = document.getElementById("autoapprove-toggle");
 const historyList = document.getElementById("history-list");
 const historyRefresh = document.getElementById("history-refresh");
 const trendMetric = document.getElementById("trend-metric");
@@ -125,6 +126,26 @@ debugBtn.addEventListener("click", () => {
   try { localStorage.setItem("llmd-debug", on ? "on" : "off"); } catch (e) {}
   applyDebug(on);
 });
+
+// ---- auto-approve commands (per-session; server-authoritative, NOT localStorage) ----
+// When on, mutating COMMAND approval cards are auto-approved by the backend (the SessionPlan
+// gate still always prompts). State is per-chat and lives on the server; the `ready` frame
+// seeds the button on connect/reload/chat-switch, so we never persist it client-side.
+function applyAutoApprove(on) {
+  if (!autoApproveBtn) return;
+  autoApproveBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  autoApproveBtn.title = on
+    ? "Auto-approve is ON — commands run without the Approve card (the plan still asks). Click to turn off."
+    : "Auto-approve commands — skip the Approve card for commands in this chat (the plan still asks)";
+}
+if (autoApproveBtn) {
+  autoApproveBtn.addEventListener("click", () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;  // no socket -> nothing to toggle
+    const on = autoApproveBtn.getAttribute("aria-pressed") !== "true";
+    ws.send(JSON.stringify({ type: "set_auto_approve", enabled: on }));
+    applyAutoApprove(on);  // optimistic; the server persists and re-seeds via `ready`
+  });
+}
 // initDebug() is invoked AFTER currentSession is declared below — applyDebug -> updateDebugSession
 // reads currentSession, which is a `let` (temporal dead zone) until its declaration runs.
 
@@ -444,6 +465,10 @@ function handle(msg) {
       if (!inc) clearActivePane();
       // Restore the last-known context-window meter (persisted) so it's right before the next turn.
       setContextWindow(data.context_window, null);
+      // Seed the auto-approve toggle from the server (per-chat, persisted) so it reflects THIS chat
+      // on connect/reload/switch. Unconditional (outside the !inc rebuild branch) — a chat switch
+      // that resumes incrementally must still re-point the button at the active chat's state.
+      applyAutoApprove(!!data.auto_approve);
       if (!inc) {
         // DEFER the catch-up note: on this full-rebuild path the `history` event arrives right
         // after `ready`, and renderHistory appends the restored transcript. Adding the note here
@@ -1275,8 +1300,8 @@ const RUN_PHASES = [
 ];
 // Tool name -> phase index for the progress rail. Tools NOT in this map deliberately don't move
 // the rail (phaseForTool returns -1 → advancePhase no-ops): the meta / UX / alongside-any-phase
-// tools — observe_run_metrics, run_command, cancel_run, autotune_search, export_run_bundle,
-// reproduce_run, run_resilience_drill (and run_shell when UNRESTRICTED_TOOLS).
+// tools — observe_run_metrics, run_shell, cancel_run, autotune_search, export_run_bundle,
+// reproduce_run, run_resilience_drill.
 const TOOL_PHASE = {
   probe_environment: 0, list_catalog: 0, inspect_workload_profile: 0, estimate_run_duration: 0,
   advise_accelerators: 0, check_capacity: 0, discover_stack: 0,
@@ -2791,7 +2816,7 @@ const TOOL_VERBS = {
   run_setup: "Setting up",
   write_and_validate_config: "Writing config",
   execute_llmdbenchmark: "Benchmarking",
-  run_command: "Running command",
+  run_shell: "Running command",
   locate_and_parse_report: "Reading results",
   compare_reports: "Comparing results",
   compare_harness_runs: "Comparing harnesses",

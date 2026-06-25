@@ -27,6 +27,7 @@ from app.agent.ws_schemas import (
     ApprovalIn,
     CancelIn,
     PingIn,
+    SetAutoApproveIn,
     UserMessageIn,
     ValidationError,
     outbound,
@@ -780,6 +781,9 @@ async def ws(websocket: WebSocket) -> None:
         "context_window": {
             "tokens": session.last_context_tokens,
         },
+        # Per-session auto-approve state (persisted) so the UI toggle reflects THIS chat on
+        # connect/reload/chat-switch. Defaults False; the client seeds the button from this.
+        "auto_approve": session.auto_approve,
     })
     if resumed and not incremental:
         # Commands are interleaved into `items` (as `command` entries in their original
@@ -916,6 +920,13 @@ async def ws(websocket: WebSocket) -> None:
                 # Frees the concurrency slot + reaps the subprocess. Idempotent — a no-op if
                 # nothing is running. The turn's own `cancelled`/`done` events announce the stop.
                 await app.state.runs.cancel(session.id)
+            elif isinstance(msg, SetAutoApproveIn):
+                # Toggle this chat's per-session auto-approve of command gates (the UI button).
+                # Server-authoritative + persisted so it survives reconnect and re-seeds the
+                # button via the `ready` frame. A live in-flight gate is unaffected (it already
+                # parked); the toggle takes effect on the next command gate.
+                session.auto_approve = msg.enabled
+                session.persist()
             elif isinstance(msg, PingIn):
                 await channel.emit("pong", {})
     except WebSocketDisconnect:
