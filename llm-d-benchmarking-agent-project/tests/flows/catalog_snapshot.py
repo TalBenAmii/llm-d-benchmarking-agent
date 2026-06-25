@@ -19,7 +19,7 @@ asserts that every name the flows reference still exists in the **live** catalog
 the repo IS present (local dev / a CI job that checks out the submodules), so drift between
 this snapshot and the upstream repo is caught loudly.
 
-Generated from ``app.tools.catalog.build_catalog`` against llm-d-benchmark @ 2026-05-31.
+Generated from ``app.tools.catalog.build_catalog`` against llm-d-benchmark @ 2026-06-25.
 Regenerate with:  ``make snapshot-catalog``  (see the Makefile).
 """
 from __future__ import annotations
@@ -29,28 +29,36 @@ from typing import Any
 # ---- the snapshot (shape mirrors build_catalog's return) ---------------------
 
 SPECS: list[str] = [
-    "cicd/cks", "cicd/gke", "cicd/kind", "cicd/ocp",
+    "cicd/cks", "cicd/gke", "cicd/kind", "cicd/ocp", "cicd/ocp-nofma-wva",
     "examples/cpu", "examples/fma", "examples/gpu", "examples/launcher",
     "examples/multi-model-wva", "examples/sim", "examples/spyre", "examples/spyre-s390x",
-    "guides/agentic-serving", "guides/optimized-baseline", "guides/pd-disaggregation",
-    "guides/precise-prefix-cache-routing", "guides/predicted-latency-routing",
-    "guides/tiered-prefix-cache", "guides/wide-ep-lws", "guides/workload-autoscaling",
+    "guides/agentic-serving", "guides/flow-control", "guides/optimized-baseline",
+    "guides/pd-disaggregation", "guides/precise-prefix-cache-routing",
+    "guides/predicted-latency-routing", "guides/tiered-prefix-cache", "guides/wide-ep-lws",
+    "guides/workload-autoscaling",
 ]
 
-HARNESSES: list[str] = ["guidellm", "inference-perf", "inferencemax", "nop", "vllm-benchmark"]
+HARNESSES: list[str] = [
+    "aiperf", "guidellm", "inference-perf", "inferencemax", "nop", "vllm-benchmark",
+]
 
 WORKLOADS: list[str] = [
-    "chatbot_sharegpt.yaml", "chatbot_synthetic.yaml", "code_completion_synthetic.yaml",
-    "fixed_dataset.yaml", "guide_optimized-baseline_1.yaml", "guide_pd-disaggregation_1.yaml",
-    "guide_pd-disaggregation_2.yaml", "guide_precise-prefix-cache-routing_1.yaml",
-    "guide_wide-ep-lws_1.yaml", "guide_workload-autoscaling_1.yaml", "nop.yaml",
-    "otel_traces.yaml", "random_concurrent.yaml", "sanity_concurrent.yaml",
-    "sanity_random.yaml", "shared_prefix_multi_turn_chat.yaml", "shared_prefix_synthetic.yaml",
-    "shared_prefix_synthetic_short.yaml", "sharegpt.yaml", "sonnet_concurrent.yaml",
-    "summarization_synthetic.yaml",
+    "agentic_code_generation.yaml", "chatbot_sharegpt.yaml", "chatbot_synthetic.yaml",
+    "code_completion_synthetic.yaml", "dataset.yaml", "fixed_dataset.yaml",
+    "guide_multimodal-serving_1.yaml", "guide_optimized-baseline_1.yaml",
+    "guide_pd-disaggregation_1.yaml", "guide_pd-disaggregation_2.yaml",
+    "guide_precise-prefix-cache-routing_1.yaml", "guide_predicted-latency-routing_1.yaml",
+    "guide_tiered-prefix-cache_1.yaml", "guide_wide-ep-lws_1.yaml",
+    "guide_workload-autoscaling_1.yaml", "nop.yaml", "otel_traces.yaml",
+    "random_concurrent.yaml", "sanity_concurrent.yaml", "sanity_random.yaml",
+    "shared_prefix_multi_turn_chat.yaml", "shared_prefix_synthetic.yaml",
+    "shared_prefix_synthetic_heavy.yaml", "shared_prefix_synthetic_short.yaml",
+    "sharegpt.yaml", "sonnet_concurrent.yaml", "summarization_synthetic.yaml",
+    "synthetic.yaml",
 ]
 
 WORKLOADS_BY_HARNESS: dict[str, list[str]] = {
+    "aiperf": ["dataset.yaml", "synthetic.yaml"],
     "guidellm": [
         "chatbot_synthetic.yaml", "guide_optimized-baseline_1.yaml",
         "guide_precise-prefix-cache-routing_1.yaml", "guide_workload-autoscaling_1.yaml",
@@ -58,11 +66,14 @@ WORKLOADS_BY_HARNESS: dict[str, list[str]] = {
         "summarization_synthetic.yaml",
     ],
     "inference-perf": [
-        "chatbot_sharegpt.yaml", "chatbot_synthetic.yaml", "code_completion_synthetic.yaml",
+        "agentic_code_generation.yaml", "chatbot_sharegpt.yaml", "chatbot_synthetic.yaml",
+        "code_completion_synthetic.yaml", "guide_multimodal-serving_1.yaml",
         "guide_optimized-baseline_1.yaml", "guide_pd-disaggregation_1.yaml",
         "guide_pd-disaggregation_2.yaml", "guide_precise-prefix-cache-routing_1.yaml",
+        "guide_predicted-latency-routing_1.yaml", "guide_tiered-prefix-cache_1.yaml",
         "guide_wide-ep-lws_1.yaml", "otel_traces.yaml", "random_concurrent.yaml",
-        "sanity_random.yaml", "shared_prefix_multi_turn_chat.yaml", "shared_prefix_synthetic.yaml",
+        "sanity_random.yaml", "shared_prefix_multi_turn_chat.yaml",
+        "shared_prefix_synthetic.yaml", "shared_prefix_synthetic_heavy.yaml",
         "shared_prefix_synthetic_short.yaml", "summarization_synthetic.yaml",
     ],
     "inferencemax": ["random_concurrent.yaml"],
