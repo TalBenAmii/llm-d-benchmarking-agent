@@ -181,7 +181,7 @@ No harness or CI changes are needed — the tests and the CLI pick it up automat
 > `forbidden_tools`). The universal safety gating is checked for free.
 
 > **More flows are cheap.** For another guide deploy, add one `_guide_deploy_flow(...)`
-> line. Still unmodeled and available in the repos: `guides/agentic-tests`, the
+> line. Still unmodeled and available in the repos: `guides/agentic-serving`, the
 > `examples/gpu` / `examples/cpu` / `examples/sim` specs, and the other CI clusters
 > `cicd/ocp` / `cicd/gke` / `cicd/cks`.
 

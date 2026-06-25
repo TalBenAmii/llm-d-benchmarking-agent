@@ -32,7 +32,7 @@ SPECS: list[str] = [
     "cicd/cks", "cicd/gke", "cicd/kind", "cicd/ocp",
     "examples/cpu", "examples/fma", "examples/gpu", "examples/launcher",
     "examples/multi-model-wva", "examples/sim", "examples/spyre", "examples/spyre-s390x",
-    "guides/agentic-tests", "guides/optimized-baseline", "guides/pd-disaggregation",
+    "guides/agentic-serving", "guides/optimized-baseline", "guides/pd-disaggregation",
     "guides/precise-prefix-cache-routing", "guides/predicted-latency-routing",
     "guides/tiered-prefix-cache", "guides/wide-ep-lws", "guides/workload-autoscaling",
 ]

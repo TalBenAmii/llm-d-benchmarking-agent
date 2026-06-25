@@ -157,7 +157,7 @@ well_lit_paths:
 
   - archetype: agentic
     title: Agentic / tool-using workloads (multi-turn, growing context, tool loops)
-    scenario: guides/agentic-tests
+    scenario: guides/agentic-serving
     guide: llm-d/guides/agentic-serving
     deploy_path: gpu-only
     signals:
@@ -172,12 +172,12 @@ well_lit_paths:
       agentic-serving guide is a workload umbrella that composes the optimized baseline,
       tiered KV offloading, precise prefix-cache routing, and P/D disaggregation (prefill-heavy /
       decode-light, high reusable locality, bursty/stateful arrivals). Benchmark with the
-      `guides/agentic-tests` spec, which is built for these multi-turn patterns.
+      `guides/agentic-serving` spec, which is built for these multi-turn patterns.
     also_consider:
       - guides/tiered-prefix-cache           # offload the growing KV working set beyond GPU memory
       - guides/precise-prefix-cache-routing  # route on the precise resident-prefix fraction
     benchmark_workloads:
-      - otel_traces.yaml                      # the agentic-tests experimentProfile (data.type otel_trace_replay / load.type trace_session_replay)
+      - otel_traces.yaml                      # the agentic-serving experimentProfile (data.type otel_trace_replay / load.type trace_session_replay)
       - shared_prefix_multi_turn_chat.yaml
       - shared_prefix_synthetic.yaml
 

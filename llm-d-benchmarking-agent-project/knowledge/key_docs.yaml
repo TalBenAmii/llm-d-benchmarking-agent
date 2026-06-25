@@ -105,13 +105,13 @@ docs:
   - path: llm-d/guides/agentic-serving/README.md
     task: agentic_serving
     why: >
-      NAME MISMATCH (record as-is): the agentic-serving WORKLOAD guide's benchmark spec is named
-      agentic-tests, NOT agentic-serving — use --spec guides/agentic-tests (scenario stack
-      agentic-tests, model Qwen/Qwen3-30B-A3B-Thinking-2507, harness inference-perf,
-      experimentProfile otel_traces.yaml / OTel-trace replay). gpu-only.
-  - path: llm-d-benchmark/config/specification/guides/agentic-tests.yaml.j2
+      The agentic-serving WORKLOAD guide — benchmark it with --spec guides/agentic-serving (the spec
+      file was renamed agentic-tests -> agentic-serving upstream to match the guide; the scenario stack
+      INSIDE is still named agentic-tests). Model Qwen/Qwen3-30B-A3B-Thinking-2507, harness inference-perf,
+      experimentProfile otel_traces.yaml / OTel-trace replay. gpu-only.
+  - path: llm-d-benchmark/config/specification/guides/agentic-serving.yaml.j2
     task: agentic_serving
-    why: The benchmark spec for the agentic-serving guide — note the file is agentic-tests, not agentic-serving.
+    why: The benchmark spec for the agentic-serving guide (--spec guides/agentic-serving).
   - path: llm-d/guides/multimodal-serving/optimized-baseline/README.md
     task: multimodal_serving
     why: >

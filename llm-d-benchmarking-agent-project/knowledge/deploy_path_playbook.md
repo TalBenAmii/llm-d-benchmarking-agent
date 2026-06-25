@@ -64,7 +64,7 @@ scenario/guide with the SIGNALS that select it:
 - prefix-heavy chat → `guides/precise-prefix-cache-routing`
 - long-context RAG / large models → `guides/pd-disaggregation` (P/D)
 - high-throughput / batch → `guides/optimized-baseline` (intelligent scheduling baseline)
-- agentic / multi-turn → `guides/agentic-tests`
+- agentic / multi-turn → `guides/agentic-serving`
 - multimodal (image+text) chat → `guides/multimodal-serving` (profile `guide_multimodal-serving_1.yaml`, inference-perf; advisor-deferred)
 - bursty / elastic load, SLO-aware autoscaling → `guides/workload-autoscaling` (profile `guide_workload-autoscaling_1.yaml.in`, guidellm)
 - default / local sanity → `cicd/kind` (this playbook's path 1)
