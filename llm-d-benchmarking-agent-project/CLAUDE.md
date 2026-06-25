@@ -64,7 +64,7 @@ no `app/knowledge/` package.
 - **Finish loop** (commit → review → `--no-ff` merge to main; the `main`-only git hook gates ruff+pytest) → **`finish-implementation`** skill
 - **Test env + run commands + gotchas** → `tests/CLAUDE.md`
 - **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/UPSTREAM_REUSE_PATHS.md`
-- **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `CONTEXT.md` (kept current by the `domain-modeling` skill); architecture/refactor vocabulary → `codebase-design` / `improve-codebase-architecture` skills
+- **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `CONTEXT.md`
 - **Full doc map + run-locally quickstart** → `docs/README.md`
 - **SIMULATE=1** — dry-run toggle: the agent walks the WHOLE workflow but executes nothing (commands no-op → synthetic success; per-command approvals skipped, the upfront SessionPlan approval kept; a synthetic report is produced). Default `0` (real execution).
 

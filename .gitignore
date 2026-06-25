@@ -5,6 +5,10 @@
 # (settings.json, workflows/, and other skills/) stays tracked.
 .claude/skills/qa-fleet/
 
+# Archived skills/workflows — retired from the active set, kept locally for reference only.
+# Git history already preserves the deleted originals; no need to re-commit them here.
+.claude/archive/
+
 # Nested upstream repos — managed by their own git, not this one
 /llm-d/
 /llm-d-benchmark/

@@ -7,12 +7,12 @@ deny-by-default security sandbox and a structured approval gate. Its governing p
 **thin code, thick agent**: Python is mechanism only; all judgment lives in the LLM plus
 editable files under `knowledge/`.
 
-> This is the project's **ubiquitous-language glossary** (the mattpocock `domain-modeling`
-> CONTEXT format): canonical names for domain concepts, and the wrong words to avoid. It is a
+> This is the project's **ubiquitous-language glossary** (mattpocock CONTEXT format):
+> canonical names for domain concepts, and the wrong words to avoid. It is a
 > glossary only — no implementation details, no status, no decisions (those go in code,
 > `docs/`, or ADRs). Keep definitions to 1–2 sentences. Update it the moment a term is
 > coined or sharpened. Architecture/refactor vocabulary (module, interface, depth, seam,
-> adapter, leverage, locality) lives in the `codebase-design` skill, not here.
+> adapter, leverage, locality) is out of scope here.
 
 ## Language
 
