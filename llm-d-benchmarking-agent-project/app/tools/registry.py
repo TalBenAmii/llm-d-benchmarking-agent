@@ -23,7 +23,6 @@ from app.tools import (
     autotune,
     cancel,
     capacity,
-    command,
     compare,
     config_artifact,
     convert_guide,
@@ -79,7 +78,6 @@ from app.tools.schemas import (
     ReadRepoDocInput,
     ReproduceRunInput,
     ResultHistoryInput,
-    RunCommandInput,
     RunResilienceDrillInput,
     RunSetupInput,
     RunShellInput,
@@ -185,8 +183,9 @@ _DESCRIPTIONS = {
         "your FINAL action of the turn — call it with NO lead-in introducing the buttons and NO "
         "line about them afterward (they speak for themselves); the call ends the turn. Use it "
         "for DISCRETIONARY follow-ups only; it is NOT an approval "
-        "gate — a mutating action still needs run_command / propose_session_plan (those raise "
-        "the Approve card). See read_knowledge('conversation_style') for the offer cadence."
+        "gate — a mutating action still needs a command tool (run_shell / execute_llmdbenchmark) / "
+        "propose_session_plan (those raise the Approve card). See "
+        "read_knowledge('conversation_style') for the offer cadence."
     ),
     "read_repo_doc": (
         "Read a documentation or spec file from inside the (read-only) repos, e.g. the "
@@ -205,26 +204,18 @@ _DESCRIPTIONS = {
         "fresh from the clone. Read-only. Call this to ground yourself in the real procedure "
         "BEFORE proposing a deployment SessionPlan."
     ),
-    "run_command": (
-        "Run an allowlisted CLI command given as an argv list (e.g. ['kind','create',"
-        "'cluster','--name','llmd-quickstart'] or ['install_prereqs.sh','--all']). The "
-        "deny-by-default allowlist validates it; read-only commands auto-run, mutating ones "
-        "need approval. Use for allowlisted commands without a dedicated tool — notably "
-        "creating/deleting the kind cluster and installing the prerequisites (Docker + kind) "
-        "via install_prereqs.sh, OR the UPSTREAM llm-d guide client toolchain "
-        "(helm/helmfile/kustomize/yq/kubectl) via ['install-deps.sh'] before a guide-based "
-        "deploy (see knowledge/preconditions.md + deploy_path_playbook.md for which installer "
-        "to offer when). Prefer the dedicated tools (execute_llmdbenchmark, "
-        "ensure_repos, run_setup) when one fits."
-    ),
     "run_shell": (
         "Run an ARBITRARY shell command verbatim via `bash -lc` (pipes, redirects, globs, and "
-        "env expansion all work) — this BYPASSES the allowlist, so use it only when no dedicated "
-        "tool and no allowlisted run_command argv fits. Read-only commands (ls/cat/grep/kubectl "
-        "get/git log/…) auto-run; anything that writes or isn't recognized as read-only requires "
-        "the user's Approve before it executes — so do not also ask in prose, just call this and "
-        "let the card collect the decision. Available only when the operator enabled "
-        "UNRESTRICTED_TOOLS."
+        "env expansion all work) — this is your general-purpose tool for any CLI step that has no "
+        "dedicated tool: notably creating/deleting the kind cluster (`kind create cluster --name "
+        "llmd-quickstart`), installing the prerequisites (Docker + kind) via "
+        "`install_prereqs.sh --all`, or the UPSTREAM llm-d guide client toolchain "
+        "(helm/helmfile/kustomize/yq/kubectl) via `install-deps.sh` before a guide-based deploy "
+        "(see knowledge/preconditions.md + deploy_path_playbook.md for which installer to offer "
+        "when). Read-only commands (ls/cat/grep/kubectl get/git log/…) auto-run; anything that "
+        "writes or isn't recognized as read-only requires the user's Approve before it executes — "
+        "so do not also ask in prose, just call this and let the card collect the decision. Prefer "
+        "the dedicated tools (execute_llmdbenchmark, ensure_repos, run_setup) when one fits."
     ),
     "propose_session_plan": (
         "Propose a structured SessionPlan (use case, spec, namespace, harness, workload, "
@@ -353,7 +344,7 @@ _DESCRIPTIONS = {
         "Convert an arbitrary llm-d deployment guide into a benchmark scenario, authored "
         "WORKSPACE-ONLY (the agent's variant of upstream's skills/convert-guide, which writes "
         "ai.<name>.sh + ai.<name>.yaml INTO the read-only benchmark repo — this NEVER does "
-        "that). FIRST read the guide yourself (read_repo_doc / run_command git clone / your own "
+        "that). FIRST read the guide yourself (read_repo_doc / run_shell 'git clone …' / your own "
         "file reads) and resolve its Helm/kustomize config to the LLMDBENCH_* env map using "
         "read_knowledge('convert_guide') — WHICH vars map to what, the standard practices "
         "(DECODE_MODEL_COMMAND=custom, REPLACE_ENV_* placeholders, preprocess) and the default "
@@ -611,10 +602,11 @@ _DESCRIPTIONS = {
 }
 
 
-def build_registry(*, unrestricted: bool = False) -> dict[str, ToolSpec]:
-    """Build the name→ToolSpec map. When ``unrestricted`` is True (UNRESTRICTED_TOOLS), the
-    allowlist-bypassing ``run_shell`` tool is added; otherwise it is NOT registered at all, so
-    the default tool surface is unchanged."""
+def build_registry() -> dict[str, ToolSpec]:
+    """Build the name→ToolSpec map. ``run_shell`` is the agent's always-on ad-hoc command tool
+    (an arbitrary ``bash -lc`` string, gated by the read-only/mutating classifier + approval,
+    NOT the allowlist). The allowlist governs the DEDICATED command tools (execute_llmdbenchmark,
+    probes, orchestrator) via ``ctx.run_command``/``ctx.run_readonly``, not this tool."""
     specs = [
         ToolSpec("probe_environment", _DESCRIPTIONS["probe_environment"], ProbeEnvironmentInput, probe.probe_environment),
         ToolSpec("list_catalog", _DESCRIPTIONS["list_catalog"], ListCatalogInput, probe.list_catalog),
@@ -637,7 +629,7 @@ def build_registry(*, unrestricted: bool = False) -> dict[str, ToolSpec]:
         ToolSpec("convert_guide_to_scenario", _DESCRIPTIONS["convert_guide_to_scenario"], ConvertGuideInput, convert_guide.convert_guide_to_scenario),
         ToolSpec("generate_doe_experiment", _DESCRIPTIONS["generate_doe_experiment"], GenerateDoeInput, doe.generate_doe_experiment),
         ToolSpec("execute_llmdbenchmark", _DESCRIPTIONS["execute_llmdbenchmark"], ExecuteInput, execute.execute_llmdbenchmark),
-        ToolSpec("run_command", _DESCRIPTIONS["run_command"], RunCommandInput, command.run_command),
+        ToolSpec("run_shell", _DESCRIPTIONS["run_shell"], RunShellInput, shell.run_shell),
         ToolSpec("locate_and_parse_report", _DESCRIPTIONS["locate_and_parse_report"], LocateReportInput, report_locate.locate_and_parse_report),
         ToolSpec("compare_reports", _DESCRIPTIONS["compare_reports"], CompareReportsInput, compare.compare_reports),
         ToolSpec("compare_harness_runs", _DESCRIPTIONS["compare_harness_runs"], CompareHarnessRunsInput, multiharness.compare_harness_runs),
@@ -654,24 +646,11 @@ def build_registry(*, unrestricted: bool = False) -> dict[str, ToolSpec]:
         ToolSpec("run_resilience_drill", _DESCRIPTIONS["run_resilience_drill"], RunResilienceDrillInput, resilience.run_resilience_drill),
         ToolSpec("suggest_next_steps", _DESCRIPTIONS["suggest_next_steps"], SuggestNextStepsInput, suggest.suggest_next_steps),
     ]
-    if unrestricted:
-        # Opt-in only: the allowlist-bypassing shell tool is appended (and exposed to the LLM)
-        # ONLY when the operator set UNRESTRICTED_TOOLS — see app/tools/shell.py.
-        specs.append(ToolSpec("run_shell", _DESCRIPTIONS["run_shell"], RunShellInput, shell.run_shell))
     return {s.name: s for s in specs}
 
 
-# The DEFAULT registry (UNRESTRICTED_TOOLS off) — used at import for the stable tool surface.
+# The single, stable tool surface (built once at import).
 REGISTRY = build_registry()
-
-
-def _registry_for(ctx: ToolContext | None) -> dict[str, ToolSpec]:
-    """The tool surface for this context: the default REGISTRY, or one that additionally
-    includes ``run_shell`` when the context's settings enable UNRESTRICTED_TOOLS. Falls back to
-    the default registry when no context is supplied (e.g. callers with no settings)."""
-    if ctx is not None and ctx.settings.unrestricted_tools:
-        return build_registry(unrestricted=True)
-    return REGISTRY
 
 
 def _strip_titles(node: Any) -> Any:
@@ -687,11 +666,10 @@ def _strip_titles(node: Any) -> Any:
     return node
 
 
-def tool_definitions(ctx: ToolContext | None = None) -> list[dict[str, Any]]:
-    """Export {name, description, input_schema} for the LLM providers. Pass the per-session
-    ``ctx`` so UNRESTRICTED_TOOLS adds ``run_shell`` to the exposed surface (default: off)."""
+def tool_definitions() -> list[dict[str, Any]]:
+    """Export {name, description, input_schema} for the LLM providers."""
     out = []
-    for spec in _registry_for(ctx).values():
+    for spec in REGISTRY.values():
         schema = _strip_titles(spec.input_model.model_json_schema())
         out.append({"name": spec.name, "description": spec.description, "input_schema": schema})
     return out
@@ -700,10 +678,9 @@ def tool_definitions(ctx: ToolContext | None = None) -> list[dict[str, Any]]:
 async def dispatch(ctx: ToolContext, name: str, raw_input: dict[str, Any]) -> dict[str, Any]:
     """Validate args against the tool's schema, then run the handler. Validation errors
     are returned (not raised) so the agent can self-correct and retry."""
-    registry = _registry_for(ctx)
-    spec = registry.get(name)
+    spec = REGISTRY.get(name)
     if spec is None:
-        return {"error": f"unknown tool {name!r}", "valid_tools": sorted(registry)}
+        return {"error": f"unknown tool {name!r}", "valid_tools": sorted(REGISTRY)}
 
     try:
         model = spec.input_model.model_validate(raw_input or {})

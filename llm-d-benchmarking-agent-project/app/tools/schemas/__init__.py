@@ -23,7 +23,6 @@ from app.tools.schemas.autotune import (
 from app.tools.schemas.command import (
     EnsureReposInput,
     LocateReportInput,
-    RunCommandInput,
     RunSetupInput,
     RunShellInput,
 )
@@ -98,7 +97,6 @@ __all__ = [
     "ReadRepoDocInput",
     "ReproduceRunInput",
     "ResultHistoryInput",
-    "RunCommandInput",
     "RunResilienceDrillInput",
     "RunSetupInput",
     "RunShellInput",

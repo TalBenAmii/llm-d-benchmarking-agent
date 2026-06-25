@@ -138,7 +138,7 @@ Every tool call is validated against its Pydantic input model before the handler
 
 | Tool | Class | Key inputs | What it does |
 |---|---|---|---|
-| `run_command` | gate | `argv`, `timeout` | Run any *other* allowlisted command given as an argv list — notably `kind create/delete cluster` and `install_prereqs.sh` (Docker + the kind binary). Prefer a dedicated tool when one fits. |
+| `run_shell` | gate | `command`, `timeout` | Run an arbitrary shell command (`bash -lc`) — notably `kind create/delete cluster` and `install_prereqs.sh`. Read-only commands auto-run; mutating ones prompt. Prefer a dedicated tool when one fits. |
 | `execute_llmdbenchmark` | gate | `subcommand` (`plan`/`standup`/`smoketest`/`run`/`teardown`/`results`/`experiment`), `spec`, `namespace`, `harness`, `workload`, `flags`, `extra` | The single local CLI runner. `plan`/`--dry-run`/`--list-endpoints` auto-run; `standup`/`run`/`teardown`/`experiment` require approval. `experiment` runs a full DoE sweep. |
 | `orchestrate_benchmark_run` | approve | `namespace`, `spec`, `harness`, `workload`, `image`, `service_account`, `cpu`, `memory`, `active_deadline_seconds`, `max_attempts`, `watch`, `poll_interval`, `max_wait` | Run a benchmark as a **Kubernetes Job** the orchestrator manages end-to-end: submit → watch → stream logs → classify failures (OOM/timeout/eviction/unschedulable/image/run-error). Transient faults retry as fresh Jobs; deterministic faults never retry. Needs an orchestrator image. |
 | `orchestrate_sweep` | approve | `namespace`, `treatments` (each `{name, spec?, harness?, workload?, command?, cpu?, memory?}`), `spec`/`harness`/`workload` (defaults), `image`, `service_account`, `cpu`, `memory`, `scheduling`, `active_deadline_seconds`, `max_parallel`, `max_attempts`, `poll_interval`, `max_wait`, `sweep_id`, `checkpoint`, `require_ready_endpoint` | Run N DoE treatments as **parallel Kubernetes Jobs** under a `max_parallel` concurrency cap against one stood-up stack — each its own retry/dead-letter Job (a persistently-failing treatment dead-letters without sinking the rest). Progress is checkpointed to a cluster ConfigMap, so a re-call with the returned `sweep_id` + same treatments **resumes** (completed treatments skipped). The proposal's parallel-treatment scheduling; the parallel counterpart to `execute_llmdbenchmark(subcommand="experiment")`'s sequential DoE. Needs an orchestrator image. `knowledge/orchestrator.md`. |
@@ -184,7 +184,7 @@ Every tool call is validated against its Pydantic input model before the handler
 
 | Tool | Key inputs | What it does |
 |---|---|---|
-| `suggest_next_steps` | `options` (each `{label, prompt}`), optional lead-in | Offer 2-4 concrete next steps as **clickable buttons** instead of a prose "want me to…?". The UI renders them as floating suggestion pills; clicking one submits its `prompt` as the user's next message. The agent's **turn-ending** discretionary follow-up — **not** an approval gate (mutations still go through `propose_session_plan`/`run_command`). Offer cadence: `knowledge/conversation_style.md`. |
+| `suggest_next_steps` | `options` (each `{label, prompt}`), optional lead-in | Offer 2-4 concrete next steps as **clickable buttons** instead of a prose "want me to…?". The UI renders them as floating suggestion pills; clicking one submits its `prompt` as the user's next message. The agent's **turn-ending** discretionary follow-up — **not** an approval gate (mutations still go through `propose_session_plan`/`run_shell`). Offer cadence: `knowledge/conversation_style.md`. |
 
 ---
 

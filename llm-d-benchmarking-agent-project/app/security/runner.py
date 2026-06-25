@@ -313,9 +313,9 @@ class CommandRunner:
         cwd: str | Path | None = None,
         extra_env: dict[str, str] | None = None,
     ) -> RunResult:
-        """Run an ARBITRARY shell command string through ``bash -lc`` — the allowlist-bypassing
-        path used ONLY by the opt-in ``run_shell`` tool (UNRESTRICTED_TOOLS). The argv handed to
-        the OS is the fixed three-element ``["bash", "-lc", command]`` list, so ``shell=False``
+        """Run an ARBITRARY shell command string through ``bash -lc`` — the path used by the
+        agent's always-on ``run_shell`` tool (it does NOT consult the command allowlist). The argv
+        handed to the OS is the fixed three-element ``["bash", "-lc", command]`` list, so ``shell=False``
         still holds (bash itself, not Python, interprets the command). It otherwise reuses the
         SAME execution body as :meth:`execute` — scrubbed env, pinned cwd, timeout, captured
         tail-bounded output — by resolving ``bash`` on PATH and delegating to it."""

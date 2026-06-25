@@ -30,7 +30,7 @@ GPUs, not enough CPU/RAM for the default sizes.
 `guides/optimized-baseline` is the reference well-lit-path guide — load-aware + prefix-cache-aware
 scheduling, the renamed inference-scheduling guide (the benchmark README lists `guides/optimized-baseline`
 as "formerly inference-scheduling"). Two ways to
-drive it (BOTH go through `execute_llmdbenchmark` / `run_command` — code is mechanism only):
+drive it (BOTH go through `execute_llmdbenchmark` / `run_shell` — code is mechanism only):
 - **Through the benchmark CLI** — `execute_llmdbenchmark subcommand=standup flags={spec:"guides/optimized-baseline", ...}`
   (after `propose_session_plan` + `check_capacity`; standup is mutating → user Approves).
 - **As the guide's own manifests** — the `-t kustomize` path with `kustomize.guideName: optimized-baseline`
@@ -40,7 +40,7 @@ drive it (BOTH go through `execute_llmdbenchmark` / `run_command` — code is me
 deployment client toolchain (`helm` + helm-diff plugin, `helmfile`, `kustomize`, `yq`, `kubectl`),
 reported by `probe_environment` in `tools.*`. When the user wants a guide-based deploy and those
 client tools are absent (and `run_setup`/`install.sh` hasn't already supplied them), OFFER the
-UPSTREAM guide installer `run_command argv=["install-deps.sh"]` (add `--dev` for chart-testing);
+UPSTREAM guide installer `run_shell("install-deps.sh")` (add `--dev` for chart-testing);
 mutating → user Approves. This is the llm-d guide repo's OWN `helpers/client-setup/install-deps.sh`
 — DISTINCT from `install_prereqs.sh` (Docker daemon + kind binary) and the benchmark repo's
 `install.sh` (framework venv). See `preconditions.md` ("Guide-based deploy: the UPSTREAM client

@@ -147,6 +147,12 @@ class Session:
     # leaking the "[environment pre-probe …]" text into the rendered chat + sidebar title. Defaults
     # False so pre-feature state.json files (no snapshot injected yet) behave as before.
     prewarmed: bool = False
+    # Per-session "auto-approve commands" toggle (the UI button). When True, the Channel
+    # auto-approves every kind=="command" approval gate (run_shell + the dedicated mutating
+    # tools) WITHOUT prompting; the kind=="session_plan" gate is NEVER auto-approved (the one
+    # deliberate "are you sure" stays). PERSISTED so the toggle survives reconnect/reload and the
+    # `ready` frame can re-seed the button. Defaults False (every chat starts with it off).
+    auto_approve: bool = False
 
     @property
     def session_total(self) -> int:
@@ -243,6 +249,7 @@ class Session:
                     "last_context_tokens": self.last_context_tokens,
                     "catalog_injected": self.catalog_injected,
                     "prewarmed": self.prewarmed,
+                    "auto_approve": self.auto_approve,
                 },
                 indent=2,
             )
@@ -338,6 +345,7 @@ class SessionManager:
             # Default False: a pre-feature snapshot has no catalog message, so let the next turn
             # inject one. (Once injected + persisted, a reloaded chat sees True and skips it.)
             catalog_injected=data.get("catalog_injected", False),
+            auto_approve=data.get("auto_approve", False),
             # Default False so older state files (no key) load — but a session that already
             # injected the env pre-probe snapshot persists True, so a resume never re-injects it.
             prewarmed=data.get("prewarmed", False),

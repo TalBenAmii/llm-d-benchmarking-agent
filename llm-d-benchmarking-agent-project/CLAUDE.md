@@ -20,9 +20,12 @@ user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, 
 4. **Determinism at the boundaries** — schema-validated tool args; a `SessionPlan` approved before any
    mutation; configs validated via the CLI's `--dry-run`/`plan`; results parsed from the Benchmark
    Report v0.2 schema, never scraped from logs.
-5. **Security: deny-by-default allowlist** (policy is data in `security/allowlist.yaml`; `app/security`
-   is a pure validator); commands run as argv lists with `shell=False`; read-only probes auto-run,
-   mutations need explicit approval.
+5. **Security: the mutating→approval gate is the agent's guardrail.** The agent runs ad-hoc commands via
+   `run_shell` (arbitrary `bash -lc`, gated by the read-only/mutating classifier + approval, NOT the
+   allowlist). The **deny-by-default allowlist** (data in `security/allowlist.yaml`; `app/security` is a
+   pure validator) governs the DEDICATED command tools (execute_llmdbenchmark, probes, orchestrator) via
+   the executor. Read-only probes auto-run; mutations need explicit approval (a per-session UI toggle can
+   auto-approve commands; the SessionPlan gate always prompts). Subprocess env is scrubbed either way.
 6. **Secrets stay in the backend** (`.env`, gitignored; subprocess env scrubbed; browser never sees keys).
 7. **Read repo truth at runtime; don't vendor copies** — fail loudly if a repo path can't be resolved.
 

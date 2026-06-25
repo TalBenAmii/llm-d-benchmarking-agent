@@ -166,7 +166,7 @@ then the agent correctly falls back to the local CLI path (`execute_llmdbenchmar
   the `observe_run_metrics` tool via `kubectl top`, which needs the in-cluster metrics-server.
   It is NOT installed by kind or the `cicd/kind` spec — add it to the cluster separately (on
   kind, with `--kubelet-insecure-tls`). The agent ships a vetted, approval-gated installer for
-  this: `run_command(["install_metrics_server.sh", "--kubelet-insecure-tls"])` (it is per-cluster
+  this: `run_shell("install_metrics_server.sh --kubelet-insecure-tls")` (it is per-cluster
   — install once and every run on that cluster gets live stats).
 
 ## Security posture baked into the deploy

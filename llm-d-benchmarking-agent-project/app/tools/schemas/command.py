@@ -1,20 +1,7 @@
-"""Pydantic input models for the raw-command / setup / report-locate tools."""
+"""Pydantic input models for the shell-command / setup / report-locate tools."""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
-
-
-class RunCommandInput(BaseModel):
-    argv: list[str] = Field(
-        ...,
-        description="The command as an argv list (NEVER a shell string), e.g. "
-                    "['kind','create','cluster','--name','llmd-quickstart'] or "
-                    "['install_prereqs.sh','--all']. Validated by the deny-by-default "
-                    "allowlist; mutating commands require approval. Prefer a dedicated "
-                    "tool when one exists.",
-        min_length=1,
-    )
-    timeout: float | None = Field(default=None, description="Optional timeout in seconds")
 
 
 class RunShellInput(BaseModel):

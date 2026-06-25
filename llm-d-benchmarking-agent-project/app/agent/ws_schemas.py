@@ -8,10 +8,11 @@ non-dict payload — crash the handler). This module is pure schema/mechanism: i
 agent judgment, only the shape of the protocol.
 
 Inbound (client -> server) frames are a tagged union discriminated on ``type``:
-  user_message  {type, text}
-  approval      {type, request_id, approved}
-  cancel        {type}                       — cancel this chat's in-flight run (Phase 16)
-  ping          {type}
+  user_message     {type, text}
+  approval         {type, request_id, approved}
+  cancel           {type}                    — cancel this chat's in-flight run (Phase 16)
+  set_auto_approve {type, enabled}           — toggle per-session auto-approve of command gates
+  ping             {type}
 
 Outbound (server -> client) frames are uniformly ``{type, data}`` (see :func:`outbound`);
 the typed envelope below documents that shape and gives a single place to serialize it.
@@ -26,6 +27,7 @@ __all__ = [
     "UserMessageIn",
     "ApprovalIn",
     "CancelIn",
+    "SetAutoApproveIn",
     "PingIn",
     "InboundMessage",
     "INBOUND_ADAPTER",
@@ -60,6 +62,16 @@ class CancelIn(BaseModel):
     type: Literal["cancel"]
 
 
+class SetAutoApproveIn(BaseModel):
+    """Toggle this chat's per-session auto-approve of COMMAND gates (the UI button). When
+    ``enabled`` is True the Channel auto-approves every kind=="command" gate without prompting;
+    the session-plan gate is never auto-approved. Server-authoritative + persisted."""
+    model_config = {"extra": "forbid"}
+
+    type: Literal["set_auto_approve"]
+    enabled: bool
+
+
 class PingIn(BaseModel):
     """A keep-alive probe; the server answers with a ``pong`` event."""
     model_config = {"extra": "forbid"}
@@ -71,7 +83,7 @@ class PingIn(BaseModel):
 # error for an unknown/missing tag or a malformed payload. Keeping the discriminator explicit
 # means a new inbound frame is a one-line addition here, not a branch in the handler.
 InboundMessage = Annotated[
-    UserMessageIn | ApprovalIn | CancelIn | PingIn,
+    UserMessageIn | ApprovalIn | CancelIn | SetAutoApproveIn | PingIn,
     Field(discriminator="type"),
 ]
 

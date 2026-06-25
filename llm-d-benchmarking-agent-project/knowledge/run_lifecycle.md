@@ -63,7 +63,7 @@ teardown"), the work is not done until teardown has actually run. Failure modes 
 If you truly cannot complete the flow (a step failed, or a real decision is needed), do NOT exit
 silently: tell the user exactly where you stopped, and EITHER tear down the partial deployment OR
 hand the still-running cluster back explicitly with how to remove it
-(`run_command argv=["kind","delete","cluster","--name","<name>"]` / an approval-gated `teardown`).
+(`run_shell("kind delete cluster --name <name>")` / an approval-gated `teardown`).
 Never abandon a created cluster with no word to the user.
 
 ## After cancelling

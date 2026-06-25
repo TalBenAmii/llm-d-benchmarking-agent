@@ -27,7 +27,7 @@ the steps/flags come from the real procedure rather than memory.
 4. **Prepare** —
    - **Prerequisites** — if `probe_environment` showed `tools.docker == false` and/or
      `tools.kind == false`, install them with
-     `run_command argv=["install_prereqs.sh","--docker","--kind"]` (use the subset you
+     `run_shell("install_prereqs.sh --docker --kind")` (use the subset you
      need, or `--all`). Mutating (prompts); needs root or passwordless sudo. install.sh
      does NOT install Docker or the kind binary — this is how you fill that gap. Relay any
      warning it prints (e.g. the Docker daemon couldn't auto-start on WSL).
@@ -37,7 +37,7 @@ the steps/flags come from the real procedure rather than memory.
      Skip if the venv already exists (the tool reports `already_setup`).
 4b. **Ensure a cluster** — if `probe_environment` showed `kind_clusters.clusters` is empty
    (no `llmd-quickstart`), create one:
-   `run_command argv=["kind","create","cluster","--name","llmd-quickstart"]`. This is
+   `run_shell("kind create cluster --name llmd-quickstart")`. This is
    mutating (it prompts) and can take a while on first run (it pulls the kind node image).
    cicd/kind deploys ~7 pods needing ~2.5 CPU total; the container runtime needs >=4 CPUs /
    8 GiB RAM (the Docker/Colima/Podman 2-CPU default makes the harness/gateway pod Pending with
@@ -54,7 +54,7 @@ the steps/flags come from the real procedure rather than memory.
    `live resource stats unavailable (no metrics-server)`. `probe_environment` reports this up front
    as `metrics_server.available`. On a fresh kind cluster where `metrics_server.available == false`,
    make a single one-line, approval-gated offer to install it:
-   `run_command argv=["install_metrics_server.sh","--kubelet-insecure-tls"]`
+   `run_shell("install_metrics_server.sh --kubelet-insecure-tls")`
    — and surface that offer BEFORE you offer to standup/deploy or submit the `run`. STOP and wait
    for the user's choice on the install — do NOT phrase it as optional ("I can do it after" / "for
    future runs") and do NOT submit the deploy or run in the same turn. `--kubelet-insecure-tls` is
@@ -73,7 +73,7 @@ the steps/flags come from the real procedure rather than memory.
    steer the user to a GPU spec (examples/gpu or a guides/* path) for real numbers.
 9. **Offer teardown** — ask before running `execute_llmdbenchmark subcommand=teardown`
    (removes the llm-d stack but keeps the cluster). For the deeper cleanup of the whole
-   cluster, you can also run `run_command argv=["kind","delete","cluster","--name","llmd-quickstart"]`
+   cluster, you can also run `run_shell("kind delete cluster --name llmd-quickstart")`
    (mutating — it prompts). Always confirm with the user before deleting their cluster.
 
 ## Complete a fully-specified run+teardown without optional mid-flow gates

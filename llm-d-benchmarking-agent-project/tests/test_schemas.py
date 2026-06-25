@@ -19,7 +19,7 @@ def test_tool_definitions_complete():
         "ensure_repos", "run_setup",
         "write_and_validate_config", "convert_guide_to_scenario",
         "generate_doe_experiment", "execute_llmdbenchmark",
-        "run_command", "locate_and_parse_report", "compare_reports", "compare_harness_runs",
+        "run_shell", "locate_and_parse_report", "compare_reports", "compare_harness_runs",
         "analyze_results", "orchestrate_benchmark_run", "orchestrate_sweep",
         "observe_run_metrics",
         "result_history", "export_run_bundle", "reproduce_run", "cancel_run",

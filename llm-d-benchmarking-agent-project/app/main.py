@@ -27,6 +27,7 @@ from app.agent.ws_schemas import (
     ApprovalIn,
     CancelIn,
     PingIn,
+    SetAutoApproveIn,
     UserMessageIn,
     ValidationError,
     outbound,
@@ -83,15 +84,10 @@ async def lifespan(app: FastAPI):
         log.info("auth.enabled")
     if settings.rate_limit_enabled:
         log.info("ratelimit.enabled", extra={"rps": settings.rate_limit_rps, "burst": settings.rate_limit_burst})
+    # The allowlist still governs the DEDICATED command tools (execute_llmdbenchmark, probes,
+    # orchestrator) via ctx.run_command/ctx.run_readonly. The agent's ad-hoc `run_shell` tool runs
+    # arbitrary `bash -lc` and does NOT consult it (human approval still gates mutating commands).
     app.state.allowlist = Allowlist.from_file(settings.allowlist_path)
-    # Unrestricted-tools mode (opt-in): the `run_shell` tool runs arbitrary `bash -lc` commands,
-    # bypassing the allowlist (human approval is still enforced for mutating/unknown commands).
-    # Announce it loudly at startup so it can never be on by accident.
-    if settings.unrestricted_tools:
-        log.warning(
-            "unrestricted_tools.enabled — the command allowlist is BYPASSED for the run_shell "
-            "tool (arbitrary `bash -lc`); mutating/unknown commands still require user approval"
-        )
     runner_cls = SimRunner if settings.simulate else CommandRunner
     app.state.runner = runner_cls(settings.repo_paths, extra_env=settings.extra_subprocess_env)
     # Cross-session cap on concurrent heavy runs (None = unlimited).
@@ -785,6 +781,9 @@ async def ws(websocket: WebSocket) -> None:
         "context_window": {
             "tokens": session.last_context_tokens,
         },
+        # Per-session auto-approve state (persisted) so the UI toggle reflects THIS chat on
+        # connect/reload/chat-switch. Defaults False; the client seeds the button from this.
+        "auto_approve": session.auto_approve,
     })
     if resumed and not incremental:
         # Commands are interleaved into `items` (as `command` entries in their original
@@ -921,6 +920,13 @@ async def ws(websocket: WebSocket) -> None:
                 # Frees the concurrency slot + reaps the subprocess. Idempotent — a no-op if
                 # nothing is running. The turn's own `cancelled`/`done` events announce the stop.
                 await app.state.runs.cancel(session.id)
+            elif isinstance(msg, SetAutoApproveIn):
+                # Toggle this chat's per-session auto-approve of command gates (the UI button).
+                # Server-authoritative + persisted so it survives reconnect and re-seeds the
+                # button via the `ready` frame. A live in-flight gate is unaffected (it already
+                # parked); the toggle takes effect on the next command gate.
+                session.auto_approve = msg.enabled
+                session.persist()
             elif isinstance(msg, PingIn):
                 await channel.emit("pong", {})
     except WebSocketDisconnect:

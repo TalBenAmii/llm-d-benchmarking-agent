@@ -1,18 +1,21 @@
-"""The opt-in, allowlist-BYPASSING shell tool (``UNRESTRICTED_TOOLS=1``).
+"""The agent's always-on ad-hoc shell tool — an arbitrary ``bash -lc`` command string.
 
-This is the deliberate escape hatch the deny-by-default allowlist normally forbids: it runs
-an ARBITRARY command string through a real ``bash -lc``. It exists ONLY when
-``settings.unrestricted_tools`` is set — the registry does not even expose it otherwise, and
-the handler refuses (raises) as defense in depth if it is somehow reached with the flag off.
+This is the agent's general-purpose command surface for any CLI step that has no dedicated
+tool (creating the kind cluster, the install scripts, ad-hoc kubectl/git, …). It runs an
+ARBITRARY command string through a real ``bash -lc``. It does NOT consult the command
+allowlist — the deny-by-default allowlist (``security/allowlist.yaml``) governs the DEDICATED
+command tools (``execute_llmdbenchmark``, the probes, the orchestrator) via
+``ctx.run_command``/``ctx.run_readonly``, not this tool.
 
-The human-in-the-loop guarantee the rest of the agent relies on is PRESERVED: a heuristic
-(:func:`classify_shell_command`) classifies the command read-only vs mutating BEFORE it runs.
-Read-only commands auto-run (no prompt); mutating OR UNKNOWN commands route through the same
-``ctx.request_approval("command", …)`` gate every allowlisted mutating command uses, and raise
-the same :class:`~app.tools.context.ApprovalRejected` when declined. The command is announced
-with the SAME ``command`` event shape the allowlisted executor emits (so the debug-view /
-command-trail plumbing works unchanged), under the same per-session run-cap semaphore and the
-runner's timeout/env-scrubbing/cwd conventions.
+The human-in-the-loop guarantee the rest of the agent relies on is PRESERVED by a heuristic
+(:func:`classify_shell_command`) that classifies the command read-only vs mutating BEFORE it
+runs. Read-only commands auto-run (no prompt); mutating OR UNKNOWN commands route through the
+same ``ctx.request_approval("command", …)`` gate every dedicated mutating command uses, and
+raise the same :class:`~app.tools.context.ApprovalRejected` when declined. The command is
+announced with the SAME ``command`` event shape the dedicated executor emits (so the
+debug-view / command-trail plumbing works unchanged), under the same per-session run-cap
+semaphore and the runner's timeout/env-scrubbing/cwd conventions (so API keys stay scrubbed
+from the subprocess).
 
 The classifier FAILS SAFE: anything it cannot positively prove read-only is treated as
 mutating, so an unrecognized binary always prompts.
@@ -166,16 +169,12 @@ async def run_shell(
     command: str,
     timeout: float | None = None,
 ) -> dict[str, Any]:
-    """Run an ARBITRARY shell command via ``bash -lc`` (UNRESTRICTED_TOOLS only).
+    """Run an ARBITRARY shell command via ``bash -lc`` — the agent's always-on ad-hoc tool.
 
     Read-only commands auto-run; mutating/unknown commands park for the user's Approve/Decline
-    via the same gate every allowlisted mutating command uses, raising
+    via the same gate every dedicated mutating command uses, raising
     :class:`~app.tools.context.ApprovalRejected` when declined. Emits the SAME ``command`` event
-    shape (argv/text/mode/auto_run/…) the allowlisted executor emits."""
-    # Defense in depth: this tool is only registered when the flag is on, but never run it
-    # if the flag is off (e.g. a stale handler reference).
-    if not ctx.settings.unrestricted_tools:
-        raise ToolError("run_shell is disabled (set UNRESTRICTED_TOOLS=1 to enable it)")
+    shape (argv/text/mode/auto_run/…) the dedicated executor emits."""
     if not isinstance(command, str) or not command.strip():
         raise ToolError("command must be a non-empty shell string")
 
@@ -201,7 +200,8 @@ async def run_shell(
             await ctx.emit("output", {"line": line})
 
     on_line = _emit_line if ctx.emit is not None else None
-    # Bound concurrent heavy (mutating) shells under the shared run-cap semaphore, like run_command.
+    # Bound concurrent heavy (mutating) shells under the shared run-cap semaphore, like the
+    # dedicated mutating executor (CommandExecutor.run_command).
     if ctx.run_semaphore is not None and mode == MUTATING:
         async with ctx.run_semaphore:
             res = await ctx.runner.run_shell(command, on_line=on_line, timeout=timeout)
