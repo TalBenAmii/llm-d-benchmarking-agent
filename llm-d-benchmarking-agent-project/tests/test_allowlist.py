@@ -242,6 +242,12 @@ def test_git_clone_llmd_allowed(allowlist):
     assert d.allowed and d.mode == MUTATING
 
 
+def test_git_clone_skills_allowed(allowlist):
+    # The incubation skills library is the third permitted clone target.
+    d = allowlist.validate(["git", "clone", "https://github.com/llm-d-incubation/llm-d-skills"])
+    assert d.allowed and d.mode == MUTATING
+
+
 def test_git_rev_parse_short_head_allowed_read_only(allowlist):
     # Reproducibility provenance capture: a SHORT commit SHA. Read-only (inspects git state),
     # auto-runs — it must NOT widen any mutating capability.
@@ -376,6 +382,8 @@ def test_shell_metacharacter_denied(allowlist, catalog):
 def test_git_clone_non_llmd_url_denied(allowlist):
     assert not allowlist.validate(["git", "clone", "https://github.com/evil/repo"]).allowed
     assert not allowlist.validate(["git", "clone", "https://github.com/llm-d-evil/x"]).allowed
+    # The incubation org is pinned to exactly llm-d-skills — no other repo under it is allowed.
+    assert not allowlist.validate(["git", "clone", "https://github.com/llm-d-incubation/llm-d-other"]).allowed
 
 
 def test_bad_namespace_denied(allowlist, catalog):

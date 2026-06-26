@@ -8,10 +8,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from app.config import BENCH_REPO_NAME, GUIDE_REPO_NAME
+from app.config import BENCH_REPO_NAME, GUIDE_REPO_NAME, SKILLS_REPO_NAME
 from app.tools.context import ToolContext, ToolError
 
-_KNOWN_REPOS = (BENCH_REPO_NAME, GUIDE_REPO_NAME)
+_KNOWN_REPOS = (BENCH_REPO_NAME, GUIDE_REPO_NAME, SKILLS_REPO_NAME)
+
+# GitHub org each repo clones from. Most live under `llm-d`; the skills library lives under
+# `llm-d-incubation`. This map only BUILDS the URL — the clone target is still pinned by the
+# allowlist (llmd_clone_url regex), so this grants no capability on its own.
+_REPO_ORG = {SKILLS_REPO_NAME: "llm-d-incubation"}
 
 
 async def ensure_repos(ctx: ToolContext, *, repos: list[str] | None = None, ref: str | None = None) -> dict[str, Any]:
@@ -49,7 +54,7 @@ async def ensure_repos(ctx: ToolContext, *, repos: list[str] | None = None, ref:
                 })
                 continue
 
-            url = f"https://github.com/llm-d/{name}"
+            url = f"https://github.com/{_REPO_ORG.get(name, 'llm-d')}/{name}"
             argv = ["git", "clone", url]
             if ref:
                 argv += ["--branch", ref]

@@ -3,16 +3,20 @@
     "deny": [
       "Edit(/llm-d-benchmark/**)",
       "Edit(/llm-d/**)",
+      "Edit(/llm-d-skills/**)",
       "Write(/llm-d-benchmark/**)",
       "Write(/llm-d/**)",
+      "Write(/llm-d-skills/**)",
       "Edit(**/llm-d/**)",
       "Edit(**/llm-d-benchmark/**)",
+      "Edit(**/llm-d-skills/**)",
       "Write(**/llm-d/**)",
-      "Write(**/llm-d-benchmark/**)"
+      "Write(**/llm-d-benchmark/**)",
+      "Write(**/llm-d-skills/**)"
     ]
   },
   "enabledPlugins": {},
-  "_comment": "Guardrails for this repo. (1) permissions.deny hard-blocks Edit/Write to the READ-ONLY upstream repos llm-d/ and llm-d-benchmark/. (2) PreToolUse hooks add an explanatory message when those edits are denied, and deny the agent from running pytest/ruff/make test|lint directly — those run automatically via the local git pre-commit hook on commits to main, not on demand.",
+  "_comment": "Guardrails for this repo. (1) permissions.deny hard-blocks Edit/Write to the READ-ONLY upstream repos llm-d/, llm-d-benchmark/, and llm-d-skills/. (2) PreToolUse hooks add an explanatory message when those edits are denied, and deny the agent from running pytest/ruff/make test|lint directly — those run automatically via the local git pre-commit hook on commits to main, not on demand.",
   "hooks": {
     "PreToolUse": [
       {
@@ -30,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "p=$(jq -r '.tool_input.file_path // \"\"'); if printf '%s' \"$p\" | grep -qE '(^|/)(llm-d|llm-d-benchmark)/'; then jq -n '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:\"llm-d/ and llm-d-benchmark/ are READ-ONLY upstream repos \\u2014 never edit. Read their docs/specs and shell out to their CLI; all new code lives under llm-d-benchmarking-agent-project/.\"}}'; fi",
+            "command": "p=$(jq -r '.tool_input.file_path // \"\"'); if printf '%s' \"$p\" | grep -qE '(^|/)(llm-d|llm-d-benchmark|llm-d-skills)/'; then jq -n '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:\"llm-d/, llm-d-benchmark/ and llm-d-skills/ are READ-ONLY upstream repos \\u2014 never edit. Read their docs/specs and shell out to their CLI; all new code lives under llm-d-benchmarking-agent-project/.\"}}'; fi",
             "statusMessage": "Checking read-only-repo policy"
           }
         ]

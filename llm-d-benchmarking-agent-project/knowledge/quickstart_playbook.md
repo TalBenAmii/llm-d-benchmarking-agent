@@ -6,6 +6,11 @@ small benchmark. Authoritative source: `llm-d-benchmark/docs/quickstart.md` — 
 (and the `cicd/kind` scenario) with `fetch_key_docs task="quickstart"` BEFORE you plan, so
 the steps/flags come from the real procedure rather than memory.
 
+> **Scope:** this playbook is the local kind + CPU-sim path. For a real deploy on an existing
+> Kubernetes/OpenShift cluster (GPU, a well-lit-path guide), the canonical procedure is the upstream
+> **deploy-llm-d skill** — reach it via `read_knowledge('deploy_path_playbook')`, which adapts it to
+> our tooling.
+
 ## The flow (each step is a tool call)
 0. **Read the procedure** — `fetch_key_docs task="quickstart"`. Confirm the exact flow,
    flags, and prerequisites from the live docs.

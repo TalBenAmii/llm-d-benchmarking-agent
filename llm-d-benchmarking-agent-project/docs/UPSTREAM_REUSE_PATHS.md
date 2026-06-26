@@ -12,3 +12,14 @@ resolved, fail loudly (non-negotiable rule 7). Split out of `PROJECT_BRAIN_REFER
 - **Safe preview / config gen:** CLI `plan`, `run --dry-run`, `run --generate-config`,
   `run --list-endpoints`
 - **Bootstrap:** `install.sh` (`--uv` fetches python3.11, builds `.venv`)
+
+## `llm-d-skills/` — the 3rd READ-ONLY repo (incubation skills library)
+Canonical, upstream-maintained operational procedures, read live (never vendored; clone via
+`ensure_repos` / the allowlisted `git clone .../llm-d-incubation/llm-d-skills`):
+- **Skills:** `skills/<name>/SKILL.md` — `deploy-llm-d`, `teardown-llm-d`, `run-llm-d-benchmark`,
+  `compare-llm-d-configurations`, `configure-wva-autoscaling-llm-d` (+ each skill's `references/` /
+  `docs/` / `resources/`).
+- **Wired in via:** `knowledge/key_docs.yaml` → `fetch_key_docs(task='*_skill')`. The `knowledge/`
+  adapters (`deploy_path_playbook`, `sweep_playbook`, `teardown`, `autoscaling`, `author_spec_workload`)
+  record how each runs through OUR tooling — the SessionPlan gate + `llmdbenchmark` CLI + BR-v0.2
+  parsing stay authoritative (skills written for a generic assistant are adapted, not followed literally).

@@ -8,6 +8,19 @@ The mechanism is two tools; the *judgment* (what to vary, how to read the deltas
 > next config chosen adaptively from each result — not a fixed grid), see
 > `read_knowledge('autotune_strategy')` (the `autotune_search` tool).
 
+## End-to-end A/B of two STACK configs → the upstream `compare-llm-d-configurations` skill
+For an explicit A/B that **deploys, benchmarks, and tears down each configuration** and emits a
+side-by-side report — including comparing a config against a **no-llm-d baseline** (a model server
+with no inference scheduler) — the canonical workflow is the **compare-llm-d-configurations skill**:
+read it with `fetch_key_docs(task='compare_skill')` (it ships `resources/no-llm-d-baseline.md` for
+the baseline setup). Our mechanism for it is the **full DoE** below (`subcommand="experiment"` with
+`setup_factors` that change the deployment, one standup+teardown per treatment) plus
+`compare_reports` / `analyze_results` for the side-by-side. Adapt the skill to OUR tooling — our
+architecture stays authoritative: deploy/teardown flow through the SessionPlan gate +
+`execute_llmdbenchmark` / `run_shell` (never the skill's raw helm or `ask_followup_question`),
+results come from validated **BR-v0.2** reports (never scraped), per-config state/repro artifacts
+live in the session workspace, and teardown between configs follows `read_knowledge('teardown')`.
+
 ## Decide the shape first
 
 Ask (or infer) **what single thing varies** and **whether it changes the deployment**:

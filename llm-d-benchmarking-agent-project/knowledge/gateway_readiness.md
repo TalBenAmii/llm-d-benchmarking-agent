@@ -9,6 +9,10 @@ This is the **judgment layer**. The Python analyzer (`app/readiness/diagnostics.
 only extracts conditions into facts; it never decides wait-vs-stand-up-vs-config-error. YOU make that
 call here, by reading the facts the tool gives you.
 
+> Deploy-time endpoint verification (the post-deploy connectivity check) lives in the upstream
+> **deploy-llm-d skill** — `fetch_key_docs(task='deploy_skill')`, file
+> `references/connectivity-verification.md`. This file is the gateway control-plane readiness judgment.
+
 ## The two distinct "not ready" states
 
 Endpoint readiness (`reason: endpoints_ready` and a non-empty `ready_endpoints`) answers **"are the

@@ -10,6 +10,9 @@ The proposal (§4) demands two things of a benchmark Job: (1) it requests the **
 hardware** so the load generator / harness can actually drive the system under test, and (2)
 it does **not starve the llm-d stack being measured** by co-scheduling onto the same nodes.
 
+> For **autoscaling** the served stack (scale replicas under load) rather than placing a one-off
+> benchmark Job, see `read_knowledge('autoscaling')` — the WVA/HPA skill adapter.
+
 ## The `scheduling` object (what each key is for)
 
 | key | what it does | when to set it |

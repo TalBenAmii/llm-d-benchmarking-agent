@@ -448,7 +448,7 @@ Listed so no enumerated doc is silently dropped; ⭐ = low/background, — = ski
 - `docs/proposals/llm-d-async.md` — org/migration meta for async messaging, outside the interactive-serving path.
 - `docs/proposals/llm-d-inference-payload-processor.md` — component-internal/migration meta; not a guide, CLI, or report schema.
 - `docs/proposals/llm-d-planner.md` — directional sibling (NL→SLO→deploy→benchmark), but a future design, not a tool/schema we consult.
-- `docs/proposals/llm-d-skills.md` — parallels our agent's deploy/run/teardown/compare flow, but a proposal with no consumable specs yet.
+- `docs/proposals/llm-d-skills.md` — the upstream proposal that became the **`llm-d-skills`** repo, now ADOPTED: we consume its deploy/teardown/benchmark/compare/autoscale `SKILL.md` live via `knowledge/key_docs.yaml` (`fetch_key_docs(task='*_skill')`); the `knowledge/` adapters record how each runs through our tooling.
 - `docs/proposals/llm-d.md` — founding design orientation; the current architecture/getting-started docs are the canonical read.
 - `docs/proposals/modelservice.md` — superseded; the load-bearing bit is that model servers now deploy via guides/recipes Kustomize layers.
 - `docs/proposals/non-kubernetes-mode.md` — non-K8s direction out of scope; only background on K8s-overhead reproducibility.

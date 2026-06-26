@@ -3,6 +3,24 @@
 Two ways an llm-d stack comes into being. For the MVP only the first is supported
 end-to-end; the others are described so you can set expectations honestly.
 
+## Canonical deploy procedure → the upstream `deploy-llm-d` skill
+The step-by-step deploy procedure is owned upstream by the **deploy-llm-d skill** (the llm-d-skills
+library) — read it with `fetch_key_docs(task='deploy_skill')` (or
+`read_repo_doc('llm-d-skills/skills/deploy-llm-d/SKILL.md')`) before a real (path-2 / guide) deploy.
+It covers: discover the well-lit-path guides (`${LLMD_PATH}/guides/README.md`), auto-detect
+namespace / hardware / gateway provider / storage class, create the benchmark PVC, install the
+scheduler, deploy the modelserver kustomize overlay, validate (pods Ready, InferencePool Ready,
+Gateway Programmed, HTTPRoute Accepted, `/v1/models` + `/v1/completions`), and emit a dated deploy
+script. Its `references/troubleshooting.md` + `references/connectivity-verification.md` (same
+`fetch_key_docs` task) carry the deploy-failure + endpoint-verification detail.
+
+**Adapt it to OUR tooling — our architecture stays authoritative.** Every mutating step flows
+through the **SessionPlan approval gate** + the allowlist, never the skill's `ask_followup_question`
+/ ad-hoc `execute_command`: drive deploys via `execute_llmdbenchmark` (the `llmdbenchmark` CLI) or,
+for the raw kubectl/helm/kustomize the skill calls for, `run_shell` (classifier + approval), always
+namespace-scoped (`-n ${NAMESPACE}`), never cluster-level. Write only into the session workspace;
+never edit the read-only repos.
+
 ## Completing a deploy flow — no optional mid-flow gates, always finish teardown
 When the user gives a complete end-to-end instruction (e.g. "create cluster → standup → smoketest
 → run → teardown"), run it to completion: do NOT pause mid-execution on a NON-mandatory offer
@@ -20,11 +38,11 @@ download, no HF token. This is the quickstart (`quickstart_playbook.md`). Use fo
 "try it on my laptop", demos, and plumbing/SLO sanity checks.
 
 ## 2. Real deployment via llmdbenchmark specs (future)
-`spec=examples/gpu` or `spec=guides/<name>` (e.g. `guides/optimized-baseline`). The
-benchmark CLI stands up a real stack. Needs GPUs and often a HuggingFace token for
-gated models. Confirm specs with `list_catalog` and read the spec/guide with
-`read_repo_doc` before promising anything. Do NOT attempt on the local kind node — no
-GPUs, not enough CPU/RAM for the default sizes.
+`spec=examples/gpu` or `spec=guides/<name>` (e.g. `guides/optimized-baseline`). The benchmark CLI
+stands up a real stack (the deploy-llm-d skill above is the canonical procedure). Needs GPUs and
+often a HuggingFace token for gated models. Confirm specs with `list_catalog` and read the
+spec/guide with `read_repo_doc` before promising anything. Do NOT attempt on the local kind node —
+no GPUs, not enough CPU/RAM for the default sizes.
 
 ### Deploying a published llm-d GUIDE (optimized-baseline as the reference)
 `guides/optimized-baseline` is the reference well-lit-path guide — load-aware + prefix-cache-aware
@@ -47,9 +65,11 @@ mutating → user Approves. This is the llm-d guide repo's OWN `helpers/client-s
 prerequisites") for which install step to run when, and never re-offer one whose tools are present.
 
 ## 3. Hand-run llm-d guides + run_only.sh (not automated here)
-The `llm-d` repo `guides/*` deploy via helm+kustomize and then benchmark an EXISTING stack
-with `existing_stack/run_only.sh` — a different entry point than `llmdbenchmark`, out of MVP
-scope. Mention it exists if the user asks about the published guide numbers.
+The `llm-d` repo `guides/*` deploy via helm+kustomize and then benchmark an EXISTING stack with
+`existing_stack/run_only.sh` — a different entry point than `llmdbenchmark`, out of MVP scope. This
+is the shape the upstream **run-llm-d-benchmark skill** automates; our CLI path stays authoritative
+(see the skill pointer in `author_spec_workload.md`). Mention it exists if the user asks about the
+published guide numbers.
 
 ## How to decide
 - "on my laptop / locally / just try it / no GPU" → path 1 (cicd/kind). Default.

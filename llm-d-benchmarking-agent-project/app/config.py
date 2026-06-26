@@ -1,6 +1,6 @@
 """Backend configuration. Reads from environment / .env (never the browser).
 
-Resolves the locations of the two read-only sibling repos and the project's own
+Resolves the locations of the three read-only sibling repos and the project's own
 runtime directories. Secrets (LLM keys, HF token) live here and are never sent to
 the UI or to child processes (the runner scrubs them out).
 """
@@ -17,6 +17,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # Repo directory names (siblings of this project under REPOS_DIR).
 BENCH_REPO_NAME = "llm-d-benchmark"
 GUIDE_REPO_NAME = "llm-d"
+# The llm-d-incubation skills library — canonical operational procedures (deploy / teardown /
+# benchmark / compare / autoscale) the agent grounds itself in, read LIVE like the other repos.
+SKILLS_REPO_NAME = "llm-d-skills"
 
 
 class Settings(BaseSettings):
@@ -224,9 +227,19 @@ class Settings(BaseSettings):
         return self.resolved_repos_dir / GUIDE_REPO_NAME
 
     @property
+    def skills_repo(self) -> Path:
+        return self.resolved_repos_dir / SKILLS_REPO_NAME
+
+    @property
     def repo_paths(self) -> dict[str, Path]:
-        """Mapping consumed by the command runner's ``repo:<name>`` references."""
-        return {BENCH_REPO_NAME: self.bench_repo, GUIDE_REPO_NAME: self.guide_repo}
+        """The read-only repo allow-set: consumed by the command runner's ``repo:<name>``
+        references AND by ``read_repo_doc``/``fetch_key_docs`` (a path resolving outside every
+        value here is refused). Adding a repo here makes it readable everywhere."""
+        return {
+            BENCH_REPO_NAME: self.bench_repo,
+            GUIDE_REPO_NAME: self.guide_repo,
+            SKILLS_REPO_NAME: self.skills_repo,
+        }
 
     @property
     def allowlist_path(self) -> Path:
