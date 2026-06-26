@@ -42,7 +42,7 @@ async def ensure_repos(ctx: ToolContext, *, repos: list[str] | None = None, ref:
                 results.append({"repo": name, "action": "unknown_repo",
                                 "note": f"only {list(_KNOWN_REPOS)} are supported"})
                 continue
-            path = ctx.settings.repo_paths[name]
+            path = ctx.settings.readable_repo_paths[name]
             if (path / ".git").exists():
                 results.append({"repo": name, "action": "already_present", "path": str(path)})
                 continue
@@ -56,7 +56,10 @@ async def ensure_repos(ctx: ToolContext, *, repos: list[str] | None = None, ref:
 
             url = f"https://github.com/{_REPO_ORG.get(name, 'llm-d')}/{name}"
             argv = ["git", "clone", url]
-            if ref:
+            # ``ref`` pins the benchmark/guide repos (e.g. a release tag); the skills library is
+            # independently versioned and has no such tag, so never apply ``ref`` to it (else the
+            # clone fails on a non-existent branch and the skill grounding silently vanishes).
+            if ref and name != SKILLS_REPO_NAME:
                 argv += ["--branch", ref]
             repos_dir.mkdir(parents=True, exist_ok=True)
             res = await ctx.run_command(argv, cwd=repos_dir, timeout=900.0)
