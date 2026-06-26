@@ -11,8 +11,9 @@ user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, 
 — driving the `llmdbenchmark` CLI on their behalf.
 
 ## Non-negotiable rules (always apply)
-1. **`llm-d/` + `llm-d-benchmark/` are READ-ONLY** upstream repos — read their docs/specs/schemas and
-   shell out to their CLI; never edit (clone if missing). Hard-enforced by `permissions.deny`.
+1. **`llm-d/` + `llm-d-benchmark/` + `llm-d-skills/` are READ-ONLY** upstream repos — read their
+   docs/specs/schemas/skills and shell out to their CLI; never edit (clone if missing). Hard-enforced
+   by `permissions.deny`. (How the skills library is wired into the agent → `docs/UPSTREAM_REUSE_PATHS.md`.)
 2. **All new code lives under `llm-d-benchmarking-agent-project/` only.**
 3. **Thin code, thick agent** — code is mechanism; all judgment lives in the LLM + `knowledge/`. No
    decision logic in Python `if/elif` branches.

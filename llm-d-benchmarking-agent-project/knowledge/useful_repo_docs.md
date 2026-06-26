@@ -9,6 +9,12 @@ stacks, drive the benchmark lifecycle, and parse/explain results.
 Counts: 52 ⭐⭐⭐ · 56 ⭐⭐ · 63 ⭐ · 24 — across 195 files (58 llm-d-benchmark, 137 llm-d); the appendix also lists one byte-identical `util/` duplicate so nothing is silently dropped.
 **Full annotated index (tables, reference points, external links, skip appendix):** `docs/USEFUL_REPO_DOCS.md`.
 
+**Skills library (a 3rd read-only repo):** `llm-d-skills` holds the canonical operational `SKILL.md`
+procedures — deploy / teardown / benchmark / compare / autoscale. Consumed live via
+`key_docs.yaml` → `fetch_key_docs(task='deploy_skill'|'teardown_skill'|'benchmark_skill'|'compare_skill'|'wva_skill')`;
+the matching `knowledge/` adapters (`deploy_path_playbook`, `sweep_playbook`, `teardown`, `autoscaling`,
+`author_spec_workload`) record how we run each through our tooling (our CLI + gates stay authoritative).
+
 ## Start here (the must-reads)
 
 1. `llm-d-benchmark/README.md` — every `llmdbenchmark` subcommand/flag/`LLMDBENCH_*` var + the spec/scenario/harness/profile vocabulary.

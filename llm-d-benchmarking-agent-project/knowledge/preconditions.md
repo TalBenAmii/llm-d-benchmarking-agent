@@ -24,6 +24,9 @@ structured result and reason about it — do not assume.
     `--all` to do both at once).
 
 ## Guide-based deploy: the UPSTREAM client prerequisites (install-deps.sh)
+> The deploy-llm-d skill's "Prerequisites" section is the canonical list (client tools, HF-token
+> secret, gateway provider) — `fetch_key_docs(task='deploy_skill')`. What follows is the
+> agent-specific disambiguation of WHICH install script supplies what.
 When the user wants to deploy a published **llm-d well-lit-path guide** (the guide deploy path
 — `optimized-baseline` is the reference; see `deploy_path_playbook.md`), the guide expects the
 **deployment client toolchain** to be present: `helm` + the **helm-diff** plugin, `helmfile`,

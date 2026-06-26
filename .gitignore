@@ -8,6 +8,7 @@
 # Nested upstream repos — managed by their own git, not this one
 /llm-d/
 /llm-d-benchmark/
+/llm-d-skills/
 
 # Local-only scratch todo list — kept on disk, never committed
 /todo

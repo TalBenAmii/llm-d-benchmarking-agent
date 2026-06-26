@@ -96,7 +96,9 @@ default: deny
 
 value_constraints:
   namespace:       { regex: "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" }   # RFC1123 label
-  llmd_clone_url:  { regex: "^https://github\\.com/llm-d/(llm-d|llm-d-benchmark)(\\.git)?$" }
+  # The clone target is pinned to EXACTLY the three known upstream repos (NOT a whole org):
+  # llm-d/{llm-d,llm-d-benchmark} plus the incubation skills library llm-d-incubation/llm-d-skills.
+  llmd_clone_url:  { regex: "^https://github\\.com/(llm-d/(llm-d|llm-d-benchmark)|llm-d-incubation/llm-d-skills)(\\.git)?$" }
   output_dir:      { regex: "^[A-Za-z0-9._/-]+$" }
   # ---- cloud results sink (Phase 39): the `run -r/--output` DESTINATION KEYWORD ----
   # This is the value of `run`'s -r/--output: a DESTINATION KEYWORD, NOT a filesystem path.

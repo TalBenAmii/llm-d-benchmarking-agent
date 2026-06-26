@@ -146,6 +146,55 @@ docs:
     task: observability
     why: Tier-1 saturation/failure PromQL queries for the activated vLLM/EPP metrics.
 
+  # llm-d-skills — the incubation skills library: canonical, upstream-maintained operational
+  # procedures (deploy / teardown / benchmark / compare / autoscale). The SKILL.md is the
+  # step-by-step; our knowledge files (deploy_path_playbook / sweep_playbook / teardown /
+  # autoscaling / author_spec_workload) record how we ADAPT each through our tooling — the
+  # SessionPlan gate + the llmdbenchmark CLI + BR-v0.2 parsing stay authoritative.
+  - path: llm-d-skills/skills/deploy-llm-d/SKILL.md
+    task: deploy_skill
+    why: >
+      Canonical deploy procedure: discover well-lit-path guides, auto-detect
+      namespace/hardware/gateway/storage, create the PVC, install the scheduler, deploy the
+      modelserver kustomize overlay, validate, emit a deploy script. See deploy_path_playbook.md for
+      how we drive it via execute_llmdbenchmark / run_shell under the approval gate.
+  - path: llm-d-skills/skills/deploy-llm-d/references/troubleshooting.md
+    task: deploy_skill
+    why: Deploy-failure troubleshooting (pod scheduling, GPU/NVLink, gateway routing, HF token).
+  - path: llm-d-skills/skills/deploy-llm-d/references/connectivity-verification.md
+    task: deploy_skill
+    why: The endpoint connectivity-verification script the skill generates (/v1/models, completion).
+  - path: llm-d-skills/skills/teardown-llm-d/SKILL.md
+    task: teardown_skill
+    why: >
+      Canonical teardown: detect Helm vs Kustomize, confirm-before-delete, label-selector fallback,
+      opt-in HTTPRoute/Gateway removal, verify. See teardown.md for our CLI/orchestrator mechanism.
+  - path: llm-d-skills/skills/run-llm-d-benchmark/SKILL.md
+    task: benchmark_skill
+    why: >
+      The upstream SHAPE for benchmarking an EXISTING stack (harness/workload/metrics selection).
+      Reference for workload/harness judgment only — our llmdbenchmark CLI path is authoritative,
+      NOT the skill's run_only.sh entrypoint (see author_spec_workload.md).
+  - path: llm-d-skills/skills/compare-llm-d-configurations/SKILL.md
+    task: compare_skill
+    why: >
+      Canonical end-to-end A/B: deploy + benchmark + teardown each config, side-by-side report,
+      repro scripts. Our mechanism is full DoE + compare_reports/analyze_results (sweep_playbook.md).
+  - path: llm-d-skills/skills/compare-llm-d-configurations/resources/no-llm-d-baseline.md
+    task: compare_skill
+    why: How to target a no-llm-d baseline (a model server with no inference scheduler) to compare against.
+  - path: llm-d-skills/skills/configure-wva-autoscaling-llm-d/SKILL.md
+    task: wva_skill
+    why: >
+      Canonical WVA autoscaling setup: presets (low-latency/balanced/cost), preflight, accelerator
+      labels, VariantAutoscaling + HPA/ScaledObject, verify. See autoscaling.md for our adaptation.
+  - path: llm-d-skills/skills/configure-wva-autoscaling-llm-d/docs/REFERENCE.md
+    task: wva_skill
+    why: WVA thresholds, env vars, API versions, and the undeploy procedure.
+  - path: llm-d-skills/skills/configure-wva-autoscaling-llm-d/docs/Troubleshooting.md
+    task: wva_skill
+    why: WVA failure modes (missing accelerator label, metric mismatch, scaling disabled).
+
 # ---------------------------------------------------------------------------
 # CANONICAL workload-profile file locations — so you NEVER path-guess for sanity_random.yaml.
 # Workload profiles live under workload/profiles/<harness>/ and are TEMPLATES with a `.yaml.in`

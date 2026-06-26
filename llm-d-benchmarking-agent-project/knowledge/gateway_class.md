@@ -8,6 +8,9 @@ the scenario YAML**, emitted as `--gateway-class <provider>` by
 `execute_llmdbenchmark`. This is mechanism — the WHICH-provider judgment below is
 yours, grounded here, not in any Python branch.
 
+> The upstream **deploy-llm-d skill** auto-detects the gateway provider during a real deploy
+> (`fetch_key_docs(task='deploy_skill')`); this file is the per-command `--gateway-class` override.
+
 - **Valid on every subcommand** (`plan`, `standup`, `smoketest`, `run`,
   `teardown`, `experiment`). It is a value-pinned enum in the allowlist, so an
   out-of-enum value is refused.
