@@ -145,7 +145,6 @@ class AgentLoop:
         log.info("turn.start", extra={"session_id": session.id, "user_chars": len(user_text)})
 
         system = build_system_prompt(ctx)
-        tools = tool_definitions()
         tool_calls_made = 0
         # One user "press enter" runs this loop = several LLM calls; per-turn tokens are the SUM
         # of usage across all of them. Track the running turn total + a call counter so the live
@@ -165,32 +164,50 @@ class AgentLoop:
         # keeps ONE warm CLI subprocess for the whole turn instead of spawning a fresh one per step
         # (~3s init each) — see app/llm/agent_sdk_provider.py. Other providers (and the test fakes)
         # transparently get a stateless per-step chat() with identical behavior.
-        async with open_provider_turn(
-            self._provider, system=system, tools=tools, cache_key=session.id
-        ) as agent_turn:
-            for _ in range(MAX_STEPS):
-                step = await self._run_step(
-                    session=session,
-                    ctx=ctx,
-                    agent_turn=agent_turn,
-                    emit=emit,
-                    trace=trace,
-                    system=system,
-                    on_text=on_text,
-                    compact=_compact,
-                    should_continue=should_continue,
-                    tool_calls_made=tool_calls_made,
-                    turn_usage=turn_usage,
-                    calls=calls,
-                )
-                tool_calls_made = step.tool_calls_made
-                turn_usage = step.turn_usage
-                calls = step.calls
-                if step.should_break:
-                    break
-            else:
-                await emit(events.ERROR, {"message": f"reached the step limit ({MAX_STEPS}); pausing."})
-                log.warning("turn.step_limit", extra={"max_steps": MAX_STEPS})
+        #
+        # The exposed tool set can change ONCE mid-turn: when the model calls enable_advanced_tools
+        # the loop flips session.advanced_tools_enabled, and we re-open the provider turn with the
+        # advanced tools so they are callable on the very next step (no dead turn). The SDK binds
+        # tools at connect, so a changed set needs a fresh turn; this re-open happens at most once
+        # per session. The step budget (MAX_STEPS) and the running counters span all re-opens.
+        done = False
+        while not done:
+            exposed_advanced = session.advanced_tools_enabled
+            tools = tool_definitions(include_advanced=exposed_advanced)
+            async with open_provider_turn(
+                self._provider, system=system, tools=tools, cache_key=session.id
+            ) as agent_turn:
+                while True:
+                    if calls >= MAX_STEPS:
+                        await emit(events.ERROR,
+                                   {"message": f"reached the step limit ({MAX_STEPS}); pausing."})
+                        log.warning("turn.step_limit", extra={"max_steps": MAX_STEPS})
+                        done = True
+                        break
+                    step = await self._run_step(
+                        session=session,
+                        ctx=ctx,
+                        agent_turn=agent_turn,
+                        emit=emit,
+                        trace=trace,
+                        system=system,
+                        on_text=on_text,
+                        compact=_compact,
+                        should_continue=should_continue,
+                        tool_calls_made=tool_calls_made,
+                        turn_usage=turn_usage,
+                        calls=calls,
+                    )
+                    tool_calls_made = step.tool_calls_made
+                    turn_usage = step.turn_usage
+                    calls = step.calls
+                    if step.should_break:
+                        done = True
+                        break
+                    # Model just unlocked the advanced tools: leave the inner loop so the outer
+                    # one re-opens the provider turn with the expanded set (same user turn).
+                    if session.advanced_tools_enabled != exposed_advanced:
+                        break
 
         trace.event("turn_end", tool_calls=tool_calls_made, llm_calls=calls)
         log.info("turn.end", extra={"session_id": session.id, "tool_calls": tool_calls_made})
@@ -341,6 +358,13 @@ class AgentLoop:
                     # test suite's "test") is never overwritten.
                     if plan and not session.namespace:
                         session.namespace = plan.get("namespace")
+
+                # The model asked to reveal the advanced tool set. Flip the (persisted) session
+                # flag; run_turn detects the change between steps and re-opens the provider turn
+                # with the expanded tool list, so the advanced tools are callable on the very next
+                # step of THIS turn (registry.tool_definitions(include_advanced=...)).
+                if tc.name == "enable_advanced_tools":
+                    session.advanced_tools_enabled = True
 
                 log.info("tool.call.result", extra={
                     "tool_call_id": tc.id,

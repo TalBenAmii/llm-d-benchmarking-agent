@@ -222,3 +222,7 @@ class SuggestNextStepsInput(BaseModel):
         min_length=1,
         max_length=4,
     )
+
+
+class EnableAdvancedToolsInput(BaseModel):
+    """No arguments — calling the tool IS the request to reveal the advanced tool set."""

@@ -144,6 +144,10 @@ def test_every_feature_tool_has_live_coverage():
         # offer as buttons (the structured analog of an approval card) — not a feature a user asks
         # for by name. Exercised incidentally wherever the agent offers follow-ups.
         "suggest_next_steps",
+        # Token-budget mechanism: enable_advanced_tools is how the model reveals the hidden
+        # _ADVANCED_TOOLS schemas mid-turn — pure plumbing, never a user's standalone ask. The
+        # advanced tools it unlocks (orchestrate_sweep, autotune_search, …) keep their own flows.
+        "enable_advanced_tools",
     }
     live_required_tools = {t for f in ALL_FLOWS if f.live_eval for t in f.required_tools}
     # execute_llmdbenchmark is asserted via required_subcommands (standup/run/teardown/plan), not
