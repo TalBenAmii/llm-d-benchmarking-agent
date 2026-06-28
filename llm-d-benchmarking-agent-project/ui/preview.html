@@ -119,6 +119,8 @@
       </div>
       <textarea id="input" rows="1" placeholder="e.g. Benchmark a small chat model on my laptop"></textarea>
       <div class="composer-tools">
+        <!-- Mirrors index.html: auto-approve lives at the bottom-left of the composer (a labeled pill). -->
+        <button id="autoapprove-toggle" type="button" class="autoapprove" title="Auto-approve commands — skip the Approve card for commands in this chat (the plan still asks)" aria-label="Toggle auto-approve for commands" aria-pressed="false"><span class="autoapprove-mark" aria-hidden="true">✓</span><span>Auto-approve</span></button>
         <button id="send" type="submit">Send</button>
       </div>
     </form>

@@ -176,6 +176,7 @@ let cur = null;               // the active chat's record (drives the renderers 
 let activePane = null;        // cur.pane — the <div.chat-pane> renderers append into
 let viewClock = 0;            // monotonic counter for LRU eviction ordering
 let stickBottom = true;       // sticky auto-scroll: only jump to bottom if already near it
+let unreadCount = 0;          // new messages that arrived while scrolled up — shown on the jump button
 const MAX_PANES = 8;          // cap cached panes (memory bound); evict least-recently-viewed
 
 function makeRecord(sid) {
@@ -252,6 +253,7 @@ function activate(rec) {
     workingEl.hidden = true;
   }
   transcript.scrollTop = rec.scrollTop || transcript.scrollHeight;
+  unreadCount = 0;   // a switched-to chat starts "caught up" — don't carry the prior chat's tally
   updateJumpBtn();   // recompute for THIS chat's scroll — a fresh/short pane has nothing to jump to,
                      // so the floating "↓ Latest" button from the previous chat must hide here (the
                      // scroll handler alone won't fire if scrollTop doesn't actually change).
@@ -262,6 +264,7 @@ function activate(rec) {
 function clearActivePane() {
   if (activePane) activePane.innerHTML = "";
   resetStreamBubble();          // the live streaming bubble (if any) was just wiped with the pane
+  unreadCount = 0;              // the pane was wiped — nothing is unread now
   toolEls = cur ? (cur.toolEls = {}) : {};
   activeConsole = null; if (cur) cur.activeConsole = null;
   welcomeCard = null; if (cur) cur.welcomeCard = null;
@@ -508,6 +511,7 @@ function handle(msg) {
       // If this step streamed deltas, finalize that live bubble with the authoritative text
       // (re-render markdown + code blocks). Otherwise (non-streaming provider) add a fresh bubble.
       if (!finalizeStreamBubble(data.text)) addBubble("assistant", data.text);
+      noteNewMessage();                             // tally it if the user is scrolled up reading history
       if (!workingEl.hidden) resumeThinking();      // between steps: back to generic cycling
       break;
     // A token-by-token fragment of the agent's reply, streamed live as it generates. Append it to
@@ -529,9 +533,9 @@ function handle(msg) {
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "results_card": renderResultsCard(data.card); break;
-    case "approval_request": addApprovalCard(data); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); setEnabled(true); break;  // now waiting on the user: they can click Approve/Decline OR type a message to steer (which declines + redirects)
-    case "error": resetStreamBubble(); addBubble("error", data.message); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
-    case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
+    case "approval_request": addApprovalCard(data); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); setEnabled(true); break;  // now waiting on the user: they can click Approve/Decline OR type a message to steer (which declines + redirects)
+    case "error": resetStreamBubble(); addBubble("error", data.message); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
+    case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
     case "done": resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); if (cur) cur.resourceRunEnded = true; loadSessions(); loadHistory(); stopWorking(); break;
@@ -2759,6 +2763,15 @@ function addApprovalCard(data) {
   const approve = el("button", "approve", "Approve");
   const reject = el("button", "reject", "Reject");
   actions.appendChild(approve);
+  // For COMMAND gates only (never the plan — auto-approve never skips the plan gate), offer a
+  // one-click "approve this AND stop asking": it flips auto-approve on (server-persisted, mirrored
+  // on the composer pill) so the rest of this chat's commands run without a card, then approves this
+  // one. Only ever shown while auto-approve is OFF (when on, the server wouldn't emit this card).
+  let approveAll = null;
+  if (kind !== "session_plan") {
+    approveAll = el("button", "approve approve-all", "Approve & stop asking");
+    actions.appendChild(approveAll);
+  }
   actions.appendChild(reject);
   card.appendChild(actions);
   // The user can also just TYPE a message instead of clicking — that declines this action and
@@ -2784,6 +2797,13 @@ function addApprovalCard(data) {
   };
   approve.onclick = () => resolve(true);
   reject.onclick = () => resolve(false);
+  if (approveAll) approveAll.onclick = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "set_auto_approve", enabled: true }));
+      applyAutoApprove(true);   // mirror it on the composer pill now (server persists + re-seeds via `ready`)
+    }
+    resolve(true);              // approve THIS command (resolve bails harmlessly if the socket is down)
+  };
 }
 
 // A resolved approval replayed from a reopened chat: same card, no buttons, just the outcome.
@@ -2798,7 +2818,7 @@ function addDecisionCard(it) {
 // Sticky auto-scroll: only jump to the bottom if the user was already pinned there (captured in
 // `stickBottom` at the start of handle(), before new content shifted scrollHeight). This keeps a
 // scrolled-up reading position — and a restored position on switch-back — instead of yanking down.
-function scroll() { if (stickBottom) transcript.scrollTop = transcript.scrollHeight; }
+function scroll() { if (stickBottom) transcript.scrollTop = transcript.scrollHeight; updateJumpBtn(); }
 
 // ---- "working" indicator (spinning hexagon + live status) ----------------
 // Shown while a turn is in flight. The word cycles through generic gerunds while
@@ -2972,16 +2992,31 @@ if (stopBtn) stopBtn.addEventListener("click", cancelRun);
 // Jump-to-latest: a floating button that appears once the user scrolls up off the bottom of the
 // transcript, and pins them back to the newest message on click. Complements the sticky
 // auto-scroll (which only follows new content when already near the bottom).
-// Show the button only when there's meaningfully more content below the fold. Called on scroll AND
-// on chat switch (from activate) so switching to a fresh/short chat hides a button left over from
-// the chat we came from.
+
+// Tally a freshly-arrived message while the user is scrolled up (stickBottom is false), so the jump
+// button can show how many they haven't seen. Called from the live handle() cases ONLY — replayed
+// history doesn't pass through here, so the count only ever reflects real-time arrivals.
+function noteNewMessage() { if (!stickBottom) unreadCount++; }
+
+// Show the button only when there's meaningfully more content below the fold — and label it with the
+// unread tally. Called on scroll, on chat switch (from activate), and now after every render (via
+// scroll()) so the count/visibility stay live; a fresh/short chat hides a button left over from the
+// chat we came from.
 function updateJumpBtn() {
-  if (jumpBtn) jumpBtn.hidden = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) < 120;
+  if (!jumpBtn) return;
+  const atBottom = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) < 120;
+  if (atBottom) unreadCount = 0;        // back at the bottom = caught up — clear the unread tally
+  jumpBtn.hidden = atBottom;
+  // Label doubles as an unread badge: "↓ N new messages" while messages arrived behind the fold,
+  // plain "↓ Latest" when there's just more to scroll to but nothing new.
+  jumpBtn.textContent = unreadCount > 0
+    ? `↓ ${unreadCount} new message${unreadCount === 1 ? "" : "s"}`
+    : "↓ Latest";
 }
 if (jumpBtn) {
   transcript.addEventListener("scroll", updateJumpBtn);
   jumpBtn.addEventListener("click", () => {
-    stickBottom = true; transcript.scrollTop = transcript.scrollHeight; jumpBtn.hidden = true;
+    stickBottom = true; unreadCount = 0; transcript.scrollTop = transcript.scrollHeight; updateJumpBtn();
   });
 }
 

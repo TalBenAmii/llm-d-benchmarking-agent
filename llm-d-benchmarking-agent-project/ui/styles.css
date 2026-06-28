@@ -841,6 +841,9 @@ button:hover { filter: brightness(1.08); }
 button:active { transform: translateY(1px); }
 button.approve { background: color-mix(in srgb, var(--green) 22%, var(--panel)); border-color: color-mix(in srgb, var(--green) 55%, var(--border)); color: color-mix(in srgb, var(--green) 45%, var(--text)); }
 button.reject  { background: color-mix(in srgb, var(--red) 20%, var(--panel)); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); color: color-mix(in srgb, var(--red) 45%, var(--text)); }
+/* "Approve & stop asking" — also positive (green) but a lighter ghost variant so it reads as
+   secondary next to the filled primary Approve. */
+button.approve-all { background: transparent; border-color: color-mix(in srgb, var(--green) 45%, var(--border)); color: color-mix(in srgb, var(--green) 55%, var(--text)); }
 button:disabled { opacity: .5; cursor: default; filter: none; }
 
 /* ── Composer ─────────────────────────────────────────────────────────── */
@@ -873,6 +876,23 @@ footer {
 .composer-tools { display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 2px 6px 2px 10px; }
 .ctx-meter { font: 11px var(--mono); color: var(--faint); white-space: nowrap; }
 .ctx-meter[hidden] { display: none; }
+/* Auto-approve toggle: a labeled pill at the bottom-LEFT of the composer tools row. `margin-right:
+   auto` claims the free space so it sits left while the ctx-meter + send button stay grouped right.
+   Off = muted outline; on = accent-tinted fill (driven by aria-pressed, set by applyAutoApprove). */
+.autoapprove {
+  margin-right: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 999px;
+  font: 600 12px/1 var(--mono); color: var(--muted);
+  background: transparent; border: 1px solid var(--border);
+  transition: filter .15s, border-color .15s, background .15s, color .15s;
+}
+.autoapprove:hover { border-color: var(--accent); color: var(--text); }
+.autoapprove .autoapprove-mark { font-size: 12px; opacity: .65; }
+.autoapprove[aria-pressed="true"] {
+  background: var(--accent-strong); border-color: transparent; color: var(--on-accent);
+}
+.autoapprove[aria-pressed="true"] .autoapprove-mark { opacity: 1; }
 #send {
   flex: none;
   width: 36px; height: 36px; padding: 0; border-radius: 11px;
@@ -892,7 +912,7 @@ footer {
 .jump-latest {
   position: absolute; right: 26px; bottom: 116px; z-index: 20;
   padding: 7px 14px; border-radius: 999px;
-  font: 600 12px/1 var(--mono); color: var(--on-accent);
+  font: 600 12px/1 var(--mono); color: var(--on-accent); white-space: nowrap;
   background: var(--accent-strong); border: none; box-shadow: var(--shadow);
 }
 .jump-latest:hover { filter: brightness(1.1); }
