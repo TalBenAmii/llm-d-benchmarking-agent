@@ -533,7 +533,7 @@ function handle(msg) {
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "results_card": renderResultsCard(data.card); break;
-    case "approval_request": addApprovalCard(data); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); setEnabled(true); break;  // now waiting on the user: they can click Approve/Decline OR type a message to steer (which declines + redirects)
+    case "approval_request": if (addApprovalCard(data)) noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); setEnabled(true); break;  // now waiting on the user: they can click Approve/Decline OR type a message to steer (which declines + redirects); tally only if a NEW card rendered (a reconnect re-emit dedups)
     case "error": resetStreamBubble(); addBubble("error", data.message); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
     case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
@@ -2754,7 +2754,7 @@ function addApprovalCard(data) {
   // never strand the user with no Approve/Decline control after a chat switch.
   const existing = cur && cur.pendingApprovals[request_id];
   if (existing) {
-    if (existing.isConnected) return;          // genuinely already shown live — true dedup
+    if (existing.isConnected) return false;    // genuinely already shown live — true dedup (no new card → don't tally)
     delete cur.pendingApprovals[request_id];   // stale ref: card is gone from the DOM — re-render
   }
   const card = el("div", "card");
@@ -2792,6 +2792,7 @@ function addApprovalCard(data) {
     setEnabled(false);  // re-lock the composer: clicking resumes the turn (working), not parked
     startWorking();     // the turn resumes after the user decides (approve or reject), until "done"
     approve.disabled = reject.disabled = true;
+    if (approveAll) approveAll.disabled = true;   // disable it too, or a later click flips auto-approve + double-resolves
     const at = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     card.appendChild(el("div", "resolved", ok ? `✓ Approved · ${at}` : "✗ Rejected"));
   };
@@ -2804,6 +2805,7 @@ function addApprovalCard(data) {
     }
     resolve(true);              // approve THIS command (resolve bails harmlessly if the socket is down)
   };
+  return true;                  // a card was actually rendered (callers gate the unread tally on this)
 }
 
 // A resolved approval replayed from a reopened chat: same card, no buttons, just the outcome.
