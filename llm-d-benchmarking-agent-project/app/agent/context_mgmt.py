@@ -41,15 +41,19 @@ from typing import Any
 _ELIDE_OVER_CHARS = 600
 
 # Keep the most-recent N messages verbatim (the live working set the agent is mid-task on).
-# Only tool results in messages BEFORE this trailing window are eligible for elision.
-_RECENT_MESSAGES_KEPT = 12
+# Only tool results in messages BEFORE this trailing window are eligible for elision. A
+# tool-calling step appends two messages (assistant + tool_results), so 8 ≈ the last ~4 steps
+# kept in full — the agent almost always only needs the last 1-3 results to pick its next move,
+# and anything older is re-fetchable (the stub says how), so a smaller window trims the replayed
+# tail (and its per-step cache-read) without starving the live working set.
+_RECENT_MESSAGES_KEPT = 8
 
 # Only compact at all once the transcript's total replayed content exceeds this many chars
-# (~ tens of thousands of tokens). Below it, replay is cheap and we keep everything verbatim.
+# (~ a few thousand tokens). Below it, replay is cheap and we keep everything verbatim.
 # A long deploy→smoketest→run→report session replays the whole transcript on EVERY step, so
 # compacting at a modest threshold keeps the per-step replay (and the recurring cache-read of it)
 # materially smaller without touching the recent working window.
-_COMPACT_THRESHOLD_CHARS = 30_000
+_COMPACT_THRESHOLD_CHARS = 20_000
 
 # Marker prefix on an elided stub, so compaction is IDEMPOTENT (a stub is never re-elided) and
 # tests/inspection can recognise a compacted result.
