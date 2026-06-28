@@ -173,10 +173,12 @@ docs:
     task: benchmark_skill
     why: >
       The upstream SHAPE for benchmarking an EXISTING stack (harness/workload/metrics selection).
-      Reference for workload/harness judgment only. As of llmdbenchmark v0.8.0 the skill drives the
-      same `llmdbenchmark` CLI we do (the old run_only.sh entrypoint was dropped) — but our path stays
+      Reference for workload/harness judgment only. The skill's "v0.8.0" rewrite drives the same
+      `llmdbenchmark` CLI we do (the old run_only.sh entrypoint was dropped) — but our path stays
       authoritative: we wrap that run in the SessionPlan/determinism gates + BR-v0.2 parsing rather
-      than invoking the CLI raw (see author_spec_workload.md).
+      than invoking the CLI raw (see author_spec_workload.md). NB the skill's "v0.8.0" is the skills
+      repo's own label; the llm-d-benchmark CLI's latest release is v0.7.0 and already supports the
+      skill's flags (`--harness`, `ENDPOINT_URL`) — no repo bump needed.
   - path: llm-d-skills/skills/compare-llm-d-configurations/SKILL.md
     task: compare_skill
     why: >
