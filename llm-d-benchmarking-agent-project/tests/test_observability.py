@@ -329,10 +329,11 @@ def test_observability_knowledge_documents_streaming_unimplemented_and_substitut
 
 def test_observability_knowledge_documents_grafana_vs_metrics_server_offer():
     """THIN-CODE, knowledge-only: before a run the agent must offer BOTH live-view options as a pair
-    and clarify what each is for — Grafana (the richer view it can only ADVISE on, via
-    GRAFANA_DASHBOARD_URL) and metrics-server (the convenient CPU/mem-only alternative it CAN install).
-    That judgment lives in knowledge, not Python (mirrors the streaming/tracing assertions). Read the
-    file directly; no app behavior changed."""
+    and clarify what each is for — AND it must NOT falsely refuse to deploy Grafana. Both the
+    Prometheus+Grafana stack AND metrics-server are deployable BY THE AGENT (an approval-gated
+    run_shell, via the upstream install-prometheus-grafana.sh recipe); the ONLY thing the agent can't
+    do for Grafana is write the user's GRAFANA_DASHBOARD_URL backend env var (which controls only the
+    in-panel embed, not whether the stack exists). That judgment lives in knowledge, not Python."""
     from app.config import get_settings
 
     md = (get_settings().knowledge_dir / "observability.md").read_text()
@@ -340,10 +341,14 @@ def test_observability_knowledge_documents_grafana_vs_metrics_server_offer():
 
     # Both options are named together as a pair.
     assert "grafana" in lower and "metrics-server" in lower
-    # The honest asymmetry: Grafana is advice-only (user sets the env var); metrics-server is the
-    # install-for-you option.
+    # The agent CAN deploy the Grafana stack itself (approval-gated run_shell, upstream recipe) — the
+    # knowledge must say so, not frame Grafana as "advice-only".
+    assert "run_shell" in md
+    assert "install-prometheus-grafana" in lower
+    assert "never refuse to stand up" in lower  # the corrected, no-false-refusal framing
+    # The one genuine limit: the user sets the backend env var (the agent has no env/secret tool);
+    # metrics-server stays the install-for-you option.
     assert "GRAFANA_DASHBOARD_URL" in md
-    assert "advise" in lower
     assert "install_metrics_server.sh" in md
     # The probe fact the agent tailors its message on (configured vs not).
     assert "grafana_dashboard.configured" in md
