@@ -121,7 +121,6 @@
       <button id="builder-toggle" type="button" class="icon-btn" title="Design a benchmark — guided builder" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span></button>
       <button id="share-chat" type="button" class="icon-btn" title="Share this conversation with a read-only link" aria-label="Share this conversation"><span aria-hidden="true">🔗</span></button>
       <button id="debug-toggle" type="button" class="icon-btn" title="Debug view — show the commands the agent ran inline in the chat" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
-      <button id="autoapprove-toggle" type="button" class="icon-btn" title="Auto-approve commands — skip the Approve card for commands in this chat (the plan still asks)" aria-label="Toggle auto-approve for commands" aria-pressed="false">✓</button>
       <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
       <div id="status" class="status" title="connection status">connecting…</div>
     </div>
@@ -159,6 +158,10 @@
       </div>
       <textarea id="input" rows="1" placeholder="e.g. Benchmark a small chat model on my laptop" disabled></textarea>
       <div class="composer-tools">
+        <!-- Auto-approve sits at the bottom-left of the composer (where the user acts), not buried in
+             the header. Same id as before so the existing handler/seed logic is unchanged — only the
+             location + look change (a labeled pill; aria-pressed drives the on/off fill). -->
+        <button id="autoapprove-toggle" type="button" class="autoapprove" title="Auto-approve commands — skip the Approve card for commands in this chat (the plan still asks)" aria-label="Toggle auto-approve for commands" aria-pressed="false"><span class="autoapprove-mark" aria-hidden="true">✓</span><span>Auto-approve</span></button>
         <div id="context-window" class="ctx-meter" title="Current context-window usage sent to the model (real provider token count)" hidden>0 ctx</div>
         <button id="send" type="submit" disabled>Send</button>
       </div>
