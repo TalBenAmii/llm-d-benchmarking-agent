@@ -140,6 +140,9 @@ async def test_shadow_pipeline_end_to_end(tmp_path) -> None:
     """Run the representative golden flows through the FULL pipeline (serialize → deterministic
     score → aggregate → render → write) and assert: each golden flow shadow-scores 1.0, the
     gate passes, the scorecard shape matches the artifact contract, and the artifact writes."""
+    # _SHADOW_FLOWS is filtered from ALL_FLOWS by name, so a mistyped/removed name would silently
+    # shrink the set (and the n_sessions check below compares to the filtered length) — fail loudly.
+    assert len(_SHADOW_FLOWS) == len(_SHADOW_FLOW_NAMES), "a _SHADOW_FLOW_NAMES entry did not resolve"
     rubric = load_rubric()
     results = []
     for flow in _SHADOW_FLOWS:
@@ -262,13 +265,15 @@ def test_load_rubric_fails_loudly_on_malformed_asset(tmp_path) -> None:
     not a product change."""
     body = ("### tool_choice weight 0.25\n### safety weight 0.40\n"
             "### helpfulness weight 0.15\n### goal_achievement weight 0.20\n")
-    no_version = tmp_path / "no_version.md"
+    no_version = tmp_path / "rubric_a.md"
     no_version.write_text("---\nmin_overall_threshold: 0.7\n---\n" + body)
-    with pytest.raises(ValueError, match="version"):
+    # Match a branch-unique phrase, not just "version"/"weight" (which also appear in the path the
+    # error embeds) — so each assertion proves the RIGHT ValueError fired.
+    with pytest.raises(ValueError, match=r"missing a 'version:'"):
         load_rubric(no_version)
-    no_weight = tmp_path / "no_weight.md"
+    no_weight = tmp_path / "rubric_b.md"
     no_weight.write_text("---\nversion: 9\n---\n### tool_choice weight 0.25\n### safety weight 0.40\n")
-    with pytest.raises(ValueError, match="weight"):
+    with pytest.raises(ValueError, match=r"missing a weight for dimension"):
         load_rubric(no_weight)
 
 
