@@ -529,7 +529,13 @@ h5.md-h { font-size: 13.5px; }
 pre.console {
   background: var(--code-bg); border: 1px solid var(--border); border-radius: 9px;
   padding: 11px 13px; font: 12.5px/1.5 var(--mono); color: var(--code-text);
-  max-height: 340px; overflow: auto; white-space: pre-wrap; margin: 8px 0 0;
+  /* Flow with the transcript — NO inner max-height/overflow. A capped, independently-scrollable
+     console is a nested vertical scroller: hover it, wheel down, and the console scrolls instead of
+     the page — the page wheel is "trapped", so the user can't scroll past an expanded tool and only
+     the ↓ Latest button (a direct scrollTop set) reaches the bottom. The transcript (#transcript) is
+     the single scroll authority; long live output still follows via its sticky-bottom auto-scroll.
+     `overflow-wrap: anywhere` wraps long unbroken tokens so they can't widen the 900px column. */
+  white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0;
 }
 pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; margin: 7px 0 0; }
 
