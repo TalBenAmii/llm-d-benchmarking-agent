@@ -49,3 +49,12 @@ the next such review).
   and **split it** into this `CONFIG_AUDIT_LOG.md` + `UPSTREAM_REUSE_PATHS.md`, leaving the brain-ref a slim
   orientation hub. Added the seven missing per-folder `app/{capacity,readiness,packaging,observability,llm,
   storage,web}/CLAUDE.md` files (file-level detail, per the new folder-map convention).
+- **2026-06-28 — llm-d-skills bumped to llmdbenchmark v0.8.0 (`run-llm-d-benchmark` SKILL dropped `run_only.sh`).**
+  Upstream commit `3eb03f5` rewrote `skills/run-llm-d-benchmark/SKILL.md` to drive the `llmdbenchmark` CLI
+  directly (no more `run_only.sh` existing-stack entrypoint) and renamed the no-llm-d-baseline knob
+  `base_url`→`ENDPOINT_URL`. No wiring change needed — skills are read live via `key_docs.yaml`→`fetch_key_docs`,
+  the clone-URL allowlist is unchanged, and nothing here ever executed the skill's `run_only.sh`. Refreshed the
+  two now-stale "skill's run_only.sh entrypoint" notes in `knowledge/key_docs.yaml` + `author_spec_workload.md`.
+  **Drift to watch:** the skill now assumes the v0.8.0 CLI, but the pinned `llm-d-benchmark/` checkout is still
+  **v0.7.0** (ships `existing_stack/run_only.sh`). Running against the v0.8.0 skill needs a `git pull` of that
+  repo — a deliberate, separate bump, not done here.
