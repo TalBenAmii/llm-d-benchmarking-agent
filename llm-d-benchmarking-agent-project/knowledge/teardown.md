@@ -21,17 +21,10 @@ Prefer the mechanism that matches HOW the stack came up (see `deploy_path_playbo
 ## When to follow the skill's helm/kustomize procedure
 For a stack deployed by a **published guide** (deploy path 3 — helm + kustomize, not the CLI) or for
 **partial cleanup** (e.g. remove only the model server, keep the gateway), the CLI teardown doesn't
-apply — follow the skill's procedure via `run_shell` (classifier + approval gate):
-1. **Detect the deployment method** — `helm list -n $NS` (Helm) vs resources labelled
-   `llm-d.ai/guide` (Kustomize) vs both (hybrid).
-2. **Show the teardown plan and CONFIRM before deleting anything** — list the helm releases /
-   kustomize resources / HTTPRoutes / Gateways that will go. This maps onto our mutating→approval
-   gate: never silently delete, even if the user said "just tear it down".
-3. **Remove** — `helm uninstall <release> -n $NS --ignore-not-found`; for kustomize, prefer
-   `kubectl delete -k <guide-dir> -n $NS`, else the label-selector fallback
-   `kubectl delete deployments,services,serviceaccounts,podmonitors -n $NS -l llm-d.ai/guide`.
-4. **HTTPRoutes / Gateways are opt-in** — ask separately; delete only on explicit confirmation.
-5. **Verify** the namespace is clean (`helm list`, `kubectl get all -l llm-d.ai/guide -n $NS`).
+apply — follow the **teardown-llm-d skill's** detect → confirm → remove (helm uninstall / `kubectl
+delete -k` / label-selector fallback) → verify procedure (`fetch_key_docs(task='teardown_skill')`),
+driving each of its commands via `run_shell` (classifier + approval gate). Don't restate its steps
+here — read the skill and apply the deltas below (which are NOT in it).
 
 ## Non-negotiable deltas vs the skill
 - **Namespace-scoped only** — every `helm uninstall` / `kubectl delete` carries `-n $NS`; NEVER

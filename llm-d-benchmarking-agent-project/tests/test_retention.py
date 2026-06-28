@@ -490,10 +490,11 @@ def test_caps_from_settings_normalizes_zero_to_unlimited(tmp_path):
 # Startup self-check
 # ===========================================================================
 def _make_repos(tmp_path: Path) -> Path:
-    """Create the two read-only sibling repo dirs so repos_resolvable passes."""
+    """Create the three read-only sibling repo dirs so repos_resolvable passes."""
     repos = tmp_path / "repos"
     (repos / "llm-d").mkdir(parents=True, exist_ok=True)
     (repos / "llm-d-benchmark").mkdir(parents=True, exist_ok=True)
+    (repos / "llm-d-skills").mkdir(parents=True, exist_ok=True)
     return repos
 
 

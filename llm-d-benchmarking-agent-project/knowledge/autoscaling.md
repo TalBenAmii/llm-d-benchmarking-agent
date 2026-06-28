@@ -6,14 +6,12 @@ Canonical procedure → the upstream **configure-wva-autoscaling-llm-d skill**. 
 wants llm-d to **scale automatically** under load — autoscaling, HPA/KEDA, the Workload Variant
 Autoscaler (WVA), scale-to-N, or cost/latency-tuned scaling.
 
-## What the skill covers
-WVA setup for llm-d decode deployments: namespace + decode-deployment discovery (mapped to their
-Endpoint Picker Pools so saturation thresholds align), preset templates (**Low Latency / Balanced /
-Cost Optimized**) or custom values, preflight checks (connectivity, controller conflicts, Prometheus
-Adapter), controller deploy (Makefile/Kustomize), the `inference.optimization/acceleratorName` label
-injection, a `VariantAutoscaling` + HPA/ScaledObject per deployment, and verification/troubleshooting.
-Its `docs/REFERENCE.md` (thresholds, env vars, undeploy) and `docs/Troubleshooting.md` carry the
-detail (same `fetch_key_docs` task).
+## What the skill owns (read it, don't restate)
+The skill owns the full WVA setup for decode deployments — discovery, the **Low Latency / Balanced /
+Cost Optimized** presets, preflight checks, controller deploy, the `inference.optimization/
+acceleratorName` label, the `VariantAutoscaling` + HPA/ScaledObject objects, and verification. Its
+`docs/REFERENCE.md` (thresholds, env vars, undeploy) + `docs/Troubleshooting.md` carry the detail
+(same `fetch_key_docs` task).
 
 ## Ground it in our existing knowledge
 - The llm-d **workload-autoscaling guide** is already a key-doc — `fetch_key_docs(task=

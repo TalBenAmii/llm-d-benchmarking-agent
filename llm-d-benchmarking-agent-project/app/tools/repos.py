@@ -42,7 +42,7 @@ async def ensure_repos(ctx: ToolContext, *, repos: list[str] | None = None, ref:
                 results.append({"repo": name, "action": "unknown_repo",
                                 "note": f"only {list(_KNOWN_REPOS)} are supported"})
                 continue
-            path = ctx.settings.readable_repo_paths[name]
+            path = ctx.settings.repo_paths[name]
             if (path / ".git").exists():
                 results.append({"repo": name, "action": "already_present", "path": str(path)})
                 continue

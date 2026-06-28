@@ -259,14 +259,17 @@ The agent's decisions are **data**, not Python. Verify by reading `knowledge/`:
 `observability.md`, `history.md`, `run_lifecycle.md`, `key_docs.yaml`. The system prompt
 inlines the core guides; `read_knowledge('<topic>')` pulls in the rest on demand.
 
-**Upstream skills library (3rd read-only repo, `llm-d-skills`):** the agent grounds its
+**Upstream skills library (3rd REQUIRED read-only repo, `llm-d-skills`):** the agent grounds its
 deploy/teardown/benchmark/compare/autoscale procedures in the incubation skills' canonical
 `SKILL.md`s, read **live** (never vendored) via `key_docs.yaml` → `fetch_key_docs(task='*_skill')`.
-The `knowledge/` adapters (`deploy_path_playbook`, `sweep_playbook`, `teardown`, `autoscaling`,
-`author_spec_workload`) record how each runs through OUR tooling — the SessionPlan gate +
-`llmdbenchmark` CLI + BR-v0.2 parsing stay authoritative. **Verify:** `fetch_key_docs(task=
-'teardown_skill')` returns the live SKILL.md (needs the repo cloned: `ensure_repos` or
-`git clone .../llm-d-incubation/llm-d-skills`); the clone allowlist + read-only guard are pinned in
+The skills are the **canonical default** for those procedures, so the repo is now REQUIRED (in
+`Settings.repo_paths` → gates `/readyz`, captured in provenance/reproducibility); it stays
+independently versioned, so `ensure_repos`' `ref` is never applied to it. The `knowledge/` adapters
+(`deploy_path_playbook`, `sweep_playbook`, `teardown`, `autoscaling`, `author_spec_workload`) now
+**defer to the skill for the procedure and carry only the delta** — how each runs through OUR tooling
+(the SessionPlan gate + `llmdbenchmark` CLI + BR-v0.2 parsing stay authoritative). **Verify:**
+`fetch_key_docs(task='teardown_skill')` returns the live SKILL.md (the repo is cloned by `ensure_repos`
+/ `git clone .../llm-d-incubation/llm-d-skills`); the clone allowlist + read-only guard are pinned in
 `tests/test_allowlist.py` (`test_git_clone_skills_allowed`) and the root `.claude/settings.json`.
 
 **Prompt-token efficiency (token-tracking merge):** fixed prompt overhead was cut ~40%

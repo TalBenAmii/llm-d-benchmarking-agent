@@ -58,7 +58,7 @@ def _read_repo_doc_raw(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) 
     """Resolve + read a repo doc, returning the full {path, content, truncated} payload. The
     UNDEDUPED core: callers that need the real content every time (e.g. fetch_key_docs, which
     runs its own per-doc dedup) use this directly; the deduping read_repo_doc tool wraps it."""
-    repos = ctx.settings.readable_repo_paths
+    repos = ctx.settings.repo_paths
     candidate = Path(path)
     resolved: Path | None = None
     if candidate.is_absolute():
@@ -93,8 +93,8 @@ def _read_repo_doc_raw(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) 
 
 
 def read_repo_doc(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) -> dict[str, Any]:
-    """Read a file from inside one of the read-only repos (incl. the optional llm-d-skills
-    library). Path traversal is blocked.
+    """Read a file from inside one of the three read-only repos (incl. the llm-d-skills
+    procedure library). Path traversal is blocked.
 
     Per-session de-dup: the FIRST read of a given resolved doc returns its full content; an EXACT
     repeat within the session returns a tiny back-reference instead of re-injecting identical text
