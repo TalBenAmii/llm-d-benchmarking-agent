@@ -30,8 +30,6 @@ from app.observability import instrument
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.context import ApprovalRejected, ToolContext, ToolError
 
-CommandMode = str  # READ_ONLY | MUTATING, reusing the allowlist's mode vocabulary
-
 # Shell tokens that, appearing anywhere, mean the command WRITES — a redirect to a file or a
 # tee. (`<` is an input redirect and does not write, so it is intentionally absent.)
 _WRITE_OPERATORS = frozenset({">", ">>"})
@@ -110,7 +108,7 @@ def _segment_is_read_only(seg: list[str]) -> bool:
     return False
 
 
-def classify_shell_command(command: str) -> CommandMode:
+def classify_shell_command(command: str) -> str:  # returns the allowlist READ_ONLY | MUTATING vocab
     """Classify an arbitrary shell command READ_ONLY vs MUTATING — the human-approval gate for
     the unrestricted shell tool. FAILS SAFE: anything not POSITIVELY proven read-only is
     MUTATING, so an unrecognized binary always prompts.
@@ -175,7 +173,7 @@ async def run_shell(
     via the same gate every dedicated mutating command uses, raising
     :class:`~app.tools.context.ApprovalRejected` when declined. Emits the SAME ``command`` event
     shape (argv/text/mode/auto_run/…) the dedicated executor emits."""
-    if not isinstance(command, str) or not command.strip():
+    if not command.strip():
         raise ToolError("command must be a non-empty shell string")
 
     mode = classify_shell_command(command)

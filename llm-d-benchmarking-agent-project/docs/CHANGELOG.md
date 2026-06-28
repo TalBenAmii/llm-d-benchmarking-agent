@@ -4,11 +4,11 @@ All notable changes to the **llm-d Benchmarking Agent** are documented here. The
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Versions correspond to the
 phased build-out, now summarized in [`FEATURES.md`](../FEATURES.md) (the live feature
-inventory), with remaining/deferred work in [`ROADMAP_V4.md`](../ROADMAP_V4.md).
+inventory), whose DEFERRED phases track the remaining work.
 
 ## [Unreleased] — v4: benchmark/deploy-coverage gaps + UX (Roadmap v4)
 
-Post-v3 work tracked live in [`FEATURES.md`](../FEATURES.md) and [`ROADMAP_V4.md`](../ROADMAP_V4.md);
+Post-v3 work tracked live in [`FEATURES.md`](../FEATURES.md);
 the only outstanding roadmap items are the 7 DEFERRED phases. The agent tool surface has grown from
 22 to **36 tools** (`app/tools/registry.py` is authoritative). Landed since v3 (representative, not
 exhaustive — see `FEATURES.md` for the evidence-backed inventory): interactive spec + workload

@@ -74,9 +74,9 @@ checkouts (the read-only siblings), or the catalog/report tests will fail.
 A "tool" is a function the LLM can call. The mechanism is uniform; the judgment about *when* to
 call it lives in the prompt + `knowledge/`.
 
-1. **Define the input schema.** Add a Pydantic `…Input` model in `app/tools/schemas.py`. This
-   is determinism gate (a): the LLM's arguments are validated against it before your handler
-   runs.
+1. **Define the input schema.** Add a Pydantic `…Input` model in the `app/tools/schemas/`
+   package (the module for the tool's family, e.g. `schemas/execute.py`). This is determinism
+   gate (a): the LLM's arguments are validated against it before your handler runs.
 2. **Write the handler.** Add a function in a module under `app/tools/` taking
    `(input_model, ctx: ToolContext)`. Run commands **only** through `ctx.run_readonly` /
    `ctx.run_command` (which go through the allowlist + runner). Return a JSON-serializable dict
@@ -102,7 +102,7 @@ bespoke integration test.
 ## How to add a phase
 
 The build-out is organized into phases (per-phase history lives in git; remaining/deferred
-phases are tracked in `ROADMAP_V4.md`, owned by the integrator). When implementing one:
+phases are tracked in `FEATURES.md` (the DEFERRED phases), owned by the integrator). When implementing one:
 
 1. Work on a dedicated branch/worktree off the integration branch — **never `main`**.
 2. Keep changes scoped to the phase. Obey both laws above.

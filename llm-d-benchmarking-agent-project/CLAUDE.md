@@ -61,14 +61,14 @@ Knowledge is loaded by `app/config.py` + `app/agent/prompt.py` from the root `kn
 no `app/knowledge/` package.
 
 ## Reference — fetch on demand (NOT inlined here)
-- **What's built / status / feature set** → `FEATURES.md` (read first; how to verify each) + `docs/PROJECT_BRAIN_REFERENCE.md`; gaps → `ROADMAP_V4.md`
+- **What's built / status / feature set** → `FEATURES.md` (read first; how to verify each) + `docs/PROJECT_BRAIN_REFERENCE.md`; gaps → the DEFERRED phases in `FEATURES.md`
 - **Coding conventions** (+ what the finish-time review checks) → **`coding-guidelines`** skill
 - **Finish loop** (commit → review → `--no-ff` merge to main; the `main`-only git hook gates ruff+pytest) → **`finish-implementation`** skill
 - **Test env + run commands + gotchas** → `tests/CLAUDE.md`
 - **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/UPSTREAM_REUSE_PATHS.md`
 - **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `CONTEXT.md`
 - **Full doc map + run-locally quickstart** → `docs/README.md`
-- **SIMULATE=1** — dry-run toggle: the agent walks the WHOLE workflow but executes nothing (commands no-op → synthetic success; per-command approvals skipped, the upfront SessionPlan approval kept; a synthetic report is produced). Default `0` (real execution).
+- **SIMULATE=1** — dry-run toggle (walk the whole workflow, execute nothing) → `CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
 
 ## Capturing recurring conclusions (standing instruction to future-me)
 When you derive a conclusion you'd otherwise re-investigate later (env/build gotchas, locked decisions),

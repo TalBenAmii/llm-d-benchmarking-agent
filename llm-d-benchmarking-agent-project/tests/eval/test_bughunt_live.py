@@ -23,7 +23,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
-from app.llm.provider import ProviderError, get_provider
+from app.llm.provider import get_provider
+from tests._auth import has_auth
 
 from .bug_report import build_bug_report, severity_ge, write_bug_report
 from .explorer import max_selector_calls, run_bughunt
@@ -45,18 +46,8 @@ pytestmark = [
 ]
 
 
-def _has_auth() -> bool:
-    """True when the configured provider can be built — auth is in place. Copied from
-    test_flows_live.py (provider-agnostic: keyless claude-agent-sdk constructs fine)."""
-    try:
-        get_provider(get_settings())
-        return True
-    except ProviderError:
-        return False
-
-
 async def test_bughunt_no_high_severity_findings(tmp_path, capsys) -> None:
-    if not _has_auth():
+    if not has_auth():
         pytest.skip("no LLM provider configured — set an API key in .env, or log in to the "
                     "`claude` CLI for LLM_PROVIDER=claude-agent-sdk")
 

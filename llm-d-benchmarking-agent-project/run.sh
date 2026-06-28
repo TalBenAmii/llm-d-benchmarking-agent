@@ -38,16 +38,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 log() { printf '\033[35m▸\033[0m %s\n' "$*"; }   # llm-d purple bullet
+# shellcheck source=scripts/_env.sh
+source "scripts/_env.sh"   # cwd is the project root (cd above); provides ensure_env
 
 # ── 1. Ensure .env ────────────────────────────────────────────────────────
-if [[ ! -f .env ]]; then
-  if [[ -f .env.example ]]; then
-    cp .env.example .env
-    log "Created .env from .env.example — add your API key to enable live sessions."
-  else
-    log "No .env found and no .env.example to copy; continuing with defaults."
-  fi
-fi
+ensure_env
 
 # ── 2. Ensure venv + dependencies ─────────────────────────────────────────
 if [[ ! -x "$PY" ]]; then

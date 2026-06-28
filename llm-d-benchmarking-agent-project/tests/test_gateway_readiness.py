@@ -24,6 +24,7 @@ from app.readiness.probes import check_endpoint_readiness
 from app.security.allowlist import MUTATING, Allowlist
 from app.tools.context import ToolContext
 from app.tools.registry import dispatch
+from tests._helpers import kubectl_present
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 
@@ -222,14 +223,7 @@ def _ctx(tmp_path, *, canned):
 
 @pytest.fixture(autouse=True)
 def _kubectl_present(monkeypatch):
-    real_which = __import__("shutil").which
-
-    def fake_which(name, *a, **k):
-        if name == "kubectl":
-            return "/usr/bin/kubectl"
-        return real_which(name, *a, **k)
-
-    monkeypatch.setattr("app.readiness.probes.shutil.which", fake_which)
+    kubectl_present(monkeypatch, target="app.readiness.probes")
 
 
 # Distinct canned keys (substring match): "get gateway -n" must NOT also catch "get gatewayclass".

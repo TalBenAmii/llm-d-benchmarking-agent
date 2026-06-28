@@ -25,6 +25,7 @@ from app.config import Settings
 from app.security.allowlist import READ_ONLY, Allowlist
 from app.tools.context import ToolContext
 from app.tools.registry import dispatch
+from tests._helpers import kubectl_present
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 
@@ -91,12 +92,7 @@ def _probe_ctx(tmp_path: Path, *, canned, spec: str | None = None, scenario_yaml
 
 @pytest.fixture(autouse=True)
 def _kubectl_present(monkeypatch):
-    real_which = __import__("shutil").which
-
-    def fake_which(name, *a, **k):
-        return "/usr/bin/kubectl" if name == "kubectl" else real_which(name, *a, **k)
-
-    monkeypatch.setattr("app.tools.probe.shutil.which", fake_which)
+    kubectl_present(monkeypatch, target="app.tools.probe")
 
 
 # ---------------------------------------------------------------------------

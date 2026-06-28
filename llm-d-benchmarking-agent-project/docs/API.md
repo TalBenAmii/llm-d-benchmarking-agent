@@ -2,8 +2,8 @@
 
 Two interfaces: the **HTTP/WebSocket API** the browser (or any client) speaks to the
 backend, and the **agent tool surface** — the schema-validated tools that are the LLM's
-*entire* set of actions. The tool input schemas are defined in
-[`app/tools/schemas.py`](../app/tools/schemas.py) (the single source of truth, emitted to
+*entire* set of actions. The tool input schemas are defined in the
+[`app/tools/schemas/`](../app/tools/schemas/) package (the single source of truth, emitted to
 the LLM as JSON Schema); the registry + descriptions live in
 [`app/tools/registry.py`](../app/tools/registry.py).
 
@@ -228,7 +228,7 @@ facts is the LLM's job, guided by `knowledge/`.
 
 ## Adding or widening a tool
 
-- **A new tool:** add a Pydantic model in `app/tools/schemas.py`, a handler module under
+- **A new tool:** add a Pydantic model in the `app/tools/schemas/` package, a handler module under
   `app/tools/`, and a `ToolSpec` in `app/tools/registry.py` (with a description). The JSON
   Schema is emitted to the LLM automatically.
 - **A new command the agent may run:** edit only `security/allowlist.yaml` (see its header

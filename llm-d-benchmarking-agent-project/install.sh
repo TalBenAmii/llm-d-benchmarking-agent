@@ -66,6 +66,8 @@ step() { printf '\n\033[1;35m━━ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[install] %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31m[install] ERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 trap 'rc=$?; [[ $rc -ne 0 ]] && printf "\n\033[1;31m[install] aborted (exit %s).\033[0m See the message above; fix it and re-run (the script is idempotent).\n" "$rc" >&2' EXIT
+# shellcheck source=scripts/_env.sh
+source "$PROJECT_DIR/scripts/_env.sh"
 
 # ── Privilege helper (root → no sudo; else sudo if present) ───────────────
 SUDO=""
@@ -183,14 +185,7 @@ step "This project (.env + venv + app)"
 cd "$PROJECT_DIR"
 resolve_backend   # no-op if step 3 already resolved it; matters for --app-only/--no-bench
 
-if [[ ! -f .env ]]; then
-  if [[ -f .env.example ]]; then
-    cp .env.example .env
-    log "Created .env from .env.example — set your LLM provider/key (or use LLM_PROVIDER=claude-agent-sdk, no key)."
-  else
-    warn "no .env and no .env.example — the app will run on built-in defaults."
-  fi
-fi
+ensure_env
 
 if [[ ! -x "$VENV/bin/python" ]]; then
   if [[ "$USE_UV" == 1 ]]; then log "Creating venv with uv…"; uv venv "$VENV" >/dev/null

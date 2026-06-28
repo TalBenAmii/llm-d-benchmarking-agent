@@ -7,7 +7,10 @@ test still exercises the same code paths. File-local helpers that look similar b
 """
 from __future__ import annotations
 
+import copy
 from pathlib import Path
+
+import yaml
 
 from app.agent.session import Session
 from app.config import Settings, get_settings
@@ -73,3 +76,38 @@ def _session(tmp_path) -> Session:
     runner = CommandRunner(s.repo_paths)
     ctx = ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
     return Session(id="t", ctx=ctx)
+
+
+def write_br_report(dirpath, base: dict, *, ttft_s, out_rate, p99=None, uid=None,
+                    harness=None, model=None):
+    """Write a Benchmark Report v0.2 YAML into ``dirpath`` from ``base`` with the given metrics.
+
+    The one shared builder behind the per-test ``_write_report`` shims: deep-copies ``base``,
+    overrides the ttft mean (+ p99 when given), the output-token-rate mean, and the optional run
+    uid / harness tool / model name, then dumps it to ``benchmark_report_v0.2.yaml``.
+    """
+    rep = copy.deepcopy(base)
+    if uid is not None:
+        rep["run"]["uid"] = uid
+    if harness is not None:
+        rep["scenario"]["load"]["standardized"]["tool"] = harness
+    if model is not None:
+        rep["scenario"]["stack"][0]["standardized"]["model"]["name"] = model
+    agg = rep["results"]["request_performance"]["aggregate"]
+    agg["latency"]["time_to_first_token"]["mean"] = ttft_s
+    if p99 is not None:
+        agg["latency"]["time_to_first_token"]["p99"] = p99
+    agg["throughput"]["output_token_rate"]["mean"] = out_rate
+    dirpath.mkdir(parents=True, exist_ok=True)
+    (dirpath / "benchmark_report_v0.2.yaml").write_text(yaml.safe_dump(rep, sort_keys=False))
+
+
+def kubectl_present(monkeypatch, *, target="app.readiness.probes"):
+    """Force ``shutil.which('kubectl')`` to look present at ``target`` so the canned runner is
+    reached on every host (the readiness probes guard on ``shutil.which``) with no real binary."""
+    real_which = __import__("shutil").which
+
+    def fake_which(name, *a, **k):
+        return "/usr/bin/kubectl" if name == "kubectl" else real_which(name, *a, **k)
+
+    monkeypatch.setattr(f"{target}.shutil.which", fake_which)

@@ -21,9 +21,9 @@ Ops assets live under [`deploy/observability/`](../deploy/observability/): a Pro
 config, alert rules (`alerts.rules.yaml`), and a Grafana dashboard.
 
 Project root: [`README.md`](../README.md) (overview), [`CLAUDE.md`](../CLAUDE.md) (working
-rules), [`FEATURES.md`](../FEATURES.md) (live, evidence-backed feature inventory),
-[`plan.md`](history/plan.md) (design + status), and [`ROADMAP_V4.md`](../ROADMAP_V4.md)
-(remaining/deferred work). The agent's *judgment* lives in [`knowledge/`](../knowledge/).
+rules), [`FEATURES.md`](../FEATURES.md) (live, evidence-backed feature inventory + the
+remaining/deferred phases), and [`plan.md`](history/plan.md) (design + status). The agent's
+*judgment* lives in [`knowledge/`](../knowledge/).
 
 ## Design in one line
 
@@ -52,5 +52,5 @@ upstream as a module in `llm-d-benchmark` (proposal §5.3 / §10). What's in pla
 - **One-command deploy:** a hardened image + Helm chart / Kustomize base with
   least-privilege RBAC ([DEPLOYMENT.md](DEPLOYMENT.md)).
 
-Open items before a formal upstream PR are tracked in [`ROADMAP_V4.md`](../ROADMAP_V4.md) and
-[`plan.md`](history/plan.md) ("Deferred / next").
+Open items before a formal upstream PR are tracked in [`FEATURES.md`](../FEATURES.md)'s DEFERRED
+phases and [`plan.md`](history/plan.md) ("Deferred / next").

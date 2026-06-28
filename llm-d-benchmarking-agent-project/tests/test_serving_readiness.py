@@ -38,6 +38,7 @@ from app.readiness.probes import _probe_status, check_endpoint_readiness
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.security.runner import RunResult
 from app.tools.context import ToolContext
+from tests._helpers import kubectl_present
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 
@@ -286,12 +287,7 @@ def _ctx(tmp_path, *, canned):
 
 @pytest.fixture(autouse=True)
 def _kubectl_present(monkeypatch):
-    real_which = __import__("shutil").which
-
-    def fake_which(name, *a, **k):
-        return "/usr/bin/kubectl" if name == "kubectl" else real_which(name, *a, **k)
-
-    monkeypatch.setattr("app.readiness.probes.shutil.which", fake_which)
+    kubectl_present(monkeypatch, target="app.readiness.probes")
 
 
 class _ProbeRunner(CaptureRunner):

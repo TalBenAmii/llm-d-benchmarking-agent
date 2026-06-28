@@ -27,7 +27,7 @@ from app.tools.execute import build_argv
 from app.tools.registry import dispatch
 from app.tools.schemas import ExecuteInput
 from app.validation.report import summarize_report
-from tests._helpers import _argv
+from tests._helpers import _argv, kubectl_present
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 
@@ -150,12 +150,7 @@ def _probe_ctx(tmp_path, *, canned):
 
 @pytest.fixture(autouse=True)
 def _kubectl_present(monkeypatch):
-    real_which = __import__("shutil").which
-
-    def fake_which(name, *a, **k):
-        return "/usr/bin/kubectl" if name == "kubectl" else real_which(name, *a, **k)
-
-    monkeypatch.setattr("app.tools.probe.shutil.which", fake_which)
+    kubectl_present(monkeypatch, target="app.tools.probe")
 
 
 async def test_probe_prometheus_crds_present(tmp_path):

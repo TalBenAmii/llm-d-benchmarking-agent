@@ -7,10 +7,7 @@
 """
 from __future__ import annotations
 
-import copy
-
 import pytest
-import yaml
 
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools import compare
@@ -18,6 +15,7 @@ from app.tools.execute import _result_location, build_argv
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import ExecuteInput
 from app.validation.report import ReportError, compare_summaries, find_reports, load_report
+from tests._helpers import write_br_report
 
 # ---- compare_summaries (pure math) ----------------------------------------
 
@@ -102,12 +100,7 @@ def test_compare_summaries_clamps_bad_baseline_index():
 # ---- find_reports + compare_reports tool ----------------------------------
 
 def _write_report(dirpath, base: dict, ttft: float, out_rate: float):
-    rep = copy.deepcopy(base)
-    agg = rep["results"]["request_performance"]["aggregate"]
-    agg["latency"]["time_to_first_token"]["mean"] = ttft
-    agg["throughput"]["output_token_rate"]["mean"] = out_rate
-    dirpath.mkdir(parents=True, exist_ok=True)
-    (dirpath / "benchmark_report_v0.2.yaml").write_text(yaml.safe_dump(rep, sort_keys=False))
+    write_br_report(dirpath, base, ttft_s=ttft, out_rate=out_rate)
 
 
 def test_find_reports_globs_and_newest(tmp_path, br_example):
