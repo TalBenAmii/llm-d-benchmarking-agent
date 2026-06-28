@@ -25,8 +25,8 @@
 **Built:** the full MVP vertical — chat UI → agent loop → schema-validated, approval-gated
 tools → real `llmdbenchmark` execution → validated Benchmark Report summary. The project
 has since grown substantially; see [`FEATURES.md`](FEATURES.md) for the authoritative,
-current feature inventory and [`ROADMAP_V4.md`](ROADMAP_V4.md), whose Phases 27-66 are now
-merged (57 & 58 deferred), for the roadmap record and any remaining/deferred work.
+current feature inventory (the former `ROADMAP_V4.md` Phases 27-66 are now
+merged, 57 & 58 deferred; remaining/deferred work is tracked in `FEATURES.md`).
 The MVP step record below is preserved for tracking; the design sections after it are the
 original design
 reference (kept as written).
@@ -57,8 +57,8 @@ MVP plan steps (all 8 complete):
 > comparison, capacity pre-flight, history, observability, and generated workloads have
 > since shipped — see `FEATURES.md`. GPU / `llm-d/guides/*` deploy execution
 > remains future work (path 2 is advisory-only per `knowledge/deploy_path_playbook.md`; the
-> Kustomize/WVA guide knobs are tracked in `ROADMAP_V4.md`). The roadmap record is
-> [`ROADMAP_V4.md`](ROADMAP_V4.md) — its Phases 27-66 are now merged (57 & 58 deferred).
+> Kustomize/WVA guide knobs are tracked in `FEATURES.md`). The roadmap record (the former
+> `ROADMAP_V4.md`) — its Phases 27-66 are now merged (57 & 58 deferred).
 
 ---
 

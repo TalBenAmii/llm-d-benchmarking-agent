@@ -28,6 +28,7 @@ from app.tools import history as history_tool
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import ResultHistoryInput
 from app.validation.report import load_report
+from tests._helpers import write_br_report
 
 # ---- helpers ---------------------------------------------------------------
 
@@ -59,14 +60,7 @@ def _add(store, *, stored_at=None, **kw):
 
 
 def _write_report(dirpath, base: dict, ttft_s: float, out_rate: float, uid="run-x"):
-    rep = copy.deepcopy(base)
-    rep["run"]["uid"] = uid
-    agg = rep["results"]["request_performance"]["aggregate"]
-    agg["latency"]["time_to_first_token"]["mean"] = ttft_s
-    agg["latency"]["time_to_first_token"]["p99"] = ttft_s
-    agg["throughput"]["output_token_rate"]["mean"] = out_rate
-    dirpath.mkdir(parents=True, exist_ok=True)
-    (dirpath / "benchmark_report_v0.2.yaml").write_text(yaml.safe_dump(rep, sort_keys=False))
+    write_br_report(dirpath, base, ttft_s=ttft_s, out_rate=out_rate, p99=ttft_s, uid=uid)
 
 
 # ---- HistoryStore ----------------------------------------------------------

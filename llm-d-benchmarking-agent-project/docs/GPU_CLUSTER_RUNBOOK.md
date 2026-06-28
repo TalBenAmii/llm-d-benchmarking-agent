@@ -23,7 +23,7 @@ Linux, a cloud VM with one L4/A10, etc.); only the host/driver steps differ.
 The agent is **cluster-agnostic by design** and most of the machinery you need already exists:
 
 - It **targets any cluster you bring** via the kubeconfig — every CLI subcommand accepts
-  `--kubeconfig` (`app/tools/schemas.py` `ProbeEnvironmentInput.kubeconfig`,
+  `--kubeconfig` (`app/tools/schemas/probe.py` `ProbeEnvironmentInput.kubeconfig`,
   `app/tools/execute.py` `build_argv`), and `KUBECONFIG` is passed through to child processes
   (`app/security/runner.py`). minikube writes `~/.kube/config` and sets the current context, so
   **the agent sees your GPU cluster with no extra config**.

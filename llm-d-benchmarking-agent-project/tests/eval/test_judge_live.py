@@ -26,7 +26,8 @@ import os
 import pytest
 
 from app.config import get_settings
-from app.llm.provider import ProviderError, get_provider
+from app.llm.provider import get_provider
+from tests._auth import has_auth
 from tests.flows.flows import ALL_FLOWS
 from tests.flows.harness import run_flow
 
@@ -51,19 +52,8 @@ pytestmark = [
 ]
 
 
-def _has_auth() -> bool:
-    """True when the configured provider can be built — i.e. auth is in place. Provider-agnostic:
-    key-based providers (anthropic/openai) raise ProviderError without their key, while keyless
-    ones (``claude-agent-sdk``) construct successfully. Copied from test_flows_live.py."""
-    try:
-        get_provider(get_settings())
-        return True
-    except ProviderError:
-        return False
-
-
 async def test_judge_scores_pass_the_gate(tmp_path) -> None:
-    if not _has_auth():
+    if not has_auth():
         pytest.skip("no LLM provider configured — set an API key in .env, or log in to the "
                     "`claude` CLI for LLM_PROVIDER=claude-agent-sdk")
 

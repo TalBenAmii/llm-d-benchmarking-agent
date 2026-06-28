@@ -6,8 +6,6 @@ the tools never touch a real cluster. reproduce_run is asserted to emit NO mutat
 """
 from __future__ import annotations
 
-import copy
-
 import pytest
 import yaml
 
@@ -16,6 +14,7 @@ from app.tools.context import ToolContext
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import ExportRunBundleInput, ReproduceRunInput
 from app.validation.report import load_report
+from tests._helpers import write_br_report
 
 
 @pytest.fixture(autouse=True)
@@ -27,13 +26,7 @@ def _stub_env(monkeypatch):
 
 
 def _write_report(dirpath, base: dict, *, ttft_s=0.15, out_rate=400.0, uid="run-x"):
-    rep = copy.deepcopy(base)
-    rep["run"]["uid"] = uid
-    agg = rep["results"]["request_performance"]["aggregate"]
-    agg["latency"]["time_to_first_token"]["mean"] = ttft_s
-    agg["throughput"]["output_token_rate"]["mean"] = out_rate
-    dirpath.mkdir(parents=True, exist_ok=True)
-    (dirpath / "benchmark_report_v0.2.yaml").write_text(yaml.safe_dump(rep, sort_keys=False))
+    write_br_report(dirpath, base, ttft_s=ttft_s, out_rate=out_rate, uid=uid)
 
 
 def _write_run_config(ctx: ToolContext):

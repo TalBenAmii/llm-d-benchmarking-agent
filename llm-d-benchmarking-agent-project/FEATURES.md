@@ -327,4 +327,4 @@ drift; ambiguous latency units) were all **fixed on 2026-06-02** (`1515959`, mer
 (authoritative: `registry.py:build_registry`; `run_shell` is the agent's always-on ad-hoc command tool), **11 trendable history metrics** (incl. `kv_cache_hit_rate`,
 `gpu_utilization`, `schedule_delay`), **15 allowlisted executables**, **7 `/metrics` families**.
 All ROADMAP_V4 active phases (27–66) are merged; 7 are explicitly deferred (34/43/44/47/52/57/58 —
-see `ROADMAP_V4.md`).
+their per-phase rows are in `docs/BENCHMARK_FEATURE_COVERAGE.md`).
