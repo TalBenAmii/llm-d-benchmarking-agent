@@ -91,11 +91,14 @@ async def test_metrics_server_no_kubectl(tmp_path):
 def test_hard_rule_drives_the_pre_run_offer():
     """The offer is guaranteed by a HARD_RULE (not buried playbook prose): the system prompt
     references the probe fact AND the vetted install command, so the agent offers before running.
-    It also presents Grafana as the richer (advice-only) alternative, keyed off the probe fact."""
+    It also presents Grafana as the richer alternative the agent CAN deploy (approval-gated), not as
+    an advice-only / can't-do-it-for-you surface, keyed off the probe fact."""
     assert "metrics_server" in HARD_RULES
     assert "install_metrics_server.sh" in HARD_RULES
-    # The pre-run offer presents BOTH live-view options as a pair: Grafana (advice-only) too.
+    # The pre-run offer presents BOTH live-view options as a pair, and the rule must say the agent
+    # CAN stand Grafana up for the user (no false refusal) — only the env var is the user's to set.
     assert "Grafana" in HARD_RULES
+    assert "stand this up for them" in HARD_RULES  # deployable by the agent, not advice-only
     assert "GRAFANA_DASHBOARD_URL" in HARD_RULES
     assert "grafana_dashboard.configured" in HARD_RULES
 

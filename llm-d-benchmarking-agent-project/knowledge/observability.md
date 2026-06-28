@@ -103,26 +103,33 @@ When the user wants to *watch a run live*, there are two complementary surfaces.
 pair before the run (alongside the metrics-server offer above) and clarify what each is for — they
 are not the same thing, and one is not a drop-in for the other:
 
-- **Grafana — the richer, recommended view.** The operator's own llm-d observability dashboard (the
-  upstream `--monitoring` Grafana, backed by their Prometheus) shows the *full* picture: GPU
-  utilization, vLLM/EPP latency (TTFT/ITL), throughput, queue depth, KV-cache, **and history across
-  the whole run**. The catch: it is the user's own stack, so you can only **advise** — never set it
-  up for them. They stand up Prometheus+Grafana (point them at the upstream
-  `install-prometheus-grafana.sh` / observability `setup.md` via `knowledge/useful_repo_docs.md`) and
-  set the backend env var `GRAFANA_DASHBOARD_URL`; you cannot write env/secrets. Once it is set, an
-  **Open Grafana** button appears above the live metrics in the run panel and opens the dashboard in a
-  modal. `probe_environment` reports `grafana_dashboard.configured` (true once the env var is set) —
-  use it to tailor the message: configured → "it'll show up in the run panel"; not configured → "set
-  `GRAFANA_DASHBOARD_URL` and I'll embed it beside the run".
+- **Grafana — the richer, recommended view.** The llm-d observability dashboard (the upstream
+  `--monitoring` Grafana, backed by Prometheus) shows the *full* picture: GPU utilization, vLLM/EPP
+  latency (TTFT/ITL), throughput, queue depth, KV-cache, **and history across the whole run**. You
+  CAN stand this stack up for the user — do NOT treat it as "their problem to solve" or claim you can
+  "only advise". The upstream recipe is one approval-gated `run_shell` away, exactly like the
+  metrics-server install and the kind-cluster create: read the exact commands from the upstream
+  `install-prometheus-grafana.sh` / observability `setup.md` (`knowledge/useful_repo_docs.md` →
+  `read_repo_doc`), then run them with `run_shell` (mutating → it raises the Approve card). Offer it
+  the same way you offer the metrics-server install. The ONE piece that is genuinely the user's, not
+  yours, is the backend env var `GRAFANA_DASHBOARD_URL` — you have no env/secret-write tool, so THEY
+  set it (pointing at their Grafana). Once set, an **Open Grafana** button appears above the live
+  metrics in the run panel and opens the dashboard in a modal. `probe_environment` reports
+  `grafana_dashboard.configured` (true once the env var is set) — use it to tailor the message:
+  configured → "it'll show up in the run panel"; not configured → "I can deploy the stack with you
+  (one Approve); then set `GRAFANA_DASHBOARD_URL` and I'll embed it beside the run".
 - **metrics-server — the convenient alternative.** Live **CPU/memory only** (no GPU, no latency, no
   history), but it is the zero-setup option **you can install for them** in one approval-gated step
   (`install_metrics_server.sh`, per §2.1) and it lights up the in-panel sparklines immediately. It is
   the right answer when the user just wants a quick "is anything melting?" view and has no Grafana
   stack.
 
-Position Grafana as the fuller picture and metrics-server as the quick fallback; be honest that you
-can *do* the metrics-server install but can only *guide* the Grafana setup. The two are independent —
-the Grafana embed works even when metrics-server is absent, and vice-versa (see §5.2 for the embed).
+Position Grafana as the fuller picture and metrics-server as the quick fallback. Be honest about the
+real split: you can DEPLOY both for them (each an approval-gated `run_shell`) — the only thing you
+can't do for Grafana is write their `GRAFANA_DASHBOARD_URL` backend env var (no env/secret tool), and
+that controls only the in-panel embed, not whether the stack exists. So never refuse to stand up
+Grafana; at most note the env var is the user's last step. The two live-views are independent — the
+Grafana embed works even when metrics-server is absent, and vice-versa (see §5.2 for the embed).
 
 ## 3. Benchmark monitoring — activating `results.observability` (DEFAULT ON)
 
