@@ -5,14 +5,12 @@ end-to-end; the others are described so you can set expectations honestly.
 
 ## Canonical deploy procedure → the upstream `deploy-llm-d` skill
 The step-by-step deploy procedure is owned upstream by the **deploy-llm-d skill** (the llm-d-skills
-library) — read it with `fetch_key_docs(task='deploy_skill')` (or
-`read_repo_doc('llm-d-skills/skills/deploy-llm-d/SKILL.md')`) before a real (path-2 / guide) deploy.
-It covers: discover the well-lit-path guides (`${LLMD_PATH}/guides/README.md`), auto-detect
-namespace / hardware / gateway provider / storage class, create the benchmark PVC, install the
-scheduler, deploy the modelserver kustomize overlay, validate (pods Ready, InferencePool Ready,
-Gateway Programmed, HTTPRoute Accepted, `/v1/models` + `/v1/completions`), and emit a dated deploy
-script. Its `references/troubleshooting.md` + `references/connectivity-verification.md` (same
-`fetch_key_docs` task) carry the deploy-failure + endpoint-verification detail.
+library, a REQUIRED repo) — read it with `fetch_key_docs(task='deploy_skill')` (or
+`read_repo_doc('llm-d-skills/skills/deploy-llm-d/SKILL.md')`) before a real (path-2 / guide) deploy
+**rather than restating it here**. It owns the full step list (guide discovery → auto-detect
+namespace/hardware/gateway/storage → PVC → scheduler → modelserver overlay → validation → dated
+deploy script); its `references/troubleshooting.md` + `references/connectivity-verification.md`
+(same `fetch_key_docs` task) carry the deploy-failure + endpoint-verification detail.
 
 **Adapt it to OUR tooling — our architecture stays authoritative.** Every mutating step flows
 through the **SessionPlan approval gate** + the allowlist, never the skill's `ask_followup_question`

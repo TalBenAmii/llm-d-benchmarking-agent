@@ -1,7 +1,7 @@
 """Backend configuration. Reads from environment / .env (never the browser).
 
-Resolves the locations of the read-only sibling repos (the two REQUIRED benchmark/guide repos
-plus the OPTIONAL llm-d-skills library) and the project's own runtime directories. Secrets
+Resolves the locations of the three REQUIRED read-only sibling repos (benchmark, guide, and the
+llm-d-skills procedure library) and the project's own runtime directories. Secrets
 (LLM keys, HF token) live here and are never sent to the UI or to child processes (the runner
 scrubs them out).
 """
@@ -233,20 +233,18 @@ class Settings(BaseSettings):
 
     @property
     def repo_paths(self) -> dict[str, Path]:
-        """The two REQUIRED read-only repos. This set is the readiness gate (the startup
-        self-check fails if any member is missing), the provenance-capture set, and the command
-        runner's ``repo:<name>`` resolution — every member must resolve on disk. The OPTIONAL
-        skills library is deliberately NOT here (it must never gate readiness); doc reads and
-        clone targets use ``readable_repo_paths`` instead."""
-        return {BENCH_REPO_NAME: self.bench_repo, GUIDE_REPO_NAME: self.guide_repo}
-
-    @property
-    def readable_repo_paths(self) -> dict[str, Path]:
-        """Every repo the agent may READ docs from: the required pair PLUS the optional
-        ``llm-d-skills`` library. The allow-set for ``read_repo_doc`` / ``fetch_key_docs`` and the
-        clone targets for ``ensure_repos``. Including skills here does NOT make it required — only
-        ``repo_paths`` gates readiness/provenance."""
-        return {**self.repo_paths, SKILLS_REPO_NAME: self.skills_repo}
+        """The three REQUIRED read-only repos (benchmark, guide, skills). This set is the
+        readiness gate (the startup self-check fails if any member is missing), the
+        provenance-capture set, the ``read_repo_doc`` / ``fetch_key_docs`` allow-set, the
+        ``ensure_repos`` clone targets, and the command runner's ``repo:<name>`` resolution —
+        every member must resolve on disk. The skills library now grounds the agent's deploy /
+        teardown / benchmark / compare / autoscale procedures as the canonical default (the
+        ``knowledge/`` adapters defer to it), so it is required like the other two."""
+        return {
+            BENCH_REPO_NAME: self.bench_repo,
+            GUIDE_REPO_NAME: self.guide_repo,
+            SKILLS_REPO_NAME: self.skills_repo,
+        }
 
     @property
     def allowlist_path(self) -> Path:

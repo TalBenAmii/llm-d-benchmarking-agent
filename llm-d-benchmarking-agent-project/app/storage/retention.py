@@ -479,8 +479,9 @@ def _check_provider_coherent(settings: Settings) -> CheckOutcome:
 
 
 def _check_repos_resolvable(settings: Settings) -> CheckOutcome:
-    """The two read-only sibling repos must resolve on disk — the agent reads their specs,
-    schemas, and CLI live. A missing bench repo means catalog/report/capacity paths fail."""
+    """The three read-only sibling repos must resolve on disk — the agent reads their specs,
+    schemas, CLI, and skill procedures live. A missing bench repo means catalog/report/capacity
+    paths fail; a missing skills repo means the deploy/teardown/benchmark grounding is gone."""
     present = {name: path.is_dir() for name, path in settings.repo_paths.items()}
     missing = [name for name, ok in present.items() if not ok]
     return CheckOutcome(

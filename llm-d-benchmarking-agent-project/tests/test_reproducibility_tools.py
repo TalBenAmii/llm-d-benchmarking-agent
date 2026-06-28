@@ -62,8 +62,8 @@ async def test_export_returns_bundle_id_and_command(tool_ctx, br_example, tmp_pa
     assert out["regenerate_command"] == f"llmdbenchmark run -c {cfg} -p ns1"
     assert out["run_config_found"] is True
     assert "dirty" in out and "repos" in out and "report_digest" in out
-    # Both repos captured (populated primary siblings via REPOS_DIR → real SHAs, not unavailable).
-    assert set(out["repos"]) == {"llm-d", "llm-d-benchmark"}
+    # All three repos captured (populated primary siblings via REPOS_DIR → real SHAs, not unavailable).
+    assert set(out["repos"]) == {"llm-d", "llm-d-benchmark", "llm-d-skills"}
 
     # The bundle really landed under workspace/bundles and reads back.
     from app.storage.provenance import BundleStore

@@ -63,3 +63,18 @@ the next such review).
   is nothing to pull or bump. Verified same day: `llm-d`@`7edda66`, `llm-d-benchmark`@`09e0c39c`,
   `llm-d-skills`@`5a14639` all 0/0 vs their `origin/main`. The skill's "v0.8.0" label simply runs ahead of the
   benchmark repo's release numbering.
+- **2026-06-28 — `llm-d-skills` promoted to REQUIRED; knowledge adapters dedup'd to defer to it (reverses 4eb3323).**
+  Made the upstream skills the canonical default for deploy/teardown/benchmark/compare/autoscale procedures, per
+  user request. **config.py:** folded `SKILLS_REPO_NAME` into `repo_paths` (the readiness gate + provenance/
+  reproducibility set + command-runner `repo:<name>` resolution) and removed the now-redundant `readable_repo_paths`
+  property (its 2 call sites — `repos.py`, `knowledge_access.py` — point at `repo_paths`). Net: `/readyz` now 503s
+  when the skills repo is absent (fail-loudly per rule 7), reversing 4eb3323's "separate readable from required / un-gate
+  readiness" decision — that's the behavior the user asked for. `ref` is still never applied to the independently-
+  versioned skills repo (`repos.py` guard kept). **Tests:** updated the 3 frozen tests 4eb3323 had protected —
+  `test_retention._make_repos` now creates 3 repo dirs; `test_reproducibility_tools` expects the 3-repo SHA set.
+  **Knowledge dedup:** the 5 skill-adapter files were already mostly delta; removed the 3 short skill-step *recap*
+  blocks that duplicated the upstream procedure (`teardown.md` L21–34 helm/kustomize steps, `autoscaling.md` WVA-setup
+  recap, `deploy_path_playbook.md` deploy-step enumeration — the last is CORE, so trimming also cut prompt-prefix bytes),
+  each replaced with a "read the skill, don't restate it" pointer; the delta (SessionPlan gate, CLI, BR-v0.2, tool names,
+  CPU-sim caveats, welllit map) is untouched. `sweep_playbook.md` + `author_spec_workload.md` were ~95% delta already → left as-is.
+  **Docs:** `UPSTREAM_REUSE_PATHS.md` + `FEATURES.md` skills sections relabel it the 3rd REQUIRED repo and note the defer-not-restate adapters. Full suite green (2147 passed).

@@ -22,7 +22,7 @@ class LocateReportInput(BaseModel):
 
 
 class EnsureReposInput(BaseModel):
-    repos: list[str] | None = Field(default=None, description="Repos to clone; omit to clone all known repos. Names: 'llm-d-benchmark' + 'llm-d' (required) and 'llm-d-skills' (the optional skills library — request it to (re)clone the deploy/teardown/benchmark/compare/autoscale SKILL.md grounding if fetch_key_docs(task='*_skill') comes back empty)")
+    repos: list[str] | None = Field(default=None, description="Repos to clone; omit to clone all known repos. All three are REQUIRED: 'llm-d-benchmark' + 'llm-d' (specs/guides) and 'llm-d-skills' (the canonical deploy/teardown/benchmark/compare/autoscale SKILL.md grounding the knowledge/ adapters defer to — (re)clone it if fetch_key_docs(task='*_skill') comes back empty)")
     ref: str | None = Field(default=None, description="Optional branch/tag (applied to the benchmark/guide repos only, never the independently-versioned llm-d-skills)")
 
 
