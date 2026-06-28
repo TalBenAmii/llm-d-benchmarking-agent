@@ -61,10 +61,12 @@ expressed one of these supported ways (pick by what the user is customizing):
 > **Upstream reference — the run-llm-d-benchmark skill** (`fetch_key_docs(task='benchmark_skill')`)
 > is the canonical SHAPE for benchmarking an existing stack: harness choice (inference-perf /
 > guidellm / inferencemax / vllm-benchmark), workload selection/generation, and which metrics to
-> collect. Consult it for that judgment — but DRIVE the run our way. As of llmdbenchmark v0.8.0 the
-> skill drives the same `llmdbenchmark` CLI we do (the old `run_only.sh` existing-stack entrypoint was
+> collect. Consult it for that judgment — but DRIVE the run our way. The skill's "v0.8.0" rewrite now
+> drives the same `llmdbenchmark` CLI we do (the old `run_only.sh` existing-stack entrypoint was
 > dropped); our path stays authoritative because we wrap that CLI run in the SessionPlan/determinism
-> gates + BR-v0.2 parsing rather than invoking it raw the way the skill does.
+> gates + BR-v0.2 parsing rather than invoking it raw the way the skill does. (That "v0.8.0" is the
+> skills repo's own label — the llm-d-benchmark CLI's latest release is v0.7.0, which already supports
+> the skill's `--harness`/`ENDPOINT_URL` flags, so no benchmark-repo bump is needed.)
 
 **Quickstart/CPU-sim caveat:** on `cicd/kind` the engine is simulated, so the workload-profile
 *choice* is largely cosmetic (stick with `inference-perf` + `sanity_random.yaml` unless the user is

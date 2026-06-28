@@ -49,12 +49,17 @@ the next such review).
   and **split it** into this `CONFIG_AUDIT_LOG.md` + `UPSTREAM_REUSE_PATHS.md`, leaving the brain-ref a slim
   orientation hub. Added the seven missing per-folder `app/{capacity,readiness,packaging,observability,llm,
   storage,web}/CLAUDE.md` files (file-level detail, per the new folder-map convention).
-- **2026-06-28 — llm-d-skills bumped to llmdbenchmark v0.8.0 (`run-llm-d-benchmark` SKILL dropped `run_only.sh`).**
+- **2026-06-28 — `run-llm-d-benchmark` skill rewritten (dropped `run_only.sh`); all 3 read-only repos verified current.**
   Upstream commit `3eb03f5` rewrote `skills/run-llm-d-benchmark/SKILL.md` to drive the `llmdbenchmark` CLI
   directly (no more `run_only.sh` existing-stack entrypoint) and renamed the no-llm-d-baseline knob
   `base_url`→`ENDPOINT_URL`. No wiring change needed — skills are read live via `key_docs.yaml`→`fetch_key_docs`,
   the clone-URL allowlist is unchanged, and nothing here ever executed the skill's `run_only.sh`. Refreshed the
   two now-stale "skill's run_only.sh entrypoint" notes in `knowledge/key_docs.yaml` + `author_spec_workload.md`.
-  **Drift to watch:** the skill now assumes the v0.8.0 CLI, but the pinned `llm-d-benchmark/` checkout is still
-  **v0.7.0** (ships `existing_stack/run_only.sh`). Running against the v0.8.0 skill needs a `git pull` of that
-  repo — a deliberate, separate bump, not done here.
+  **No version drift (corrects an earlier note in this entry):** the "v0.8.0" is the *skills* repo's own PR
+  label (`benchmark-v080`) — **llm-d-benchmark has NOT released a 0.8.0.** Its latest tag/release is **v0.7.0**
+  (`gh release view` = v0.7.0) and our checkout is fully current: `main` == `origin/main`, 0 ahead / 0 behind,
+  `git describe` → `v0.7.0-1-g09e0c39c`. The released v0.7.0 CLI already supports the skill's assumptions
+  (`--harness` at `cli.py:828`, `ENDPOINT_URL`, auto token substitution via `profile_renderer.py`), so there
+  is nothing to pull or bump. Verified same day: `llm-d`@`7edda66`, `llm-d-benchmark`@`09e0c39c`,
+  `llm-d-skills`@`5a14639` all 0/0 vs their `origin/main`. The skill's "v0.8.0" label simply runs ahead of the
+  benchmark repo's release numbering.
