@@ -47,14 +47,19 @@ ACTION_NAMES = (
     "act_list_namespaces",
     "act_delete_namespace",
     "act_delete_session",
+    "act_set_auto_approve",
+    "act_list_jobs",
+    "act_reopen_after_delete",
 )
 
 # The weighted pool the deterministic fuzzer uses — its fallback selector reproduces it exactly,
-# so "no key" degrades to today's seeded fuzzer with no behavior change.
+# so "no key" degrades to today's seeded fuzzer with no behavior change. MUST stay in lock-step with
+# ``Player.step()``'s dispatch table (same actions + weights).
 _FALLBACK_WEIGHTS = {
     "act_new_chat": 3, "act_send_message": 6, "act_reconnect_midturn": 3,
     "act_switch_chat": 4, "act_cancel": 2, "act_ping": 2, "act_malformed": 2,
     "act_list_namespaces": 1, "act_delete_namespace": 1, "act_delete_session": 1,
+    "act_set_auto_approve": 1, "act_list_jobs": 1, "act_reopen_after_delete": 1,
 }
 
 

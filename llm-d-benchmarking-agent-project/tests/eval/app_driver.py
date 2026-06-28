@@ -241,6 +241,15 @@ def check_session_invariants(app, sid: str) -> list[str]:
         # The persisted title must never be a synthetic snapshot either.
         if _is_synthetic_leak(data.get("title")):
             problems.append(f"session {sid}: persisted title leaked synthetic text: {data.get('title')!r}")
+        # auto_approve is server-authoritative + persisted SYNCHRONOUSLY on toggle (the handler
+        # sets it then calls session.persist() before reading the next frame), so the on-disk flag
+        # must match the in-memory one. A divergence means the persisted snapshot belongs to a
+        # DIFFERENT session instance than the live one — a stale/duplicate-session state leak.
+        if "auto_approve" in data and bool(data["auto_approve"]) != bool(s.auto_approve):
+            problems.append(
+                f"session {sid}: persisted auto_approve diverges from in-memory "
+                f"({data['auto_approve']} vs {s.auto_approve})"
+            )
     return problems
 
 
@@ -586,6 +595,61 @@ class Player:
             else [f"DELETE /api/sessions/{sid} returned {resp.status_code}"]
         )
 
+    def act_set_auto_approve(self) -> None:
+        """Toggle this chat's per-session auto-approve (the UI button → the ``set_auto_approve``
+        frame the deterministic fuzzer never sent). It is server-authoritative + persisted on
+        toggle, so after the round-trip the on-disk ``auto_approve`` must match the in-memory flag —
+        the invariant battery checks that. The socket must also survive the (responseless) toggle."""
+        if self._ws is None:
+            self.act_new_chat()
+        # A non-turn action must not silently consume a parked chat's re-emitted approval card.
+        self._resolve_current_parked_gate()
+        enabled = self.rng.random() < 0.5
+        self.trace.append(f"set_auto_approve({enabled})")
+        self._ws.send_json({"type": "set_auto_approve", "enabled": enabled})
+        # The toggle emits no frame; round-trip a ping so the set + synchronous persist is fully
+        # applied before the next read / invariant sweep, and to prove the socket is still live.
+        self._ws.send_json({"type": "ping"})
+        self._invariant_frames(read_protocol(self._ws, until={"pong"}))
+
+    def act_list_jobs(self) -> None:
+        """Read the orchestrator REST mirror (``GET /api/jobs``) for a namespace folder — a surface
+        the fuzzer never touched. It is a READ-ONLY mirror contracted to NEVER 5xx (it soft-degrades
+        to ``available: false`` when no cluster is reachable), so any non-200 is a real contract
+        break. ``namespace`` is required by the route, so we always pass one."""
+        ns = self.rng.choice(sorted(self.namespaces) + [NO_NAMESPACE, "llmd-quickstart"])
+        self.trace.append(f"list_jobs({ns})")
+        resp = self.client.get("/api/jobs", params={"namespace": ns})
+        self._fail_if([] if resp.status_code == 200
+                      else [f"/api/jobs?namespace={ns} returned {resp.status_code}"])
+
+    def act_reopen_after_delete(self) -> None:
+        """Delete a chat, then immediately reconnect to its now-dead id. The handler must mint a
+        FRESH session (``resumed=False``) — never resurrect the deleted on-disk state — so a
+        ``resumed=True`` here is a real state-corruption bug. The minted id is tracked so later
+        actions/invariants can target it."""
+        if not self.session_ids:
+            self.act_new_chat()
+            return
+        sid = self.rng.choice(self.session_ids)
+        self.trace.append(f"reopen_after_delete(sid={sid[:6]})")
+        if self._cur_sid == sid:
+            self._close()  # deleting tears down its runtime; reading a torn-down socket would block
+        resp = self.client.delete(f"/api/sessions/{sid}")
+        self._fail_if(
+            [] if resp.status_code in (200, 404)
+            else [f"DELETE /api/sessions/{sid} returned {resp.status_code}"]
+        )
+        # Reconnect to the dead id: get_or_load fails → a brand-new session is minted (resumed=False).
+        ready = self._open(sid)
+        self._fail_if(
+            [] if ready["data"]["resumed"] is False
+            else [f"reopened deleted session {sid}: resume returned resumed=True — stale state not cleared"]
+        )
+        minted = ready["data"]["session_id"]
+        if minted not in self.session_ids:
+            self.session_ids.append(minted)
+
     # --- the dispatch table ---------------------------------------------------------------
     def step(self) -> None:
         actions = [
@@ -599,6 +663,9 @@ class Player:
             (self.act_list_namespaces, 1),
             (self.act_delete_namespace, 1),
             (self.act_delete_session, 1),
+            (self.act_set_auto_approve, 1),
+            (self.act_list_jobs, 1),
+            (self.act_reopen_after_delete, 1),
         ]
         pool: list[Any] = []
         for fn, weight in actions:

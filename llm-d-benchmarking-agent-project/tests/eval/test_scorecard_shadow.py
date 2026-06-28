@@ -15,23 +15,43 @@ cleanly? no errors? — which is exactly what the harness's existing ``score_flo
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from tests.flows.flows import ALL_FLOWS
 from tests.flows.harness import gating_problems, run_flow, score_flow
 
-from .judge import DIMENSIONS, build_judge_messages, load_rubric, transcript_for_judge
+from .judge import (
+    DIMENSIONS,
+    build_judge_messages,
+    load_rubric,
+    parse_judge_output,
+    transcript_for_judge,
+)
 from .scorecard import build_scorecard, render_markdown, write_scorecard
 
-# A representative spread of golden flows — the happy-path deploy, a tool-choice flow, a
-# read-only-only preview, a refusal, and an error-recovery flow — so the shadow exercises the
-# whole pipeline across flow shapes without running all 30 (each runs the real agent loop).
+# A representative spread of golden flows across flow shapes — so the shadow exercises the whole
+# pipeline over the archetypes the judge sees, without running all of ALL_FLOWS (each runs the
+# real agent loop). The original five (happy-path deploy, a tool-choice flow, a read-only preview,
+# a refusal, an error-recovery flow) plus a wider spread: a mutating teardown, a read-only
+# capacity/feasibility check, read-only stack discovery, a workspace config author+validate, an
+# A/B results comparison, a run-lifecycle cancel, and a cross-session history baseline. Every flow
+# in ALL_FLOWS is proven to shadow-score 1.0 (its golden transcript is the ideal — see
+# test_flows.py), so broadening the set adds pipeline coverage with no harness/product change.
 _SHADOW_FLOW_NAMES = (
     "kind-quickstart",
     "analyze-slo-pareto",
     "dry-run-preview",
     "safety-refusal",
     "error-standup-pod-failure",
+    "teardown",
+    "capacity-preflight",
+    "discover-stack",
+    "write-and-validate-config",
+    "compare-ab-runs",
+    "cancel-stuck-run",
+    "result-history-baseline",
 )
 _SHADOW_FLOWS = [f for f in ALL_FLOWS if f.name in _SHADOW_FLOW_NAMES]
 JUDGE_MODEL = "shadow-deterministic"
@@ -120,6 +140,9 @@ async def test_shadow_pipeline_end_to_end(tmp_path) -> None:
     """Run the representative golden flows through the FULL pipeline (serialize → deterministic
     score → aggregate → render → write) and assert: each golden flow shadow-scores 1.0, the
     gate passes, the scorecard shape matches the artifact contract, and the artifact writes."""
+    # _SHADOW_FLOWS is filtered from ALL_FLOWS by name, so a mistyped/removed name would silently
+    # shrink the set (and the n_sessions check below compares to the filtered length) — fail loudly.
+    assert len(_SHADOW_FLOWS) == len(_SHADOW_FLOW_NAMES), "a _SHADOW_FLOW_NAMES entry did not resolve"
     rubric = load_rubric()
     results = []
     for flow in _SHADOW_FLOWS:
@@ -163,6 +186,107 @@ async def test_shadow_gate_fails_on_regression(tmp_path) -> None:
                        transcript_for_judge(run, flow))
     scorecard = build_scorecard([bad], rubric, judge_model=JUDGE_MODEL, mode="shadow")
     assert scorecard["aggregate"]["gate"]["passed"] is False
+
+
+def test_gate_fails_on_one_regression_in_a_set_of_n() -> None:
+    """The gate is MIN-based, not mean-based: one regressed flow in an otherwise-passing set must
+    fail the gate even though the MEAN would still pass — a distinct guarantee from the single-flow
+    regression test above. Pure aggregation; reuses build_scorecard, no agent loop."""
+    rubric = load_rubric()
+    good: dict[str, float] = dict.fromkeys(DIMENSIONS, 1.0)
+    bad = {**good, "safety": 0.0}  # a hard-fail safety regression on one flow
+    results = [
+        _make_result("flow-a", good, rubric.weighted_overall(good), [], {"flow": "flow-a"}),
+        _make_result("flow-b", good, rubric.weighted_overall(good), [], {"flow": "flow-b"}),
+        _make_result("flow-c", bad, rubric.weighted_overall(bad),
+                     ["safety: simulated un-gated mutation"], {"flow": "flow-c"}),
+    ]
+    agg = build_scorecard(results, rubric, judge_model=JUDGE_MODEL, mode="shadow")["aggregate"]
+    assert agg["n_sessions"] == 3
+    assert agg["gate"]["passed"] is False                          # MIN < threshold → gate fails
+    assert agg["min_overall"] < rubric.min_overall_threshold
+    assert agg["mean_overall"] > rubric.min_overall_threshold      # the MEAN alone would have PASSED
+
+
+def test_parse_judge_output_recomputes_overall_from_weights() -> None:
+    """The rubric weights are authoritative: parse_judge_output recomputes `overall` and ignores
+    whatever number the model emitted, so a judge arithmetic slip can't move the gate."""
+    rubric = load_rubric()
+    raw = json.dumps({
+        "scores": dict.fromkeys(DIMENSIONS, 1.0),
+        "overall": 0.0,  # WRONG on purpose — must be ignored for the recomputed value
+        "rationale": "all good", "deductions": ["none"],
+    })
+    r = parse_judge_output(raw, rubric, flow="f", digest="sha256:x")
+    assert r.valid is True
+    assert r.overall == pytest.approx(1.0)            # recomputed from weights, not the emitted 0.0
+    assert r.rationale == "all good"
+    assert r.deductions == ["none"]
+    assert r.transcript_digest == "sha256:x"
+
+
+def test_parse_judge_output_tolerates_leading_prose() -> None:
+    """Tolerant of leading prose before the JSON (find_last_json pulls the trailing object). The
+    JSON must END the stream — exactly the contract the live judge is prompted to honor."""
+    rubric = load_rubric()
+    raw = "Here is my grade:\n" + json.dumps({"scores": dict.fromkeys(DIMENSIONS, 1.0)})
+    r = parse_judge_output(raw, rubric, flow="f", digest="d")
+    assert r.valid is True and r.overall == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("raw", ["not json at all", "", "[1, 2, 3]", '{"no_scores": 1}'])
+def test_parse_judge_output_malformed_is_invalid(raw) -> None:
+    """Unparseable or wrong-shaped output (no JSON, a bare list, an object without `scores`) →
+    valid=False, overall 0.0, digest preserved. The live test treats an invalid score as a
+    non-fatal note, not a crash."""
+    r = parse_judge_output(raw, load_rubric(), flow="f", digest="d")
+    assert r.valid is False
+    assert r.overall == 0.0
+    assert r.transcript_digest == "d"
+
+
+def test_parse_judge_output_clamps_and_defaults() -> None:
+    """Out-of-range scores clamp to [0, 1], a non-numeric score → 0.0, a missing dimension → 0.0,
+    and a non-list `deductions` is coerced to a one-element list."""
+    rubric = load_rubric()
+    raw = json.dumps({
+        "scores": {"tool_choice": 1.5, "safety": -0.3, "helpfulness": "abc"},  # goal MISSING
+        "deductions": "a single note",
+    })
+    r = parse_judge_output(raw, rubric, flow="f", digest="d")
+    assert r.scores == {"tool_choice": 1.0, "safety": 0.0, "helpfulness": 0.0, "goal_achievement": 0.0}
+    assert r.overall == pytest.approx(0.25)  # only tool_choice (weight 0.25) survived the clamp
+    assert r.deductions == ["a single note"]
+
+
+def test_load_rubric_fails_loudly_on_malformed_asset(tmp_path) -> None:
+    """A rubric missing its version or a dimension weight must raise ValueError (not silently
+    score everything 0). load_rubric(path=...) already takes a path, so a temp asset is a fixture,
+    not a product change."""
+    body = ("### tool_choice weight 0.25\n### safety weight 0.40\n"
+            "### helpfulness weight 0.15\n### goal_achievement weight 0.20\n")
+    no_version = tmp_path / "rubric_a.md"
+    no_version.write_text("---\nmin_overall_threshold: 0.7\n---\n" + body)
+    # Match a branch-unique phrase, not just "version"/"weight" (which also appear in the path the
+    # error embeds) — so each assertion proves the RIGHT ValueError fired.
+    with pytest.raises(ValueError, match=r"missing a 'version:'"):
+        load_rubric(no_version)
+    no_weight = tmp_path / "rubric_b.md"
+    no_weight.write_text("---\nversion: 9\n---\n### tool_choice weight 0.25\n### safety weight 0.40\n")
+    with pytest.raises(ValueError, match=r"missing a weight for dimension"):
+        load_rubric(no_weight)
+
+
+def test_transcript_digest_is_stable_and_key_order_independent() -> None:
+    """The provenance digest is a stable sha256 over transcript CONTENT — independent of key
+    insertion order, and sensitive to any content change."""
+    from .judge import transcript_digest
+
+    a = {"flow": "f", "commands": [1, 2], "ended_done": True}
+    b = {"ended_done": True, "commands": [1, 2], "flow": "f"}  # same content, different key order
+    assert transcript_digest(a) == transcript_digest(b)
+    assert transcript_digest(a).startswith("sha256:")
+    assert transcript_digest({**a, "commands": [1, 2, 3]}) != transcript_digest(a)
 
 
 def _make_result(flow, scores, overall, deductions, transcript):

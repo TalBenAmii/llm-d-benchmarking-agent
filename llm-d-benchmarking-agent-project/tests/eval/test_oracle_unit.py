@@ -40,19 +40,42 @@ def test_oracle_asset_has_version() -> None:
 
 
 def test_invariant_categorization() -> None:
-    """Each proven invariant-battery message maps to the right oracle category."""
+    """Each proven invariant-battery message maps to the right oracle category. The cases use the
+    REAL wording the battery emits (app_driver.py) and exercise every branch of
+    ``categorize_invariant`` including the new-action messages and the default fallback."""
     cases = {
+        # --- state_corruption (every triggering substring) ---
         "session ab12: on-disk transcript (5 msgs) is AHEAD of in-memory (3 msgs)": "state_corruption",
+        "session ab12: on-disk transcript diverges from the in-memory prefix": "state_corruption",
         "session ab12 has duplicate in_flight_approvals: [x, x]": "state_corruption",
         "approval request_id r1 shared across sessions a and b (state leak)": "state_corruption",
+        "parked gate not persisted on session s1": "state_corruption",
         "pending approval NOT re-emitted on reconnect to s1": "state_corruption",
+        "gate not cleared after resolve on s1: []": "state_corruption",
+        "decision not recorded after resolve on s1": "state_corruption",
+        # new-action invariants (set_auto_approve / reopen_after_delete) — same categories, no new class.
+        "session ab12: persisted auto_approve diverges from in-memory (False vs True)": "state_corruption",
+        "reopened deleted session ab12: resume returned resumed=True — stale state not cleared":
+            "state_corruption",
+        # --- synthetic_leak ---
         "synthetic pre-probe leaked into history as a user message": "synthetic_leak",
         "session s1 title leaked synthetic pre-probe text": "synthetic_leak",
+        "session ab12: persisted title leaked synthetic text: 'live catalog snapshot'": "synthetic_leak",
+        # --- crash (5xx / server error) ---
         "/api/sessions returned 500": "crash",
+        "DELETE /api/namespaces/llmd-quickstart returned 503": "crash",
+        "/api/jobs?namespace=llmd-quickstart returned 500": "crash",
+        "unexpected server error frame: {'kind': 'agent_error'}": "crash",
+        # --- contract (protocol / liveness) ---
         "malformed bad_type frame not rejected as protocol_error": "contract",
+        "ping did not get a pong": "contract",
+        "WS handshake never completed before ready": "contract",  # defensive (no current emitter)
     }
     for msg, expected in cases.items():
         assert categorize_invariant(msg) == expected, msg
+    # An unknown/novel anomaly falls back to the conservative 'contract' category (never silently
+    # dropped) — the final return in categorize_invariant.
+    assert categorize_invariant("some entirely novel anomaly the oracle has not seen") == "contract"
 
 
 def test_severity_map_and_ordering() -> None:
@@ -93,6 +116,27 @@ def test_dedup_collapses_one_recurring_class() -> None:
     deduped = dedup_findings([a, b, other])
     assert len(deduped) == 2
     assert deduped[0].repro_actions == ["a", "b", "c"]  # first occurrence kept
+
+
+def test_dedup_multi_class_keeps_first_per_class_and_is_order_stable() -> None:
+    """Distinct invariant CLASSES are each kept (one finding per class) in first-seen order, and the
+    FIRST occurrence of each class survives — the real contract. (The explorer feeds findings in
+    trace-growth order, so the first occurrence also happens to carry the shortest repro; this does
+    NOT assert "shortest", which would be a misread of the dedup rule.)"""
+    a_msg = "session x: on-disk transcript (5 msgs) is AHEAD of in-memory (3 msgs)"  # state_corruption
+    b_msg = "session y title leaked synthetic pre-probe text"                        # synthetic_leak
+    c_msg = "/api/sessions returned 500"                                             # crash
+    a1 = finding_from_invariant(a_msg, seed=1, action_index=1, repro_actions=["n"])
+    b1 = finding_from_invariant(b_msg, seed=1, action_index=2, repro_actions=["n", "s"])
+    a2 = finding_from_invariant(a_msg, seed=2, action_index=8, repro_actions=["n", "s", "w", "c", "x"])
+    b2 = finding_from_invariant(b_msg, seed=2, action_index=9, repro_actions=["n", "s", "w", "c", "x", "y"])
+    c1 = finding_from_invariant(c_msg, seed=3, action_index=3, repro_actions=["q"])
+    deduped = dedup_findings([a1, b1, a2, b2, c1])
+    # one finding per class, in first-seen order:
+    assert [f.category for f in deduped] == ["state_corruption", "synthetic_leak", "crash"]
+    # the FIRST occurrence of each class is the survivor (its repro + seed), not a later repeat:
+    assert deduped[0].repro_actions == ["n"] and deduped[0].seed == 1
+    assert deduped[1].repro_actions == ["n", "s"] and deduped[1].seed == 1
 
 
 def test_report_assembly_and_gate_with_deterministic_high() -> None:
@@ -166,11 +210,11 @@ async def test_deterministic_bughunt_finds_nothing(tmp_path) -> None:
 
     findings, total = await run_bughunt(
         app, lambda: TestClient(app), tmp_path,
-        seeds=[1, 7], actions_budget=12, provider=None,   # provider=None → deterministic fallback
+        seeds=[1, 7, 42, 99], actions_budget=12, provider=None,  # provider=None → deterministic fallback
     )
-    assert total == 24  # 2 seeds * 12 actions, all played
+    assert total == 48  # 4 seeds * 12 actions, all played
     report = build_bug_report(
-        findings, explorer_model="deterministic-fallback", seeds=[1, 7],
+        findings, explorer_model="deterministic-fallback", seeds=[1, 7, 42, 99],
         actions_budget=12, total_actions=total,
     )
     assert report["n_deterministic_high"] == 0, f"unexpected findings: {report['findings']}"
