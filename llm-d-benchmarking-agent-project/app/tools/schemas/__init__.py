@@ -53,6 +53,7 @@ from app.tools.schemas.probe import (
     ProbeEnvironmentInput,
 )
 from app.tools.schemas.provenance import (
+    EnableAdvancedToolsInput,
     EstimateRunDurationInput,
     ExportRunBundleInput,
     InspectWorkloadProfileInput,
@@ -102,6 +103,7 @@ __all__ = [
     "RunShellInput",
     "SearchKnowledgeInput",
     "SuggestNextStepsInput",
+    "EnableAdvancedToolsInput",
     "SweepTreatment",
     "WriteConfigInput",
 ]

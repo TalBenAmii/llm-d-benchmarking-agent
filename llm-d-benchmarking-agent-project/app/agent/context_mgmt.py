@@ -36,8 +36,9 @@ from typing import Any
 
 # A tool-result ``content`` longer than this many chars is a candidate for elision once it is
 # behind the recency window. Smaller results (a short verdict, an endpoint count) are cheap to
-# keep verbatim and are left untouched regardless of age.
-_ELIDE_OVER_CHARS = 800
+# keep verbatim and are left untouched regardless of age. Kept low so a few-hundred-char stale
+# blob (a probe dump, a short report) is also reclaimed once old.
+_ELIDE_OVER_CHARS = 600
 
 # Keep the most-recent N messages verbatim (the live working set the agent is mid-task on).
 # Only tool results in messages BEFORE this trailing window are eligible for elision.
@@ -45,7 +46,10 @@ _RECENT_MESSAGES_KEPT = 12
 
 # Only compact at all once the transcript's total replayed content exceeds this many chars
 # (~ tens of thousands of tokens). Below it, replay is cheap and we keep everything verbatim.
-_COMPACT_THRESHOLD_CHARS = 48_000
+# A long deploy→smoketest→run→report session replays the whole transcript on EVERY step, so
+# compacting at a modest threshold keeps the per-step replay (and the recurring cache-read of it)
+# materially smaller without touching the recent working window.
+_COMPACT_THRESHOLD_CHARS = 30_000
 
 # Marker prefix on an elided stub, so compaction is IDEMPOTENT (a stub is never re-elided) and
 # tests/inspection can recognise a compacted result.

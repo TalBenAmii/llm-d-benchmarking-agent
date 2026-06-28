@@ -25,6 +25,7 @@ def test_tool_definitions_complete():
         "result_history", "export_run_bundle", "reproduce_run", "cancel_run",
         "manage_orchestrated_runs",
         "run_resilience_drill", "autotune_search", "suggest_next_steps",
+        "enable_advanced_tools",
     }
     assert names == expected
     for d in defs:

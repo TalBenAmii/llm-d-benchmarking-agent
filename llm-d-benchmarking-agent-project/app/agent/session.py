@@ -153,6 +153,13 @@ class Session:
     # deliberate "are you sure" stays). PERSISTED so the toggle survives reconnect/reload and the
     # `ready` frame can re-seed the button. Defaults False (every chat starts with it off).
     auto_approve: bool = False
+    # One-shot capability gate: the model has called enable_advanced_tools, so the heavy
+    # late-phase tool schemas (registry._ADVANCED_TOOLS) are now exposed for the rest of the
+    # session. The agent loop flips this when that tool is dispatched and re-opens the provider
+    # turn so the advanced tools are callable the SAME turn (see app/agent/loop.py). PERSISTED so a
+    # resumed chat keeps them unlocked (the user was already mid advanced workflow); defaults False
+    # so a fresh/pre-feature session starts with the lean tool list.
+    advanced_tools_enabled: bool = False
 
     @property
     def session_total(self) -> int:
@@ -250,6 +257,7 @@ class Session:
                     "catalog_injected": self.catalog_injected,
                     "prewarmed": self.prewarmed,
                     "auto_approve": self.auto_approve,
+                    "advanced_tools_enabled": self.advanced_tools_enabled,
                 },
                 indent=2,
             )
@@ -349,6 +357,9 @@ class SessionManager:
             # Default False so older state files (no key) load — but a session that already
             # injected the env pre-probe snapshot persists True, so a resume never re-injects it.
             prewarmed=data.get("prewarmed", False),
+            # Default False so older state files load; a session that already unlocked the advanced
+            # tools persists True, so a resume keeps them exposed.
+            advanced_tools_enabled=data.get("advanced_tools_enabled", False),
         )
         self._sessions[session.id] = session
         return session

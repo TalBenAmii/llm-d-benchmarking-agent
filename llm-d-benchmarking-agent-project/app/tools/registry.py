@@ -16,9 +16,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.readiness import check_endpoint_readiness
 from app.tools import (
-    aggregate_runs as aggregate_runs_tool,
-)
-from app.tools import (
+    advanced,
     analyze,
     autotune,
     cancel,
@@ -46,6 +44,9 @@ from app.tools import (
     suggest,
     workload_profile,
 )
+from app.tools import (
+    aggregate_runs as aggregate_runs_tool,
+)
 from app.tools.context import ToolContext
 from app.tools.schemas import (
     AdviseAcceleratorsInput,
@@ -59,6 +60,7 @@ from app.tools.schemas import (
     CompareReportsInput,
     ConvertGuideInput,
     DiscoverStackInput,
+    EnableAdvancedToolsInput,
     EnsureReposInput,
     EstimateRunDurationInput,
     ExecuteInput,
@@ -97,6 +99,18 @@ class ToolSpec:
 
 
 _DESCRIPTIONS = {
+    "enable_advanced_tools": (
+        "Reveal the advanced/late-phase tools for the rest of this session, then call the one you "
+        "need (they appear in your tool list THIS same turn). The advanced set — config sweeps "
+        "(orchestrate_sweep), autotuning (autotune_search), design-of-experiments "
+        "(generate_doe_experiment), cross-run aggregation + cross-harness comparison "
+        "(aggregate_runs, compare_harness_runs), resilience drills (run_resilience_drill), run "
+        "export/reproduce (export_run_bundle, reproduce_run), and scenario authoring "
+        "(convert_guide_to_scenario) — is hidden by default to keep your tool list lean. Call this "
+        "the MOMENT the user's request needs one, whether their stack is already up, they have "
+        "prior results to analyze, or they want to reproduce a run. Read-only, no side effect, no "
+        "approval — never tell the user you cannot do these; just enable them."
+    ),
     "probe_environment": (
         "Sense the local environment in one structured snapshot: container runtime, "
         "repos present, toolchain, venv, kind clusters, kube context/cluster reachability, "
@@ -645,6 +659,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("manage_orchestrated_runs", _DESCRIPTIONS["manage_orchestrated_runs"], ManageOrchestratedRunsInput, manage_runs.manage_orchestrated_runs),
         ToolSpec("run_resilience_drill", _DESCRIPTIONS["run_resilience_drill"], RunResilienceDrillInput, resilience.run_resilience_drill),
         ToolSpec("suggest_next_steps", _DESCRIPTIONS["suggest_next_steps"], SuggestNextStepsInput, suggest.suggest_next_steps),
+        ToolSpec("enable_advanced_tools", _DESCRIPTIONS["enable_advanced_tools"], EnableAdvancedToolsInput, advanced.enable_advanced_tools),
     ]
     return {s.name: s for s in specs}
 
@@ -666,10 +681,40 @@ def _strip_titles(node: Any) -> Any:
     return node
 
 
-def tool_definitions() -> list[dict[str, Any]]:
-    """Export {name, description, input_schema} for the LLM providers."""
+# Advanced / late-phase tools: the optional power features (config sweeps, autotuning, design-of-
+# experiments, cross-run aggregation + cross-harness comparison, resilience drills, run
+# export/reproduce, advanced scenario authoring). Their JSON schema is the fattest in the registry
+# (~9k tokens), and the common quickstart never touches them, so they are HIDDEN by default and
+# revealed only when the model calls ``enable_advanced_tools`` (which flips
+# ``session.advanced_tools_enabled``; the loop then re-opens the provider turn with the expanded
+# set). The unlock is MODEL-DRIVEN, not a fixed phase gate, precisely because a user can enter
+# directly at the sweep/analyze/reproduce phase with no in-session deploy — only the model reliably
+# knows when one is needed. ``enable_advanced_tools`` itself is NOT in this set (it is always
+# available). Keep this in sync with ``prompt.py::ADVANCED_TOOLS_NOTE`` (a test enforces it).
+_ADVANCED_TOOLS = frozenset({
+    "orchestrate_sweep",
+    "autotune_search",
+    "generate_doe_experiment",
+    "run_resilience_drill",
+    "export_run_bundle",
+    "reproduce_run",
+    "aggregate_runs",
+    "compare_harness_runs",
+    "convert_guide_to_scenario",
+})
+
+
+def tool_definitions(include_advanced: bool = True) -> list[dict[str, Any]]:
+    """Export {name, description, input_schema} for the LLM providers.
+
+    ``include_advanced`` defaults to True — every no-arg caller (the schema/registry tests, ad-hoc
+    lookups) sees the FULL registered set. The agent loop passes
+    ``include_advanced=session.advanced_tools_enabled`` so the heavy late-phase schemas
+    (:data:`_ADVANCED_TOOLS`) stay hidden until the model calls ``enable_advanced_tools``."""
     out = []
     for spec in REGISTRY.values():
+        if not include_advanced and spec.name in _ADVANCED_TOOLS:
+            continue
         schema = _strip_titles(spec.input_model.model_json_schema())
         out.append({"name": spec.name, "description": spec.description, "input_schema": schema})
     return out

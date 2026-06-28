@@ -101,20 +101,17 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   check_endpoint_readiness, locate_and_parse_report) WITHOUT asking — just say what you're doing.
   Only MUTATING steps need approval (already enforced). For DISCRETIONARY follow-ups
   (compare_reports, result_history, analyze_results) make a SINGLE offer — do not spam.
-- OFFER NEXT STEPS AS BUTTONS, NOT PROSE — AND DON'T NARRATE THE BUTTONS. When you would end a
-  turn by proposing what to do next — "Want me to save this as a baseline?", "Should I compare
-  this to your last run?", "shall I tear down?", offering a choice between options — do NOT write
-  that offer as a prose question. CALL suggest_next_steps with 2-4 concrete {label, prompt}
-  options; the UI renders them as clickable buttons and clicking one sends its prompt as the
-  user's next message. The buttons SPEAK FOR THEMSELVES — do NOT write a lead-in that introduces
-  them ("Here's where you can go from here:", "You could…", "A few options:") and do NOT add a
-  line about them ("Use the buttons below", "Let me know which you'd like"). Finish your
-  substantive message (the result / status / explanation), then JUST CALL the tool — that call
-  is the FINAL action of the turn and ends it; the next thing the user sees is the buttons. Never
-  enumerate the options as a prose list — the buttons ARE the menu. It is NOT an approval gate:
-  a MUTATING action still goes through run_shell / execute_llmdbenchmark / propose_session_plan
-  (those raise the Approve card); suggest_next_steps is only for offering the user their choices. See
-  knowledge/conversation_style.md for what to offer when.
+- OFFER NEXT STEPS AS BUTTONS, NOT PROSE — AND DON'T NARRATE THEM. When you would end a turn by
+  proposing what to do next (offering a choice — "save as a baseline?", "compare to your last
+  run?", "tear down?"), do NOT write it as a prose question: CALL suggest_next_steps with 2-4
+  concrete {label, prompt} options (the UI renders clickable buttons; a click sends that prompt as
+  the user's next message). The buttons SPEAK FOR THEMSELVES — no lead-in ("Here's where you can go
+  from here:", "A few options:"), no trailing line ("Use the buttons below", "Let me know which"),
+  no prose list of the options. Finish your substantive message (result / status / explanation),
+  then JUST CALL the tool as the turn's FINAL action — the next thing the user sees is the buttons.
+  It is NOT an approval gate: a MUTATING action still goes through run_shell / execute_llmdbenchmark
+  / propose_session_plan (those raise the Approve card). See knowledge/conversation_style.md for
+  what to offer when.
 - Only use spec/harness/workload names that appear in the live catalog below.
 - Report results ONLY from a validated Benchmark Report (locate_and_parse_report). Never
   invent or estimate numbers. If a report is missing or invalid, say so plainly.
@@ -184,12 +181,22 @@ returns synthetic success and nothing is deployed or benchmarked. Therefore:
 # decoder only when a run shows drops/429s (results_interpretation.md routes there via
 # read_knowledge("epp_headers")). Keeping these three out of CORE trims ~24k chars
 # (~6.6k tokens) off EVERY LLM call; they stay reachable via the on-demand index + read_knowledge.
+#
+# Also de-inlined (another ~27k chars / ~6.7k tokens off EVERY call): key_docs.yaml and
+# deploy_path_playbook.md.
+#   * key_docs.yaml is a POINTER list whose content is already delivered live by the
+#     fetch_key_docs tool (it reads key_docs.yaml off disk) — inlining it duplicated what that
+#     tool returns. HARD_RULES still mandates fetch_key_docs(task="quickstart") before a deploy,
+#     so the grounding behaviour is unchanged; the canonical workload-profile paths it carries
+#     come back with that fetch.
+#   * deploy_path_playbook.md is the deploy-path CHOICE guide — a post-interview concern, and the
+#     MVP HARD_RULES already pin the supported path to cicd/kind. It stays cued via the on-demand
+#     index (its "Playbook: choosing a deploy path" heading), the propose-config schema
+#     (read_knowledge("deploy_path_playbook")), and welllit_path_advisor.yaml.
 CORE_KNOWLEDGE = (
     "preconditions.md",
-    "deploy_path_playbook.md",
     "usecase_to_profile.yaml",
     "quickstart_playbook.md",
-    "key_docs.yaml",
     "conversation_style.md",
 )
 
@@ -207,6 +214,24 @@ provided to you as a "[live catalog snapshot …]" message at the start of the c
 appear there — never invent a spec/harness/workload name."""
 
 
+# BYTE-STABLE. Tells the model that the advanced/late-phase tools are hidden by default and how to
+# reveal them (call enable_advanced_tools). This keeps the fat advanced schemas (~9k tokens) out of
+# the default tool list WITHOUT the model mistaking the lean list for "I can't do that". The unlock
+# is model-driven (not a phase gate) so it works from ANY entry point — an already-running stack, a
+# pile of prior results, or a reproduce request — with no in-session deploy. Keep the tool names
+# here in sync with registry.py::_ADVANCED_TOOLS (a test enforces it).
+ADVANCED_TOOLS_NOTE = """\
+# Advanced tools (revealed on demand)
+To keep your tool list lean, the advanced/late-phase tools are NOT shown by default: config sweeps
+(orchestrate_sweep), autotuning (autotune_search), design-of-experiments (generate_doe_experiment),
+cross-run aggregation + cross-harness comparison (aggregate_runs, compare_harness_runs), resilience
+drills (run_resilience_drill), run export/reproduce (export_run_bundle, reproduce_run), and scenario
+authoring (convert_guide_to_scenario). The MOMENT the user's request needs one of these — whether
+their stack is already up, they have prior results to analyze, or they want to reproduce a run —
+call enable_advanced_tools FIRST. The tools then appear in your list (this same turn) and you call
+the one you need. Never tell the user you cannot do these; just enable them."""
+
+
 def build_system_prompt(ctx: ToolContext) -> str:
     # INVARIANT: this prompt is the BYTE-STABLE static prefix only (role + rules + inlined
     # CORE knowledge + on-demand index + the catalog POINTER). It carries NO per-turn dynamic
@@ -219,6 +244,9 @@ def build_system_prompt(ctx: ToolContext) -> str:
     parts = [ROLE, HARD_RULES]
     parts.extend(_knowledge_sections(ctx))
     parts.append(CATALOG_POINTER)
+    # Byte-stable: present every turn (the TOOL LIST changes when the model enables advanced tools;
+    # this note explaining how to do that does not), so it never perturbs prefix caching.
+    parts.append(ADVANCED_TOOLS_NOTE)
     # Config-stable (constant for the whole process), so it does not perturb prefix caching.
     if ctx.settings.simulate:
         parts.append(SIMULATE_NOTE)
