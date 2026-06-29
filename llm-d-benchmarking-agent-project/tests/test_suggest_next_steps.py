@@ -3,7 +3,7 @@
 The agent stops asking "want me to…?" in prose and instead CALLS suggest_next_steps with
 {label, prompt} options; the UI draws them as the same floating pills as the welcome chips and
 clicking one sends its prompt. These tests pin the mechanism: the tool is registered, validated
-(1-4 well-formed items), returns the chip payload, and is on the card-replay path so the buttons
+(1-6 well-formed items), returns the chip payload, and is on the card-replay path so the buttons
 survive a resume/reload (and never spawn a spurious results_card).
 """
 from __future__ import annotations
@@ -43,8 +43,8 @@ async def test_dispatch_rejects_empty_list(tool_ctx):
 
 
 async def test_dispatch_rejects_too_many(tool_ctx):
-    five = [{"label": f"L{i}", "prompt": f"do thing {i}"} for i in range(5)]
-    result = await dispatch(tool_ctx, "suggest_next_steps", {"suggestions": five})
+    seven = [{"label": f"L{i}", "prompt": f"do thing {i}"} for i in range(7)]
+    result = await dispatch(tool_ctx, "suggest_next_steps", {"suggestions": seven})
     assert result.get("error") == "invalid arguments"
 
 
@@ -58,9 +58,13 @@ async def test_dispatch_rejects_missing_fields(tool_ctx):
 
 
 def test_schema_bounds_label_and_requires_nonempty():
-    # 1-4 items, label 1..48 chars, prompt non-empty.
+    # 1-6 items, label 1..48 chars, prompt non-empty.
     SuggestNextStepsInput.model_validate({"suggestions": [_OK]})  # min boundary OK
-    SuggestNextStepsInput.model_validate({"suggestions": [_OK, _OK2, _OK, _OK2]})  # max boundary OK
+    SuggestNextStepsInput.model_validate(
+        {"suggestions": [_OK, _OK2, _OK, _OK2, _OK, _OK2]}  # max boundary OK (6)
+    )
+    with pytest.raises(ValidationError):  # 7 items → over the cap
+        SuggestNextStepsInput.model_validate({"suggestions": [_OK] * 7})
     with pytest.raises(ValidationError):
         SuggestNextStepsInput.model_validate({"suggestions": [{"label": "x" * 49, "prompt": "p"}]})
     with pytest.raises(ValidationError):
