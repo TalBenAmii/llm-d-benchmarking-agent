@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import contextlib
 import os
 import sys
 import tempfile
@@ -33,9 +32,9 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 from tests.flows.flows import ALL_FLOWS, FLOWS_BY_NAME  # noqa: E402
 from tests.flows.harness import (  # noqa: E402
+    _abandon_after_kill,
     diff_significant,
     gating_problems,
-    kill_wedged_sdk_subprocesses,
     run_flow,
     score_flow,
 )
@@ -50,16 +49,15 @@ PER_FLOW_TIMEOUT_S = float(os.getenv("LLM_EVAL_FLOW_TIMEOUT", "300"))
 
 
 async def _bounded(coro):
-    """Await ``coro`` under the per-flow hard cap. On breach: force-kill the wedged SDK subprocess,
-    cancel, and raise TimeoutError (asyncio cancellation alone can't unwedge a stalled CLI)."""
+    """Await ``coro`` under the per-flow hard cap. On breach: force-kill the wedged SDK subprocess
+    (and its workers), settle the task under a BOUNDED grace, and raise TimeoutError. NOTE: the
+    drain MUST be bounded — an unbounded ``await task`` here re-hung forever whenever the kill
+    missed, defeating this very backstop (asyncio cancellation alone can't unwedge a stalled CLI)."""
     task = asyncio.ensure_future(coro)
     done, _pending = await asyncio.wait({task}, timeout=PER_FLOW_TIMEOUT_S)
     if task in done:
         return task.result()
-    kill_wedged_sdk_subprocesses()
-    task.cancel()
-    with contextlib.suppress(asyncio.CancelledError, Exception):
-        await task
+    await _abandon_after_kill(task)
     raise TimeoutError(f"flow exceeded the {PER_FLOW_TIMEOUT_S:g}s per-flow cap")
 
 

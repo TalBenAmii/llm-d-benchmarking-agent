@@ -16,14 +16,28 @@ want to depend on. We drive it here over real ``FlowRun`` objects produced by th
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import os
+import time
 from typing import Any
 
-from app.llm.provider import AssistantTurn, LLMProvider, ToolCall
+import pytest
+
+from app.llm.provider import AssistantTurn, LLMProvider, ProviderTurn, ToolCall
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.registry import _group_of
 
 from .flows import Flow
-from .harness import gating_problems, kill_wedged_sdk_subprocesses, run_flow, score_flow
+from .harness import (
+    _abandon_after_kill,
+    _descendant_pids,
+    _proc_cmdline,
+    _TimeoutTurn,
+    gating_problems,
+    kill_wedged_sdk_subprocesses,
+    run_flow,
+    score_flow,
+)
 
 
 def _flow(**kw: Any) -> Flow:
@@ -99,6 +113,98 @@ async def test_watchdog_is_disabled_when_timeout_non_positive(tmp_path):
 
     run = await run_flow(_flow(), tmp_path=tmp_path, provider=_OkProvider(), call_timeout=0)
     assert run.ended_done and not run.errors
+
+
+async def test_abandon_after_kill_never_hangs_on_an_uncancellable_task():
+    """The core anti-hang guarantee — and the fix for the real 'still stuck' bug. The SDK's
+    subprocess read survives ``task.cancel()``, so the watchdog's post-kill settle MUST be bounded:
+    even when the force-kill matches nothing (returns 0) AND the task swallows cancellation,
+    ``_abandon_after_kill`` has to return within its grace instead of awaiting forever (the original
+    unbounded ``await task``, which turned a missed kill into an infinite stall rather than a fast
+    failure). A plain ``asyncio.sleep`` IS cancellable, so it would NOT catch this regression — the
+    stand-in must actively ignore cancellation, exactly as the wedged CLI read does."""
+    stop = False
+
+    async def _uncancellable_hang():
+        while not stop:
+            try:
+                await asyncio.sleep(0.02)
+            except asyncio.CancelledError:
+                pass  # swallow cancellation — mimics the SDK read that task.cancel() can't unwedge
+
+    task = asyncio.ensure_future(_uncancellable_hang())
+    await asyncio.sleep(0)  # let it start
+    start = time.monotonic()
+    await _abandon_after_kill(task, grace=0.2)
+    assert time.monotonic() - start < 5, "the bounded drain must not wait out an uncancellable task"
+    assert not task.done(), "the task genuinely ignored cancellation, yet we returned (abandoned it)"
+    stop = True  # release so the abandoned task exits cleanly (no leaked pending task)
+    with contextlib.suppress(Exception):
+        await asyncio.wait_for(task, timeout=2)
+
+
+async def test_force_kill_reaches_a_worker_grandchild_with_no_sdk_markers(monkeypatch):
+    """The bundled CLI is a single-file (bun-style) binary that can fork a WORKER child holding the
+    stdout pipe; killing only the direct child leaves the pipe open and the read wedged — the subtle
+    reason the first force-kill still hung. Model it with a parent whose grandchild carries NO SDK
+    markers, and report only the PARENT via the SDK registry: the kill must take down the WHOLE
+    subtree, marker-free, so the pipe actually EOFs."""
+    parent = await asyncio.create_subprocess_exec(
+        "sh", "-c", "sleep 300; :",  # trailing ';' keeps sh alive as the parent of `sleep`
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+    try:
+        grandkids: list[int] = []
+        for _ in range(200):
+            grandkids = _descendant_pids(parent.pid)
+            if grandkids:
+                break
+            await asyncio.sleep(0.02)
+        assert grandkids, "the grandchild process never spawned"
+        gpid = grandkids[0]
+        assert all(m not in _proc_cmdline(gpid) for m in ("claude_agent_sdk", "_bundled")), \
+            "test invalid: the grandchild must NOT carry SDK markers (that's the whole point)"
+        # The SDK registry reports the PARENT only; kill_wedged must still reach the marker-less child
+        # because it kills the parent's whole descendant subtree (no marker filter on that path).
+        monkeypatch.setattr("tests.flows.harness._sdk_active_child_pids", lambda: [parent.pid])
+        killed = kill_wedged_sdk_subprocesses()
+        assert killed >= 2, f"expected to signal parent + grandchild, signalled {killed}"
+        await asyncio.wait_for(parent.wait(), timeout=5)
+        for _ in range(250):  # grandchild is reparented to init and reaped — confirm it is gone
+            try:
+                os.kill(gpid, 0)
+            except ProcessLookupError:
+                break
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("the marker-less grandchild survived the subtree kill")
+    finally:
+        if parent.returncode is None:
+            parent.kill()
+            await parent.wait()
+
+
+async def test_turn_warmup_timeout_fails_fast():
+    """A wedged warm-up (the SDK connect/initialize handshake in ``__aenter__``, which spawns the CLI
+    subprocess) must fail fast under the per-call deadline too — not stall to the per-flow cap. The
+    bare ``async with`` in the agent loop is unguarded, so the TimeoutError raised here is what lets
+    a warm-up wedge surface cleanly as a flow failure."""
+    class _HangingEnterTurn(ProviderTurn):
+        async def __aenter__(self):
+            await asyncio.sleep(3600)
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def chat(self, messages, *, on_text=None):
+            raise AssertionError("unreachable — warm-up must time out first")
+
+    turn = _TimeoutTurn(_HangingEnterTurn(), timeout_s=0.2)
+    start = time.monotonic()
+    with pytest.raises(TimeoutError):
+        async with turn:
+            pass
+    assert time.monotonic() - start < 5
 
 
 # ---- 2) the load_tools group-loading scoring dimension --------------------------------------

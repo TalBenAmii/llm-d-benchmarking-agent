@@ -101,8 +101,33 @@ def _resolve_call_timeout(call_timeout: float | None) -> float:
 # Markers that uniquely identify the claude-agent-sdk's BUNDLED CLI subprocess (the one a live
 # flow spawns), so a force-kill matches ONLY it — never a developer's own `claude` CLI, the Claude
 # Code daemon, or a co-running live app's SDK subprocess (those live at different paths). BOTH must
-# be present in the cmdline.
+# be present in the cmdline. Used only by the FALLBACK scan; the primary path uses the SDK's own
+# per-process registry (see ``_sdk_active_child_pids``), which is authoritative and marker-free.
 _SDK_SUBPROCESS_MARKERS = ("claude_agent_sdk", "_bundled")
+
+# After a force-kill we wait at most this long for the killed call's task to settle on EOF, then
+# ABANDON it — see ``_abandon_after_kill``. The old code awaited the cancelled task UNBOUNDEDLY,
+# which re-hung forever whenever a kill missed: the actual "still stuck" bug. Keep this short.
+_FORCE_KILL_DRAIN_S = 10.0
+
+
+def _sdk_active_child_pids() -> list[int]:
+    """PIDs of the CLI subprocess(es) the claude-agent-sdk spawned FROM THIS PROCESS, read from its
+    own per-process ``_ACTIVE_CHILDREN`` registry. This is the AUTHORITATIVE handle to the exact
+    ``Process`` whose stdout the SDK reads — so killing it (and its workers) is what delivers EOF —
+    and, being per-process module state, it can NEVER reference a co-running live app's children
+    (those live in that app's own process). Returns ``[]`` if the SDK lacks the registry (absent /
+    renamed in a future version); callers then fall back to the descendant+marker scan."""
+    try:
+        from claude_agent_sdk._internal.transport import subprocess_cli as _sc
+    except Exception:  # noqa: BLE001 — SDK not importable here: let the caller fall back
+        return []
+    pids: list[int] = []
+    for proc in list(getattr(_sc, "_ACTIVE_CHILDREN", ()) or ()):
+        pid = getattr(proc, "pid", None)
+        if isinstance(pid, int) and pid > 0:
+            pids.append(pid)
+    return pids
 
 
 def _descendant_pids(root: int) -> list[int]:
@@ -134,24 +159,52 @@ def _proc_cmdline(pid: int) -> str:
 
 def kill_wedged_sdk_subprocesses(*, markers: tuple[str, ...] = _SDK_SUBPROCESS_MARKERS,
                                  root_pid: int | None = None) -> int:
-    """SIGKILL the claude-agent-sdk CLI subprocess(es) spawned UNDER this process.
+    """SIGKILL the wedged claude-agent-sdk CLI subprocess(es) spawned UNDER this process — and any
+    worker grandchildren they spawned.
 
     ``asyncio`` cancellation does NOT propagate through the SDK's subprocess receive loop, so a
-    stalled live call only unblocks once the CLI subprocess dies (its stream read then returns
-    EOF and the SDK's await finally raises). This is the force-kill the per-call/per-flow watchdog
-    needs. It is doubly scoped for safety: only DESCENDANTS of ``root_pid`` (default this process)
-    AND only those whose cmdline carries every SDK ``marker`` — so it can never kill a developer's
-    own ``claude``, the Claude Code daemon, or a live app's in-flight SDK subprocess. Returns the
-    number signalled (best-effort)."""
-    root = os.getpid() if root_pid is None else root_pid
+    stalled live call only unblocks once the process holding the CLI's stdout pipe dies and the read
+    returns EOF. The bundled CLI is a single-file (bun-style) binary that can fork a WORKER child
+    which inherits that pipe — so killing only the direct child can leave the pipe open and the read
+    still wedged (the subtle reason the first force-kill attempt still hung). We therefore kill the
+    SDK child AND its entire descendant subtree. Targets come from two sources, BOTH scoped to this
+    process so a kill can never reach a developer's own ``claude``, the Claude Code daemon, or a
+    co-running live app's SDK subprocess:
+      1. (primary) the SDK's own per-process ``_ACTIVE_CHILDREN`` registry + every descendant of
+         those pids — no marker filter: a descendant of a known-SDK child IS part of that call;
+      2. (fallback, only if the registry is empty — e.g. killed mid-spawn, or a future SDK without
+         it) a marker-scoped scan of our own descendants, so a real bundled CLI is still matched.
+    Returns the number of processes signalled (best-effort)."""
+    targets: set[int] = set()
+    for pid in _sdk_active_child_pids():
+        targets.add(pid)
+        targets.update(_descendant_pids(pid))
+    if not targets:
+        root = os.getpid() if root_pid is None else root_pid
+        for pid in _descendant_pids(root):
+            cmd = _proc_cmdline(pid)
+            if cmd and all(m in cmd for m in markers):
+                targets.add(pid)
     killed = 0
-    for pid in _descendant_pids(root):
-        cmd = _proc_cmdline(pid)
-        if cmd and all(m in cmd for m in markers):
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.kill(pid, signal.SIGKILL)
-                killed += 1
+    for pid in sorted(targets):
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.kill(pid, signal.SIGKILL)
+            killed += 1
     return killed
+
+
+async def _abandon_after_kill(task: asyncio.Future, *, grace: float = _FORCE_KILL_DRAIN_S) -> None:
+    """Force-kill the wedged SDK subprocess, then settle ``task`` WITHOUT ever risking another hang.
+
+    Killing the CLI makes the SDK's read EOF, so a well-behaved task finishes here almost at once.
+    But if the kill somehow missed entirely, cancellation can't reach the wedged read — so we wait
+    only a BOUNDED ``grace`` for the task to settle and then ABANDON it (it resolves on its own once
+    its pipe EOFs; leaving it is safe in this throwaway eval run). This is the guarantee the original
+    ``await task`` lacked: a missed kill must degrade to fail-fast, never to an infinite stall."""
+    kill_wedged_sdk_subprocesses()
+    task.cancel()
+    with contextlib.suppress(Exception):
+        await asyncio.wait({task}, timeout=grace)
 
 
 class _TimeoutTurn(ProviderTurn):
@@ -163,7 +216,18 @@ class _TimeoutTurn(ProviderTurn):
         self._timeout_s = timeout_s
 
     async def __aenter__(self) -> _TimeoutTurn:
-        await self._inner.__aenter__()
+        # Warm-up (the SDK's connect + initialize handshake, which spawns the CLI subprocess) gets
+        # the SAME deadline as a chat step: if it wedges, force-kill and fail fast rather than wait
+        # out the 300s per-flow cap. The bare ``async with`` in the agent loop is unguarded, so a
+        # TimeoutError here propagates cleanly up to the per-flow cap and is scored a flow failure.
+        task = asyncio.ensure_future(self._inner.__aenter__())
+        done, _pending = await asyncio.wait({task}, timeout=self._timeout_s)
+        if task not in done:
+            await _abandon_after_kill(task)
+            raise TimeoutError(
+                f"LLM turn warm-up exceeded {self._timeout_s:g}s "
+                "(force-killed the wedged CLI subprocess)")
+        task.result()  # surface a real connect error unchanged
         return self
 
     async def __aexit__(self, *exc: Any) -> bool:
@@ -173,16 +237,14 @@ class _TimeoutTurn(ProviderTurn):
         # NOTE: a bare ``asyncio.timeout`` is NOT enough — when the SDK's CLI subprocess wedges
         # (no output), cancelling the awaiting task does not terminate the subprocess, so the call
         # hangs indefinitely (observed: a 28-min stall the 90s deadline never broke). So on the
-        # deadline we FORCE-KILL the subprocess (unblocking the SDK's read), THEN cancel and raise
-        # a TimeoutError the agent loop turns into a clean ``error`` event + fast flow failure.
+        # deadline we FORCE-KILL the subprocess+workers (unblocking the SDK's read), then settle the
+        # task under a BOUNDED grace (never an unbounded ``await``, which re-hung when a kill missed)
+        # and raise a TimeoutError the agent loop turns into a clean ``error`` event + fast failure.
         task = asyncio.ensure_future(self._inner.chat(messages, on_text=on_text))
         done, _pending = await asyncio.wait({task}, timeout=self._timeout_s)
         if task in done:
             return task.result()  # re-raises a real provider error to the loop, unchanged
-        kill_wedged_sdk_subprocesses()
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            await task
+        await _abandon_after_kill(task)
         raise TimeoutError(
             f"LLM call exceeded {self._timeout_s:g}s (force-killed the wedged CLI subprocess)")
 
