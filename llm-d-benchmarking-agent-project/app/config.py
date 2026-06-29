@@ -55,12 +55,6 @@ class Settings(BaseSettings):
         default="high", validation_alias=AliasChoices("agent_sdk_effort", "llm_effort"))
     agent_sdk_thinking: str = Field(
         default="adaptive", validation_alias=AliasChoices("agent_sdk_thinking", "llm_thinking"))
-    # Optional cap on extended-thinking tokens per call (SDK ``max_thinking_tokens``). Thinking
-    # tokens are billed as OUTPUT and ``adaptive`` thinking is otherwise unbounded, so a cap bounds
-    # the worst-case output spend on a hard turn. None (default) => no cap (today's behavior).
-    agent_sdk_max_thinking_tokens: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("agent_sdk_max_thinking_tokens", "llm_max_thinking_tokens"))
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o"

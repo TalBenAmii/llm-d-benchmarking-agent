@@ -107,13 +107,6 @@ def _effort_option(effort: str) -> dict[str, Any]:
     return {"effort": value} if value in _EFFORT_LEVELS else {}
 
 
-def _max_thinking_option(cap: int | None) -> dict[str, Any]:
-    """Translate ``AGENT_SDK_MAX_THINKING_TOKENS`` into a ``max_thinking_tokens`` kwarg, or ``{}``
-    when unset/non-positive — the CLI then leaves extended thinking uncapped (today's behavior).
-    Thinking tokens bill as output, so a cap bounds the worst-case output spend on a hard turn."""
-    return {"max_thinking_tokens": cap} if cap and cap > 0 else {}
-
-
 def _strip_prefix(name: str) -> str:
     return name[len(_TOOL_PREFIX):] if name.startswith(_TOOL_PREFIX) else name
 
@@ -226,8 +219,7 @@ class AgentSdkProvider(LLMProvider):
         # Merged into every ClaudeAgentOptions below so the one-shot and persistent-client paths
         # are byte-identical.
         self._reasoning_opts = {**_thinking_options(settings.agent_sdk_thinking),
-                                **_effort_option(settings.agent_sdk_effort),
-                                **_max_thinking_option(settings.agent_sdk_max_thinking_tokens)}
+                                **_effort_option(settings.agent_sdk_effort)}
         self._server_cache: tuple[tuple[str, ...], Any] | None = None
         # Single-slot connection prewarm (see _PREWARM_TTL_S). Holds a background ``connect()``
         # task for the NEXT turn's client, its (system, tools) fingerprint, and when it started —

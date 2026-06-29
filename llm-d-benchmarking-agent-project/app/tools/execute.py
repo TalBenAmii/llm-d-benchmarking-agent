@@ -450,12 +450,13 @@ async def execute_llmdbenchmark(
         "timed_out": res.timed_out,
         "results_dir": results_dir,
     }
-    # The raw CLI INFO-log tail is the canonical report's poor cousin. When a run SUCCEEDED and
-    # wrote a schema-valid report (results_dir present), that report — not the log — is the source
-    # of truth (rule #4: parse results from the Benchmark Report v0.2 schema, never scrape logs),
-    # so the tail is redundant and re-replayed on every step until compaction stubs it. Drop it in
-    # exactly that case. KEEP it when the run failed/timed out (triage needs it) or produced no
-    # results_dir (plan/dry-run/smoketest previews, where the stdout IS the signal the model reads).
+    # The raw CLI INFO-log tail is the canonical report's poor cousin. When a run exited cleanly and
+    # pointed at a results dir, that report — not the log — is the source of truth (rule #4: parse
+    # results from the Benchmark Report v0.2 schema, never scrape logs), so the tail is redundant and
+    # re-replayed on every step until compaction stubs it. Drop it in exactly that case (and if the
+    # report is empty/malformed the tail is still re-fetchable via run_shell). KEEP it when the run
+    # failed/timed out (triage needs it) or produced no results_dir (plan/dry-run/smoketest previews,
+    # where the stdout IS the signal the model reads).
     if res.exit_code != 0 or res.timed_out or not results_dir:
         out["stdout_tail"] = res.output[-2500:]
     return out
