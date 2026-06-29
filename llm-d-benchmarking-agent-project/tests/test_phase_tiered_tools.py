@@ -1,9 +1,10 @@
-"""Model-driven advanced-tool exposure + the knowledge de-inlining that go with it (token-budget
+"""Model-driven phase-group tool loading + the knowledge de-inlining that go with it (token-budget
 work).
 
-The heavy late-phase tool schemas (registry._ADVANCED_TOOLS) are hidden by default and revealed
-only when the model calls enable_advanced_tools — which flips session.advanced_tools_enabled, and
-the agent loop re-opens the provider turn so they are callable the SAME turn. The unlock is
+Most tool schemas are hidden behind named GROUPS (registry._TOOL_GROUPS: setup/run/analyze/
+advanced); only the STARTER_KIT is shown by default. The model calls load_tools(['<group>']) when a
+request needs a grouped tool — the agent loop folds the group(s) into session.loaded_groups and
+re-opens the provider turn so the group's tools are callable the SAME turn. The unlock is
 model-driven (not a phase gate) so it works from any entry point: an already-running stack, a pile
 of prior results, or a reproduce request, with no in-session deploy. Two fat CORE knowledge files
 (key_docs.yaml, deploy_path_playbook.md) are also now on-demand, not inlined. All hermetic.
@@ -11,22 +12,29 @@ of prior results, or a reproduce request, with no in-session deploy. Two fat COR
 from __future__ import annotations
 
 from pathlib import Path
+from typing import get_args
 
-from app.agent.prompt import ADVANCED_TOOLS_NOTE, CORE_KNOWLEDGE, build_system_prompt
+from app.agent.prompt import CORE_KNOWLEDGE, GROUP_CATALOG_NOTE, build_system_prompt
 from app.agent.session import Session, SessionManager
 from app.config import Settings, get_settings
 from app.llm.provider import AssistantTurn, ToolCall
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
 from app.tools.context import ToolContext
-from app.tools.registry import _ADVANCED_TOOLS, REGISTRY, tool_definitions
+from app.tools.registry import (
+    _GROUPED_TOOLS,
+    _TOOL_GROUPS,
+    REGISTRY,
+    STARTER_KIT,
+    tool_definitions,
+)
+from app.tools.schemas import LoadToolsInput
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
 
-# Representative tools that must ALWAYS be present, incl. the unlock tool itself.
-_CORE_ALWAYS = {"probe_environment", "list_catalog", "propose_session_plan",
-                "execute_llmdbenchmark", "enable_advanced_tools"}
+# Representative tools that must ALWAYS be present (starter kit), incl. the loader tool itself.
+_CORE_ALWAYS = {"probe_environment", "list_catalog", "propose_session_plan", "load_tools"}
 
 
 def _ctx(tmp_path) -> ToolContext:
@@ -35,50 +43,76 @@ def _ctx(tmp_path) -> ToolContext:
     return ToolContext(settings=s, allowlist=al, runner=CommandRunner(s.repo_paths), workspace=tmp_path / "ws")
 
 
-# ---- registry: the gate is additive (default = full set); the unlock tool is never gated --------
+# ---- registry: groups partition the non-starter tools; the loader tool is never grouped ---------
 
-def test_advanced_tool_names_are_all_real_and_unlock_tool_is_not_gated():
-    unknown = _ADVANCED_TOOLS - set(REGISTRY)
-    assert not unknown, f"_ADVANCED_TOOLS names not in the registry: {unknown}"
-    assert "enable_advanced_tools" in REGISTRY, "the unlock tool must be registered"
-    assert "enable_advanced_tools" not in _ADVANCED_TOOLS, "the unlock tool must never gate itself"
+def test_group_tool_names_are_all_real_and_loader_is_starter_kit():
+    unknown = _GROUPED_TOOLS - set(REGISTRY)
+    assert not unknown, f"_TOOL_GROUPS names not in the registry: {unknown}"
+    assert "load_tools" in REGISTRY, "the loader tool must be registered"
+    assert "load_tools" in STARTER_KIT, "the loader tool must be always-resident"
+    assert "load_tools" not in _GROUPED_TOOLS, "the loader tool must never gate itself"
+
+
+def test_starter_kit_and_groups_partition_the_registry():
+    # Every tool is either starter-kit OR in exactly one group — no overlap, no gaps.
+    assert set(REGISTRY) == (STARTER_KIT | _GROUPED_TOOLS)
+    assert not (STARTER_KIT & _GROUPED_TOOLS)
+    members = [m for g in _TOOL_GROUPS.values() for m in g]
+    assert len(members) == len(set(members)), "a tool appears in more than one group"
 
 
 def test_tool_definitions_default_returns_full_set():
-    """No-arg (every existing caller incl. the schema/registry tests) sees ALL tools — the gate is
-    opt-OUT, never silently dropping tools from unrelated callers."""
+    """No-arg (every existing caller incl. the schema/registry tests) sees ALL tools — loading is
+    opt-IN, never silently dropping tools from unrelated callers."""
     names = {d["name"] for d in tool_definitions()}
     assert names == set(REGISTRY)
-    assert names >= _ADVANCED_TOOLS
+    assert names >= _GROUPED_TOOLS
 
 
-def test_tool_definitions_without_advanced_drops_exactly_the_advanced_set():
-    full = {d["name"] for d in tool_definitions(include_advanced=True)}
-    early = {d["name"] for d in tool_definitions(include_advanced=False)}
-    assert full - early == set(_ADVANCED_TOOLS)
-    # The early list keeps the core path AND the unlock tool (so the model can reveal the rest).
-    assert early >= _CORE_ALWAYS
-    assert not (_ADVANCED_TOOLS & early), "no advanced tool may leak into the default list"
+def test_tool_definitions_with_no_groups_loaded_is_exactly_the_starter_kit():
+    names = {d["name"] for d in tool_definitions(loaded=frozenset())}
+    assert names == set(STARTER_KIT)
+    assert names >= _CORE_ALWAYS
+    assert not (_GROUPED_TOOLS & names), "no grouped tool may leak into the default list"
 
 
-def test_withholding_advanced_actually_saves_meaningful_schema_bytes():
+def test_loading_a_group_adds_exactly_that_group():
+    starter = {d["name"] for d in tool_definitions(loaded=frozenset())}
+    for group, members in _TOOL_GROUPS.items():
+        names = {d["name"] for d in tool_definitions(loaded=frozenset({group}))}
+        assert names - starter == set(members), f"loading {group!r} should add exactly its members"
+
+
+def test_withholding_groups_actually_saves_meaningful_schema_bytes():
     import json
-    full = sum(len(json.dumps(d)) for d in tool_definitions(include_advanced=True))
-    early = sum(len(json.dumps(d)) for d in tool_definitions(include_advanced=False))
-    assert full - early > 20_000, "withholding advanced tools should drop a large chunk of schema"
+    full = sum(len(json.dumps(d)) for d in tool_definitions())
+    starter = sum(len(json.dumps(d)) for d in tool_definitions(loaded=frozenset()))
+    assert full - starter > 20_000, "withholding grouped tools should drop a large chunk of schema"
 
 
-# ---- prompt note is byte-stable and EXACTLY in sync with the registry (both directions) ---------
+# ---- prompt note is byte-stable and EXACTLY in sync with the groups (both directions) -----------
 
-def test_advanced_tools_note_in_prompt(tmp_path):
-    assert ADVANCED_TOOLS_NOTE in build_system_prompt(_ctx(tmp_path))
+def test_group_catalog_note_in_prompt(tmp_path):
+    assert GROUP_CATALOG_NOTE in build_system_prompt(_ctx(tmp_path))
 
 
-def test_note_names_exactly_the_gated_set_plus_the_unlock_tool():
-    """Every gated tool is named in the note AND no non-gated tool is wrongly presented as advanced
-    — a bidirectional sync guard so the note and _ADVANCED_TOOLS cannot drift apart."""
-    named = {name for name in REGISTRY if name in ADVANCED_TOOLS_NOTE}
-    assert named == set(_ADVANCED_TOOLS) | {"enable_advanced_tools"}
+def test_note_names_every_grouped_tool_and_no_starter_tool_as_grouped():
+    """Every grouped tool is named in the note AND no starter-kit tool is wrongly listed as
+    grouped — a bidirectional sync guard so the note and _TOOL_GROUPS cannot drift apart."""
+    named = {name for name in REGISTRY if name in GROUP_CATALOG_NOTE}
+    # load_tools is named in the note's prose (how to load) but is starter-kit, so allow it.
+    assert named - {"load_tools"} == _GROUPED_TOOLS
+    # Every group NAME is also named in the note.
+    for group in _TOOL_GROUPS:
+        assert group in GROUP_CATALOG_NOTE
+
+
+def test_loadtools_literal_groups_in_sync_with_registry():
+    """LoadToolsInput's Literal group names (schema-level validation) must match _TOOL_GROUPS keys
+    exactly, so the model is validated against the real groups."""
+    ann = LoadToolsInput.model_fields["groups"].annotation  # list[Literal[...]]
+    inner = get_args(ann)[0]  # Literal['setup','run','analyze','advanced']
+    assert set(get_args(inner)) == set(_TOOL_GROUPS)
 
 
 # ---- knowledge de-inlining: key_docs + deploy_path_playbook are now on-demand ------------------
@@ -102,26 +136,46 @@ def test_de_inlined_guides_not_inlined_but_reachable(tmp_path):
         assert out.get("content"), f"read_knowledge({topic!r}) must still return the guide"
 
 
-# ---- the flag persists across save/load --------------------------------------------------------
+# ---- the loaded-groups set persists across save/load, and the old flag migrates -----------------
 
-def test_advanced_tools_enabled_survives_persist_and_load(tmp_path):
+def test_loaded_groups_survive_persist_and_load(tmp_path):
     mgr = SessionManager(Settings(workspace_dir=tmp_path),
                          Allowlist.from_file(ALLOWLIST_PATH),
                          CommandRunner(get_settings().repo_paths))
     sess = mgr.create()
     sess.messages.append({"role": "user", "content": "hi"})
-    sess.advanced_tools_enabled = True
+    sess.loaded_groups.update({"run", "analyze"})
     sess.persist()
     mgr._sessions.clear()
     loaded = mgr.load(sess.id)
-    assert loaded is not None and loaded.advanced_tools_enabled is True
+    assert loaded is not None and loaded.loaded_groups == {"run", "analyze"}
 
 
-# ---- loop: model-driven unlock reveals the advanced tools in the SAME turn ----------------------
+def test_pre_feature_advanced_flag_migrates_to_advanced_group(tmp_path):
+    """A state.json saved before this feature carried a boolean advanced_tools_enabled; on load it
+    must migrate to the 'advanced' group so a resumed advanced workflow keeps its tools."""
+    import json
+    mgr = SessionManager(Settings(workspace_dir=tmp_path),
+                         Allowlist.from_file(ALLOWLIST_PATH),
+                         CommandRunner(get_settings().repo_paths))
+    sess = mgr.create()
+    sess.persist()
+    # Hand-write the legacy shape into the snapshot, then reload.
+    state = sess.ctx.workspace / "state.json"
+    data = json.loads(state.read_text())
+    data.pop("loaded_groups", None)
+    data["advanced_tools_enabled"] = True
+    state.write_text(json.dumps(data))
+    mgr._sessions.clear()
+    loaded = mgr.load(sess.id)
+    assert loaded is not None and loaded.loaded_groups == {"advanced"}
+
+
+# ---- loop: model-driven load reveals the group's tools in the SAME turn -------------------------
 
 class _CapturingProvider:
     """Scripted by call index; records the tool names handed to each chat() so we can prove the
-    provider turn was re-opened with the expanded set after enable_advanced_tools."""
+    provider turn was re-opened with the expanded set after load_tools."""
 
     def __init__(self, turns):
         self._turns = turns
@@ -135,7 +189,7 @@ class _CapturingProvider:
         return turn
 
 
-async def test_loop_reveals_advanced_tools_same_turn_after_enable(tmp_path):
+async def test_loop_reveals_group_same_turn_after_load_tools(tmp_path):
     from app.agent.loop import AgentLoop
 
     async def emit(t, p):
@@ -145,18 +199,18 @@ async def test_loop_reveals_advanced_tools_same_turn_after_enable(tmp_path):
         return True
 
     session = Session(id="modeldriven", ctx=_ctx(tmp_path))
-    # Step 1: model calls enable_advanced_tools. Step 2 (after the re-open): a text-only finish.
+    # Step 1: model calls load_tools(['advanced']). Step 2 (after the re-open): a text-only finish.
     prov = _CapturingProvider([
-        AssistantTurn(text="", tool_calls=[ToolCall("c1", "enable_advanced_tools", {})]),
+        AssistantTurn(text="", tool_calls=[ToolCall("c1", "load_tools", {"groups": ["advanced"]})]),
         AssistantTurn(text="advanced tools ready", tool_calls=[]),
     ])
     await AgentLoop(prov).run_turn(session, "my stack is up, sweep it",
                                    emit=emit, request_approval=request_approval)
 
-    assert session.advanced_tools_enabled is True
+    assert session.loaded_groups == {"advanced"}
     assert len(prov.tool_names_per_call) == 2, "the turn should have re-opened for a 2nd step"
-    # 1st step: advanced tools hidden but the unlock tool present.
-    assert not (_ADVANCED_TOOLS & prov.tool_names_per_call[0])
-    assert "enable_advanced_tools" in prov.tool_names_per_call[0]
-    # 2nd step (same user turn, after re-open): the advanced tools are now exposed.
-    assert prov.tool_names_per_call[1] >= _ADVANCED_TOOLS, "advanced tools must appear the same turn"
+    # 1st step: the advanced group hidden but the loader tool present.
+    assert not (_TOOL_GROUPS["advanced"] & prov.tool_names_per_call[0])
+    assert "load_tools" in prov.tool_names_per_call[0]
+    # 2nd step (same user turn, after re-open): the advanced group's tools are now exposed.
+    assert prov.tool_names_per_call[1] >= _TOOL_GROUPS["advanced"], "group must appear the same turn"

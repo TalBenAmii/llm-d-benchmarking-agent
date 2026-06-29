@@ -16,7 +16,9 @@ from pydantic import BaseModel, ValidationError
 
 from app.readiness import check_endpoint_readiness
 from app.tools import (
-    advanced,
+    aggregate_runs as aggregate_runs_tool,
+)
+from app.tools import (
     analyze,
     autotune,
     cancel,
@@ -42,10 +44,8 @@ from app.tools import (
     resilience,
     shell,
     suggest,
+    tool_loader,
     workload_profile,
-)
-from app.tools import (
-    aggregate_runs as aggregate_runs_tool,
 )
 from app.tools.context import ToolContext
 from app.tools.schemas import (
@@ -60,7 +60,6 @@ from app.tools.schemas import (
     CompareReportsInput,
     ConvertGuideInput,
     DiscoverStackInput,
-    EnableAdvancedToolsInput,
     EnsureReposInput,
     EstimateRunDurationInput,
     ExecuteInput,
@@ -69,6 +68,7 @@ from app.tools.schemas import (
     GenerateDoeInput,
     InspectWorkloadProfileInput,
     ListCatalogInput,
+    LoadToolsInput,
     LocateReportInput,
     ManageOrchestratedRunsInput,
     ObserveRunMetricsInput,
@@ -99,15 +99,17 @@ class ToolSpec:
 
 
 _DESCRIPTIONS = {
-    "enable_advanced_tools": (
-        "Reveal the advanced/late-phase tools for the rest of this session, then call the one you "
-        "need (they appear in your tool list THIS same turn). The advanced set — orchestrate_sweep, "
-        "autotune_search, generate_doe_experiment, aggregate_runs, compare_harness_runs, "
-        "run_resilience_drill, export_run_bundle, reproduce_run, convert_guide_to_scenario — is "
-        "hidden by default to keep your tool list lean. Call this the MOMENT the user's request "
-        "needs one, whether their stack is already up, they have prior results to analyze, or they "
-        "want to reproduce a run. Read-only, no side effect, no approval — never tell the user you "
-        "cannot do these; just enable them."
+    "load_tools": (
+        "Load one or more tool GROUPS for the rest of this session, then call the tool you need "
+        "(the group's tools appear in your tool list THIS same turn). Most tools are grouped and "
+        "hidden by default to keep your list lean; the groups are: 'setup' (deploy & pre-flight), "
+        "'run' (execute & monitor a benchmark), 'analyze' (results), and 'advanced' (power features "
+        "— sweeps, autotuning, DoE, resilience drills, run export/reproduce, cross-run/-harness "
+        "comparison, scenario authoring). Pass `groups` (e.g. ['run'] or ['setup','run']). Call "
+        "this the MOMENT the user's request needs a grouped tool — whether their stack is already "
+        "up, they have prior results to analyze, or they want to reproduce a run. Read-only, no "
+        "side effect, no approval — never tell the user you cannot do something; just load the "
+        "group and do it."
     ),
     "probe_environment": (
         "Sense the local environment in one structured snapshot: container runtime, "
@@ -580,7 +582,7 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("manage_orchestrated_runs", _DESCRIPTIONS["manage_orchestrated_runs"], ManageOrchestratedRunsInput, manage_runs.manage_orchestrated_runs),
         ToolSpec("run_resilience_drill", _DESCRIPTIONS["run_resilience_drill"], RunResilienceDrillInput, resilience.run_resilience_drill),
         ToolSpec("suggest_next_steps", _DESCRIPTIONS["suggest_next_steps"], SuggestNextStepsInput, suggest.suggest_next_steps),
-        ToolSpec("enable_advanced_tools", _DESCRIPTIONS["enable_advanced_tools"], EnableAdvancedToolsInput, advanced.enable_advanced_tools),
+        ToolSpec("load_tools", _DESCRIPTIONS["load_tools"], LoadToolsInput, tool_loader.load_tools),
     ]
     return {s.name: s for s in specs}
 
@@ -602,40 +604,73 @@ def _strip_titles(node: Any) -> Any:
     return node
 
 
-# Advanced / late-phase tools: the optional power features (config sweeps, autotuning, design-of-
-# experiments, cross-run aggregation + cross-harness comparison, resilience drills, run
-# export/reproduce, advanced scenario authoring). Their JSON schema is the fattest in the registry
-# (~9k tokens), and the common quickstart never touches them, so they are HIDDEN by default and
-# revealed only when the model calls ``enable_advanced_tools`` (which flips
-# ``session.advanced_tools_enabled``; the loop then re-opens the provider turn with the expanded
-# set). The unlock is MODEL-DRIVEN, not a fixed phase gate, precisely because a user can enter
-# directly at the sweep/analyze/reproduce phase with no in-session deploy — only the model reliably
-# knows when one is needed. ``enable_advanced_tools`` itself is NOT in this set (it is always
-# available). Keep this in sync with ``prompt.py::ADVANCED_TOOLS_NOTE`` (a test enforces it).
-_ADVANCED_TOOLS = frozenset({
-    "orchestrate_sweep",
-    "autotune_search",
-    "generate_doe_experiment",
-    "run_resilience_drill",
-    "export_run_bundle",
-    "reproduce_run",
-    "aggregate_runs",
-    "compare_harness_runs",
-    "convert_guide_to_scenario",
-})
+# Phase-grouped tools (load-on-demand). Each tool's JSON schema rides in the prompt-cached prefix
+# on EVERY step, so showing all 38 up front is the bulk of the per-step tool cost. Instead, only
+# the STARTER_KIT (below) is shown by default; the groups here are HIDDEN until the model calls
+# ``load_tools(['<group>'])`` — which the loop folds into ``session.loaded_groups`` and then
+# re-opens the provider turn with the expanded set (callable the SAME turn). The unlock is
+# MODEL-DRIVEN, not a fixed phase gate, precisely because a user can enter directly at the
+# sweep/analyze/reproduce phase with no in-session deploy — only the model reliably knows which
+# group a request needs. Keep this in sync with ``prompt.py::GROUP_CATALOG_NOTE`` (a test enforces
+# it). ``load_tools`` itself is in the STARTER_KIT (never grouped — it is how the rest are reached).
+_TOOL_GROUPS: dict[str, frozenset[str]] = {
+    # deploy & pre-flight
+    "setup": frozenset({
+        "check_capacity", "advise_accelerators", "ensure_repos", "run_setup",
+        "write_and_validate_config", "provision_hf_secret", "check_endpoint_readiness",
+        "discover_stack",
+    }),
+    # execute & monitor a benchmark
+    "run": frozenset({
+        "execute_llmdbenchmark", "orchestrate_benchmark_run", "observe_run_metrics",
+        "cancel_run", "manage_orchestrated_runs",
+    }),
+    # results analysis
+    "analyze": frozenset({
+        "locate_and_parse_report", "analyze_results", "compare_reports", "result_history",
+    }),
+    # power features (the former _ADVANCED_TOOLS set)
+    "advanced": frozenset({
+        "orchestrate_sweep", "autotune_search", "generate_doe_experiment", "run_resilience_drill",
+        "export_run_bundle", "reproduce_run", "aggregate_runs", "compare_harness_runs",
+        "convert_guide_to_scenario",
+    }),
+}
+
+# Every tool that belongs to some load-on-demand group (the inverse of the starter kit).
+_GROUPED_TOOLS: frozenset[str] = frozenset().union(*_TOOL_GROUPS.values())
+
+# Back-compat alias — the former "advanced tier" is now just one group.
+_ADVANCED_TOOLS = _TOOL_GROUPS["advanced"]
+
+# Always-resident tools: everything NOT in a group. These start a session, ground choices, gate
+# mutations (propose_session_plan), preview workloads, run ad-hoc commands, and reach the groups
+# (load_tools) — so the model is never stuck without an entry point.
+STARTER_KIT: frozenset[str] = frozenset(REGISTRY) - _GROUPED_TOOLS
 
 
-def tool_definitions(include_advanced: bool = True) -> list[dict[str, Any]]:
+def _group_of(name: str) -> str | None:
+    """The load-on-demand group a tool belongs to, or None if it is a starter-kit tool."""
+    for group, members in _TOOL_GROUPS.items():
+        if name in members:
+            return group
+    return None
+
+
+def tool_definitions(loaded: frozenset[str] | None = None) -> list[dict[str, Any]]:
     """Export {name, description, input_schema} for the LLM providers.
 
-    ``include_advanced`` defaults to True — every no-arg caller (the schema/registry tests, ad-hoc
-    lookups) sees the FULL registered set. The agent loop passes
-    ``include_advanced=session.advanced_tools_enabled`` so the heavy late-phase schemas
-    (:data:`_ADVANCED_TOOLS`) stay hidden until the model calls ``enable_advanced_tools``."""
+    ``loaded`` is the set of currently-loaded group names. ``None`` (the default) returns the FULL
+    registered set — every no-arg caller (the schema/registry tests, ad-hoc lookups) sees all tools.
+    The agent loop passes ``loaded=frozenset(session.loaded_groups)`` so a grouped tool's heavy
+    schema stays hidden until the model has called ``load_tools`` for its group; starter-kit tools
+    are always included."""
     out = []
     for spec in REGISTRY.values():
-        if not include_advanced and spec.name in _ADVANCED_TOOLS:
-            continue
+        if loaded is not None:
+            group = _group_of(spec.name)
+            if group is not None and group not in loaded:
+                continue
         schema = _strip_titles(spec.input_model.model_json_schema())
         out.append({"name": spec.name, "description": spec.description, "input_schema": schema})
     return out

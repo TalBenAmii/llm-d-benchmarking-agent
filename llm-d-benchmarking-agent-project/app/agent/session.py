@@ -64,6 +64,17 @@ def _effective_namespace(data: dict[str, Any]) -> str | None:
     return data.get("namespace") or (data.get("approved_plan") or {}).get("namespace")
 
 
+def _loaded_groups_from(data: dict[str, Any]) -> set[str]:
+    """The set of loaded tool groups for a saved session. Reads the ``loaded_groups`` list, and
+    MIGRATES a pre-feature snapshot's old boolean ``advanced_tools_enabled: True`` to {"advanced"}
+    (the advanced tier is now just one group). Defaults empty so older files load with the lean
+    starter kit."""
+    groups = set(data.get("loaded_groups") or [])
+    if data.get("advanced_tools_enabled"):
+        groups.add("advanced")
+    return groups
+
+
 def _bounded_append(seq: list, item: object, limit: int) -> None:
     """Append item, then drop oldest so the list never exceeds ``limit`` (in-place, preserves
     identity). The in-place ``del`` keeps the SAME list object so JSON persistence and any
@@ -153,13 +164,15 @@ class Session:
     # deliberate "are you sure" stays). PERSISTED so the toggle survives reconnect/reload and the
     # `ready` frame can re-seed the button. Defaults False (every chat starts with it off).
     auto_approve: bool = False
-    # One-shot capability gate: the model has called enable_advanced_tools, so the heavy
-    # late-phase tool schemas (registry._ADVANCED_TOOLS) are now exposed for the rest of the
-    # session. The agent loop flips this when that tool is dispatched and re-opens the provider
-    # turn so the advanced tools are callable the SAME turn (see app/agent/loop.py). PERSISTED so a
-    # resumed chat keeps them unlocked (the user was already mid advanced workflow); defaults False
-    # so a fresh/pre-feature session starts with the lean tool list.
-    advanced_tools_enabled: bool = False
+    # Capability gate: the names of the load-on-demand tool GROUPS the model has loaded via
+    # load_tools (registry._TOOL_GROUPS: setup/run/analyze/advanced), so those groups' tool schemas
+    # are now exposed for the rest of the session. The agent loop updates this when load_tools is
+    # dispatched and re-opens the provider turn so the group's tools are callable the SAME turn (see
+    # app/agent/loop.py). PERSISTED so a resumed chat keeps them loaded (the user was already mid
+    # workflow); defaults empty so a fresh session starts with only the lean STARTER_KIT. A
+    # pre-feature state.json with the old ``advanced_tools_enabled: True`` migrates to {"advanced"}
+    # on load (see SessionManager.load).
+    loaded_groups: set[str] = field(default_factory=set)
 
     @property
     def session_total(self) -> int:
@@ -257,7 +270,7 @@ class Session:
                     "catalog_injected": self.catalog_injected,
                     "prewarmed": self.prewarmed,
                     "auto_approve": self.auto_approve,
-                    "advanced_tools_enabled": self.advanced_tools_enabled,
+                    "loaded_groups": sorted(self.loaded_groups),
                 },
                 indent=2,
             )
@@ -357,9 +370,10 @@ class SessionManager:
             # Default False so older state files (no key) load — but a session that already
             # injected the env pre-probe snapshot persists True, so a resume never re-injects it.
             prewarmed=data.get("prewarmed", False),
-            # Default False so older state files load; a session that already unlocked the advanced
-            # tools persists True, so a resume keeps them exposed.
-            advanced_tools_enabled=data.get("advanced_tools_enabled", False),
+            # Default empty so older state files load; a session that already loaded groups persists
+            # them, so a resume keeps them exposed. MIGRATION: a pre-feature state.json carrying the
+            # old boolean ``advanced_tools_enabled: True`` maps to the "advanced" group.
+            loaded_groups=_loaded_groups_from(data),
         )
         self._sessions[session.id] = session
         return session
