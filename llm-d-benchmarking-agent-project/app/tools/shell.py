@@ -54,10 +54,17 @@ _WRITE_SUBCOMMANDS = {
 
 # Plain read-only executables (no subcommand grammar). `xargs` is deliberately NOT here — its
 # behavior depends on the sub-command it runs, so we treat a bare `xargs` as MUTATING to be safe.
+# `find` and `sort` are also NOT here even though they are read-only in their common form: each has
+# a WRITE form (find -delete/-exec…, sort -o FILE) that must be MUTATING, so they are arg-inspected
+# in _segment_is_read_only (like `sed -n`) instead of being unconditionally read-only.
 _READ_ONLY_EXES = frozenset({
-    "ls", "cat", "head", "tail", "grep", "egrep", "rg", "find", "echo", "pwd", "whoami",
+    "ls", "cat", "head", "tail", "grep", "egrep", "rg", "echo", "pwd", "whoami",
     "env", "printenv", "which", "df", "du", "ps", "top", "uname", "date", "stat", "wc",
-    "file", "hostname", "id", "uptime", "free", "sort", "uniq", "cut", "awk", "jq", "yq",
+    "file", "hostname", "id", "uptime", "free", "uniq", "cut", "awk", "jq", "yq",
+})
+# `find` ACTIONS that run a command or write a file — their presence makes a `find` MUTATING.
+_FIND_WRITE_ACTIONS = frozenset({
+    "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls",
 })
 # Read-only subcommands of binaries that ALSO have mutating subcommands.
 _READ_ONLY_SUBCOMMANDS = {
@@ -98,6 +105,17 @@ def _segment_is_read_only(seg: list[str]) -> bool:
     if exe == "sed":
         # `sed -n` (no in-place) is a read-only printer; any other sed may edit in place (-i).
         return "-n" in seg[1:] and not any(a.startswith("-i") for a in seg[1:])
+    if exe == "find":
+        # A plain `find` SEARCHES (read-only); a write/exec action (-delete / -exec… / -fprint…)
+        # makes it run a command or write a file → MUTATING.
+        return not any(a in _FIND_WRITE_ACTIONS for a in seg[1:])
+    if exe == "sort":
+        # `sort -o FILE` / `-oFILE` / `--output[=]FILE` WRITES a file; a plain sort just prints.
+        return not any(
+            a == "-o" or (a.startswith("-o") and not a.startswith("--"))
+            or a == "--output" or a.startswith("--output=")
+            for a in seg[1:]
+        )
     if exe in _READ_ONLY_EXES:
         return True
     sub_ro = _READ_ONLY_SUBCOMMANDS.get(exe)
