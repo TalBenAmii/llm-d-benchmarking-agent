@@ -8,7 +8,7 @@ and the model's reasoning — **never** in `if/elif` here.
 `build_system_prompt()` (in `prompt.py`) must return a **byte-identical** prefix across
 turns so the provider prompt-cache keeps hitting (first turn = cache write, later turns =
 ~10% cache reads). The cached prefix = `ROLE` + `HARD_RULES` + inlined `CORE_KNOWLEDGE` +
-on-demand knowledge index + `CATALOG_POINTER` + `ADVANCED_TOOLS_NOTE` (+ conditional `SIMULATE_NOTE`).
+on-demand knowledge index + `CATALOG_POINTER` + `GROUP_CATALOG_NOTE` (+ conditional `SIMULATE_NOTE`).
 
 **Anything that varies per turn must NOT go in the prefix.** The live catalog snapshot and
 the environment pre-probe are injected as **synthetic per-turn user messages** (`loop.py`

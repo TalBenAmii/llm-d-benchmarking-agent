@@ -107,6 +107,31 @@ def test_note_names_every_grouped_tool_and_no_starter_tool_as_grouped():
         assert group in GROUP_CATALOG_NOTE
 
 
+def test_note_lists_each_tool_under_its_own_group_heading():
+    """Per-GROUP membership in the note must match _TOOL_GROUPS — not just the flat union — so a
+    tool listed under the WRONG heading (telling the model to load the wrong group) is caught."""
+    import re
+
+    headings = list(_TOOL_GROUPS)
+    pos = {}
+    for g in headings:
+        m = re.search(rf"(?m)^- {re.escape(g)} \(", GROUP_CATALOG_NOTE)
+        assert m, f"group {g!r} has no '- {g} (...)' bullet in the note"
+        pos[g] = m.start()
+    ordered = sorted(headings, key=lambda g: pos[g])
+    for i, g in enumerate(ordered):
+        end = pos[ordered[i + 1]] if i + 1 < len(ordered) else len(GROUP_CATALOG_NOTE)
+        # Tool names in this heading's segment (identifier tokens; blurb words can't collide with
+        # the compound tool names).
+        seg_tokens = set(re.findall(r"[a-z_]+", GROUP_CATALOG_NOTE[pos[g]:end]))
+        assert _TOOL_GROUPS[g] <= seg_tokens, (
+            f"{g} heading is missing tools {_TOOL_GROUPS[g] - seg_tokens}")
+        for other in headings:
+            if other != g:
+                stray = _TOOL_GROUPS[other] & seg_tokens
+                assert not stray, f"{g} heading wrongly lists {other}'s tools {stray}"
+
+
 def test_loadtools_literal_groups_in_sync_with_registry():
     """LoadToolsInput's Literal group names (schema-level validation) must match _TOOL_GROUPS keys
     exactly, so the model is validated against the real groups."""
@@ -169,6 +194,17 @@ def test_pre_feature_advanced_flag_migrates_to_advanced_group(tmp_path):
     mgr._sessions.clear()
     loaded = mgr.load(sess.id)
     assert loaded is not None and loaded.loaded_groups == {"advanced"}
+
+
+# ---- the load_tools handler de-dupes + echoes the loaded groups --------------------------------
+
+async def test_load_tools_handler_dedupes_and_echoes_groups():
+    from app.tools import tool_loader
+
+    # ctx is unused by the handler; a repeated group is de-duped, order preserved.
+    out = await tool_loader.load_tools(None, groups=["setup", "run", "setup"])
+    assert out["loaded"] == ["setup", "run"]
+    assert "setup" in out["note"] and "run" in out["note"]
 
 
 # ---- loop: model-driven load reveals the group's tools in the SAME turn -------------------------
