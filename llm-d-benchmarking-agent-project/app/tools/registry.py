@@ -172,7 +172,8 @@ _DESCRIPTIONS = {
         "knowledge/conversation_style.md."
     ),
     "suggest_next_steps": (
-        "Offer the user 2-4 concrete next steps as CLICKABLE BUTTONS instead of asking "
+        "Offer the user concrete next steps as CLICKABLE BUTTONS — YOU choose how many fit the "
+        "moment (a few is typical; up to 6) — instead of asking "
         "'want me to…?' in prose. Whenever you would end a turn by proposing what to do next "
         "(save a baseline, compare runs, sweep, tear down, run again, …), CALL this tool with "
         "each option as {label, prompt}: a short button label plus the first-person message sent "
@@ -396,8 +397,9 @@ _DESCRIPTIONS = {
         "percentiles, flagged as such); for a sweep it also returns the Pareto-optimal configs and "
         "the SLO-feasible frontier. Use after a run/sweep when the user has QoS targets or wants "
         "the best config. compare_reports gives raw deltas; this adds SLO/goodput/Pareto. Also "
-        "returns `next_steps`: a RANKED list of follow-ups — offer the best 2-4 as CLICKABLE "
-        "BUTTONS via suggest_next_steps (don't recite them in prose; see "
+        "returns `next_steps`: a RANKED list of follow-ups — offer the most useful of them as "
+        "CLICKABLE BUTTONS via suggest_next_steps (now the ONLY path to post-analysis buttons; you "
+        "choose how many — don't recite them in prose; see "
         "read_knowledge('conversation_style')). Call read_knowledge('analysis') to interpret it "
         "(and read_knowledge('sweep_playbook') when designing or reading a sweep/A-B)."
     ),

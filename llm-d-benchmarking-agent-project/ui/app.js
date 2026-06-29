@@ -1756,39 +1756,6 @@ function renderHarnessCompareCard(result) {
   scroll();
 }
 
-// ---- actionable "next steps" chips (from analyze_results) ----------------
-// The analyzer ranks concrete post-run next steps ({action, tool, reason}). Surface them as
-// clickable chips (like the welcome chips): clicking sends the step's reason as a message so the
-// agent carries it out — turning the analyzer's advice into one-tap actions for a non-expert.
-const NEXT_STEP_LABELS = {
-  save_baseline: "Save as baseline",
-  compare_to_baseline: "Compare to baseline",
-  trend_metric: "Trend a metric",
-  run_again: "Try a different config",
-  run_sweep: "Run a sweep",
-  analyze_with_plots: "Analyze with plots",
-};
-function renderNextSteps(r) {
-  if (!r || !Array.isArray(r.next_steps) || !r.next_steps.length) return;
-  const row = el("div", "next-steps");
-  row.appendChild(el("div", "next-steps-label", "Suggested next steps"));
-  const chips = el("div", "next-steps-chips");
-  // Surface AT MOST 4 follow-up suggestion buttons (the recommender ranks them; show the top few).
-  for (const s of r.next_steps.slice(0, 4)) {
-    if (!s || !s.action) continue;
-    const btn = el("button", "chip next-step-chip", NEXT_STEP_LABELS[s.action] || humanizeTool(s.action));
-    btn.type = "button";
-    if (s.reason) btn.title = s.reason;
-    const prompt = s.reason || String(s.action).replace(/_/g, " ");
-    btn.onclick = () => sendUserMessage(prompt);
-    chips.appendChild(btn);
-  }
-  if (!chips.childNodes.length) return;
-  row.appendChild(chips);
-  activePane.appendChild(row);
-  scroll();
-}
-
 // ---- the agent's "what next?" suggestion buttons (from suggest_next_steps) -
 // Whenever the agent would offer next steps in prose ("want me to save this as a baseline?"), it
 // instead CALLS suggest_next_steps with {label, prompt} options. We draw them as the SAME floating
@@ -1800,7 +1767,8 @@ function renderAgentSuggestions(r) {
   const row = el("div", "next-steps");
   row.appendChild(el("div", "next-steps-label", "Suggested next steps"));
   const chips = el("div", "next-steps-chips");
-  for (const s of r.suggestions.slice(0, 4)) {
+  // The agent chooses how many to offer; defensively cap at the schema max (6) just in case.
+  for (const s of r.suggestions.slice(0, 6)) {
     if (!s || !s.label || !s.prompt) continue;
     const btn = el("button", "chip", s.label);   // plain `.chip` → identical to the welcome chips
     btn.type = "button";
@@ -2321,7 +2289,7 @@ function renderToolResultCards(data) {
   const r = data.result;
   if (data.name === "locate_and_parse_report" && r && r.summary) {
     renderReportSummary(r);                 // the summary IS the friendly view
-  } else if (data.name === "analyze_results") { renderParetoCard(r); renderNextSteps(r); }  // sweep scatter + actionable chips
+  } else if (data.name === "analyze_results") { renderParetoCard(r); }  // sweep scatter (next-step buttons now come from the agent's suggest_next_steps)
   else if (data.name === "compare_reports") renderComparisonCard(r);   // A/B delta bars
   else if (data.name === "compare_harness_runs") renderHarnessCompareCard(r);
   else if (data.name === "probe_environment") renderEnvStatus(r);      // host/cluster status
@@ -3346,7 +3314,7 @@ if (window.__LLMD_SHARED__) {
   window.__llmd = {
     handle, bootChat, startWorking,
     renderResultsCard, renderParetoCard, renderComparisonCard, renderHarnessCompareCard,
-    renderResourceStats, renderNextSteps,
+    renderResourceStats, renderAgentSuggestions,
     renderEnvStatus, renderCapacityCard, renderReadinessCard,
     renderAcceleratorCard, renderDoeCard, renderOrchestrateCard, renderResilienceCard,
     renderAutotuneCard,

@@ -214,13 +214,14 @@ class NextStepSuggestion(BaseModel):
 class SuggestNextStepsInput(BaseModel):
     suggestions: list[NextStepSuggestion] = Field(
         ...,
-        description="2-4 next-step options to render as clickable buttons under your reply. "
-                    "Use this INSTEAD of asking 'want me to…?' in prose: each option is one "
-                    "concrete follow-up the user can take with a single click. Order them best "
-                    "first. Make them genuinely distinct and actionable in the CURRENT context "
-                    "(e.g. after a run: save baseline / compare / sweep / tear down).",
+        description="The next-step options to render as clickable buttons under your reply — YOU "
+                    "decide how many fit the moment (usually a few; up to 6). Use this INSTEAD of "
+                    "asking 'want me to…?' in prose: each option is one concrete follow-up the user "
+                    "can take with a single click. Order them best first, and offer only as many as "
+                    "are genuinely distinct and actionable in the CURRENT context — don't pad to a "
+                    "fixed number (e.g. after a run: save baseline / compare / sweep / tear down).",
         min_length=1,
-        max_length=4,
+        max_length=6,
     )
 
 

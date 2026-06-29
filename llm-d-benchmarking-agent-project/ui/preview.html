@@ -346,11 +346,12 @@
     // button is no longer needed. Rendered LAST so the unavailable state is the visible panel here.
     A.renderResourceStats({ available: false, note: "live resource stats unavailable (no metrics-server)" });
 
-    // 6b) Actionable "next steps" chips (clickable; from the analyzer).
-    A.renderNextSteps({ next_steps: [
-      { action: "save_baseline", tool: "result_history", reason: "save this run as your baseline so future runs can be trended against it" },
-      { action: "compare_to_baseline", tool: "compare_reports", reason: "compare this run against a prior comparable run to spot a regression or win" },
-      { action: "run_sweep", tool: "generate_doe_experiment", reason: "sweep concurrency/config to find the best operating point for this model" },
+    // 6b) The agent's "what next?" suggestion buttons (clickable; from suggest_next_steps — the
+    // agent chooses how many to offer, up to 6).
+    A.renderAgentSuggestions({ suggestions: [
+      { label: "Save as baseline", prompt: "Save this run as my baseline so future runs can be trended against it" },
+      { label: "Compare to last run", prompt: "Compare this run against a prior comparable run to spot a regression or win" },
+      { label: "Run a sweep", prompt: "Sweep concurrency/config to find the best operating point for this model" },
     ] });
 
     // 7) Pre-flight / status cards (from the read-only diagnostic tools).

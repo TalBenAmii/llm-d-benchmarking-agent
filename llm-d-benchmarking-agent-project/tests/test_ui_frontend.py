@@ -124,17 +124,6 @@ def test_metrics_server_passive_hint_on_unavailable_panel():
     assert "available: false" in html and "no metrics-server" in html
 
 
-def test_analyzer_next_steps_chips():
-    """The analyzer's ranked next_steps render as clickable chips that send the step as a message."""
-    js = _ui("app.js")
-    css = _ui("styles.css")
-    assert "function renderNextSteps" in js
-    assert "next_steps" in js
-    assert "renderNextSteps(r)" in js                 # dispatched alongside the sweep scatter
-    assert "sendUserMessage(prompt)" in js            # a click acts on the suggestion
-    assert ".next-step-chip" in css
-
-
 def test_agent_suggestion_buttons():
     """The agent's mid-turn 'what next?' offer (suggest_next_steps) renders as clickable buttons
     that send the option's prompt — instead of the agent asking in prose."""
@@ -497,13 +486,13 @@ def test_bigger_sidebar_carets():
 
 
 def test_unified_suggestion_button_style():
-    """Task 3: welcome chips, next-step buttons, and report actions share ONE suggestion style."""
+    """Welcome chips, the agent's next-step buttons, and report actions share ONE suggestion style."""
     css = _ui("styles.css")
-    # A single shared rule lists all three component classes together.
-    assert ".chip," in css and ".next-step-chip," in css and ".report-action {" in css
-    # The next-step list is capped at 4 buttons in app.js.
+    # A single shared rule lists the suggestion component classes together.
+    assert ".chip," in css and ".report-action {" in css
+    # The agent chooses how many to offer; the UI defensively caps at the schema max (6).
     js = _ui("app.js")
-    assert "r.next_steps.slice(0, 4)" in js
+    assert "r.suggestions.slice(0, 6)" in js
 
 
 def test_assistant_avatar_is_three_hex_mesh():
