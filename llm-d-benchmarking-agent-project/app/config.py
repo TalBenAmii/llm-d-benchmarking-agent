@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -48,8 +48,13 @@ class Settings(BaseSettings):
     # positive integer (a fixed per-turn thinking-token budget, forces thinking every turn), or
     # "off"/"disabled" to turn extended thinking off. When thinking is active the agent loop
     # captures the model's reasoning into the per-session trace (see app/observability/cot_trace.py).
-    agent_sdk_effort: str = "high"
-    agent_sdk_thinking: str = "adaptive"
+    # Bound via AGENT_SDK_EFFORT/AGENT_SDK_THINKING or the provider-neutral LLM_EFFORT/LLM_THINKING
+    # aliases — so an .env that set LLM_EFFORT actually takes effect instead of silently using the
+    # default.
+    agent_sdk_effort: str = Field(
+        default="high", validation_alias=AliasChoices("agent_sdk_effort", "llm_effort"))
+    agent_sdk_thinking: str = Field(
+        default="adaptive", validation_alias=AliasChoices("agent_sdk_thinking", "llm_thinking"))
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o"

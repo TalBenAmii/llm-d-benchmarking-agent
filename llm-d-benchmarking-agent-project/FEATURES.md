@@ -275,7 +275,12 @@ independently versioned, so `ensure_repos`' `ref` is never applied to it. The `k
 **Prompt-token efficiency (token-tracking merge):** fixed prompt overhead was cut ~40%
 (`~20.4K → ~12.3K`), schema `title`s are stripped (`registry.py:_strip_titles`), and
 **provider-agnostic prompt caching** is wired in (`app/llm/*`). Verify via the per-turn token
-line in the UI (`· Y cached`).
+line in the UI (`· Y cached`). **Per-turn replay trimmed** on top of that: tighter compaction
+(`context_mgmt.py` — recent-window 8, threshold 20K) plus dropping the redundant CLI log tail
+from a successful `execute_llmdbenchmark` result (`execute.py` — the BR-v0.2 report supersedes it,
+rule #4), so the recurring per-step cache-read shrinks without touching the live working set.
+Reasoning effort/thinking are now bindable via the provider-neutral `LLM_EFFORT`/`LLM_THINKING`
+aliases (`config.py`); a fixed `LLM_THINKING=<N>` budget also bounds worst-case output spend.
 
 ---
 
