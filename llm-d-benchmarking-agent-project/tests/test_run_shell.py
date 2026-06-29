@@ -27,6 +27,10 @@ from tests.flows.harness import CaptureRunner
     "kubectl get pods -o json | jq '.items'",
     "docker ps",
     "sed -n '1,5p' foo.txt",
+    "find . -name '*.py'",                    # plain find SEARCHES → read-only
+    "find /tmp -type f | head",
+    "sort foo.txt",                            # plain sort just prints → read-only
+    "sort -u foo.txt | uniq",
 ])
 def test_classifier_read_only(command):
     assert classify_shell_command(command) == READ_ONLY
@@ -45,6 +49,10 @@ def test_classifier_read_only(command):
     "cat foo | tee out.txt",                 # a write verb (tee) anywhere in the pipeline
     "ls && rm -rf x",                         # one mutating segment taints the whole command
     "sed -i 's/a/b/' foo.txt",               # in-place sed is NOT read-only
+    "find . -name '*.tmp' -delete",          # find -delete WRITES → mutating
+    "find . -type f -exec rm {} ;",          # find -exec runs a command → mutating
+    "sort -o out.txt foo.txt",               # sort -o FILE writes → mutating
+    "sort foo.txt --output=foo.txt",         # long-form output write → mutating
 ])
 def test_classifier_mutating(command):
     assert classify_shell_command(command) == MUTATING

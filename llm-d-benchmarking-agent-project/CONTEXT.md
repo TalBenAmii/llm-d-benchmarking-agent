@@ -81,7 +81,7 @@ The traffic shape a harness generates — concurrency, token-length distribution
 _Avoid_: "load", "test case", "scenario", "config" — "workload" and "profile" are the canonical pair.
 
 **Simulate Mode**:
-A dry-run toggle (`SIMULATE=1`) where the agent walks the **whole** workflow (probe → plan → standup → run → report) but executes nothing — every command is a no-op returning synthetic success and a synthetic report. SIMULATE results must carry an unmistakable disclaimer wherever they appear.
+A dry-run toggle (`SIMULATE=1`) where the agent walks the **whole** workflow (probe → plan → standup → run → report) without deploying or benchmarking anything. The split is by command **kind**: READ-ONLY commands (probes, `grep`/`ls`/`cat`, `kubectl get`) run **for real** so the agent gathers genuine context; MUTATING actions (standup/run/teardown, installs, `kubectl apply`, …) are announced but **no-opped** to synthetic success, and the benchmark report is synthetic. SIMULATE results — and any post-deploy state — must carry an unmistakable disclaimer wherever they appear.
 _Avoid_: "dry-run" (that's the CLI's `--dry-run` preview, a different mechanism), "mock mode", "test mode".
 
 ### Benchmark concepts

@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 from app.observability import instrument
 from app.security.allowlist import MUTATING, READ_ONLY, Decision
 from app.security.quota import QuotaExceeded
-from app.security.runner import RunResult
+from app.security.runner import RunResult, simulated_run_result
 from app.tools.context import ApprovalRejected, QuotaError, ToolError
 
 if TYPE_CHECKING:
@@ -64,7 +64,10 @@ class CommandExecutor:
                 "text": " ".join(decision.argv),
                 "mode": decision.mode,
                 "auto_run": auto_run,
-                "simulated": ctx.settings.simulate,  # flag simulated (no-op) commands in the UI/trail
+                # True only for a command that was a SIMULATED no-op (mutating-under-SIMULATE). A
+                # read-only command runs for real even under SIMULATE, so it is NOT flagged — the
+                # UI must not badge a genuinely-executed probe/grep as "SIMULATED".
+                "simulated": ctx.settings.simulate and decision.mode == MUTATING,
                 "tool_call_id": ctx.current_tool_call_id,
             })
 
@@ -169,8 +172,23 @@ class CommandExecutor:
         # Quota refusal happens BEFORE the approval prompt and before any execution, so an
         # over-quota command never even asks the user. Cap = DATA; counter = mechanism.
         self._enforce_quota(decision)
-        # In simulate mode mutating commands auto-run as harmless no-ops, so the flow
-        # proceeds without a per-command Approve/Reject prompt (which would stall the walk).
+        # SIMULATE: a MUTATING command must not actually run. When the wired runner spawns real
+        # subprocesses (production), pre-empt it with a synthetic no-op — ANNOUNCED (so the UI's
+        # command trail shows exactly what WOULD run) but never executed. READ-ONLY commands are
+        # NOT pre-empted: they fall through and run for real, so the agent still gathers genuine
+        # context under SIMULATE. (No-op test fakes set runs_real_subprocess=False and are called
+        # unchanged — they already make every command safe and record it for assertions.)
+        if ctx.settings.simulate and decision.mode == MUTATING and ctx.runner.runs_real_subprocess:
+            await self._emit_command(decision, auto_run=False)
+            result = simulated_run_result(
+                decision.argv, timeout=self._effective_timeout(decision, timeout)
+            )
+            if decision.quota_key is not None:
+                ctx.quota.record(decision.quota_key)
+            self._record_metric(decision, auto_run=False, result=result)
+            return result
+        # Mutating commands need approval BEFORE running — but NOT in simulate (a simulated
+        # mutation never executes, so prompting would only stall the dry-run walk).
         if decision.requires_approval and not ctx.settings.simulate:
             if ctx.request_approval is None:
                 raise ToolError("approval required but no approver is wired")

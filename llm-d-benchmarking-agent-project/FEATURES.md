@@ -221,7 +221,7 @@ result.
 | Concurrency cap on simultaneous runs | `app/agent/*`, `tests/test_concurrency.py` | ⚪ `tests/test_concurrency.py`. |
 | **WS protocol hardening + live event buffer** (P15) | `app/agent/ws_schemas.py`, `channel.py` | ⚪ `tests/test_ws.py`. |
 | **Workspace retention / GC + startup cleanup** (P18) | `app/storage/retention.py` | 🟢 Startup log: `{"message":"retention.gc","removed":0,"reclaimed_bytes":0}`. |
-| **Simulate Mode** (`SIMULATE=1`) — walk the whole flow, execute nothing, synthetic report | `app/config.py`, tool handlers, `app/agent/loop.py` | 🔵 Set `SIMULATE=1`, run a benchmark in chat — every command is a no-op, a synthetic report is produced, no cluster touched. ⚪ `tests/test_simulate.py`. |
+| **Simulate Mode** (`SIMULATE=1`) — walk the whole flow; read-only commands run for real, mutations no-op, synthetic report | `app/config.py`, `app/tools/command_exec.py` + `app/tools/shell.py` (caller-gate), `app/agent/loop.py` | 🔵 Set `SIMULATE=1`, run a benchmark in chat — read-only probes/greps return real output (genuine context), every mutating command is a no-op, a synthetic report is produced, no cluster touched. ⚪ `tests/test_simulate.py`. |
 
 ---
 

@@ -6,7 +6,8 @@
 >
 > **What "real LLM" changes:** the agent's *judgment* (which tools to call, which spec/harness/
 > factors to pick) is now the live model, not a scripted transcript. Command *execution* is a
-> separate axis — you choose `SIMULATE=1` (no-op commands, no cluster) or real (kind cluster).
+> separate axis — you choose `SIMULATE=1` (mutating commands no-op, read-only run for real, no
+> cluster) or real (kind cluster).
 
 ---
 

@@ -54,16 +54,18 @@ def test_results_interpretation_forbids_misattributing_estimate() -> None:
     assert "you** estimated it" in txt  # attribute the estimate to yourself
 
 
-# ---- SIMULATE probe narration as real host facts (sim-6, AGENT_FINDINGS ×3) ----------
+# ---- SIMULATE honesty: read-only probes are REAL; simulated mutation OUTCOMES are not ----
 
-def test_sim_integration_probe_outcomes_are_simulated() -> None:
+def test_sim_integration_readonly_real_mutations_simulated() -> None:
     txt = " ".join(_read("sim_integration.md").lower().split())  # collapse line-wraps
-    assert "no command actually ran)" in txt
-    assert "unsolicited" in txt
-    assert "zero tool calls" in txt
-    # the specific fabricated readiness phrasings should be called out as forbidden
-    assert "docker is up" in txt
-    assert "cluster reachable" in txt
+    # read-only commands run for real → trust their genuine output (fix for the blind no-op world)
+    assert "read-only commands run for real" in txt
+    assert "trust" in txt
+    # the OUTCOME of a simulated mutation must never be narrated as real
+    assert "nothing was actually deployed or benchmarked" in txt
+    # the specific over-claims to forbid (a no-op standup/run did NOT make these true)
+    assert "the stack is deployed" in txt
+    assert "the endpoint is serving" in txt
 
 
 # ---- trusting user-supplied data as validated (sim-1 03:30 / 17:30, sim-2 09:10) -----

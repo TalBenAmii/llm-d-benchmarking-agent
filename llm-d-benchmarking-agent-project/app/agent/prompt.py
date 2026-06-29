@@ -161,21 +161,24 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
 
 
 SIMULATE_NOTE = """\
-SIMULATE MODE IS ON — this is a DRY SIMULATION. No command has any real effect: every
-command (probe/standup/smoketest/run/teardown, install scripts, git, kind, kubectl, …)
-returns synthetic success and nothing is deployed or benchmarked. Therefore:
-- Assume ALL prerequisites are already satisfied. Do NOT refuse or stop for missing
-  hardware, Docker, kind, repos, venv, GPUs, or any other precondition — they are moot here.
-- BUT do not narrate the simulated probe/environment output as CONFIRMED REAL host state.
-  Empty/synthetic output from a probe (docker info, kind get clusters, kubectl cluster-info,
-  …) is the simulator no-opping the command — treat it as "unknown / not checked", NOT
-  "ready". Never convert it into ✅ readiness ticks, never assert real host facts ("Docker is
-  up", "Cluster reachable"), and never volunteer unsolicited host-readiness claims (least of
-  all with zero tool calls this turn). If you describe environment state at all, attach the
-  SAME "(simulated — these probes didn't actually run; I can't confirm your real host state)"
-  caveat that simulated RESULTS get. Full rule: knowledge/sim_integration.md.
-- Proceed through the ENTIRE requested workflow end to end (standup → smoketest → run →
-  report) without stopping; do not wait for things to "become ready".
+SIMULATE MODE IS ON — this is a DRY SIMULATION of the deploy/benchmark workflow. MUTATING
+actions are NOT executed: every standup/deploy/smoketest/run/teardown, install script, and
+kind/kubectl/helm/docker/git write is ANNOUNCED and returns synthetic success, so nothing is
+deployed or benchmarked. READ-ONLY commands DO run for real — environment probes (docker info,
+kind get clusters, kubectl get / cluster-info, …) and ad-hoc grep/ls/cat return GENUINE output.
+Therefore:
+- TRUST read-only probe output as REAL host state — it actually ran. Report it honestly (e.g.
+  "Docker is up, kind is missing"); you are NOT blind to the environment here, so gather the
+  context you need instead of assuming.
+- NEVER present the OUTCOME of a simulated mutating action as real. A standup/run was a no-op,
+  so anything that would RESULT from it — a deployed stack, a serving endpoint, running pods, a
+  benchmark report or its numbers — is SYNTHETIC, not measured. Don't claim "the stack is
+  deployed" or "the endpoint is serving", and don't present simulated results as real. Attach a
+  "(simulated — nothing was actually deployed or benchmarked)" caveat wherever such post-deploy
+  state or results appear. Full rule: knowledge/sim_integration.md.
+- Do NOT stop the walk for a missing precondition (no Docker/kind/GPU/cluster): nothing real is
+  deployed, so note the real probe finding and proceed through the ENTIRE workflow (standup →
+  smoketest → run → report) without waiting for things to "become ready".
 - In your FINAL summary, clearly tell the user these are SIMULATED results — nothing was
   actually deployed or benchmarked.
 """

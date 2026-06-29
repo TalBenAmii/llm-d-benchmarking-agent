@@ -1,28 +1,34 @@
-# SIMULATE mode: probe/environment outcomes are simulated too (honesty rule)
+# SIMULATE mode: read-only commands are REAL; only mutating OUTCOMES are simulated (honesty rule)
 
-> This applies to the **agent's `SIMULATE=1` dry-run** (every shell command no-ops and returns
-> empty/synthetic success). It is separate from the opt-in `llm-d-inference-sim` integration
-> tests below, which stand up a real mock server.
+> This applies to the **agent's `SIMULATE=1` dry-run**. It is separate from the opt-in
+> `llm-d-inference-sim` integration tests below, which stand up a real mock server.
 
-Under `SIMULATE=1`, **environment/precondition probes carry exactly the same "(simulated — no
-command actually ran)" framing as simulated benchmark results.** The agent is usually careful to
-disclaim simulated *benchmark numbers*, but has repeatedly narrated simulated *probe* output as
-confirmed REAL host state — the same fabrication, different surface. Bind these rules:
+Under `SIMULATE=1` the split is by command **kind**, not all-or-nothing:
 
-- **No-op probe output is "unknown / not checked", NOT "ready".** When `docker info`,
-  `kind get clusters`, `kubectl cluster-info`, etc. return empty under SIMULATE, that is the
-  simulator no-opping the command — it is **not** evidence that Docker is up, kind is installed,
-  the repos are cloned, or the cluster is reachable. Never convert empty/synthetic probe output
-  into ✅ readiness ticks.
-- **Never assert real host facts from a no-op probe.** Do not say "Docker is up, only kind is
-  missing", "Your environment is ready: Docker ✅ kind ✅ venv ✅", or "Cluster reachable". If you
-  describe environment state at all under SIMULATE, attach the same caveat results get —
-  e.g. "(simulated — these probes didn't actually run; I can't confirm your real host state)".
-- **Never volunteer unsolicited host-readiness claims** — especially not as a closer to soften a
-  refusal, and **never with zero tool calls** this turn (a "Cluster reachable ✅" with no probe
-  behind it is pure fabrication). If the user didn't ask about environment status, don't assert it.
+- **READ-ONLY commands run FOR REAL.** Environment probes (`docker info`, `kind get clusters`,
+  `kubectl get` / `cluster-info`, …) and ad-hoc `grep`/`ls`/`cat` actually execute and return
+  genuine output. So you are **not** blind under SIMULATE — gather the context you need and
+  **trust** what comes back. (This is the fix for the old behaviour where every command no-opped to
+  empty and the agent was flying blind.)
+- **MUTATING actions are NOT executed.** Every `standup`/`deploy`/`run`/`teardown`, install script,
+  and `kind`/`kubectl`/`helm`/`docker`/`git` write is announced (you see exactly what *would* run)
+  and returns synthetic success — nothing is deployed or benchmarked.
+
+Bind these honesty rules:
+
+- **Read probe output honestly — it's real.** "Docker is up, kind is missing" is now a TRUE
+  statement to make (the probe actually ran). Don't slap a "didn't actually run" caveat on a
+  read-only probe; that was the old no-op world. Still: don't claim host facts you didn't probe —
+  no zero-tool-call "Cluster reachable ✅".
+- **Never present the OUTCOME of a simulated mutation as real.** A `standup`/`run` was a no-op, so
+  anything that would RESULT from it — a deployed stack, a serving endpoint, running pods, a
+  benchmark report or its numbers — is SYNTHETIC. Never say "the stack is deployed", "the endpoint
+  is serving", or present simulated results as measured. Attach
+  "(simulated — nothing was actually deployed or benchmarked)" wherever such post-deploy state or
+  results appear.
 - This is the probe analogue of the results honesty floor in
-  `knowledge/results_interpretation.md` — empty/synthetic output is never a green light.
+  `knowledge/results_interpretation.md` — a SIMULATED mutation's result is never a green light, even
+  though the read-only probe that observed the (empty) cluster afterward is itself real.
 
 # llm-d-inference-sim integration tests (opt-in)
 

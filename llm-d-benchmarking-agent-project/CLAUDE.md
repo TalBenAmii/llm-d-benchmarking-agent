@@ -68,7 +68,7 @@ no `app/knowledge/` package.
 - **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/UPSTREAM_REUSE_PATHS.md`
 - **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `CONTEXT.md`
 - **Full doc map + run-locally quickstart** → `docs/README.md`
-- **SIMULATE=1** — dry-run toggle (walk the whole workflow, execute nothing) → `CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
+- **SIMULATE=1** — dry-run toggle (walk the whole workflow; read-only commands run for real, mutations no-op) → `CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
 
 ## Capturing recurring conclusions (standing instruction to future-me)
 When you derive a conclusion you'd otherwise re-investigate later (env/build gotchas, locked decisions),
