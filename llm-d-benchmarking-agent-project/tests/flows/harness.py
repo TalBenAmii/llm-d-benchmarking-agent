@@ -22,7 +22,10 @@ patches that to a flow-declared set so probe behaviour is identical on every mac
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
+import signal
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -95,6 +98,62 @@ def _resolve_call_timeout(call_timeout: float | None) -> float:
     return _DEFAULT_LLM_CALL_TIMEOUT_S
 
 
+# Markers that uniquely identify the claude-agent-sdk's BUNDLED CLI subprocess (the one a live
+# flow spawns), so a force-kill matches ONLY it — never a developer's own `claude` CLI, the Claude
+# Code daemon, or a co-running live app's SDK subprocess (those live at different paths). BOTH must
+# be present in the cmdline.
+_SDK_SUBPROCESS_MARKERS = ("claude_agent_sdk", "_bundled")
+
+
+def _descendant_pids(root: int) -> list[int]:
+    """Every transitive child PID of ``root`` (walked via ``pgrep -P``). A kill restricted to this
+    set stays inside THIS process's own subprocess tree, so it can never reach a co-running live
+    app's or the editor session's CLI subprocess (those are not our descendants)."""
+    out: list[int] = []
+    frontier = [root]
+    while frontier:
+        pid = frontier.pop()
+        try:
+            res = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True, timeout=5)
+        except Exception:  # noqa: BLE001 — pgrep missing/slow: best-effort, just stop walking this branch
+            continue
+        for tok in res.stdout.split():
+            with contextlib.suppress(ValueError):
+                child = int(tok)
+                out.append(child)
+                frontier.append(child)
+    return out
+
+
+def _proc_cmdline(pid: int) -> str:
+    with contextlib.suppress(Exception):
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            return fh.read().replace(b"\x00", b" ").decode("utf-8", "replace")
+    return ""
+
+
+def kill_wedged_sdk_subprocesses(*, markers: tuple[str, ...] = _SDK_SUBPROCESS_MARKERS,
+                                 root_pid: int | None = None) -> int:
+    """SIGKILL the claude-agent-sdk CLI subprocess(es) spawned UNDER this process.
+
+    ``asyncio`` cancellation does NOT propagate through the SDK's subprocess receive loop, so a
+    stalled live call only unblocks once the CLI subprocess dies (its stream read then returns
+    EOF and the SDK's await finally raises). This is the force-kill the per-call/per-flow watchdog
+    needs. It is doubly scoped for safety: only DESCENDANTS of ``root_pid`` (default this process)
+    AND only those whose cmdline carries every SDK ``marker`` — so it can never kill a developer's
+    own ``claude``, the Claude Code daemon, or a live app's in-flight SDK subprocess. Returns the
+    number signalled (best-effort)."""
+    root = os.getpid() if root_pid is None else root_pid
+    killed = 0
+    for pid in _descendant_pids(root):
+        cmd = _proc_cmdline(pid)
+        if cmd and all(m in cmd for m in markers):
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.kill(pid, signal.SIGKILL)
+                killed += 1
+    return killed
+
+
 class _TimeoutTurn(ProviderTurn):
     """Wraps a :class:`ProviderTurn` so every ``chat()`` step is bounded by ``timeout_s``.
     Delegates open/close to the inner turn unchanged (the SDK's warm-subprocess lifecycle)."""
@@ -111,8 +170,21 @@ class _TimeoutTurn(ProviderTurn):
         return await self._inner.__aexit__(*exc)
 
     async def chat(self, messages, *, on_text=None):
-        async with asyncio.timeout(self._timeout_s):
-            return await self._inner.chat(messages, on_text=on_text)
+        # NOTE: a bare ``asyncio.timeout`` is NOT enough — when the SDK's CLI subprocess wedges
+        # (no output), cancelling the awaiting task does not terminate the subprocess, so the call
+        # hangs indefinitely (observed: a 28-min stall the 90s deadline never broke). So on the
+        # deadline we FORCE-KILL the subprocess (unblocking the SDK's read), THEN cancel and raise
+        # a TimeoutError the agent loop turns into a clean ``error`` event + fast flow failure.
+        task = asyncio.ensure_future(self._inner.chat(messages, on_text=on_text))
+        done, _pending = await asyncio.wait({task}, timeout=self._timeout_s)
+        if task in done:
+            return task.result()  # re-raises a real provider error to the loop, unchanged
+        kill_wedged_sdk_subprocesses()
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+        raise TimeoutError(
+            f"LLM call exceeded {self._timeout_s:g}s (force-killed the wedged CLI subprocess)")
 
 
 class _PerCallTimeoutProvider(LLMProvider):

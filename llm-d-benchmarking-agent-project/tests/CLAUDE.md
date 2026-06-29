@@ -57,9 +57,15 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
     --live` and `--simulate` drive the SAME harness/scoring without pytest — `LLM_EVAL_LIVE=1 python
     scripts/validate_flows.py --simulate`. Still spends quota; still needs the worktree `.env`.
   - **Per-call WATCHDOG** (`harness.py::_PerCallTimeoutProvider`): in a live run EACH LLM call has a
-    deadline (`LLM_EVAL_CALL_TIMEOUT`, default 90s; `<=0` disables) — a hung call becomes a clean
-    `error` event + fast flow failure instead of stalling to the 300s `pytest.mark.timeout` backstop.
-    Applies only when a REAL provider is passed; the scripted/deterministic gate is untouched.
+    deadline (`LLM_EVAL_CALL_TIMEOUT`, default 90s; `<=0` disables). ⚠️ `asyncio.timeout` ALONE does
+    NOT abort a wedged `claude` CLI subprocess (cancellation doesn't propagate through the SDK's
+    subprocess receive — observed: a 28-min stall the 90s deadline never broke). So on the deadline
+    the watchdog FORCE-KILLS the subprocess (`kill_wedged_sdk_subprocesses` — descendants-only AND
+    marked `claude_agent_sdk/_bundled`, so it can never touch a co-running live app on :8000 or the
+    editor's own `claude`); its stream read then returns EOF, the await unblocks, and the loop emits
+    a clean `error` → fast flow failure. Applies only when a REAL provider is passed; the
+    deterministic gate is untouched. `validate_flows.py` adds a per-FLOW cap on top
+    (`LLM_EVAL_FLOW_TIMEOUT`, default 300s) for a slow-but-not-stuck multi-step flow.
   - **`load_tools` group scoring** (`score_flow`): the live eval verifies the model loaded the
     RIGHT tool group(s) for the grouped tools a flow requires; an EXTRA group is a NOTE (not a
     failure), never loading a needed one IS a failure. Hermetic guards in `tests/flows/test_eval_harness.py`.

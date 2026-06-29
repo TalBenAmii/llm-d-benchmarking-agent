@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -33,11 +35,32 @@ from tests.flows.flows import ALL_FLOWS, FLOWS_BY_NAME  # noqa: E402
 from tests.flows.harness import (  # noqa: E402
     diff_significant,
     gating_problems,
+    kill_wedged_sdk_subprocesses,
     run_flow,
     score_flow,
 )
 
 GREEN, RED, DIM, BOLD, RESET = "\033[32m", "\033[31m", "\033[2m", "\033[1m", "\033[0m"
+
+# Per-flow hard cap (seconds) — a backstop ABOVE the harness's per-call watchdog. The per-call
+# watchdog force-kills a single wedged LLM call (~90s); this bounds a whole flow that is slow for
+# another reason (e.g. many sub-deadline steps looping). On expiry we force-kill any wedged SDK
+# subprocess (so the await unblocks) and score the flow a timeout failure rather than hang the run.
+PER_FLOW_TIMEOUT_S = float(os.getenv("LLM_EVAL_FLOW_TIMEOUT", "300"))
+
+
+async def _bounded(coro):
+    """Await ``coro`` under the per-flow hard cap. On breach: force-kill the wedged SDK subprocess,
+    cancel, and raise TimeoutError (asyncio cancellation alone can't unwedge a stalled CLI)."""
+    task = asyncio.ensure_future(coro)
+    done, _pending = await asyncio.wait({task}, timeout=PER_FLOW_TIMEOUT_S)
+    if task in done:
+        return task.result()
+    kill_wedged_sdk_subprocesses()
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await task
+    raise TimeoutError(f"flow exceeded the {PER_FLOW_TIMEOUT_S:g}s per-flow cap")
 
 
 def _c(s: str, color: str) -> str:
@@ -98,12 +121,17 @@ async def main_async(args) -> int:
 
     results = []
     for flow in flows:
-        passed, problems, run = await (
-            _run_live(flow, simulate=args.simulate) if live_run else _run_deterministic(flow))
+        try:
+            passed, problems, run = await _bounded(
+                _run_live(flow, simulate=args.simulate) if live_run else _run_deterministic(flow))
+        except TimeoutError as exc:
+            # The per-flow cap fired (and force-killed the wedged subprocess). Score it a failure
+            # and keep going — never let one stuck flow hang the whole run.
+            passed, problems, run = False, [f"{exc} — force-killed the wedged CLI subprocess"], None
         results.append((flow, passed))
         tag = _c(" PASS ", GREEN) if passed else _c(" FAIL ", RED)
         print(f"[{tag}] {_c(flow.name, BOLD)} — {flow.title}")
-        if args.show or live_run or not passed:
+        if run is not None and (args.show or live_run or not passed):
             for c in run.significant:
                 print(f"        {_c('$', DIM)} {' '.join(c.argv)}  {_c('[' + c.mode + ']', DIM)}")
             if not run.significant:

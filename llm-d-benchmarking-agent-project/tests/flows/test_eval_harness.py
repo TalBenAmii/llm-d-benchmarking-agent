@@ -23,7 +23,7 @@ from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.registry import _group_of
 
 from .flows import Flow
-from .harness import gating_problems, run_flow, score_flow
+from .harness import gating_problems, kill_wedged_sdk_subprocesses, run_flow, score_flow
 
 
 def _flow(**kw: Any) -> Flow:
@@ -67,6 +67,28 @@ async def test_watchdog_fails_a_hung_llm_call_fast_instead_of_hanging(tmp_path):
     assert any("LLM call failed" in e for e in run.errors), run.errors
     assert run.ended_done, "the loop should still end cleanly (DONE) after the timeout"
     assert not run.commands, "nothing should have executed once the very first call timed out"
+
+
+async def test_kill_helper_terminates_only_a_matching_descendant():
+    """The watchdog's force-kill (kill_wedged_sdk_subprocesses) must reach a wedged SDK subprocess
+    yet be doubly scoped — descendants-only AND marker-matched — so it can never hit a co-running
+    live app's CLI subprocess. Verify both halves with a throwaway `sleep` child: a non-matching
+    marker leaves it alone; a matching one kills it."""
+    proc = await asyncio.create_subprocess_exec(
+        "sleep", "30",
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+    try:
+        # Non-matching marker → no kill (selectivity: must not signal an unrelated descendant).
+        assert kill_wedged_sdk_subprocesses(markers=("marker-not-in-any-cmdline-xyz",)) == 0
+        assert proc.returncode is None, "a non-matching marker must not kill the descendant"
+        # Matching marker (its cmdline contains 'sleep') → killed, unblocking the 'await'.
+        assert kill_wedged_sdk_subprocesses(markers=("sleep",)) >= 1
+        await asyncio.wait_for(proc.wait(), timeout=5)
+        assert proc.returncode is not None and proc.returncode != 0
+    finally:
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
 
 
 async def test_watchdog_is_disabled_when_timeout_non_positive(tmp_path):
