@@ -47,7 +47,7 @@ from app.packaging.report_card import render_report_card
 from app.packaging.shared_chat import render_shared_chat
 from app.security.allowlist import Allowlist
 from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocket_authorized
-from app.security.runner import CommandRunner, SimRunner
+from app.security.runner import CommandRunner
 from app.storage.history import HistoryStore, available_metrics, trend
 from app.storage.retention import readiness, run_gc, self_check
 from app.storage.share import ShareStore, is_valid_token
@@ -88,8 +88,12 @@ async def lifespan(app: FastAPI):
     # orchestrator) via ctx.run_command/ctx.run_readonly. The agent's ad-hoc `run_shell` tool runs
     # arbitrary `bash -lc` and does NOT consult it (human approval still gates mutating commands).
     app.state.allowlist = Allowlist.from_file(settings.allowlist_path)
-    runner_cls = SimRunner if settings.simulate else CommandRunner
-    app.state.runner = runner_cls(settings.repo_paths, extra_env=settings.extra_subprocess_env)
+    # Always the REAL runner — even under SIMULATE=1. SIMULATE no longer swaps in a runner that
+    # empties EVERY command (which left the agent blind: read-only greps/probes returned nothing).
+    # Instead the caller-gate (CommandExecutor / run_shell) no-ops only MUTATING commands, so
+    # READ-ONLY probes/greps run for real and the agent gathers genuine context while nothing is
+    # deployed or benchmarked. (Tests/eval inject SimRunner directly for full hermetic isolation.)
+    app.state.runner = CommandRunner(settings.repo_paths, extra_env=settings.extra_subprocess_env)
     # Cross-session cap on concurrent heavy runs (None = unlimited).
     app.state.run_semaphore = (
         asyncio.Semaphore(settings.max_concurrent_runs) if settings.max_concurrent_runs > 0 else None

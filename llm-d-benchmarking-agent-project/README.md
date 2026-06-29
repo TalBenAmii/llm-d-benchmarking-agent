@@ -255,10 +255,12 @@ whatever your kubeconfig points at).
 ### Simulate Mode
 
 Set `SIMULATE=1` in `.env` for a full dry run: the agent walks the **entire** workflow
-(probe → plan → standup → smoketest → run → report) but **executes nothing** — every command
-is a no-op returning synthetic success, per-command approvals are skipped (the upfront plan
-approval is kept), and a synthetic report is produced. The best way to *watch a guide
-end-to-end without touching a cluster.*
+(probe → plan → standup → smoketest → run → report) without deploying or benchmarking. The split
+is by command **kind** — **read-only** commands (probes, `grep`/`ls`/`cat`, `kubectl get`) run
+**for real** so the agent gathers genuine context, while **mutating** actions (standup/run/teardown,
+installs, `kubectl apply`, …) are announced but **no-opped** to synthetic success. Per-command
+approvals are skipped (the upfront plan approval is kept), and a synthetic report is produced. The
+best way to *watch a guide end-to-end without touching a cluster.*
 
 ### Observability
 

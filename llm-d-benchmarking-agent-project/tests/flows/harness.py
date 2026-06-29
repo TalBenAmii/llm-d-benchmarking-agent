@@ -96,6 +96,11 @@ class CaptureRunner(CommandRunner):
     error-path flows can be exercised hermetically — see ``CannedResult``. The FIRST needle that
     is a substring of the joined argv wins, so order more-specific needles before generic ones."""
 
+    # This fake never spawns a real process and already makes every command safe (canned/no-op),
+    # so the SIMULATE caller-gate must NOT pre-empt mutating commands here — it must still call us
+    # so `calls` records them and `_maybe_simulate_clone` fires (the flows assert over `calls`).
+    runs_real_subprocess = False
+
     def __init__(self, repo_paths, *, canned: dict[str, CannedValue] | None = None):
         super().__init__(repo_paths)
         self.calls: list[dict[str, Any]] = []

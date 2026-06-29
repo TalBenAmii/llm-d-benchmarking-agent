@@ -28,6 +28,7 @@ from typing import Any
 
 from app.observability import instrument
 from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.runner import simulated_run_result
 from app.tools.context import ApprovalRejected, ToolContext, ToolError
 
 # Shell tokens that, appearing anywhere, mean the command WRITES — a redirect to a file or a
@@ -180,8 +181,24 @@ async def run_shell(
     requires_approval = mode == MUTATING
     argv = ["bash", "-lc", command]
 
-    # Mutating/unknown commands gate on approval BEFORE running (skipped in simulate, where
-    # commands are harmless no-ops — mirroring the allowlisted executor).
+    # SIMULATE: a MUTATING ad-hoc command is ANNOUNCED but never executed when the wired runner
+    # is a real executor (production) — synthetic no-op, so the user sees what WOULD run while
+    # nothing mutates. READ-ONLY commands (grep/ls/cat/kubectl get/…) fall through and run for
+    # real, so the agent still gathers genuine context. (No-op test fakes — runs_real_subprocess
+    # =False — are called unchanged.)
+    if ctx.settings.simulate and mode == MUTATING and ctx.runner.runs_real_subprocess:
+        await _emit_command(ctx, argv=argv, mode=mode, auto_run=False)
+        res = simulated_run_result(argv)
+        _record_metric(mode=mode, auto_run=False, duration_s=res.duration_s,
+                       exit_code=res.exit_code, timed_out=res.timed_out)
+        return {
+            "command": command, "argv": list(argv), "mode": mode, "auto_run": False,
+            "exit_code": res.exit_code, "duration_s": res.duration_s,
+            "timed_out": res.timed_out, "stdout_tail": res.output[-2500:],
+        }
+
+    # Mutating/unknown commands gate on approval BEFORE running (in simulate the mutating no-op
+    # above already returned, so this fires only when the command will really execute).
     if requires_approval and not ctx.settings.simulate:
         if ctx.request_approval is None:
             raise ToolError("approval required but no approver is wired")
@@ -230,7 +247,9 @@ async def _emit_command(ctx: ToolContext, *, argv: list[str], mode: str, auto_ru
             "text": " ".join(argv),
             "mode": mode,
             "auto_run": auto_run,
-            "simulated": ctx.settings.simulate,
+            # True only for a SIMULATED no-op (mutating-under-SIMULATE); a read-only command runs
+            # for real even under SIMULATE, so the UI must not badge it "SIMULATED".
+            "simulated": ctx.settings.simulate and mode == MUTATING,
             "tool_call_id": ctx.current_tool_call_id,
         })
 
