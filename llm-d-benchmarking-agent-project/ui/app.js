@@ -1816,9 +1816,9 @@ function renderAgentSuggestions(r) {
 
 // ---- pre-flight / status cards (from read-only diagnostic tool_results) ---
 // The data-rich read-only tools (probe / capacity / readiness / accelerators / DoE / orchestrate)
-// emit no results_card event, so their output was only ever raw JSON in the collapsed tool panel.
+// emit no results_card event, so without these their result would never surface in a friendly form.
 // These render them as friendly status cards — exactly the "is my setup ready?" signal a
-// non-expert needs. Each no-ops on a shape it can't draw; the JSON stays as the fallback.
+// non-expert needs. Each no-ops on a shape it can't draw (the panel then just shows the call's args).
 
 // A small coloured status dot (state ∈ ok|warn|bad|na).
 function statusDot(state) { return el("span", "status-dot status-dot-" + (state || "na")); }
@@ -2183,9 +2183,6 @@ function renderAutotuneCard(card) {
 }
 
 function renderHistory(items) {
-  // The tool panel body of the most recently replayed tool_call, so its interleaved
-  // tool_result can drop the raw JSON into the same panel (mirroring the live finishTool).
-  let lastToolBody = null;
   for (const it of items) {
     if (it.role === "user") addBubble("user", it.text);
     else if (it.role === "assistant") addBubble("assistant", it.text);
@@ -2197,12 +2194,12 @@ function renderHistory(items) {
     // because the record's phaseReached survives; this is the missing other half.)
     // suggest_next_steps is a UI-only tool (no technical action row / phase) — mirror the live
     // path: skip its row so only the chips replay (rendered from its tool_result below).
-    else if (it.role === "tool_call" && it.name === "suggest_next_steps") { lastToolBody = null; }
-    else if (it.role === "tool_call") { lastToolBody = addHistoryTool(it); advancePhase(it.name, it.input); }
+    else if (it.role === "tool_call" && it.name === "suggest_next_steps") { /* no action row */ }
+    else if (it.role === "tool_call") { addHistoryTool(it); advancePhase(it.name, it.input); }
     // A persisted card-rendering tool result, interleaved by the server right after its tool_call:
     // re-draw the report summary + clickable charts (and other rich cards) exactly as the live
     // `tool_result` event does, so they SURVIVE a chat switch / reload — not just the live run.
-    else if (it.role === "tool_result") { renderToolResultCards(it, lastToolBody); lastToolBody = null; }
+    else if (it.role === "tool_result") { renderToolResultCards(it); }
     // The deterministic analyzer card, re-derived server-side from the same result and emitted
     // right after its tool_result — mirrors the live `results_card` event.
     else if (it.role === "results_card") renderResultsCard(it.card);
@@ -2244,7 +2241,6 @@ function addHistoryTool(it) {
   if (it.input && Object.keys(it.input).length) body.appendChild(prettyJson(it.input));
   d.appendChild(body);
   activePane.appendChild(d);
-  return body;  // so the interleaved tool_result can drop its raw JSON into this same panel
 }
 
 function startTool(data) {
@@ -2309,37 +2305,35 @@ function finishTool(data) {
     else d.querySelector("summary").appendChild(meta);
     d.open = false;
   }
-  renderToolResultCards(data, d ? d.querySelector(".body") : null);
+  renderToolResultCards(data);
   activeConsole = null;
   activeToolMutating = false;
 }
 
 // Draw the prominent, friendly card(s) for a tool result. Shared by the LIVE `tool_result`
 // event (finishTool) and the history REPLAY of a persisted card result (renderHistory), so a
-// resumed/reloaded chat rebuilds the report summary + clickable charts identically. The raw
-// JSON still lands in the (collapsed) tool panel `bodyEl` for the curious when one is present;
-// each card renderer no-ops on a shape it can't draw, so the JSON is always the graceful
-// fallback. (The report card IS the friendly view, so it skips the JSON dump.)
-function renderToolResultCards(data, bodyEl) {
+// resumed/reloaded chat rebuilds the report summary + clickable charts identically. The tool
+// panel itself stays minimal — just the tool name + its input args (the file/path it read) — so
+// the raw result payload is NEVER dumped into the transcript (it was a wall of text for the plain
+// read/info tools, and redundant under the friendly cards). Each card renderer no-ops on a shape
+// it can't draw; an undrawable result simply leaves the panel showing its args, same as history.
+function renderToolResultCards(data) {
   const r = data.result;
   if (data.name === "locate_and_parse_report" && r && r.summary) {
-    renderReportSummary(r);                 // (no JSON dump — the summary IS the friendly view)
-  } else {
-    if (data.name === "analyze_results") { renderParetoCard(r); renderNextSteps(r); }  // sweep scatter + actionable chips
-    else if (data.name === "compare_reports") renderComparisonCard(r);   // A/B delta bars
-    else if (data.name === "compare_harness_runs") renderHarnessCompareCard(r);
-    else if (data.name === "probe_environment") renderEnvStatus(r);      // host/cluster status
-    else if (data.name === "check_capacity") renderCapacityCard(r);      // capacity pre-flight
-    else if (data.name === "check_endpoint_readiness") renderReadinessCard(r);
-    else if (data.name === "advise_accelerators") renderAcceleratorCard(r);
-    else if (data.name === "generate_doe_experiment") renderDoeCard(r);  // sweep matrix
-    else if (data.name === "orchestrate_benchmark_run") renderOrchestrateCard(r);
-    else if (data.name === "run_resilience_drill") renderResilienceCard(r);  // chaos / resilience drill
-    else if (data.name === "autotune_search") renderAutotuneCard(_card_from_autotune_status(r));  // goal-seeking convergence
-    else if (data.name === "export_run_bundle") renderReproducibilityCard(r);  // provenance bundle
-    else if (data.name === "suggest_next_steps") { renderAgentSuggestions(r); return; }  // the agent's "what next?" buttons (no JSON dump — bodyEl is null)
-    if (bodyEl) bodyEl.appendChild(prettyJson(r));
-  }
+    renderReportSummary(r);                 // the summary IS the friendly view
+  } else if (data.name === "analyze_results") { renderParetoCard(r); renderNextSteps(r); }  // sweep scatter + actionable chips
+  else if (data.name === "compare_reports") renderComparisonCard(r);   // A/B delta bars
+  else if (data.name === "compare_harness_runs") renderHarnessCompareCard(r);
+  else if (data.name === "probe_environment") renderEnvStatus(r);      // host/cluster status
+  else if (data.name === "check_capacity") renderCapacityCard(r);      // capacity pre-flight
+  else if (data.name === "check_endpoint_readiness") renderReadinessCard(r);
+  else if (data.name === "advise_accelerators") renderAcceleratorCard(r);
+  else if (data.name === "generate_doe_experiment") renderDoeCard(r);  // sweep matrix
+  else if (data.name === "orchestrate_benchmark_run") renderOrchestrateCard(r);
+  else if (data.name === "run_resilience_drill") renderResilienceCard(r);  // chaos / resilience drill
+  else if (data.name === "autotune_search") renderAutotuneCard(_card_from_autotune_status(r));  // goal-seeking convergence
+  else if (data.name === "export_run_bundle") renderReproducibilityCard(r);  // provenance bundle
+  else if (data.name === "suggest_next_steps") renderAgentSuggestions(r);  // the agent's "what next?" buttons
 }
 
 // ---- report number formatting -------------------------------------------

@@ -537,6 +537,9 @@ pre.console {
      `overflow-wrap: anywhere` wraps long unbroken tokens so they can't widen the 900px column. */
   white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0;
 }
+/* A tool that ran no commands (e.g. a knowledge/doc read) starts with an empty console — don't
+   render an empty box for it. It un-hides the moment a `$ command` or output line streams in. */
+pre.console:empty { display: none; }
 pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; margin: 7px 0 0; }
 
 /* ── Approval / plan card ─────────────────────────────────────────────── */
