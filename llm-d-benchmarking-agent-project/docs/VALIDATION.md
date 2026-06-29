@@ -25,6 +25,16 @@ flow fixtures); layers 3 and 4 are the **agent self-eval** harness (`tests/eval/
 > **`make eval-judge`** and **`make bughunt`** (each `--timeout=600`). Verify off-by-default:
 > with no key / no flag, `pytest tests/eval/` runs only the shadow tests and SKIPS the live ones.
 
+> **Live-eval mechanics (layer 2).** The live flow eval runs in two modes — `LLM_EVAL_LIVE=1`
+> (the **live** set: tool-choice / error-recovery / safety) and `LLM_EVAL_LIVE=1
+> LLM_EVAL_SIMULATE=1` (the **simulate** set: multi-step deploy walks). Both are also runnable
+> WITHOUT pytest via `python scripts/validate_flows.py --live` / `--simulate` (same harness +
+> scoring). Two safeguards back the real-model run: a **per-call watchdog** gives each LLM call a
+> deadline (`LLM_EVAL_CALL_TIMEOUT`, default 90s) so a hung call fails the flow fast instead of
+> stalling to the 300s backstop; and `score_flow` checks the model loaded the **right `load_tools`
+> group(s)** for the grouped tools each flow needs (an extra group is a NOTE, a missing one fails).
+> Both are guarded hermetically in `tests/flows/test_eval_harness.py` (ZERO quota).
+
 ## Quick start
 
 ```bash

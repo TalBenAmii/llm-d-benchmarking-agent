@@ -21,6 +21,8 @@ patches that to a flow-declared set so probe behaviour is identical on every mac
 """
 from __future__ import annotations
 
+import asyncio
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,11 +31,13 @@ from unittest.mock import patch
 from app.agent.loop import AgentLoop
 from app.agent.session import Session
 from app.config import BENCH_REPO_NAME, GUIDE_REPO_NAME, Settings
-from app.llm.provider import AssistantTurn, LLMProvider
+from app.llm.provider import AssistantTurn, LLMProvider, ProviderTurn, open_provider_turn
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunResult
 from app.tools.catalog import catalog_for_allowlist
 from app.tools.context import ToolContext
+from app.tools.registry import _group_of
+from app.tools.shell import classify_shell_command
 
 from .catalog_snapshot import frozen_catalog
 
@@ -59,6 +63,77 @@ class ScriptedProvider(LLMProvider):
         turn = self._turns[self.i]
         self.i += 1
         return turn
+
+
+# ---- per-call fail-fast watchdog --------------------------------------------
+# The LIVE eval drives a REAL model over a slow network / CLI subprocess. A single hung or
+# provider-overloaded call would otherwise stall a flow until the test-level backstop
+# (pytest.mark.timeout(300)) fires — wasting minutes per stuck flow and making "is it still
+# running?" impossible to tell from a wedged one. Instead we give EACH LLM call its own
+# deadline: a breach raises TimeoutError, which the agent loop already catches as a provider
+# error (app/agent/loop.py::_run_step) and turns into a clean ``error`` event + an early,
+# orderly stop — so the flow fails FAST (and scores as a failure) and the suite moves on, with
+# the 300s mark left only as a last-resort backstop. The wrapper PRESERVES the inner provider's
+# amortized ``open_turn`` (the Claude Agent SDK's one warm CLI subprocess per turn), so the only
+# behavior it adds is the deadline. Tunable via ``LLM_EVAL_CALL_TIMEOUT`` (seconds; <=0 disables).
+
+_DEFAULT_LLM_CALL_TIMEOUT_S = 90.0
+
+
+def _resolve_call_timeout(call_timeout: float | None) -> float:
+    """Resolve the per-LLM-call deadline in seconds. An explicit ``call_timeout`` arg wins; else
+    the ``LLM_EVAL_CALL_TIMEOUT`` env var (a bad value is ignored); else the default. A value
+    ``<= 0`` disables the watchdog (the unbounded call relies on the 300s test-level backstop)."""
+    if call_timeout is not None:
+        return call_timeout
+    env = os.getenv("LLM_EVAL_CALL_TIMEOUT")
+    if env:
+        try:
+            return float(env)
+        except ValueError:
+            pass
+    return _DEFAULT_LLM_CALL_TIMEOUT_S
+
+
+class _TimeoutTurn(ProviderTurn):
+    """Wraps a :class:`ProviderTurn` so every ``chat()`` step is bounded by ``timeout_s``.
+    Delegates open/close to the inner turn unchanged (the SDK's warm-subprocess lifecycle)."""
+
+    def __init__(self, inner: ProviderTurn, timeout_s: float):
+        self._inner = inner
+        self._timeout_s = timeout_s
+
+    async def __aenter__(self) -> _TimeoutTurn:
+        await self._inner.__aenter__()
+        return self
+
+    async def __aexit__(self, *exc: Any) -> bool:
+        return await self._inner.__aexit__(*exc)
+
+    async def chat(self, messages, *, on_text=None):
+        async with asyncio.timeout(self._timeout_s):
+            return await self._inner.chat(messages, on_text=on_text)
+
+
+class _PerCallTimeoutProvider(LLMProvider):
+    """Provider wrapper giving every LLM call its own deadline WITHOUT losing the inner
+    provider's amortized turn. Duck-typed: the loop's ``open_provider_turn`` finds ``open_turn``
+    here and gets a timeout-wrapped turn over whatever the inner provider would have used (its
+    own warm-subprocess turn, or a plain StatelessTurn). The bare ``chat()`` is there only for
+    completeness / direct callers — the agent loop always goes through ``open_turn``."""
+
+    def __init__(self, inner: Any, timeout_s: float):
+        self._inner = inner
+        self._timeout_s = timeout_s
+
+    async def chat(self, *, system, messages, tools, cache_key=None) -> AssistantTurn:
+        async with asyncio.timeout(self._timeout_s):
+            return await self._inner.chat(
+                system=system, messages=messages, tools=tools, cache_key=cache_key)
+
+    def open_turn(self, *, system, tools, cache_key=None) -> ProviderTurn:
+        inner_turn = open_provider_turn(self._inner, system=system, tools=tools, cache_key=cache_key)
+        return _TimeoutTurn(inner_turn, self._timeout_s)
 
 
 # ---- capturing runner --------------------------------------------------------
@@ -245,12 +320,19 @@ async def run_flow(
     provider: LLMProvider | None = None,
     approve=None,
     simulate: bool = False,
+    call_timeout: float | None = None,
 ) -> FlowRun:
     """Run one flow through the real agent loop in a hermetic sandbox.
 
     ``provider`` defaults to a :class:`ScriptedProvider` replaying ``flow.turns`` (the
     deterministic path). Pass a real provider for the live eval. ``approve`` is a sync
     ``(kind, payload) -> bool``; defaults to approving everything.
+
+    ``call_timeout`` bounds EACH live LLM call (seconds) via the per-call watchdog so one hung
+    call fails the flow fast instead of stalling to the test backstop — see
+    :class:`_PerCallTimeoutProvider`. It applies ONLY when a real ``provider`` is supplied (the
+    scripted/deterministic gate path never hangs and is left exactly as-is); ``None`` resolves
+    from ``LLM_EVAL_CALL_TIMEOUT`` or the default. The scripted path is byte-for-byte unchanged.
 
     ``simulate=True`` turns on the app's SIMULATE mode for this run: the system prompt gains
     the SIMULATE_NOTE (the agent is told to walk the WHOLE workflow end-to-end without stopping
@@ -288,6 +370,13 @@ async def run_flow(
 
     if provider is None:
         provider = ScriptedProvider(flow.turns)
+    else:
+        # Real provider (the live eval): give every LLM call a fail-fast deadline so one hung
+        # call can't stall the flow up to the 300s test backstop. The scripted provider above
+        # never hangs, so it is deliberately left unwrapped — the deterministic gate is unchanged.
+        timeout_s = _resolve_call_timeout(call_timeout)
+        if timeout_s > 0:
+            provider = _PerCallTimeoutProvider(provider, timeout_s)
     if approve is None:
         approve = lambda kind, payload: True  # noqa: E731
 
@@ -322,11 +411,23 @@ async def run_flow(
     approved_argvs = [r["payload"].get("argv") for r in approval_requests if r["kind"] == "command"]
     commands: list[CapturedCommand] = []
     for call in runner.calls:
-        d = allowlist.validate(call["argv"], catalog=cat)
+        argv = call["argv"]
+        # run_shell (the agent's always-on ad-hoc `bash -lc` surface) is governed by the
+        # read-only/mutating CLASSIFIER + approval gate, NOT the allowlist — which governs only the
+        # DEDICATED command tools (see app/tools/shell.py + app/tools/CLAUDE.md). Validating a
+        # run_shell command against the allowlist wrongly marks it "denied", which would trip the
+        # bypass check in gating_problems and falsely fail any LIVE flow where the real model
+        # improvises with run_shell. Classify it the way production does, so the SAME safety
+        # invariant (mutating ⇒ approval-gated; read-only ⇒ auto-run) still applies — correctly — to it.
+        if argv[:2] == ["bash", "-lc"] and len(argv) >= 3:
+            mode = classify_shell_command(argv[2])
+        else:
+            d = allowlist.validate(argv, catalog=cat)
+            mode = d.mode if d.allowed else "denied"
         commands.append(CapturedCommand(
-            argv=call["argv"],
-            mode=d.mode if d.allowed else "denied",
-            approved=call["argv"] in approved_argvs,
+            argv=argv,
+            mode=mode,
+            approved=argv in approved_argvs,
             cwd=call["cwd"],
         ))
 
@@ -441,6 +542,42 @@ def score_flow(run: FlowRun, flow) -> tuple[bool, list[str]]:
     if flow.expect_no_significant and run.significant:
         ok = False
         notes.append(f"expected nothing to run, but ran {[c.argv for c in run.significant]}")
+
+    # --- phase-group lazy-loading (token-budget mechanism) -----------------------------------
+    # A real model only ever sees the STARTER_KIT; to call any GROUPED tool it must FIRST call
+    # load_tools(['<group>']) — the loop then re-opens the turn with that group exposed. This
+    # scores that the live model navigates that extra step correctly. For a flow whose substance
+    # is a grouped TOOL choice (required_tools), the group(s) those tools live in must have been
+    # loaded. Per the chosen policy ("right group, extras allowed") loading an EXTRA group is NOT
+    # a failure — it's surfaced as a NOTE, because over-loading is exactly what re-inflates the
+    # resident tool schema the lazy-loading is meant to save, and the live eval is the only place
+    # that signal is observable. Only NEVER loading a needed group is a hard failure. (score_flow
+    # is the live-eval scorer only; the deterministic gate does not call it, and a scripted golden
+    # transcript may legitimately omit load_tools — dispatch ignores the exposed set there.)
+    loaded_groups = set(run.session.loaded_groups)
+    called_load_tools = any(tc["name"] == "load_tools" for tc in run.tool_calls)
+    needed_groups = {g for t in flow.required_tools if (g := _group_of(t))}
+    if needed_groups:
+        missing_groups = needed_groups - loaded_groups
+        if missing_groups:
+            ok = False
+            notes.append(
+                f"never loaded tool group(s) {sorted(missing_groups)} needed for "
+                f"{flow.required_tools} (loaded {sorted(loaded_groups) or 'none'}) — the model "
+                "did not call load_tools to reach them")
+        else:
+            notes.append(f"loaded the needed group(s) {sorted(needed_groups)} via load_tools")
+            extra = loaded_groups - needed_groups
+            if extra:
+                notes.append(
+                    f"NOTE: also loaded unneeded group(s) {sorted(extra)} — allowed, but each "
+                    "extra group re-inflates the resident tool schema the lazy-loading saves")
+    # Mechanism integrity (independent of any flow's expectations): groups don't load themselves,
+    # so if any group ended up loaded, load_tools MUST have been the thing that loaded it.
+    if loaded_groups and not called_load_tools:
+        ok = False
+        notes.append(f"group(s) {sorted(loaded_groups)} are loaded but load_tools was never "
+                     "called — phase-group mechanism regression")
 
     g = gating_problems(run)
     if g:

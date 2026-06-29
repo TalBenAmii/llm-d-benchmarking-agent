@@ -53,6 +53,16 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
   and `LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 pytest …` (simulate set) — error/safety flows are honest only live,
   multi-step DEPLOY walks only in simulate. ⚠️ In a worktree the gitignored `.env` is absent → the provider raises
   → every live test SKIPS silently; `cp <primary>/.env <worktree>/.env` first.
+  - **Non-pytest path** (use this when `pytest` is hook-blocked by hand): `scripts/validate_flows.py
+    --live` and `--simulate` drive the SAME harness/scoring without pytest — `LLM_EVAL_LIVE=1 python
+    scripts/validate_flows.py --simulate`. Still spends quota; still needs the worktree `.env`.
+  - **Per-call WATCHDOG** (`harness.py::_PerCallTimeoutProvider`): in a live run EACH LLM call has a
+    deadline (`LLM_EVAL_CALL_TIMEOUT`, default 90s; `<=0` disables) — a hung call becomes a clean
+    `error` event + fast flow failure instead of stalling to the 300s `pytest.mark.timeout` backstop.
+    Applies only when a REAL provider is passed; the scripted/deterministic gate is untouched.
+  - **`load_tools` group scoring** (`score_flow`): the live eval verifies the model loaded the
+    RIGHT tool group(s) for the grouped tools a flow requires; an EXTRA group is a NOTE (not a
+    failure), never loading a needed one IS a failure. Hermetic guards in `tests/flows/test_eval_harness.py`.
 - **Self-eval (`tests/eval/`)**: the LLM judge (`test_judge_live.py`) + bug-hunter
   (`test_bughunt_live.py`) share the SAME `LLM_EVAL_LIVE` switch (bughunt also needs `BUGHUNT=1`)
   and SPEND quota → never auto-run them. `make eval-shadow` is the always-safe hermetic entry
