@@ -281,6 +281,15 @@ from a successful `execute_llmdbenchmark` result (`execute.py` — the BR-v0.2 r
 rule #4), so the recurring per-step cache-read shrinks without touching the live working set.
 Reasoning effort/thinking are now bindable via the provider-neutral `LLM_EFFORT`/`LLM_THINKING`
 aliases (`config.py`); a fixed `LLM_THINKING=<N>` budget also bounds worst-case output spend.
+**Tool-defs trimmed + phase-grouped (resident-prefix cut):** the model-facing tool descriptions
+were surgically trimmed (`registry.py:_DESCRIPTIONS`, ~9.3K→7.7K tok — only detail duplicated in
+the `knowledge/` guide each points to was cut), and the tool schemas are now loaded on demand by
+GROUP (`registry.py:_TOOL_GROUPS` setup/run/analyze/advanced) — only the lean `STARTER_KIT` is
+resident until the model calls `load_tools(['<group>'])`, which the loop folds into
+`session.loaded_groups` and re-opens the turn so the group is callable the same step. Resident
+tool-defs on the early/planning steps drop ~17K→~5.4K tok (front-loaded; ≈break-even once a full
+deploy→run→analyze session has loaded every group). Generalizes the former `enable_advanced_tools`
+boolean into the group set. **Verify:** `pytest tests/test_phase_tiered_tools.py`.
 
 ---
 

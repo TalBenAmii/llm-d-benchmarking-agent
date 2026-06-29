@@ -233,22 +233,28 @@ provided to you as a "[live catalog snapshot …]" message at the start of the c
 appear there — never invent a spec/harness/workload name."""
 
 
-# BYTE-STABLE. Tells the model that the advanced/late-phase tools are hidden by default and how to
-# reveal them (call enable_advanced_tools). This keeps the fat advanced schemas (~9k tokens) out of
-# the default tool list WITHOUT the model mistaking the lean list for "I can't do that". The unlock
-# is model-driven (not a phase gate) so it works from ANY entry point — an already-running stack, a
-# pile of prior results, or a reproduce request — with no in-session deploy. Keep the tool names
-# here in sync with registry.py::_ADVANCED_TOOLS (a test enforces it).
-ADVANCED_TOOLS_NOTE = """\
-# Advanced tools (revealed on demand)
-To keep your tool list lean, the advanced/late-phase tools are NOT shown by default: config sweeps
-(orchestrate_sweep), autotuning (autotune_search), design-of-experiments (generate_doe_experiment),
-cross-run aggregation + cross-harness comparison (aggregate_runs, compare_harness_runs), resilience
-drills (run_resilience_drill), run export/reproduce (export_run_bundle, reproduce_run), and scenario
-authoring (convert_guide_to_scenario). The MOMENT the user's request needs one of these — whether
-their stack is already up, they have prior results to analyze, or they want to reproduce a run —
-call enable_advanced_tools FIRST. The tools then appear in your list (this same turn) and you call
-the one you need. Never tell the user you cannot do these; just enable them."""
+# BYTE-STABLE. Tells the model that most tools are grouped + hidden by default and how to load a
+# group (call load_tools). This keeps the fat grouped schemas out of the default tool list WITHOUT
+# the model mistaking the lean list for "I can't do that". The unlock is model-driven (not a phase
+# gate) so it works from ANY entry point — an already-running stack, a pile of prior results, or a
+# reproduce request — with no in-session deploy. Keep the group→tool names here in sync with
+# registry.py::_TOOL_GROUPS (a test enforces it).
+GROUP_CATALOG_NOTE = """\
+# Loadable tool groups (load on demand with load_tools)
+To keep your tool list lean, only starter tools are shown by default; the rest are grouped and
+hidden. The MOMENT the user's request needs a grouped tool — whether their stack is already up,
+they have prior results to analyze, or they want to reproduce a run — call
+load_tools(groups=['<group>', ...]) FIRST. The group's tools then appear in your list (this same
+turn) and you call the one you need. Load more than one group at once when the task spans them.
+Never tell the user you cannot do something; just load the group and do it. The groups are:
+- setup (deploy & pre-flight): check_capacity, advise_accelerators, ensure_repos, run_setup,
+  write_and_validate_config, provision_hf_secret, check_endpoint_readiness, discover_stack
+- run (execute & monitor a benchmark): execute_llmdbenchmark, orchestrate_benchmark_run,
+  observe_run_metrics, cancel_run, manage_orchestrated_runs
+- analyze (results): locate_and_parse_report, analyze_results, compare_reports, result_history
+- advanced (power features): orchestrate_sweep, autotune_search, generate_doe_experiment,
+  run_resilience_drill, export_run_bundle, reproduce_run, aggregate_runs, compare_harness_runs,
+  convert_guide_to_scenario"""
 
 
 def build_system_prompt(ctx: ToolContext) -> str:
@@ -263,9 +269,9 @@ def build_system_prompt(ctx: ToolContext) -> str:
     parts = [ROLE, HARD_RULES]
     parts.extend(_knowledge_sections(ctx))
     parts.append(CATALOG_POINTER)
-    # Byte-stable: present every turn (the TOOL LIST changes when the model enables advanced tools;
-    # this note explaining how to do that does not), so it never perturbs prefix caching.
-    parts.append(ADVANCED_TOOLS_NOTE)
+    # Byte-stable: present every turn (the TOOL LIST changes when the model loads a group; this note
+    # explaining how to do that does not), so it never perturbs prefix caching.
+    parts.append(GROUP_CATALOG_NOTE)
     # Config-stable (constant for the whole process), so it does not perturb prefix caching.
     if ctx.settings.simulate:
         parts.append(SIMULATE_NOTE)

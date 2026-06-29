@@ -224,5 +224,15 @@ class SuggestNextStepsInput(BaseModel):
     )
 
 
-class EnableAdvancedToolsInput(BaseModel):
-    """No arguments — calling the tool IS the request to reveal the advanced tool set."""
+class LoadToolsInput(BaseModel):
+    """Which tool GROUP(s) to load on demand. The literal group names are kept in sync with
+    ``registry._TOOL_GROUPS`` by a test."""
+
+    groups: list[Literal["setup", "run", "analyze", "advanced"]] = Field(
+        ...,
+        description="Tool group(s) to load for the rest of the session — 'setup' (deploy & "
+                    "pre-flight), 'run' (execute & monitor a benchmark), 'analyze' (results), "
+                    "'advanced' (power features). Their tools become callable THIS same turn. "
+                    "e.g. ['run'] or ['setup','run'].",
+        min_length=1,
+    )

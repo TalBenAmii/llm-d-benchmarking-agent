@@ -165,15 +165,16 @@ class AgentLoop:
         # (~3s init each) — see app/llm/agent_sdk_provider.py. Other providers (and the test fakes)
         # transparently get a stateless per-step chat() with identical behavior.
         #
-        # The exposed tool set can change ONCE mid-turn: when the model calls enable_advanced_tools
-        # the loop flips session.advanced_tools_enabled, and we re-open the provider turn with the
-        # advanced tools so they are callable on the very next step (no dead turn). The SDK binds
-        # tools at connect, so a changed set needs a fresh turn; this re-open happens at most once
-        # per session. The step budget (MAX_STEPS) and the running counters span all re-opens.
+        # The exposed tool set can change mid-turn: when the model calls load_tools the loop folds
+        # the requested group(s) into session.loaded_groups, and we re-open the provider turn with
+        # the now-larger set so the group's tools are callable on the very next step (no dead turn).
+        # The SDK binds tools at connect, so a changed set needs a fresh turn; this re-open happens
+        # once per distinct load_tools call (typically 2-3 across a deploy→run→analyze session). The
+        # step budget (MAX_STEPS) and the running counters span all re-opens.
         done = False
         while not done:
-            exposed_advanced = session.advanced_tools_enabled
-            tools = tool_definitions(include_advanced=exposed_advanced)
+            exposed_groups = frozenset(session.loaded_groups)
+            tools = tool_definitions(loaded=exposed_groups)
             async with open_provider_turn(
                 self._provider, system=system, tools=tools, cache_key=session.id
             ) as agent_turn:
@@ -204,9 +205,9 @@ class AgentLoop:
                     if step.should_break:
                         done = True
                         break
-                    # Model just unlocked the advanced tools: leave the inner loop so the outer
-                    # one re-opens the provider turn with the expanded set (same user turn).
-                    if session.advanced_tools_enabled != exposed_advanced:
+                    # Model just loaded a tool group: leave the inner loop so the outer one
+                    # re-opens the provider turn with the expanded set (same user turn).
+                    if frozenset(session.loaded_groups) != exposed_groups:
                         break
 
         trace.event("turn_end", tool_calls=tool_calls_made, llm_calls=calls)
@@ -359,12 +360,13 @@ class AgentLoop:
                     if plan and not session.namespace:
                         session.namespace = plan.get("namespace")
 
-                # The model asked to reveal the advanced tool set. Flip the (persisted) session
-                # flag; run_turn detects the change between steps and re-opens the provider turn
-                # with the expanded tool list, so the advanced tools are callable on the very next
-                # step of THIS turn (registry.tool_definitions(include_advanced=...)).
-                if tc.name == "enable_advanced_tools":
-                    session.advanced_tools_enabled = True
+                # The model asked to load tool group(s). Fold them into the (persisted) session
+                # set; run_turn detects the change between steps and re-opens the provider turn with
+                # the expanded tool list, so the group's tools are callable on the very next step of
+                # THIS turn (registry.tool_definitions(loaded=...)). The handler validated the group
+                # names against LoadToolsInput and echoes them back in result["loaded"].
+                if tc.name == "load_tools" and isinstance(result, dict):
+                    session.loaded_groups.update(result.get("loaded") or [])
 
                 log.info("tool.call.result", extra={
                     "tool_call_id": tc.id,

@@ -8,7 +8,7 @@ and the model's reasoning — **never** in `if/elif` here.
 `build_system_prompt()` (in `prompt.py`) must return a **byte-identical** prefix across
 turns so the provider prompt-cache keeps hitting (first turn = cache write, later turns =
 ~10% cache reads). The cached prefix = `ROLE` + `HARD_RULES` + inlined `CORE_KNOWLEDGE` +
-on-demand knowledge index + `CATALOG_POINTER` + `ADVANCED_TOOLS_NOTE` (+ conditional `SIMULATE_NOTE`).
+on-demand knowledge index + `CATALOG_POINTER` + `GROUP_CATALOG_NOTE` (+ conditional `SIMULATE_NOTE`).
 
 **Anything that varies per turn must NOT go in the prefix.** The live catalog snapshot and
 the environment pre-probe are injected as **synthetic per-turn user messages** (`loop.py`
@@ -23,23 +23,26 @@ prefix" + "catalog injected exactly once".
   via `read_knowledge("<topic>")`. Adding a file to CORE inflates **every** call — see
   `knowledge/CLAUDE.md` for the cost rule. Don't add to CORE casually (`key_docs.yaml` is
   deliberately NOT in CORE — `fetch_key_docs` already delivers its content live).
-- **Advanced tools revealed on demand** (`loop.py` + `registry.tool_definitions(include_advanced=...)`):
-  the heavy late-phase tool schemas (`registry._ADVANCED_TOOLS`) are hidden by default (~9k tokens of
-  schema) and revealed only when the model calls `enable_advanced_tools` (which flips the persisted
-  `session.advanced_tools_enabled`). The unlock is MODEL-DRIVEN, not a phase gate — a user can enter
+- **Phase-group tools loaded on demand** (`loop.py` + `registry.tool_definitions(loaded=...)`):
+  most tool schemas ride in the cached prefix on EVERY step, so only the `registry.STARTER_KIT` is
+  shown by default; the rest are in named groups (`registry._TOOL_GROUPS`: setup/run/analyze/
+  advanced) hidden until the model calls `load_tools(['<group>'])` (which folds the group(s) into the
+  persisted `session.loaded_groups`). The unlock is MODEL-DRIVEN, not a phase gate — a user can enter
   directly at the sweep/analyze/reproduce phase with no in-session deploy, so only the model reliably
-  knows when one is needed. `run_turn` detects the flip between steps and RE-OPENS the provider turn
-  with the expanded set (the tool list is part of the provider cache key, so a changed set needs a
-  fresh turn) so the advanced tools are callable the SAME turn; re-open happens at most once per
-  session. `prompt.ADVANCED_TOOLS_NOTE` tells the model how/when; keep it and `_ADVANCED_TOOLS` in
-  sync (a bidirectional test enforces it). Mechanism only — capability scoping, no behavioural judgment.
+  knows which group a request needs. `run_turn` detects the set change between steps and RE-OPENS the
+  provider turn with the expanded set (the tool list is part of the provider cache key, so a changed
+  set needs a fresh turn) so the group's tools are callable the SAME turn; re-open happens once per
+  distinct `load_tools` call (typically 2-3/session). `prompt.GROUP_CATALOG_NOTE` tells the model the
+  groups + how to load; keep it and `_TOOL_GROUPS` in sync (a bidirectional test enforces it), and
+  `LoadToolsInput`'s `Literal` group names too. Mechanism only — capability scoping, no judgment.
 - **Compaction** (`context_mgmt.py`): old tool results are compacted to save context. Only
   mutate content strings — never break tool-call/result pairing, and keep the most recent
   messages (`_RECENT_MESSAGES_KEPT`).
-- **One-shot session state** (`session.py`): `catalog_injected`, `prewarmed`, and
-  `advanced_tools_enabled` are **persisted** (a resumed chat must not re-inject the catalog / env
-  pre-probe, and keeps the advanced tools unlocked); `env_snapshot` is **runtime-only** (deliberately
-  not persisted — a resume re-probes fresh).
+- **One-shot session state** (`session.py`): `catalog_injected`, `prewarmed`, and `loaded_groups`
+  are **persisted** (a resumed chat must not re-inject the catalog / env pre-probe, and keeps its
+  loaded tool groups); a pre-feature snapshot's old `advanced_tools_enabled: True` migrates to
+  `{"advanced"}` on load. `env_snapshot` is **runtime-only** (deliberately not persisted — a resume
+  re-probes fresh).
 
 ## Key files
 - `loop.py` — the turn loop: LLM call → tool dispatch (approval gating) → result feedback.

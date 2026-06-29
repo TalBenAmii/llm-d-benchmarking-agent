@@ -41,11 +41,11 @@ the authoritative list. Judgment about *what to do with* results lives in `knowl
 
 ## Tool index (35 flat files → 38 tools, grouped by workflow phase)
 The files sit flat; this is the map. `registry.py` is the source of truth for the registered set/order.
-The fattest tool schemas (`registry._ADVANCED_TOOLS`: sweeps/autotune/DOE/resilience/run-export+
-reproduce/cross-run+harness compare/scenario authoring) are HIDDEN by default and revealed only when
-the model calls `advanced.py` (enable_advanced_tools) — see `app/agent/CLAUDE.md`.
+Most tool schemas are grouped (`registry._TOOL_GROUPS`: setup/run/analyze/advanced) and HIDDEN by
+default; only the `registry.STARTER_KIT` is shown. The model loads a group with `tool_loader.py`
+(load_tools) when a request needs it — see `app/agent/CLAUDE.md`.
 - **Probe & discover** — `probe.py` (probe_environment · list_catalog · advise_accelerators) · `workload_profile.py` (inspect_workload_profile · estimate_run_duration) · `discover.py` (discover_stack) · `capacity.py` (check_capacity) · `check_endpoint_readiness` lives in `app/readiness/`.
-- **Knowledge & advice** — `knowledge_access.py` (read_knowledge · search_knowledge · read_repo_doc · fetch_key_docs) · `convert_guide.py` (convert_guide_to_scenario) · `suggest.py` (suggest_next_steps) · `advanced.py` (enable_advanced_tools — reveals the hidden advanced set).
+- **Knowledge & advice** — `knowledge_access.py` (read_knowledge · search_knowledge · read_repo_doc · fetch_key_docs) · `convert_guide.py` (convert_guide_to_scenario) · `suggest.py` (suggest_next_steps) · `tool_loader.py` (load_tools — loads a hidden tool group on demand).
 - **Plan, config & setup** — `plan.py` (propose_session_plan) · `repos.py` (ensure_repos · run_setup) · `config_artifact.py` (write_and_validate_config) · `doe.py` (generate_doe_experiment) · `hf_secret.py` (provision_hf_secret).
 - **Run & orchestrate** — `execute.py` (execute_llmdbenchmark) · `shell.py` (run_shell — the agent's always-on ad-hoc command tool) · `orchestrate.py` (orchestrate_benchmark_run · orchestrate_sweep) · `observe.py` (observe_run_metrics) · `cancel.py` (cancel_run) · `manage_runs.py` (manage_orchestrated_runs) · `resilience.py` (run_resilience_drill).
 - **Analyze & results** — `report_locate.py` (locate_and_parse_report) · `analyze.py` (analyze_results) · `compare.py` (compare_reports) · `multiharness.py` (compare_harness_runs) · `history.py` (result_history) · `aggregate_runs.py` (aggregate_runs) · `autotune.py` (autotune_search) · `reproducibility.py` (export_run_bundle · reproduce_run).
