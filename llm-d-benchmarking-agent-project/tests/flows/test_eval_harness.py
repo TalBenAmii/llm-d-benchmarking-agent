@@ -127,10 +127,9 @@ async def test_abandon_after_kill_never_hangs_on_an_uncancellable_task():
 
     async def _uncancellable_hang():
         while not stop:
-            try:
+            # swallow cancellation — mimics the SDK read that task.cancel() can't unwedge
+            with contextlib.suppress(asyncio.CancelledError):
                 await asyncio.sleep(0.02)
-            except asyncio.CancelledError:
-                pass  # swallow cancellation — mimics the SDK read that task.cancel() can't unwedge
 
     task = asyncio.ensure_future(_uncancellable_hang())
     await asyncio.sleep(0)  # let it start
