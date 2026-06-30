@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import shutil
 import signal
 import subprocess
 from dataclasses import dataclass
@@ -450,6 +451,27 @@ def _materialize_repo_state(repos_dir: Path, state: str) -> None:
         (bench / ".venv" / "pyvenv.cfg").write_text("version = 3.11.0\n")
 
 
+def _materialize_real_bench_config(repos_dir: Path) -> None:
+    """Copy the REAL ``llm-d-benchmark`` ``config/`` tree into the (otherwise fake) bench repo so the
+    LIVE eval's capacity tools (``plan_config_for_spec`` → ``check_capacity``) read true
+    defaults/scenarios and REACH the canned bridge, instead of erroring on a missing
+    ``config/templates/values/defaults.yaml``.
+
+    This makes the live sandbox match every gated/capacity flow's documented promise — "in LIVE eval
+    the REAL repo is present, so check_capacity reaches the bridge". The real repo is resolved via
+    ``REPOS_DIR`` (the isolated runner points it at the primary checkout); absent it, this is a no-op
+    and the flow keeps the fake skeleton. We COPY (never symlink) the config tree so the harness /
+    agent can never write back into the READ-ONLY upstream repo."""
+    src = Settings(_env_file=None).bench_repo / "config"     # honors REPOS_DIR env
+    if not src.is_dir():
+        return  # no real repo on this box (e.g. a bare CI runner) → leave the fake skeleton as-is
+    dst = repos_dir / BENCH_REPO_NAME / "config"
+    if dst.exists():
+        return  # already materialized (idempotent)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst)
+
+
 # ---- the entry point ---------------------------------------------------------
 
 async def run_flow(
@@ -484,6 +506,13 @@ async def run_flow(
     """
     repos_dir = tmp_path / "repos"
     _materialize_repo_state(repos_dir, flow.repo_state)
+    # LIVE-eval fidelity (real provider only): a "present" repo state must carry the REAL config tree
+    # so capacity tools reach the canned bridge instead of erroring on a missing defaults.yaml — what
+    # the gated/capacity flows already document ("in LIVE eval the REAL repo is present"). The
+    # scripted golden path (provider is None) is left byte-for-byte unchanged, and an "absent" repo
+    # state (testing the clone) is never pre-populated.
+    if provider is not None and flow.repo_state != "absent":
+        _materialize_real_bench_config(repos_dir)
 
     settings = Settings(
         _env_file=None,                       # fully hermetic — ignore the developer's .env
