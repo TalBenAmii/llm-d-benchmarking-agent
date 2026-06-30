@@ -88,6 +88,13 @@ def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
 
 
 class CommandRunner:
+    # True for a runner that spawns REAL subprocesses against the host. The SIMULATE caller-gate
+    # (CommandExecutor.run_command / shell.run_shell) reads this to decide whether it must
+    # pre-empt a MUTATING command with a synthetic no-op: only a real executor needs pre-empting.
+    # The no-op test fakes (SimRunner, CaptureRunner) set this False — they already make every
+    # command safe, so the caller calls them unchanged (preserving their recording/canned output).
+    runs_real_subprocess: bool = True
+
     def __init__(
         self,
         repo_paths: dict[str, Path],
@@ -325,21 +332,52 @@ class CommandRunner:
         )
 
 
-class SimRunner(CommandRunner):
-    """Dry-run runner: never spawns a process and never resolves paths, so a missing
-    venv/repos can't raise. Every command is a synthetic ``exit_code=0`` success that
-    produces NO captured output — mirroring the test harness's ``CaptureRunner`` (and a
-    real command that ran but printed nothing). It carries no command-specific knowledge.
+def simulated_run_result(
+    logical_argv: list[str],
+    *,
+    cwd: str | Path | None = None,
+    timeout: float | None = None,
+) -> RunResult:
+    """The synthetic success a SIMULATED (no-op) command returns: exit 0, zero duration, and
+    EMPTY captured output. The empty output is deliberate — it mirrors the canonical test fake
+    (``CaptureRunner``) and a real command that printed nothing, so an output-PARSING consumer
+    (e.g. ``probe_environment``'s ``_probe_kind``, which reads each stdout line as a cluster
+    NAME) never mistakes a synthetic banner for real DATA. The "this was simulated" signal rides
+    the ``command`` event's ``simulated`` flag + the SIMULATE_NOTE prompt cue, never the captured
+    text. Used by the caller-gate for a MUTATING command under SIMULATE (it never reaches a real
+    process) and by :class:`SimRunner` (which no-ops everything)."""
+    return RunResult(
+        exit_code=0,
+        duration_s=0.0,
+        real_argv=list(logical_argv),
+        cwd=str(cwd) if cwd else None,
+        output="",
+        lines=[],
+        timed_out=False,
+        deadline_s=timeout,
+    )
 
-    Why empty output (not a "[simulate] would run …" banner): some read-only consumers parse
-    ``RunResult.output`` as DATA, not just for display — e.g. ``probe_environment``'s
-    ``_probe_kind`` treats each non-"No kind clusters" stdout line as a real cluster NAME. A
-    synthetic banner baked into ``output`` therefore fabricated structured results in SIMULATE
-    mode (phantom kind clusters, a bogus current-context, etc.) — a success-shaped lie no
-    prompt cue can undo once it lands in a tool result. An empty output keeps SIMULATE-mode
-    consumers behaving exactly like the hermetic ``CaptureRunner`` flow tests. The "this was
-    simulated" signal rides the ``command`` event's ``simulated`` flag and the SIMULATE_NOTE
-    prompt cue, never the captured output."""
+
+class SimRunner(CommandRunner):
+    """Fully-hermetic no-op runner for TESTS and the eval harness: never spawns a process and
+    never resolves paths, so a missing venv/repos can't raise. EVERY command — read-only OR
+    mutating — is a synthetic ``exit_code=0`` success with NO captured output. It carries no
+    command-specific knowledge.
+
+    Note the division of labour with PRODUCTION simulate: the live app wires the REAL
+    :class:`CommandRunner` even under ``SIMULATE=1`` (so READ-ONLY probes/greps run for real and
+    the agent gathers genuine context) and the caller-gate no-ops only MUTATING commands. This
+    fake instead no-ops EVERYTHING — what tests/eval want: a bare CI box with no cluster,
+    deterministic and side-effect-free. ``runs_real_subprocess = False`` tells the caller-gate
+    NOT to pre-empt a mutating command here (this fake already makes it safe), so output-recording
+    test runners observe every command unchanged.
+
+    Why EMPTY output (not a "[simulate] would run …" banner): some read-only consumers parse
+    ``RunResult.output`` as DATA — e.g. ``_probe_kind`` treats each stdout line as a real cluster
+    NAME — so a baked-in banner fabricated structured results (phantom kind clusters, a bogus
+    current-context). Empty output keeps such consumers behaving exactly like ``CaptureRunner``."""
+
+    runs_real_subprocess = False
 
     async def execute(
         self,
@@ -351,17 +389,7 @@ class SimRunner(CommandRunner):
         cwd: str | Path | None = None,
         extra_env: dict[str, str] | None = None,
     ) -> RunResult:
-        # ``extra_env`` is accepted for signature parity with CommandRunner.execute but never
-        # used here — SimRunner spawns no process, so there is no child env to overlay. No
-        # ``on_line`` lines are emitted: like CaptureRunner, a no-op with no output streams
-        # nothing, so a downstream parser never receives a synthetic line to misread.
-        return RunResult(
-            exit_code=0,
-            duration_s=0.0,
-            real_argv=list(logical_argv),
-            cwd=str(cwd) if cwd else None,
-            output="",
-            lines=[],
-            timed_out=False,
-            deadline_s=timeout,
-        )
+        # No process is spawned and no ``on_line`` lines are emitted: like CaptureRunner, a no-op
+        # with no output streams nothing, so a downstream parser never receives a synthetic line
+        # to misread. ``extra_env`` is accepted for signature parity but unused (no child env).
+        return simulated_run_result(logical_argv, cwd=cwd, timeout=timeout)

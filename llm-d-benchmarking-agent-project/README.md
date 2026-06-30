@@ -20,6 +20,7 @@ Prometheus/Grafana observability, and a one-command Helm/Kustomize deploy.
 
 - [Who this is for](#who-this-is-for)
 - [Quick start](#quick-start) — get it running in two commands
+- [Use it as an MCP server](#use-it-as-an-mcp-server) — drive it from Claude Code, Cursor, VS Code, Codex
 - [Your first benchmark](#your-first-benchmark) — a guided walkthrough
 - [How you talk to it](#how-you-talk-to-it) — the conversation loop
 - [Feature showcase](#feature-showcase) — *say this → the agent does that*, covering everything
@@ -83,6 +84,23 @@ cp .env.example .env          # set your provider + key
 pip install -e .              # or: uv pip install -e .
 uvicorn app.main:app --reload # open http://127.0.0.1:8000
 ```
+
+---
+
+## Use it as an MCP server
+
+Prefer to drive the agent from your own coding assistant instead of the web UI? It ships a
+standalone **MCP server** (`llm-d-bench`) that re-exposes its full toolset — **37 tools**, 5
+workflow prompts, and the knowledge base — to any MCP client (Claude Code, Claude Desktop, Cursor,
+VS Code, OpenAI Codex CLI). One interactive command installs it *and* wires up your client:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/install-mcp.sh)
+```
+
+(or clone first and run `./install-mcp.sh`). It runs over stdio on your machine; mutations are
+gated by your client's own approval prompt. Full showcase, per-client config, and the security
+model: [`app/mcp/README.md`](app/mcp/README.md).
 
 ---
 
@@ -255,10 +273,12 @@ whatever your kubeconfig points at).
 ### Simulate Mode
 
 Set `SIMULATE=1` in `.env` for a full dry run: the agent walks the **entire** workflow
-(probe → plan → standup → smoketest → run → report) but **executes nothing** — every command
-is a no-op returning synthetic success, per-command approvals are skipped (the upfront plan
-approval is kept), and a synthetic report is produced. The best way to *watch a guide
-end-to-end without touching a cluster.*
+(probe → plan → standup → smoketest → run → report) without deploying or benchmarking. The split
+is by command **kind** — **read-only** commands (probes, `grep`/`ls`/`cat`, `kubectl get`) run
+**for real** so the agent gathers genuine context, while **mutating** actions (standup/run/teardown,
+installs, `kubectl apply`, …) are announced but **no-opped** to synthetic success. Per-command
+approvals are skipped (the upfront plan approval is kept), and a synthetic report is produced. The
+best way to *watch a guide end-to-end without touching a cluster.*
 
 ### Observability
 

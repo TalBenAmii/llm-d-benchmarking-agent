@@ -46,7 +46,8 @@ llm-d-benchmarking-agent-project/
 │  ├─ observability/ 📁   dependency-free metrics + Prometheus exposition + structured logging / CoT trace
 │  ├─ llm/           📁   provider-agnostic LLM integration (anthropic / openai-compat / claude-agent-sdk)
 │  ├─ storage/       📁   persistence: history · provenance · autotune · share · retention/GC
-│  └─ web/           📁   pure, decorator-free HTTP/SSE helpers extracted from main
+│  ├─ web/           📁   pure, decorator-free HTTP/SSE helpers extracted from main
+│  └─ mcp/           📁   standalone MCP server (stdio) re-exposing tools/knowledge to external agents (python -m app.mcp)
 ├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here
 ├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
 ├─ deploy/               Helm chart + Kustomize (base/overlays) + observability manifests
@@ -68,7 +69,7 @@ no `app/knowledge/` package.
 - **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/UPSTREAM_REUSE_PATHS.md`
 - **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `CONTEXT.md`
 - **Full doc map + run-locally quickstart** → `docs/README.md`
-- **SIMULATE=1** — dry-run toggle (walk the whole workflow, execute nothing) → `CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
+- **SIMULATE=1** — dry-run toggle (walk the whole workflow; read-only commands run for real, mutations no-op) → `CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
 
 ## Capturing recurring conclusions (standing instruction to future-me)
 When you derive a conclusion you'd otherwise re-investigate later (env/build gotchas, locked decisions),

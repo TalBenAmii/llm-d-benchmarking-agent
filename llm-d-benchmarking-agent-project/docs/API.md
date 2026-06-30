@@ -184,7 +184,7 @@ Every tool call is validated against its Pydantic input model before the handler
 
 | Tool | Key inputs | What it does |
 |---|---|---|
-| `suggest_next_steps` | `options` (each `{label, prompt}`), optional lead-in | Offer 2-4 concrete next steps as **clickable buttons** instead of a prose "want me to…?". The UI renders them as floating suggestion pills; clicking one submits its `prompt` as the user's next message. The agent's **turn-ending** discretionary follow-up — **not** an approval gate (mutations still go through `propose_session_plan`/`run_shell`). Offer cadence: `knowledge/conversation_style.md`. |
+| `suggest_next_steps` | `options` (each `{label, prompt}`), optional lead-in | Offer concrete next steps (the agent chooses how many fit — up to 6) as **clickable buttons** instead of a prose "want me to…?". The UI renders them as floating suggestion pills; clicking one submits its `prompt` as the user's next message. The agent's **turn-ending** discretionary follow-up — **not** an approval gate (mutations still go through `propose_session_plan`/`run_shell`). Offer cadence: `knowledge/conversation_style.md`. |
 
 ---
 

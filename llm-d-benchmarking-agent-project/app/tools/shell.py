@@ -28,6 +28,7 @@ from typing import Any
 
 from app.observability import instrument
 from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.runner import simulated_run_result
 from app.tools.context import ApprovalRejected, ToolContext, ToolError
 
 # Shell tokens that, appearing anywhere, mean the command WRITES — a redirect to a file or a
@@ -53,10 +54,17 @@ _WRITE_SUBCOMMANDS = {
 
 # Plain read-only executables (no subcommand grammar). `xargs` is deliberately NOT here — its
 # behavior depends on the sub-command it runs, so we treat a bare `xargs` as MUTATING to be safe.
+# `find` and `sort` are also NOT here even though they are read-only in their common form: each has
+# a WRITE form (find -delete/-exec…, sort -o FILE) that must be MUTATING, so they are arg-inspected
+# in _segment_is_read_only (like `sed -n`) instead of being unconditionally read-only.
 _READ_ONLY_EXES = frozenset({
-    "ls", "cat", "head", "tail", "grep", "egrep", "rg", "find", "echo", "pwd", "whoami",
+    "ls", "cat", "head", "tail", "grep", "egrep", "rg", "echo", "pwd", "whoami",
     "env", "printenv", "which", "df", "du", "ps", "top", "uname", "date", "stat", "wc",
-    "file", "hostname", "id", "uptime", "free", "sort", "uniq", "cut", "awk", "jq", "yq",
+    "file", "hostname", "id", "uptime", "free", "uniq", "cut", "awk", "jq", "yq",
+})
+# `find` ACTIONS that run a command or write a file — their presence makes a `find` MUTATING.
+_FIND_WRITE_ACTIONS = frozenset({
+    "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls",
 })
 # Read-only subcommands of binaries that ALSO have mutating subcommands.
 _READ_ONLY_SUBCOMMANDS = {
@@ -97,6 +105,17 @@ def _segment_is_read_only(seg: list[str]) -> bool:
     if exe == "sed":
         # `sed -n` (no in-place) is a read-only printer; any other sed may edit in place (-i).
         return "-n" in seg[1:] and not any(a.startswith("-i") for a in seg[1:])
+    if exe == "find":
+        # A plain `find` SEARCHES (read-only); a write/exec action (-delete / -exec… / -fprint…)
+        # makes it run a command or write a file → MUTATING.
+        return not any(a in _FIND_WRITE_ACTIONS for a in seg[1:])
+    if exe == "sort":
+        # `sort -o FILE` / `-oFILE` / `--output[=]FILE` WRITES a file; a plain sort just prints.
+        return not any(
+            a == "-o" or (a.startswith("-o") and not a.startswith("--"))
+            or a == "--output" or a.startswith("--output=")
+            for a in seg[1:]
+        )
     if exe in _READ_ONLY_EXES:
         return True
     sub_ro = _READ_ONLY_SUBCOMMANDS.get(exe)
@@ -180,8 +199,24 @@ async def run_shell(
     requires_approval = mode == MUTATING
     argv = ["bash", "-lc", command]
 
-    # Mutating/unknown commands gate on approval BEFORE running (skipped in simulate, where
-    # commands are harmless no-ops — mirroring the allowlisted executor).
+    # SIMULATE: a MUTATING ad-hoc command is ANNOUNCED but never executed when the wired runner
+    # is a real executor (production) — synthetic no-op, so the user sees what WOULD run while
+    # nothing mutates. READ-ONLY commands (grep/ls/cat/kubectl get/…) fall through and run for
+    # real, so the agent still gathers genuine context. (No-op test fakes — runs_real_subprocess
+    # =False — are called unchanged.)
+    if ctx.settings.simulate and mode == MUTATING and ctx.runner.runs_real_subprocess:
+        await _emit_command(ctx, argv=argv, mode=mode, auto_run=False)
+        res = simulated_run_result(argv)
+        _record_metric(mode=mode, auto_run=False, duration_s=res.duration_s,
+                       exit_code=res.exit_code, timed_out=res.timed_out)
+        return {
+            "command": command, "argv": list(argv), "mode": mode, "auto_run": False,
+            "exit_code": res.exit_code, "duration_s": res.duration_s,
+            "timed_out": res.timed_out, "stdout_tail": res.output[-2500:],
+        }
+
+    # Mutating/unknown commands gate on approval BEFORE running (in simulate the mutating no-op
+    # above already returned, so this fires only when the command will really execute).
     if requires_approval and not ctx.settings.simulate:
         if ctx.request_approval is None:
             raise ToolError("approval required but no approver is wired")
@@ -230,7 +265,9 @@ async def _emit_command(ctx: ToolContext, *, argv: list[str], mode: str, auto_ru
             "text": " ".join(argv),
             "mode": mode,
             "auto_run": auto_run,
-            "simulated": ctx.settings.simulate,
+            # True only for a SIMULATED no-op (mutating-under-SIMULATE); a read-only command runs
+            # for real even under SIMULATE, so the UI must not badge it "SIMULATED".
+            "simulated": ctx.settings.simulate and mode == MUTATING,
             "tool_call_id": ctx.current_tool_call_id,
         })
 

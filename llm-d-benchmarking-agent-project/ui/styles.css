@@ -537,6 +537,9 @@ pre.console {
      `overflow-wrap: anywhere` wraps long unbroken tokens so they can't widen the 900px column. */
   white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0;
 }
+/* A tool that ran no commands (e.g. a knowledge/doc read) starts with an empty console — don't
+   render an empty box for it. It un-hides the moment a `$ command` or output line streams in. */
+pre.console:empty { display: none; }
 pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; margin: 7px 0 0; }
 
 /* ── Approval / plan card ─────────────────────────────────────────────── */
@@ -580,7 +583,6 @@ pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wra
    matching the design mock's suggestion buttons, so they read as one consistent affordance. */
 .suggestion,
 .chip,
-.next-step-chip,
 .report-action {
   display: inline-flex; align-items: center; gap: 6px;
   font: 500 13px/1.2 var(--serif); padding: 8px 14px; border-radius: 999px; cursor: pointer;
@@ -590,7 +592,6 @@ pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wra
 }
 .suggestion:hover,
 .chip:hover,
-.next-step-chip:hover,
 .report-action:hover {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 16%, var(--panel-2));
@@ -598,7 +599,6 @@ pre.json { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wra
 }
 .suggestion:active,
 .chip:active,
-.next-step-chip:active,
 .report-action:active { transform: scale(.97); }
 
 /* ── Split view: live resource side panel (backend-streamed during a run) ──
@@ -828,8 +828,6 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
   letter-spacing: .05em; margin-bottom: 7px;
 }
 .next-steps-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-/* Inherits the shared .suggestion look above; only the leading arrow is distinctive. */
-.next-step-chip::before { content: "→ "; color: var(--accent); }
 
 /* ── Buttons ──────────────────────────────────────────────────────────── */
 button {

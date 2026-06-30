@@ -83,8 +83,9 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
-    # Simulate (dry run): drive the whole workflow but execute nothing — every command
-    # is a no-op returning synthetic success and per-command approvals are skipped.
+    # Simulate (dry run): drive the whole workflow without deploying/benchmarking. READ-ONLY
+    # commands run for real (genuine context); MUTATING commands no-op to synthetic success and
+    # their per-command approvals are skipped. Gated in CommandExecutor/run_shell, not by the runner.
     simulate: bool = False
 
     # Default Kubernetes namespace stamped on every newly-created session — the sidebar
