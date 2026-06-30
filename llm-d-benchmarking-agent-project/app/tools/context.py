@@ -86,6 +86,14 @@ class ToolContext:
     # app/tools/knowledge_access.py). RUNTIME-ONLY (not persisted) — a resumed chat starts with an
     # empty set, so the first fetch in the new process always returns full content. Mechanism only.
     fetched_docs: set[str] = field(default_factory=set, repr=False)
+    # Per-session gated-model access verdicts: model_id -> {gated, authorized, gated_reason},
+    # recorded by check_capacity and read by the command guardrail (app/tools/gated_access.py) to
+    # REFUSE a standup/run/smoketest of a model the backend HF token can't pull — a safety gate
+    # like the approval gate, not judgment. RUNTIME-ONLY (not persisted), like fetched_docs: it
+    # lives for the session process; a resumed chat re-establishes it on its next check_capacity
+    # (the mandatory pre-flight before any standup). Overwriting an entry on re-check is how the
+    # block clears (authorized:false -> authorized:true). Mechanism only.
+    gated_access: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
     # Mid-turn user STEER queue (Claude-Code style). Any message the user types WHILE a turn is
     # running is dropped here by the WS handler (app/main.py): (a) mid-thinking — no gate open —
     # the message is simply queued; (b) type-instead-of-approve — the handler ALSO declines the

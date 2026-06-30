@@ -37,7 +37,9 @@ from app.capacity.planner import (
     merge_gated_access,
     plan_config_for_spec,
 )
+from app.dig import dig
 from app.tools.context import ToolContext, ToolError
+from app.tools.gated_access import record_capacity_verdict
 from app.tools.json_tail import parse_bridge_dict
 
 _REQUEST_FILENAME = "capacity_request.json"
@@ -106,12 +108,25 @@ async def check_capacity(
     # gated_access may be absent (legacy bridge) or None (no model id) — both leave the
     # verdict's gated/authorized/gated_reason at their None/"" defaults.
     merge_gated_access(verdict, bridge.get("gated_access"))
+    verdict_facts = verdict.as_dict()
+    # Record the gated-access verdict for the model just checked so the command guardrail can
+    # REFUSE deploying it while it's gated+unauthorized (mechanism — see app/tools/gated_access.py).
+    # Key by the model the agent explicitly checked (overrides['model']); fall back to the spec's
+    # resolved model name so a default-model check is also tracked.
+    checked_model = (overrides or {}).get("model") or dig(plan_config, "model", "name")
+    record_capacity_verdict(
+        ctx,
+        model=checked_model,
+        gated=verdict_facts.get("gated"),
+        authorized=verdict_facts.get("authorized"),
+        gated_reason=verdict_facts.get("gated_reason", ""),
+    )
     return {
         "spec": spec,
         "ran": True,
         "applied_overrides": applied,
         "enforced": enforce,
-        **verdict.as_dict(),
+        **verdict_facts,
         "note": _verdict_note(verdict),
         "gated_note": _GATED_NOTE,
     }
@@ -137,15 +152,26 @@ def _verdict_note(verdict: Any) -> str:
     )
 
 
-# A static *pointer* to the knowledge file — NOT the decision. The actual per-status
-# verdict wording (PUBLIC = no token needed/proceed; GATED+AUTHORIZED = proceed;
-# GATED+UNAUTHORIZED = "your HF token can't pull this; provision the secret via Phase 30")
-# lives in knowledge/capacity.md, never in an if/elif here. This text never branches on
-# the facts; it just routes the agent to where the judgment is written.
+# A static, NON-BRANCHING note attached to EVERY check_capacity result (gated or not) — it
+# does not read the facts in Python (no if/elif). It states the conditional rule the model
+# must apply, placed RIGHT NEXT TO the verdict so a model holding the gated/authorized facts
+# reads the hard-stop directive at the exact decision moment (the always-on HARD_RULE alone
+# proved insufficient for a flaky model). The full per-status wording (PUBLIC / GATED+
+# AUTHORIZED / GATED+UNAUTHORIZED) still lives in knowledge/capacity.md — this is the cue, not
+# a substitute for it. "capacity.md" must stay in the string (test_capacity_gated pins it).
 _GATED_NOTE = (
-    "Gated-model access facts (gated/authorized/gated_reason) are attached. Read the "
-    "'Gated-model access pre-flight' section of knowledge/capacity.md for the verdict "
-    "wording for PUBLIC vs GATED+AUTHORIZED vs GATED+UNAUTHORIZED before you stand up."
+    "Gated-model access facts (gated/authorized/gated_reason) are attached. APPLY THIS RULE "
+    "NOW, before any mutating step: IF gated is true AND authorized is false, this is a HARD "
+    "STOP — do NOT ensure_repos / run_setup / standup / run / smoketest. Read gated_reason and "
+    "act: if it says NO token is configured cluster-side, CALL the provision_hf_secret tool NOW "
+    "(it is approval-gated, so CALLING it IS how you propose it — the user consents at the "
+    "approval prompt; do NOT merely describe it in prose or defer it via suggest_next_steps, and "
+    "do NOT hand-roll a kubectl secret via run_shell), then RE-RUN check_capacity. If instead "
+    "gated_reason says the configured token merely LACKS access, do NOT provision — point the "
+    "user to huggingface.co/<model> to request access, then re-run. Proceed to standup ONLY once "
+    "a fresh check_capacity returns authorized true. If gated is false (public) or authorized is "
+    "true, just continue to the sizing verdict — say nothing about tokens. Full wording: the "
+    "'Gated-model access pre-flight' section of knowledge/capacity.md."
 )
 
 

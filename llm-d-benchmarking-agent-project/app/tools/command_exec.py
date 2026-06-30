@@ -26,6 +26,7 @@ from app.observability import instrument
 from app.security.allowlist import MUTATING, READ_ONLY, Decision
 from app.security.quota import QuotaExceeded
 from app.security.runner import RunResult, simulated_run_result
+from app.tools import gated_access
 from app.tools.context import ApprovalRejected, QuotaError, ToolError
 
 if TYPE_CHECKING:
@@ -169,6 +170,15 @@ class CommandExecutor:
         decision = ctx.allowlist.validate(argv, catalog=ctx.catalog_for_allowlist())
         if not decision.allowed:
             raise ToolError(f"command denied by allowlist: {decision.reason}")
+        # Gated-model access guardrail (a SAFETY gate, like the approval gate below): refuse to
+        # stand up / run / smoketest a model the backend HF token can't pull, once check_capacity
+        # has reported it gated+unauthorized. Mechanism enforcing a stated boundary on the
+        # bridge's own facts — see app/tools/gated_access.py. Fires before quota/approval so a
+        # blocked deploy never counts usage or prompts; only deploy subcommands are affected.
+        if decision.mode == MUTATING:
+            block = gated_access.gated_block(ctx, decision.argv)
+            if block is not None:
+                raise ToolError(gated_access.gated_block_message(*block))
         # Quota refusal happens BEFORE the approval prompt and before any execution, so an
         # over-quota command never even asks the user. Cap = DATA; counter = mechanism.
         self._enforce_quota(decision)
