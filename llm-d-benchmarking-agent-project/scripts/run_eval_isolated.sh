@@ -53,6 +53,12 @@ SUBSET=("$@")                               # optional explicit flow names; empt
 if [ -n "${PYTHON:-}" ]; then PY="$PYTHON"
 elif [ -x "$PROJ/.venv/bin/python" ]; then PY="$PROJ/.venv/bin/python"
 else PY="$(command -v python3 || command -v python)"; fi
+# Fail loudly NOW — an empty/unusable PY would otherwise run an empty command in flow_names and
+# masquerade as a misleading "no flows selected".
+if [ -z "${PY:-}" ] || ! { [ -x "$PY" ] || command -v "$PY" >/dev/null 2>&1; }; then
+  echo "ERROR: no usable python interpreter — set PYTHON=/path/to/python (worktrees have no local .venv)" >&2
+  exit 4
+fi
 
 REPOS_DIR="${REPOS_DIR:-$(cd "$PROJ/.." && pwd)}"
 LOG="${EVAL_LOG_DIR:-$PROJ/workspace/eval-logs}"
@@ -103,7 +109,14 @@ run_one() {
     "$PY" -u scripts/validate_flows.py --flow "$flow" --"$MODE" >"$flog" 2>&1
 }
 
-mapfile -t FLOWS < <(flow_names)
+# Capture selection separately so a CRASH in flow_names (e.g. a broken `tests.flows.flows` import)
+# surfaces as an error — process substitution into mapfile would discard its exit code and the empty
+# output would look like a legitimate "no flows selected".
+if ! sel="$(flow_names)"; then
+  echo "ERROR: flow selection failed — see the traceback above" >&2; exit 4
+fi
+mapfile -t FLOWS < <(printf '%s\n' "$sel")
+[ "${#FLOWS[@]}" -eq 1 ] && [ -z "${FLOWS[0]}" ] && FLOWS=()   # empty selection -> empty array, not [""]
 n=${#FLOWS[@]}
 if [ "$n" -eq 0 ]; then echo "no flows selected for mode=$MODE" >&2; exit 3; fi
 echo "### ISOLATED $MODE run — $n flows, HARD=${HARD}s (-k ${GRACE}s), call=${LLM_EVAL_CALL_TIMEOUT}s flow=${LLM_EVAL_FLOW_TIMEOUT}s" | tee -a "$SUMMARY"
