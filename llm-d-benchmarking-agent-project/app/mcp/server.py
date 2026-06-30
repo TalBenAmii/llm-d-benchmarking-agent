@@ -59,9 +59,10 @@ def build_server(settings: Settings | None = None) -> Server:
     state: dict[str, ToolContext | None] = {"ctx": None}
 
     def _ctx() -> ToolContext:
-        if state["ctx"] is None:
-            state["ctx"] = build_connection_context(settings, server=server)
-        return state["ctx"]
+        ctx = state["ctx"]
+        if ctx is None:
+            ctx = state["ctx"] = build_connection_context(settings, server=server)
+        return ctx
 
     @server.list_tools()
     async def list_tools() -> list[types.Tool]:
