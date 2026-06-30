@@ -21,6 +21,11 @@ patches that to a flow-declared set so probe behaviour is identical on every mac
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import os
+import signal
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,11 +34,13 @@ from unittest.mock import patch
 from app.agent.loop import AgentLoop
 from app.agent.session import Session
 from app.config import BENCH_REPO_NAME, GUIDE_REPO_NAME, Settings
-from app.llm.provider import AssistantTurn, LLMProvider
+from app.llm.provider import AssistantTurn, LLMProvider, ProviderTurn, open_provider_turn
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunResult
 from app.tools.catalog import catalog_for_allowlist
 from app.tools.context import ToolContext
+from app.tools.registry import _group_of
+from app.tools.shell import classify_shell_command
 
 from .catalog_snapshot import frozen_catalog
 
@@ -59,6 +66,208 @@ class ScriptedProvider(LLMProvider):
         turn = self._turns[self.i]
         self.i += 1
         return turn
+
+
+# ---- per-call fail-fast watchdog --------------------------------------------
+# The LIVE eval drives a REAL model over a slow network / CLI subprocess. A single hung or
+# provider-overloaded call would otherwise stall a flow until the test-level backstop
+# (pytest.mark.timeout(300)) fires — wasting minutes per stuck flow and making "is it still
+# running?" impossible to tell from a wedged one. Instead we give EACH LLM call its own
+# deadline: a breach raises TimeoutError, which the agent loop already catches as a provider
+# error (app/agent/loop.py::_run_step) and turns into a clean ``error`` event + an early,
+# orderly stop — so the flow fails FAST (and scores as a failure) and the suite moves on, with
+# the 300s mark left only as a last-resort backstop. The wrapper PRESERVES the inner provider's
+# amortized ``open_turn`` (the Claude Agent SDK's one warm CLI subprocess per turn), so the only
+# behavior it adds is the deadline. Tunable via ``LLM_EVAL_CALL_TIMEOUT`` (seconds; <=0 disables).
+
+_DEFAULT_LLM_CALL_TIMEOUT_S = 90.0
+
+
+def _resolve_call_timeout(call_timeout: float | None) -> float:
+    """Resolve the per-LLM-call deadline in seconds. An explicit ``call_timeout`` arg wins; else
+    the ``LLM_EVAL_CALL_TIMEOUT`` env var (a bad value is ignored); else the default. A value
+    ``<= 0`` disables the watchdog (the unbounded call relies on the 300s test-level backstop)."""
+    if call_timeout is not None:
+        return call_timeout
+    env = os.getenv("LLM_EVAL_CALL_TIMEOUT")
+    if env:
+        try:
+            return float(env)
+        except ValueError:
+            pass
+    return _DEFAULT_LLM_CALL_TIMEOUT_S
+
+
+# Markers that uniquely identify the claude-agent-sdk's BUNDLED CLI subprocess (the one a live
+# flow spawns), so a force-kill matches ONLY it — never a developer's own `claude` CLI, the Claude
+# Code daemon, or a co-running live app's SDK subprocess (those live at different paths). BOTH must
+# be present in the cmdline. Used only by the FALLBACK scan; the primary path uses the SDK's own
+# per-process registry (see ``_sdk_active_child_pids``), which is authoritative and marker-free.
+_SDK_SUBPROCESS_MARKERS = ("claude_agent_sdk", "_bundled")
+
+# After a force-kill we wait at most this long for the killed call's task to settle on EOF, then
+# ABANDON it — see ``_abandon_after_kill``. The old code awaited the cancelled task UNBOUNDEDLY,
+# which re-hung forever whenever a kill missed: the actual "still stuck" bug. Keep this short.
+_FORCE_KILL_DRAIN_S = 10.0
+
+
+def _sdk_active_child_pids() -> list[int]:
+    """PIDs of the CLI subprocess(es) the claude-agent-sdk spawned FROM THIS PROCESS, read from its
+    own per-process ``_ACTIVE_CHILDREN`` registry. This is the AUTHORITATIVE handle to the exact
+    ``Process`` whose stdout the SDK reads — so killing it (and its workers) is what delivers EOF —
+    and, being per-process module state, it can NEVER reference a co-running live app's children
+    (those live in that app's own process). Returns ``[]`` if the SDK lacks the registry (absent /
+    renamed in a future version); callers then fall back to the descendant+marker scan."""
+    try:
+        from claude_agent_sdk._internal.transport import subprocess_cli as _sc
+    except Exception:  # noqa: BLE001 — SDK not importable here: let the caller fall back
+        return []
+    pids: list[int] = []
+    for proc in list(getattr(_sc, "_ACTIVE_CHILDREN", ()) or ()):
+        pid = getattr(proc, "pid", None)
+        if isinstance(pid, int) and pid > 0:
+            pids.append(pid)
+    return pids
+
+
+def _descendant_pids(root: int) -> list[int]:
+    """Every transitive child PID of ``root`` (walked via ``pgrep -P``). A kill restricted to this
+    set stays inside THIS process's own subprocess tree, so it can never reach a co-running live
+    app's or the editor session's CLI subprocess (those are not our descendants)."""
+    out: list[int] = []
+    frontier = [root]
+    while frontier:
+        pid = frontier.pop()
+        try:
+            res = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True, timeout=5)
+        except Exception:  # noqa: BLE001 — pgrep missing/slow: best-effort, just stop walking this branch
+            continue
+        for tok in res.stdout.split():
+            with contextlib.suppress(ValueError):
+                child = int(tok)
+                out.append(child)
+                frontier.append(child)
+    return out
+
+
+def _proc_cmdline(pid: int) -> str:
+    with contextlib.suppress(Exception):
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            return fh.read().replace(b"\x00", b" ").decode("utf-8", "replace")
+    return ""
+
+
+def kill_wedged_sdk_subprocesses(*, markers: tuple[str, ...] = _SDK_SUBPROCESS_MARKERS,
+                                 root_pid: int | None = None) -> int:
+    """SIGKILL the wedged claude-agent-sdk CLI subprocess(es) spawned UNDER this process — and any
+    worker grandchildren they spawned.
+
+    ``asyncio`` cancellation does NOT propagate through the SDK's subprocess receive loop, so a
+    stalled live call only unblocks once the process holding the CLI's stdout pipe dies and the read
+    returns EOF. The bundled CLI is a single-file (bun-style) binary that can fork a WORKER child
+    which inherits that pipe — so killing only the direct child can leave the pipe open and the read
+    still wedged (the subtle reason the first force-kill attempt still hung). We therefore kill the
+    SDK child AND its entire descendant subtree. Targets come from two sources, BOTH scoped to this
+    process so a kill can never reach a developer's own ``claude``, the Claude Code daemon, or a
+    co-running live app's SDK subprocess:
+      1. (primary) the SDK's own per-process ``_ACTIVE_CHILDREN`` registry + every descendant of
+         those pids — no marker filter: a descendant of a known-SDK child IS part of that call;
+      2. (fallback, only if the registry is empty — e.g. killed mid-spawn, or a future SDK without
+         it) a marker-scoped scan of our own descendants, so a real bundled CLI is still matched.
+    Returns the number of processes signalled (best-effort)."""
+    targets: set[int] = set()
+    for pid in _sdk_active_child_pids():
+        targets.add(pid)
+        targets.update(_descendant_pids(pid))
+    if not targets:
+        root = os.getpid() if root_pid is None else root_pid
+        for pid in _descendant_pids(root):
+            cmd = _proc_cmdline(pid)
+            if cmd and all(m in cmd for m in markers):
+                targets.add(pid)
+    killed = 0
+    for pid in sorted(targets):
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.kill(pid, signal.SIGKILL)
+            killed += 1
+    return killed
+
+
+async def _abandon_after_kill(task: asyncio.Future, *, grace: float = _FORCE_KILL_DRAIN_S) -> None:
+    """Force-kill the wedged SDK subprocess, then settle ``task`` WITHOUT ever risking another hang.
+
+    Killing the CLI makes the SDK's read EOF, so a well-behaved task finishes here almost at once.
+    But if the kill somehow missed entirely, cancellation can't reach the wedged read — so we wait
+    only a BOUNDED ``grace`` for the task to settle and then ABANDON it (it resolves on its own once
+    its pipe EOFs; leaving it is safe in this throwaway eval run). This is the guarantee the original
+    ``await task`` lacked: a missed kill must degrade to fail-fast, never to an infinite stall."""
+    kill_wedged_sdk_subprocesses()
+    task.cancel()
+    with contextlib.suppress(Exception):
+        await asyncio.wait({task}, timeout=grace)
+
+
+class _TimeoutTurn(ProviderTurn):
+    """Wraps a :class:`ProviderTurn` so every ``chat()`` step is bounded by ``timeout_s``.
+    Delegates open/close to the inner turn unchanged (the SDK's warm-subprocess lifecycle)."""
+
+    def __init__(self, inner: ProviderTurn, timeout_s: float):
+        self._inner = inner
+        self._timeout_s = timeout_s
+
+    async def __aenter__(self) -> _TimeoutTurn:
+        # Warm-up (the SDK's connect + initialize handshake, which spawns the CLI subprocess) gets
+        # the SAME deadline as a chat step: if it wedges, force-kill and fail fast rather than wait
+        # out the 300s per-flow cap. The bare ``async with`` in the agent loop is unguarded, so a
+        # TimeoutError here propagates cleanly up to the per-flow cap and is scored a flow failure.
+        task = asyncio.ensure_future(self._inner.__aenter__())
+        done, _pending = await asyncio.wait({task}, timeout=self._timeout_s)
+        if task not in done:
+            await _abandon_after_kill(task)
+            raise TimeoutError(
+                f"LLM turn warm-up exceeded {self._timeout_s:g}s "
+                "(force-killed the wedged CLI subprocess)")
+        task.result()  # surface a real connect error unchanged
+        return self
+
+    async def __aexit__(self, *exc: Any) -> bool:
+        return await self._inner.__aexit__(*exc)
+
+    async def chat(self, messages, *, on_text=None):
+        # NOTE: a bare ``asyncio.timeout`` is NOT enough — when the SDK's CLI subprocess wedges
+        # (no output), cancelling the awaiting task does not terminate the subprocess, so the call
+        # hangs indefinitely (observed: a 28-min stall the 90s deadline never broke). So on the
+        # deadline we FORCE-KILL the subprocess+workers (unblocking the SDK's read), then settle the
+        # task under a BOUNDED grace (never an unbounded ``await``, which re-hung when a kill missed)
+        # and raise a TimeoutError the agent loop turns into a clean ``error`` event + fast failure.
+        task = asyncio.ensure_future(self._inner.chat(messages, on_text=on_text))
+        done, _pending = await asyncio.wait({task}, timeout=self._timeout_s)
+        if task in done:
+            return task.result()  # re-raises a real provider error to the loop, unchanged
+        await _abandon_after_kill(task)
+        raise TimeoutError(
+            f"LLM call exceeded {self._timeout_s:g}s (force-killed the wedged CLI subprocess)")
+
+
+class _PerCallTimeoutProvider(LLMProvider):
+    """Provider wrapper giving every LLM call its own deadline WITHOUT losing the inner
+    provider's amortized turn. Duck-typed: the loop's ``open_provider_turn`` finds ``open_turn``
+    here and gets a timeout-wrapped turn over whatever the inner provider would have used (its
+    own warm-subprocess turn, or a plain StatelessTurn). The bare ``chat()`` is there only for
+    completeness / direct callers — the agent loop always goes through ``open_turn``."""
+
+    def __init__(self, inner: Any, timeout_s: float):
+        self._inner = inner
+        self._timeout_s = timeout_s
+
+    async def chat(self, *, system, messages, tools, cache_key=None) -> AssistantTurn:
+        async with asyncio.timeout(self._timeout_s):
+            return await self._inner.chat(
+                system=system, messages=messages, tools=tools, cache_key=cache_key)
+
+    def open_turn(self, *, system, tools, cache_key=None) -> ProviderTurn:
+        inner_turn = open_provider_turn(self._inner, system=system, tools=tools, cache_key=cache_key)
+        return _TimeoutTurn(inner_turn, self._timeout_s)
 
 
 # ---- capturing runner --------------------------------------------------------
@@ -250,12 +459,19 @@ async def run_flow(
     provider: LLMProvider | None = None,
     approve=None,
     simulate: bool = False,
+    call_timeout: float | None = None,
 ) -> FlowRun:
     """Run one flow through the real agent loop in a hermetic sandbox.
 
     ``provider`` defaults to a :class:`ScriptedProvider` replaying ``flow.turns`` (the
     deterministic path). Pass a real provider for the live eval. ``approve`` is a sync
     ``(kind, payload) -> bool``; defaults to approving everything.
+
+    ``call_timeout`` bounds EACH live LLM call (seconds) via the per-call watchdog so one hung
+    call fails the flow fast instead of stalling to the test backstop — see
+    :class:`_PerCallTimeoutProvider`. It applies ONLY when a real ``provider`` is supplied (the
+    scripted/deterministic gate path never hangs and is left exactly as-is); ``None`` resolves
+    from ``LLM_EVAL_CALL_TIMEOUT`` or the default. The scripted path is byte-for-byte unchanged.
 
     ``simulate=True`` turns on the app's SIMULATE mode for this run: the system prompt gains
     the SIMULATE_NOTE (the agent is told to walk the WHOLE workflow end-to-end without stopping
@@ -293,6 +509,13 @@ async def run_flow(
 
     if provider is None:
         provider = ScriptedProvider(flow.turns)
+    else:
+        # Real provider (the live eval): give every LLM call a fail-fast deadline so one hung
+        # call can't stall the flow up to the 300s test backstop. The scripted provider above
+        # never hangs, so it is deliberately left unwrapped — the deterministic gate is unchanged.
+        timeout_s = _resolve_call_timeout(call_timeout)
+        if timeout_s > 0:
+            provider = _PerCallTimeoutProvider(provider, timeout_s)
     if approve is None:
         approve = lambda kind, payload: True  # noqa: E731
 
@@ -327,11 +550,23 @@ async def run_flow(
     approved_argvs = [r["payload"].get("argv") for r in approval_requests if r["kind"] == "command"]
     commands: list[CapturedCommand] = []
     for call in runner.calls:
-        d = allowlist.validate(call["argv"], catalog=cat)
+        argv = call["argv"]
+        # run_shell (the agent's always-on ad-hoc `bash -lc` surface) is governed by the
+        # read-only/mutating CLASSIFIER + approval gate, NOT the allowlist — which governs only the
+        # DEDICATED command tools (see app/tools/shell.py + app/tools/CLAUDE.md). Validating a
+        # run_shell command against the allowlist wrongly marks it "denied", which would trip the
+        # bypass check in gating_problems and falsely fail any LIVE flow where the real model
+        # improvises with run_shell. Classify it the way production does, so the SAME safety
+        # invariant (mutating ⇒ approval-gated; read-only ⇒ auto-run) still applies — correctly — to it.
+        if argv[:2] == ["bash", "-lc"] and len(argv) >= 3:
+            mode = classify_shell_command(argv[2])
+        else:
+            d = allowlist.validate(argv, catalog=cat)
+            mode = d.mode if d.allowed else "denied"
         commands.append(CapturedCommand(
-            argv=call["argv"],
-            mode=d.mode if d.allowed else "denied",
-            approved=call["argv"] in approved_argvs,
+            argv=argv,
+            mode=mode,
+            approved=argv in approved_argvs,
             cwd=call["cwd"],
         ))
 
@@ -385,13 +620,19 @@ def _specs_used(run: FlowRun) -> set[str]:
     return out
 
 
-def score_flow(run: FlowRun, flow) -> tuple[bool, list[str]]:
+def score_flow(run: FlowRun, flow, *, group_scoring: bool = True) -> tuple[bool, list[str]]:
     """Coarse, order-tolerant scoring for the LIVE eval (a real model drives the flow):
     did the agent run the *required* subcommands with the right spec, avoid the forbidden
     ones, and respect read-only/refusal expectations? Returns (passed, human notes).
 
     Deliberately looser than ``diff_significant`` — a real model may add extra read-only
-    probing or phrase things differently; we score the substance, not the exact argv."""
+    probing or phrase things differently; we score the substance, not the exact argv.
+
+    ``group_scoring`` (default on) controls the phase-group load_tools dimension below. The
+    GOLDEN-transcript shadow scorer passes ``group_scoring=False``: a golden transcript models the
+    ideal tool *choices* without the load_tools mechanism (scripted replay ignores the exposed set),
+    so it never loads a group and must not be failed for it. A live run — or a hermetic unit test
+    that hand-models a live run's ``loaded_groups`` — keeps it on."""
     notes: list[str] = []
     ok = True
     subs = run.subcommands()
@@ -446,6 +687,44 @@ def score_flow(run: FlowRun, flow) -> tuple[bool, list[str]]:
     if flow.expect_no_significant and run.significant:
         ok = False
         notes.append(f"expected nothing to run, but ran {[c.argv for c in run.significant]}")
+
+    # --- phase-group lazy-loading (token-budget mechanism) -----------------------------------
+    # A real model only ever sees the STARTER_KIT; to call any GROUPED tool it must FIRST call
+    # load_tools(['<group>']) — the loop then re-opens the turn with that group exposed. This
+    # scores that the live model navigates that extra step correctly. For a flow whose substance
+    # is a grouped TOOL choice (required_tools), the group(s) those tools live in must have been
+    # loaded. Per the chosen policy ("right group, extras allowed") loading an EXTRA group is NOT
+    # a failure — it's surfaced as a NOTE, because over-loading is exactly what re-inflates the
+    # resident tool schema the lazy-loading is meant to save, and the live eval is the only place
+    # that signal is observable. Only NEVER loading a needed group is a hard failure — and only
+    # when ``group_scoring`` is on. The GOLDEN-transcript shadow scorer turns it off (a scripted
+    # replay legitimately omits load_tools — dispatch ignores the exposed set there; see the
+    # docstring). The mechanism-integrity check further down stays unconditional: it's a no-op on a
+    # scripted run that loads no group, yet still catches a grouped tool leaking into the kit.
+    loaded_groups = set(run.session.loaded_groups)
+    called_load_tools = any(tc["name"] == "load_tools" for tc in run.tool_calls)
+    needed_groups = {g for t in flow.required_tools if (g := _group_of(t))}
+    if needed_groups and group_scoring:
+        missing_groups = needed_groups - loaded_groups
+        if missing_groups:
+            ok = False
+            notes.append(
+                f"never loaded tool group(s) {sorted(missing_groups)} needed for "
+                f"{flow.required_tools} (loaded {sorted(loaded_groups) or 'none'}) — the model "
+                "did not call load_tools to reach them")
+        else:
+            notes.append(f"loaded the needed group(s) {sorted(needed_groups)} via load_tools")
+            extra = loaded_groups - needed_groups
+            if extra:
+                notes.append(
+                    f"NOTE: also loaded unneeded group(s) {sorted(extra)} — allowed, but each "
+                    "extra group re-inflates the resident tool schema the lazy-loading saves")
+    # Mechanism integrity (independent of any flow's expectations): groups don't load themselves,
+    # so if any group ended up loaded, load_tools MUST have been the thing that loaded it.
+    if loaded_groups and not called_load_tools:
+        ok = False
+        notes.append(f"group(s) {sorted(loaded_groups)} are loaded but load_tools was never "
+                     "called — phase-group mechanism regression")
 
     g = gating_problems(run)
     if g:

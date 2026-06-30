@@ -53,6 +53,43 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
   and `LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 pytest …` (simulate set) — error/safety flows are honest only live,
   multi-step DEPLOY walks only in simulate. ⚠️ In a worktree the gitignored `.env` is absent → the provider raises
   → every live test SKIPS silently; `cp <primary>/.env <worktree>/.env` first.
+  - **Non-pytest path** (use this when `pytest` is hook-blocked by hand): `scripts/validate_flows.py
+    --live` and `--simulate` drive the SAME harness/scoring without pytest — `LLM_EVAL_LIVE=1 python
+    scripts/validate_flows.py --simulate`. Still spends quota; still needs the worktree `.env`.
+  - **Per-call WATCHDOG** (`harness.py::_PerCallTimeoutProvider`): in a live run EACH LLM call AND
+    the turn warm-up (`__aenter__`) has a deadline (`LLM_EVAL_CALL_TIMEOUT`, default 90s; `<=0`
+    disables). ⚠️ `asyncio.timeout`/`task.cancel()` ALONE do NOT abort a wedged `claude` CLI
+    subprocess (cancellation doesn't propagate through the SDK's subprocess receive — observed: a
+    28-min stall the 90s deadline never broke). So on the deadline the watchdog FORCE-KILLS the
+    subprocess (`kill_wedged_sdk_subprocesses`); its stdout then EOFs, the await unblocks, and the
+    loop emits a clean `error` → fast flow failure. Two hard-won subtleties (both caused a SECOND
+    "still stuck" after a naive force-kill):
+      1. The kill targets the SDK's own per-process `_ACTIVE_CHILDREN` registry AND **the whole
+         descendant subtree** of those pids — the bundled CLI is a single-file (bun-style) binary
+         that forks a WORKER child holding the stdout pipe, so killing only the direct child leaves
+         the pipe open and the read still wedged. Both target sources are scoped to THIS process
+         (registry = our own module state; subtree = our own descendants), so a kill can never touch
+         a co-running live app on :8000 or the editor's own `claude`. A marker-scoped (`claude_agent_sdk`
+         + `_bundled`) descendant scan is the FALLBACK when the registry is empty.
+      2. After the kill the post-cancel settle is BOUNDED (`_abandon_after_kill`, ~10s grace) then the
+         task is ABANDONED — NEVER an unbounded `await task`, which re-hung forever whenever a kill
+         missed (the actual bug). A missed kill must degrade to fail-fast, not an infinite stall.
+    Applies only when a REAL provider is passed; the deterministic gate is untouched. `validate_flows.py`
+    adds a per-FLOW cap on top (`LLM_EVAL_FLOW_TIMEOUT`, default 300s, same bounded force-kill) for a
+    slow-but-not-stuck multi-step flow.
+  - **⚠️ The in-process caps above are DEFEATABLE — for any real run, use the ISOLATED runner.**
+    Both caps are `asyncio.wait` timers, so a **frozen event loop never fires them** (a blocking call
+    froze the loop and a flow ran ~336s under the "300s" cap); and the SDK provider reuses ONE
+    subprocess across flows, which **deadlocks BETWEEN flows** past every cap. `make validate-live-iso`
+    / `make validate-simulate-iso` (`scripts/run_eval_isolated.sh`) fix both structurally: each flow
+    runs in its OWN process (fresh SDK subprocess → no cross-flow deadlock) under an EXTERNAL
+    `timeout -s TERM -k` (kernel-level kill no in-process freeze can defeat). A stuck flow is killed,
+    logged `TIMEOUT`, and the run continues. `FLOWS="a b"` runs a subset; logs land in
+    `workspace/eval-logs/`. ⚠️ In a worktree set `REPOS_DIR` to the primary checkout (empty siblings).
+    Full rationale → `docs/VALIDATION.md` §"Isolated eval runner".
+  - **`load_tools` group scoring** (`score_flow`): the live eval verifies the model loaded the
+    RIGHT tool group(s) for the grouped tools a flow requires; an EXTRA group is a NOTE (not a
+    failure), never loading a needed one IS a failure. Hermetic guards in `tests/flows/test_eval_harness.py`.
 - **Self-eval (`tests/eval/`)**: the LLM judge (`test_judge_live.py`) + bug-hunter
   (`test_bughunt_live.py`) share the SAME `LLM_EVAL_LIVE` switch (bughunt also needs `BUGHUNT=1`)
   and SPEND quota → never auto-run them. `make eval-shadow` is the always-safe hermetic entry
