@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# install-mcp.sh — one interactive command to install the llm-d-bench MCP server and wire it
-# into your agent client (Claude Code, Claude Desktop, Cursor, VS Code, or OpenAI Codex CLI).
+# install-mcp.sh — one interactive command to install the llm-d-bench MCP server and register it
+# with Claude Code (the CLI).
 #
 # It does everything end-to-end:
 #   1. fetches the project (if you ran it via curl outside a checkout)
 #   2. clones the read-only sibling repos (llm-d / llm-d-benchmark / llm-d-skills)
 #   3. builds a .venv and installs the agent (`pip install -e .` → the `llm-d-bench-mcp` command)
-#   4. asks which LLM provider to use and writes your .env
-#   5. asks which client(s) to register, and writes their MCP config for you (idempotent, backed up)
+#   4. configures the claude-agent-sdk provider (no API key — uses your local `claude` login) + writes .env
+#   5. registers the server with Claude Code (or just prints the config for you to paste)
+#
+# Scope (for now): the only verified path is the claude-agent-sdk provider + the Claude Code CLI
+# client. Other providers (anthropic, openai) and clients (Claude Desktop, Cursor, VS Code, Codex
+# CLI) are planned for a future release — see the repo-root README.md.
 #
 # Usage:
 #   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/install-mcp.sh)
@@ -29,7 +33,7 @@ warn() { printf '\033[1;33m[install-mcp] %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31m[install-mcp] ERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 trap 'rc=$?; [[ $rc -ne 0 ]] && printf "\n\033[1;31m[install-mcp] aborted (exit %s).\033[0m Fix the issue above and re-run — the script is idempotent.\n" "$rc" >&2' EXIT
 
-case "${1:-}" in -h|--help) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; trap - EXIT; exit 0 ;; esac
+case "${1:-}" in -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; trap - EXIT; exit 0 ;; esac
 
 # ── Interactive reads, robust to both `curl | bash` and `bash <(curl …)` ───
 # Prefer /dev/tty so prompts work even when stdin is the curl pipe; fall back to stdin.
@@ -39,12 +43,6 @@ ask() {  # $1 prompt, $2 default → echoes the answer (or default if blank / no
   if [[ -n "$TTY" ]]; then printf '\033[36m?\033[0m %s ' "$1" >"$TTY"; IFS= read -r ans <"$TTY" || ans=""
   else IFS= read -r ans || ans=""; fi
   printf '%s' "${ans:-$2}"
-}
-ask_secret() {  # $1 prompt → reads without echo
-  local ans=""
-  if [[ -n "$TTY" ]]; then printf '\033[36m?\033[0m %s ' "$1" >"$TTY"; IFS= read -rs ans <"$TTY" || ans=""; printf '\n' >"$TTY"
-  else IFS= read -rs ans || ans=""; fi
-  printf '%s' "$ans"
 }
 
 # ── Locate the project; bootstrap-clone if we were piped in from outside one ─
@@ -154,7 +152,7 @@ fi
 "$PY" -c "import app.mcp" >/dev/null 2>&1 || die "the MCP server failed to import after install."
 log "Installed. The agent imports OK."
 
-# ── Step 4: pick an LLM provider and write .env ───────────────────────────
+# ── Step 4: configure the LLM provider (claude-agent-sdk) and write .env ──
 # shellcheck source=scripts/_env.sh
 source "$PROJECT_DIR/scripts/_env.sh"
 ensure_env   # create .env from .env.example if missing
@@ -167,211 +165,52 @@ set_env_var() {  # $1 KEY  $2 VALUE — replace-or-append in .env (pure bash; va
   mv "$tmp" "$f"
 }
 
-step "Choose the LLM the agent will think with"
-echo "  1) claude-agent-sdk — uses your local 'claude' CLI login, NO API key   (default)"
-echo "  2) anthropic        — needs an ANTHROPIC_API_KEY"
-echo "  3) openai           — needs an OPENAI_API_KEY (+ optional OPENAI_BASE_URL)"
-case "$(ask 'Provider [1/2/3]:' 1)" in
-  2) set_env_var LLM_PROVIDER anthropic
-     k="$(ask_secret 'ANTHROPIC_API_KEY (paste, hidden):')"
-     [[ -n "$k" ]] && set_env_var ANTHROPIC_API_KEY "$k" || warn "No key entered — set ANTHROPIC_API_KEY in $PROJECT_DIR/.env before running." ;;
-  3) set_env_var LLM_PROVIDER openai
-     k="$(ask_secret 'OPENAI_API_KEY (paste, hidden):')"
-     [[ -n "$k" ]] && set_env_var OPENAI_API_KEY "$k" || warn "No key entered — set OPENAI_API_KEY in $PROJECT_DIR/.env before running."
-     b="$(ask 'OPENAI_BASE_URL (blank for the default):' '')"; [[ -n "$b" ]] && set_env_var OPENAI_BASE_URL "$b" ;;
-  *) set_env_var LLM_PROVIDER claude-agent-sdk
-     log "Using claude-agent-sdk — no API key. Make sure the 'claude' CLI is installed and logged in." ;;
-esac
+step "LLM provider"
+set_env_var LLM_PROVIDER claude-agent-sdk
+log "Using claude-agent-sdk — no API key. Make sure the 'claude' CLI is installed and logged in."
+log "(Other providers — anthropic, openai — are planned for a future release.)"
 
 HF_TOKEN_VAL="$(ask 'Optional HF_TOKEN for gated model deploys (blank to skip):' '')"
 [[ -n "$HF_TOKEN_VAL" ]] && set_env_var HF_TOKEN "$HF_TOKEN_VAL"
 
-# ── Resolve the launch command clients will spawn ─────────────────────────
+# ── Resolve the launch command Claude Code will spawn ─────────────────────
 if [[ -x "$VENV/bin/llm-d-bench-mcp" ]]; then
-  CMD_BIN="$VENV/bin/llm-d-bench-mcp"; CMD_ARGS_JSON="[]"; CMD_ARGV=("$CMD_BIN"); CMD_DISPLAY="$CMD_BIN"
+  CMD_ARGV=("$VENV/bin/llm-d-bench-mcp"); CMD_DISPLAY="$VENV/bin/llm-d-bench-mcp"
 else
-  CMD_BIN="$PY"; CMD_ARGS_JSON='["-m","app.mcp"]'; CMD_ARGV=("$PY" -m app.mcp); CMD_DISPLAY="$PY -m app.mcp"
+  CMD_ARGV=("$PY" -m app.mcp); CMD_DISPLAY="$PY -m app.mcp"
 fi
-if [[ -n "$HF_TOKEN_VAL" ]]; then ENV_JSON="{\"HF_TOKEN\":\"$HF_TOKEN_VAL\"}"; else ENV_JSON="{}"; fi
 
-# ── JSON config merge (Claude Desktop / Cursor / VS Code) — idempotent, backed up ──
-json_register() {  # $1 file  $2 topkey  $3 want_type(0/1)  $4 overwrite(0/1) → prints OK/EXISTS/…; rc 0/2/!=0
-  MCP_FILE="$1" MCP_TOPKEY="$2" MCP_WANTTYPE="$3" MCP_OVERWRITE="${4:-0}" \
-  MCP_NAME="$SERVER_NAME" MCP_CMD="$CMD_BIN" MCP_ARGS="$CMD_ARGS_JSON" MCP_ENV="$ENV_JSON" \
-  "$PY" - <<'PYEOF'
-import json, os, pathlib
-f = pathlib.Path(os.path.expanduser(os.environ["MCP_FILE"]))
-topkey, name = os.environ["MCP_TOPKEY"], os.environ["MCP_NAME"]
-want_type = os.environ["MCP_WANTTYPE"] == "1"
-overwrite = os.environ["MCP_OVERWRITE"] == "1"
-data = {}
-if f.exists() and f.stat().st_size:
-    try:
-        data = json.loads(f.read_text())
-    except Exception as e:
-        print("PARSEFAIL " + str(e)); raise SystemExit(3)
-section = data.setdefault(topkey, {})
-if not isinstance(section, dict):
-    print("BADSECTION"); raise SystemExit(4)
-if name in section and not overwrite:
-    print("EXISTS"); raise SystemExit(2)
-server = {}
-if want_type:
-    server["type"] = "stdio"
-server["command"] = os.environ["MCP_CMD"]
-args = json.loads(os.environ["MCP_ARGS"])
-if args:
-    server["args"] = args
-env = json.loads(os.environ["MCP_ENV"])
-if env:
-    server["env"] = env
-section[name] = server
-f.parent.mkdir(parents=True, exist_ok=True)
-if f.exists():
-    bak = f.with_name(f.name + ".bak")
-    if not bak.exists():   # keep the user's TRUE original; don't clobber it on a re-run
-        import shutil
-        shutil.copy2(str(f), str(bak))
-f.write_text(json.dumps(data, indent=2) + "\n")
-print("OK " + str(f))
-PYEOF
-}
-
-do_json_register() {  # $1 file  $2 topkey  $3 want_type  $4 label  $5 follow-up note
-  # NOTE: `rc=$?` must NOT follow `out="$(…)"` on its own line — under `set -e` a non-zero
-  # command-substitution (EXISTS=2 / PARSEFAIL=3) aborts the script before `rc=$?` runs. The
-  # `|| rc=$?` form captures the code AND exempts it from `set -e`.
-  local file="$1" topkey="$2" wt="$3" label="$4" followup="$5" out rc=0
-  out="$(json_register "$file" "$topkey" "$wt" 0 2>&1)" || rc=$?
-  if [[ $rc -eq 2 ]]; then
-    if [[ "$(ask "$label already has a '$SERVER_NAME' entry. Overwrite? [y/N]:" N)" =~ ^[Yy] ]]; then
-      rc=0; out="$(json_register "$file" "$topkey" "$wt" 1 2>&1)" || rc=$?
-    else log "Left $label unchanged."; return 0; fi
-  fi
-  if [[ $rc -eq 0 ]]; then
-    log "Registered with $label → ${out#OK }"; [[ -n "$followup" ]] && log "  ↳ $followup"
-    return 0
-  fi
-  warn "Could not edit the $label config ($out) — here's the block to paste yourself:"
-  print_json_block "$topkey" "$wt"
-}
-
-# ── Snippet printers (for 'print only' and any failed auto-edit) ──────────
-print_json_block() {  # $1 topkey  $2 want_type
-  MCP_TOPKEY="$1" MCP_WANTTYPE="$2" MCP_NAME="$SERVER_NAME" MCP_CMD="$CMD_BIN" \
-  MCP_ARGS="$CMD_ARGS_JSON" MCP_ENV="$ENV_JSON" "$PY" - <<'PYEOF'
-import json, os
-server = {}
-if os.environ["MCP_WANTTYPE"] == "1":
-    server["type"] = "stdio"
-server["command"] = os.environ["MCP_CMD"]
-a = json.loads(os.environ["MCP_ARGS"])
-if a: server["args"] = a
-e = json.loads(os.environ["MCP_ENV"])
-if e: server["env"] = e
-print(json.dumps({os.environ["MCP_TOPKEY"]: {os.environ["MCP_NAME"]: server}}, indent=2))
-PYEOF
-}
-print_codex_block() {
-  printf '[mcp_servers.llm_d_bench]\ncommand = "%s"\n' "$CMD_BIN"
-  [[ "$CMD_ARGS_JSON" != "[]" ]] && printf 'args = ["-m", "app.mcp"]\n'
-  [[ -n "$HF_TOKEN_VAL" ]] && printf '\n[mcp_servers.llm_d_bench.env]\nHF_TOKEN = "%s"\n' "$HF_TOKEN_VAL"
-  return 0   # else a blank HF_TOKEN makes the trailing `&&` return non-zero → `set -e` aborts the caller
-}
-print_all_snippets() {
+# ── Claude Code (CLI) registration + the manual snippet (for 'print only') ──
+print_claude_code_snippet() {
   echo; echo "── Claude Code (CLI) ───────────────────────────────"
-  printf '  claude mcp add %s -s user -- %s\n' "$SERVER_NAME" "$CMD_DISPLAY"
-  echo; echo "── Claude Desktop / Cursor (claude_desktop_config.json, ~/.cursor/mcp.json) ──"
-  print_json_block "mcpServers" 0
-  echo; echo "── VS Code (.vscode/mcp.json) ──────────────────────"
-  print_json_block "servers" 1
-  echo; echo "── OpenAI Codex CLI (~/.codex/config.toml) ─────────"
-  print_codex_block
+  if [[ -n "$HF_TOKEN_VAL" ]]; then
+    printf '  claude mcp add %s -s user -e "HF_TOKEN=%s" -- %s\n' "$SERVER_NAME" "$HF_TOKEN_VAL" "$CMD_DISPLAY"
+  else
+    printf '  claude mcp add %s -s user -- %s\n' "$SERVER_NAME" "$CMD_DISPLAY"
+  fi
 }
-
-# ── Per-client registration ───────────────────────────────────────────────
 register_claude_code() {
   if ! command -v claude >/dev/null 2>&1; then
-    warn "The 'claude' CLI is not on PATH — run this later:"; printf '  claude mcp add %s -s user -- %s\n' "$SERVER_NAME" "$CMD_DISPLAY"; return 0
+    warn "The 'claude' CLI is not on PATH — run this later:"; print_claude_code_snippet; return 0
   fi
   local scope; scope="$(ask 'Scope? [local|user|project] (default: user):' user)"
   local args=(mcp add "$SERVER_NAME" -s "$scope"); [[ -n "$HF_TOKEN_VAL" ]] && args+=(-e "HF_TOKEN=$HF_TOKEN_VAL")
   args+=(-- "${CMD_ARGV[@]}")
   if claude "${args[@]}"; then log "Registered with Claude Code (scope: $scope). Check it with 'claude mcp list' or '/mcp' in a session."
-  else warn "'claude mcp add' failed — register manually:"; printf '  claude mcp add %s -s %s -- %s\n' "$SERVER_NAME" "$scope" "$CMD_DISPLAY"; fi
-}
-register_claude_desktop() {
-  local cfg
-  case "$(uname -s)" in
-    Darwin) cfg="$HOME/Library/Application Support/Claude/claude_desktop_config.json" ;;
-    Linux)
-      if grep -qi microsoft /proc/version 2>/dev/null; then
-        warn "Detected WSL: Claude Desktop is a Windows app, so auto-editing its config across the filesystem boundary is unsafe. Paste this into %APPDATA%\\Claude\\claude_desktop_config.json:"
-        print_json_block "mcpServers" 0; return 0
-      fi
-      cfg="$HOME/.config/Claude/claude_desktop_config.json" ;;
-    *) warn "Unrecognised OS — paste this into your claude_desktop_config.json:"; print_json_block "mcpServers" 0; return 0 ;;
-  esac
-  do_json_register "$cfg" "mcpServers" 0 "Claude Desktop" "Fully quit and reopen Claude Desktop to load the server."
-}
-register_cursor() {
-  do_json_register "$HOME/.cursor/mcp.json" "mcpServers" 0 "Cursor" "Reload Cursor; verify under Settings → MCP."
-}
-register_vscode() {
-  if command -v code >/dev/null 2>&1; then
-    local obj
-    obj="$(MCP_NAME="$SERVER_NAME" MCP_CMD="$CMD_BIN" MCP_ARGS="$CMD_ARGS_JSON" MCP_ENV="$ENV_JSON" "$PY" - <<'PYEOF'
-import json, os
-o = {"name": os.environ["MCP_NAME"], "command": os.environ["MCP_CMD"]}
-a = json.loads(os.environ["MCP_ARGS"]);  o["args"] = a if a else []
-e = json.loads(os.environ["MCP_ENV"])
-if e: o["env"] = e
-print(json.dumps(o))
-PYEOF
-)"
-    if code --add-mcp "$obj"; then log "Registered with VS Code via 'code --add-mcp' (user scope)."; return 0; fi
-    warn "'code --add-mcp' failed — writing a workspace .vscode/mcp.json instead."
-  fi
-  do_json_register "$PROJECT_DIR/.vscode/mcp.json" "servers" 1 "VS Code (workspace .vscode/mcp.json)" "Open $PROJECT_DIR in VS Code; it offers to start the server. For all workspaces use 'code --add-mcp' or MCP: Open User Configuration."
-}
-register_codex() {
-  if command -v codex >/dev/null 2>&1; then
-    local args=(mcp add "$SERVER_NAME"); [[ -n "$HF_TOKEN_VAL" ]] && args+=(--env "HF_TOKEN=$HF_TOKEN_VAL")
-    args+=(-- "${CMD_ARGV[@]}")
-    if codex "${args[@]}"; then log "Registered with Codex CLI."; return 0; fi
-    warn "'codex mcp add' failed — appending to ~/.codex/config.toml instead."
-  fi
-  local cfg="$HOME/.codex/config.toml"; mkdir -p "$(dirname "$cfg")"; touch "$cfg"
-  if grep -q '^\[mcp_servers\.llm_d_bench\]' "$cfg"; then
-    log "~/.codex/config.toml already has [mcp_servers.llm_d_bench] — leaving it untouched."; return 0
-  fi
-  { printf '\n'; print_codex_block; } >>"$cfg"
-  log "Appended [mcp_servers.llm_d_bench] to $cfg"
+  else warn "'claude mcp add' failed — register manually:"; print_claude_code_snippet; fi
 }
 
-# ── Step 5: register with the chosen client(s) ────────────────────────────
-step "Register with your agent client(s)"
-echo "  1) Claude Code (CLI)"
-echo "  2) Claude Desktop"
-echo "  3) Cursor"
-echo "  4) VS Code"
-echo "  5) OpenAI Codex CLI"
-echo "  6) Just print the config — make no changes  (default)"
+# ── Step 5: register with Claude Code ─────────────────────────────────────
+step "Register with Claude Code"
+echo "  1) Claude Code (CLI) — register it for you"
+echo "  2) Just print the config — make no changes  (default)"
 echo "  0) Skip — I'll wire it up myself"
-SEL="$(ask 'Choice(s), comma-separated (e.g. 1,3):' 6)"
-IFS=',' read -ra CHOICES <<<"$SEL"
-for c in "${CHOICES[@]}"; do
-  case "$(echo "$c" | tr -d '[:space:]')" in
-    1) register_claude_code ;;
-    2) register_claude_desktop ;;
-    3) register_cursor ;;
-    4) register_vscode ;;
-    5) register_codex ;;
-    6) print_all_snippets ;;
-    0|"") log "Skipping client registration." ;;
-    *) warn "Ignoring unrecognised choice '$c'." ;;
-  esac
-done
+log "(Claude Desktop, Cursor, VS Code, and Codex CLI are planned for a future release.)"
+case "$(ask 'Choice [1/2/0]:' 2 | tr -d '[:space:]')" in
+  1) register_claude_code ;;
+  0) log "Skipping client registration." ;;
+  *) print_claude_code_snippet ;;
+esac
 
 # ── Summary ───────────────────────────────────────────────────────────────
 step "Done"
