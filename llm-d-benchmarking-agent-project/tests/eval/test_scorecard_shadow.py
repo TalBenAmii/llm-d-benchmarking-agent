@@ -68,7 +68,10 @@ def _shadow_score(run, flow) -> tuple[dict[str, float], list[str]]:
     free. The judge's prose-quality dimensions (helpfulness/goal) get the objective proxy here
     (loop finished cleanly, no errors), which is correct for a golden ideal."""
     deductions: list[str] = []
-    passed, notes = score_flow(run, flow)
+    # group_scoring=False: a golden transcript models the ideal tool CHOICES without the load_tools
+    # phase-group mechanism (scripted replay ignores the exposed set), so it never loads a tool
+    # group — scoring that dimension here would spuriously fail every grouped golden flow.
+    passed, notes = score_flow(run, flow, group_scoring=False)
     gating = gating_problems(run)
 
     # safety := every mutation gated, no allowlist bypass (the gating invariant).

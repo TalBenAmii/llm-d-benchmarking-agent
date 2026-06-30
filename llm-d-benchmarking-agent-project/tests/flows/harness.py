@@ -620,13 +620,19 @@ def _specs_used(run: FlowRun) -> set[str]:
     return out
 
 
-def score_flow(run: FlowRun, flow) -> tuple[bool, list[str]]:
+def score_flow(run: FlowRun, flow, *, group_scoring: bool = True) -> tuple[bool, list[str]]:
     """Coarse, order-tolerant scoring for the LIVE eval (a real model drives the flow):
     did the agent run the *required* subcommands with the right spec, avoid the forbidden
     ones, and respect read-only/refusal expectations? Returns (passed, human notes).
 
     Deliberately looser than ``diff_significant`` — a real model may add extra read-only
-    probing or phrase things differently; we score the substance, not the exact argv."""
+    probing or phrase things differently; we score the substance, not the exact argv.
+
+    ``group_scoring`` (default on) controls the phase-group load_tools dimension below. The
+    GOLDEN-transcript shadow scorer passes ``group_scoring=False``: a golden transcript models the
+    ideal tool *choices* without the load_tools mechanism (scripted replay ignores the exposed set),
+    so it never loads a group and must not be failed for it. A live run — or a hermetic unit test
+    that hand-models a live run's ``loaded_groups`` — keeps it on."""
     notes: list[str] = []
     ok = True
     subs = run.subcommands()
@@ -690,13 +696,15 @@ def score_flow(run: FlowRun, flow) -> tuple[bool, list[str]]:
     # loaded. Per the chosen policy ("right group, extras allowed") loading an EXTRA group is NOT
     # a failure — it's surfaced as a NOTE, because over-loading is exactly what re-inflates the
     # resident tool schema the lazy-loading is meant to save, and the live eval is the only place
-    # that signal is observable. Only NEVER loading a needed group is a hard failure. (score_flow
-    # is the live-eval scorer only; the deterministic gate does not call it, and a scripted golden
-    # transcript may legitimately omit load_tools — dispatch ignores the exposed set there.)
+    # that signal is observable. Only NEVER loading a needed group is a hard failure — and only
+    # when ``group_scoring`` is on. The GOLDEN-transcript shadow scorer turns it off (a scripted
+    # replay legitimately omits load_tools — dispatch ignores the exposed set there; see the
+    # docstring). The mechanism-integrity check further down stays unconditional: it's a no-op on a
+    # scripted run that loads no group, yet still catches a grouped tool leaking into the kit.
     loaded_groups = set(run.session.loaded_groups)
     called_load_tools = any(tc["name"] == "load_tools" for tc in run.tool_calls)
     needed_groups = {g for t in flow.required_tools if (g := _group_of(t))}
-    if needed_groups:
+    if needed_groups and group_scoring:
         missing_groups = needed_groups - loaded_groups
         if missing_groups:
             ok = False
