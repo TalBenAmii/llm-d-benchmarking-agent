@@ -6,12 +6,15 @@ PY := $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)
 # Tune here, not in tool config, so it can move with the suite without churn.
 COV_FAIL_UNDER := 85
 
-.PHONY: help install test validate validate-pytest validate-live snapshot-catalog flows \
+.PHONY: help install test validate validate-pytest validate-live validate-live-iso \
+        validate-simulate-iso snapshot-catalog flows \
         lint typecheck coverage quality eval-shadow eval-judge bughunt
 
 help:
 	@echo "make validate         # prove the agent runs the right commands per flow (deterministic, hermetic)"
 	@echo "make validate-live    # same, but a real LLM drives each flow from mock input (needs an API key)"
+	@echo "make validate-live-iso     # validate-live, but per-flow process isolation + an EXTERNAL hard timeout (a stuck flow can't wedge the run)"
+	@echo "make validate-simulate-iso # same isolation, SIMULATE mode (FLOWS=\"a b\" runs a subset)"
 	@echo "make eval-shadow      # agent-quality + bug-oracle SHADOW checks (deterministic, hermetic, ZERO quota)"
 	@echo "make eval-judge       # LLM-judge agent-quality scorecard (OPT-IN, SPENDS QUOTA, needs a key)"
 	@echo "make bughunt          # autonomous exploratory bug-hunter (OPT-IN, SPENDS QUOTA, needs a key)"
@@ -53,6 +56,17 @@ validate-pytest:
 
 validate-live:
 	LLM_EVAL_LIVE=1 $(PY) scripts/validate_flows.py --live
+
+# Isolated variants: each flow runs in its OWN process under an EXTERNAL `timeout -s TERM -k`, so a
+# wedged event loop / deadlocked SDK subprocess can never stall the whole run (the in-process asyncio
+# caps in validate_flows.py can be defeated by a frozen loop — see docs/VALIDATION.md). Optional
+# FLOWS="name1 name2" re-runs just a subset (e.g. confirming suspected-infra failures flip to PASS).
+# In a git WORKTREE the sibling repos are empty, so point REPOS_DIR at the primary checkout.
+validate-live-iso:
+	scripts/run_eval_isolated.sh live $(FLOWS)
+
+validate-simulate-iso:
+	scripts/run_eval_isolated.sh simulate $(FLOWS)
 
 # --- Self-eval (Layer 3 + 4): agent-quality judge + exploratory bug-hunter ----
 # eval-shadow is HERMETIC + ZERO quota (the always-on guard, runs in plain pytest too).

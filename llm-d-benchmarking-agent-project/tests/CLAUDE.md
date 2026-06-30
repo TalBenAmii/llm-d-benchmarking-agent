@@ -77,6 +77,16 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
     Applies only when a REAL provider is passed; the deterministic gate is untouched. `validate_flows.py`
     adds a per-FLOW cap on top (`LLM_EVAL_FLOW_TIMEOUT`, default 300s, same bounded force-kill) for a
     slow-but-not-stuck multi-step flow.
+  - **⚠️ The in-process caps above are DEFEATABLE — for any real run, use the ISOLATED runner.**
+    Both caps are `asyncio.wait` timers, so a **frozen event loop never fires them** (a blocking call
+    froze the loop and a flow ran ~336s under the "300s" cap); and the SDK provider reuses ONE
+    subprocess across flows, which **deadlocks BETWEEN flows** past every cap. `make validate-live-iso`
+    / `make validate-simulate-iso` (`scripts/run_eval_isolated.sh`) fix both structurally: each flow
+    runs in its OWN process (fresh SDK subprocess → no cross-flow deadlock) under an EXTERNAL
+    `timeout -s TERM -k` (kernel-level kill no in-process freeze can defeat). A stuck flow is killed,
+    logged `TIMEOUT`, and the run continues. `FLOWS="a b"` runs a subset; logs land in
+    `workspace/eval-logs/`. ⚠️ In a worktree set `REPOS_DIR` to the primary checkout (empty siblings).
+    Full rationale → `docs/VALIDATION.md` §"Isolated eval runner".
   - **`load_tools` group scoring** (`score_flow`): the live eval verifies the model loaded the
     RIGHT tool group(s) for the grouped tools a flow requires; an EXTRA group is a NOTE (not a
     failure), never loading a needed one IS a failure. Hermetic guards in `tests/flows/test_eval_harness.py`.
