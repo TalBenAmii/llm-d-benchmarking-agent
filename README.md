@@ -149,5 +149,9 @@ npx @modelcontextprotocol/inspector /ABS/PATH/.venv/bin/llm-d-bench-mcp
   supports it (with a graceful fallback otherwise). Nothing mutating runs without your say-so — it
   is never a silent auto-approve.
 
-Design of record and rationale: [`DESIGN.md`](DESIGN.md). Project overview: the
-[root README](../../README.md). Licensed under Apache-2.0.
+This repository is a monorepo: the agent lives in
+[`llm-d-benchmarking-agent-project/`](llm-d-benchmarking-agent-project/) alongside the read-only
+upstream repos it reads at runtime. Design of record and rationale for the server:
+[`app/mcp/DESIGN.md`](llm-d-benchmarking-agent-project/app/mcp/DESIGN.md). Full project overview and
+feature showcase (the web UI, orchestrator, analyzer, deploy):
+[the project README](llm-d-benchmarking-agent-project/README.md). Licensed under Apache-2.0.

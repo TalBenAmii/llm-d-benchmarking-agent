@@ -33,7 +33,7 @@ dev = [
 [project.scripts]
 # Console entry point for the stdio MCP server, so external clients launch it with a clean
 # command (`<venv>/bin/llm-d-bench-mcp`) instead of the long `python -m app.mcp` path.
-# Same target as `app/mcp/__main__.py`. See app/mcp/README.md.
+# Same target as `app/mcp/__main__.py`. See the repo-root README.md.
 llm-d-bench-mcp = "app.mcp.server:main"
 
 [build-system]

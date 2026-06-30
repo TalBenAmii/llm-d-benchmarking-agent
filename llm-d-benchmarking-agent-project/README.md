@@ -100,7 +100,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarkin
 
 (or clone first and run `./install-mcp.sh`). It runs over stdio on your machine; mutations are
 gated by your client's own approval prompt. Full showcase, per-client config, and the security
-model: [`app/mcp/README.md`](app/mcp/README.md).
+model: [the repo-root `README.md`](../README.md).
 
 ---
 
