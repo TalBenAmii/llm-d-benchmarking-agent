@@ -29,6 +29,7 @@ from typing import Any
 from app.observability import instrument
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.security.runner import simulated_run_result
+from app.tools import gated_access
 from app.tools.context import ApprovalRejected, ToolContext, ToolError
 
 # Shell tokens that, appearing anywhere, mean the command WRITES — a redirect to a file or a
@@ -198,6 +199,15 @@ async def run_shell(
     mode = classify_shell_command(command)
     requires_approval = mode == MUTATING
     argv = ["bash", "-lc", command]
+
+    # Gated-model access guardrail — the SAME safety gate the dedicated executor applies
+    # (app/tools/command_exec.py), enforced here too because run_shell deliberately bypasses
+    # ctx.run_command. Refuses an ad-hoc `llmdbenchmark standup/run/smoketest` of a model the
+    # backend HF token can't pull, once check_capacity reported it gated+unauthorized. Mechanism
+    # on the bridge's facts — see app/tools/gated_access.py; provision_hf_secret is never a deploy.
+    block = gated_access.gated_block(ctx, argv)
+    if block is not None:
+        raise ToolError(gated_access.gated_block_message(*block))
 
     # SIMULATE: a MUTATING ad-hoc command is ANNOUNCED but never executed when the wired runner
     # is a real executor (production) — synthetic no-op, so the user sees what WOULD run while

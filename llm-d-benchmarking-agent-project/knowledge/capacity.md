@@ -130,7 +130,10 @@ Read the three situations and say this (the **decision is here, not in Python**)
 
   This materializes the cluster HF token Secret from the backend's `HF_TOKEN`, exactly as
   `llm-d/helpers/hf-token.md` does. It is **approval-gated** (it writes a Secret to the
-  cluster), so propose it and let the user Approve — never run it unprompted. State plainly:
+  cluster): **CALL the `provision_hf_secret` tool** — calling it IS how you propose it, because
+  the user consents at the approval prompt the call raises. So "propose it / never run it
+  unprompted" means *call the approval-gated tool* (the gate is the prompt) — it does **not**
+  mean describe it in prose or defer via `suggest_next_steps`. State plainly alongside the call:
 
   - It must run **before** the standup (a gated standup can't pull weights without it).
   - You **never see the token** — it is read backend-side and never shown, never logged,
