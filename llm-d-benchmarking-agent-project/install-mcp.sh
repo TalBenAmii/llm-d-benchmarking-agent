@@ -125,15 +125,18 @@ log "venv backend: $([[ "$USE_UV" == 1 ]] && echo uv || echo 'python3 -m venv')"
 
 # ── Step 2: clone the read-only sibling repos (the server reads them at runtime) ──
 step "Sibling repos (read-only, under $REPOS_DIR)"
-clone_if_missing() {  # $1 = repo name under github.com/llm-d
-  local name="$1" dest="$REPOS_DIR/$1"
+clone_if_missing() {  # $1 = repo name, $2 = github owner (org)
+  local name="$1" owner="$2" dest="$REPOS_DIR/$1"
   if [[ -d "$dest" && -n "$(ls -A "$dest" 2>/dev/null)" ]]; then
     log "$name present — skipping clone."
   else
-    log "Cloning $name → $dest"; git clone --depth 1 "https://github.com/llm-d/$name" "$dest"
+    log "Cloning $name → $dest"; git clone --depth 1 "https://github.com/$owner/$name" "$dest"
   fi
 }
-for r in llm-d llm-d-benchmark llm-d-skills; do clone_if_missing "$r"; done
+# llm-d + llm-d-benchmark live under the llm-d org; the skills library is in llm-d-incubation.
+clone_if_missing llm-d           llm-d
+clone_if_missing llm-d-benchmark llm-d
+clone_if_missing llm-d-skills    llm-d-incubation
 
 # ── Step 3: venv + editable install (gives us the `llm-d-bench-mcp` command) ──
 step "Install the agent (.venv + pip install -e .)"
