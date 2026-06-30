@@ -23,6 +23,7 @@ next ``check_capacity`` — which the mandatory pre-flight requires before any s
 from __future__ import annotations
 
 import shlex
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -78,21 +79,43 @@ def _flatten_tokens(argv: list[str]) -> list[str]:
     return tokens
 
 
+def _model_from_equals_form(tok: str) -> str | None:
+    """The value of an equals-form model flag (``--models=meta-llama/…`` / ``--model=…``), or None.
+    Space-form (``--models <value>``) is handled by the caller's look-ahead; this covers the
+    ``--flag=value`` spelling that the look-ahead would otherwise miss (a cleared model deployed
+    this way must be recognized, not wrongly refused)."""
+    for flag in _MODEL_FLAGS:
+        prefix = flag + "="
+        if tok.startswith(prefix):
+            return tok[len(prefix):]
+    return None
+
+
 def _parse_deploy_invocation(argv: list[str]) -> tuple[str, str | None] | None:
     """If ``argv`` runs ``llmdbenchmark … <standup|run|smoketest> …`` (directly OR inside a
     ``bash -lc`` string), return ``(subcommand, model_or_None)`` where model is the value of
-    ``-m`` / ``--models`` when present. Otherwise return ``None`` (not a gated-deploy command)."""
+    ``-m`` / ``--models`` / ``--model`` (space- OR equals-form) when present. Otherwise return
+    ``None`` (not a gated-deploy command).
+
+    The CLI binary is matched by BASENAME, so a path-qualified invocation through the ad-hoc
+    ``run_shell`` surface (``/usr/local/bin/llmdbenchmark`` / ``./llmdbenchmark``) is recognized
+    too — the guardrail must not be bypassable simply by spelling the binary with a path."""
     tokens = _flatten_tokens(argv)
-    if _CLI not in tokens:
+    cli_idx = next((i for i, tok in enumerate(tokens) if Path(tok).name == _CLI), None)
+    if cli_idx is None:
         return None
-    rest = tokens[tokens.index(_CLI) + 1:]
+    rest = tokens[cli_idx + 1:]
     sub: str | None = None
     model: str | None = None
     for j, tok in enumerate(rest):
         if sub is None and tok in _DEPLOY_SUBCOMMANDS:
             sub = tok
         if tok in _MODEL_FLAGS and j + 1 < len(rest):
-            model = rest[j + 1]
+            model = rest[j + 1]                 # space-form: --models <value>
+        else:
+            eq = _model_from_equals_form(tok)   # equals-form: --models=<value>
+            if eq is not None:
+                model = eq
     if sub is None:
         return None
     return sub, model

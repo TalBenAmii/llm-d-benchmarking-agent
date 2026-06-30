@@ -143,6 +143,35 @@ def test_run_shell_style_bash_lc_standup_is_detected():
     assert gated_block(ctx, argv) is not None
 
 
+def test_path_qualified_binary_is_detected_and_blocked():
+    # The CLI is matched by BASENAME, so spelling the binary with a path (a real possibility on the
+    # ad-hoc run_shell surface) cannot bypass the guardrail.
+    ctx = _stub_ctx(**{MODEL: _GATED_UNAUTH})
+    for binary in ("/usr/local/bin/llmdbenchmark", "./llmdbenchmark"):
+        argv = ["bash", "-lc", f"{binary} --spec cicd/kind standup -p q"]
+        assert gated_block(ctx, argv) is not None, binary
+
+
+def test_equals_form_model_flag_blocks_the_named_gated_model():
+    # --models=<gated> must be parsed (not only the space-form --models <gated>) so the named gated
+    # model is recognized and refused.
+    ctx = _stub_ctx(**{MODEL: _GATED_UNAUTH})
+    argv = ["llmdbenchmark", "--spec", "cicd/kind", "standup", f"--models={MODEL}"]
+    block = gated_block(ctx, argv)
+    assert block is not None
+    assert block[0] == MODEL
+
+
+def test_equals_form_cleared_model_is_allowed_while_another_is_blocked():
+    # The MEDIUM-severity false-positive this fix closes: a model check_capacity POSITIVELY cleared,
+    # deployed via the equals-form flag, must NOT be wrongly refused just because the parser only
+    # understood the space-form. The equals-form value is extracted, matched to the cleared verdict,
+    # and allowed even while a sibling model is blocked.
+    ctx = _stub_ctx(**{MODEL: _GATED_UNAUTH, "facebook/opt-125m": _PUBLIC})
+    argv = ["llmdbenchmark", "--spec", "cicd/kind", "standup", "--models=facebook/opt-125m"]
+    assert gated_block(ctx, argv) is None
+
+
 def test_block_message_nudges_provision_and_recheck():
     msg = gated_block_message(MODEL, "no token configured cluster-side")
     assert MODEL in msg
