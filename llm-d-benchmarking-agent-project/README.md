@@ -20,7 +20,7 @@ Prometheus/Grafana observability, and a one-command Helm/Kustomize deploy.
 
 - [Who this is for](#who-this-is-for)
 - [Quick start](#quick-start) — get it running in two commands
-- [Use it as an MCP server](#use-it-as-an-mcp-server) — drive it from Claude Code, Cursor, VS Code, Codex
+- [Use it as an MCP server](#use-it-as-an-mcp-server) — drive it from Claude Code (the CLI)
 - [Your first benchmark](#your-first-benchmark) — a guided walkthrough
 - [How you talk to it](#how-you-talk-to-it) — the conversation loop
 - [Feature showcase](#feature-showcase) — *say this → the agent does that*, covering everything
@@ -89,18 +89,20 @@ uvicorn app.main:app --reload # open http://127.0.0.1:8000
 
 ## Use it as an MCP server
 
-Prefer to drive the agent from your own coding assistant instead of the web UI? It ships a
-standalone **MCP server** (`llm-d-bench`) that re-exposes its full toolset — **37 tools**, 5
-workflow prompts, and the knowledge base — to any MCP client (Claude Code, Claude Desktop, Cursor,
-VS Code, OpenAI Codex CLI). One interactive command installs it *and* wires up your client:
+Prefer to drive the agent from Claude Code instead of the web UI? It ships a standalone **MCP
+server** (`llm-d-bench`) that re-exposes its full toolset — **37 tools**, 5 workflow prompts, and
+the knowledge base — over the Model Context Protocol. One interactive command installs it *and*
+registers it with Claude Code:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/install-mcp.sh)
 ```
 
-(or clone first and run `./install-mcp.sh`). It runs over stdio on your machine; mutations are
-gated by your client's own approval prompt. Full showcase, per-client config, and the security
-model: [the repo-root `README.md`](../README.md).
+(or clone first and run `./install-mcp.sh`). It uses the `claude-agent-sdk` provider (no API key)
+and runs over stdio on your machine; mutations are gated by Claude Code's own approval prompt.
+Other providers (`anthropic`, `openai`) and clients (Claude Desktop, Cursor, VS Code, OpenAI Codex
+CLI) are planned for a future release. Full showcase, manual config, and the security model:
+[the repo-root `README.md`](../README.md).
 
 ---
 

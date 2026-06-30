@@ -1,10 +1,14 @@
 # llm-d-bench — an MCP server for benchmarking llm-d
 
-**Give any MCP-capable agent — Claude Code, Claude Desktop, Cursor, VS Code, OpenAI Codex —
-the ability to benchmark `llm-d` from plain English.** Point your agent at this server and it
-can probe a cluster, propose a benchmark plan you approve, deploy an `llm-d` stack, run the
-benchmark, and explain the results — driving the real `llmdbenchmark` CLI on your behalf, inside
-the same security sandbox and approval gates as the standalone app.
+**Give Claude Code the ability to benchmark `llm-d` from plain English.** Point it at this
+server and it can probe a cluster, propose a benchmark plan you approve, deploy an `llm-d` stack,
+run the benchmark, and explain the results — driving the real `llmdbenchmark` CLI on your behalf,
+inside the same security sandbox and approval gates as the standalone app.
+
+> **Supported now:** the `claude-agent-sdk` provider (no API key) wired into **Claude Code (the
+> CLI)** — the only path the installer sets up and the one we verify. The server speaks standard
+> MCP, so other providers (`anthropic`, `openai`) and clients (Claude Desktop, Cursor, VS Code,
+> OpenAI Codex CLI) are planned for a future release.
 
 It is the agent's full toolset re-exposed over the Model Context Protocol: **37 tools**, **5
 workflow prompts**, and the agent's entire **knowledge base** (~50 playbooks & heuristics) as
@@ -17,7 +21,8 @@ readable resources — so a generic agent behaves like a benchmarking expert, no
 ## Install (one command)
 
 The installer fetches the project, clones the read-only sibling repos, builds a virtualenv,
-asks which LLM provider and which client to use, and writes that client's MCP config for you:
+configures the `claude-agent-sdk` provider, and registers the server with Claude Code for you
+(or prints the config to paste yourself):
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/install-mcp.sh)
@@ -31,9 +36,9 @@ cd llm-d-benchmarking-agent/llm-d-benchmarking-agent-project
 ./install-mcp.sh
 ```
 
-It is idempotent (safe to re-run) and backs up any client config it edits. The only thing you
-*must* provide is an LLM provider — and the default, `claude-agent-sdk`, needs **no API key** (it
-authenticates through your installed `claude` CLI login).
+It is idempotent (safe to re-run). The provider is `claude-agent-sdk`, which needs **no API key**
+— it authenticates through your installed `claude` CLI login, so the only prerequisite is that the
+`claude` CLI is installed and logged in.
 
 ## What your agent gets
 
@@ -70,57 +75,24 @@ the same playbooks and heuristics the standalone agent reasons over. The server 
 role/workflow preamble in its MCP `instructions` ("probe first, ground in docs, propose a plan,
 run only with approval") that capable clients fold into their system prompt.
 
-## Manual / per-client config
+## Manual config (Claude Code)
 
-The installer does this for you, but here are the blocks if you'd rather wire it up by hand. The
+The installer does this for you, but here's the block if you'd rather wire it up by hand. The
 launch command is the console entry point created by `pip install -e .` — use its **absolute**
-path in your venv (e.g. `/abs/path/.venv/bin/llm-d-bench-mcp`). Everywhere except VS Code shares
-the same `mcpServers` shape.
-
-**Claude Code (CLI):**
+path in your venv (e.g. `/abs/path/.venv/bin/llm-d-bench-mcp`):
 
 ```bash
 claude mcp add llm-d-bench -s user -- /ABS/PATH/.venv/bin/llm-d-bench-mcp
 # verify:  claude mcp list   (or /mcp inside a session)
 ```
 
-**Claude Desktop** (`claude_desktop_config.json`) **and Cursor** (`~/.cursor/mcp.json`):
+A gated-model `HF_TOKEN` is optional — add it with `-e HF_TOKEN=hf_xxx`; your `.env` already
+carries the LLM provider config and is loaded by the server regardless of how it's launched. If
+you skip `pip install -e .`, launch via the module instead:
 
-```json
-{
-  "mcpServers": {
-    "llm-d-bench": {
-      "command": "/ABS/PATH/.venv/bin/llm-d-bench-mcp",
-      "env": { "HF_TOKEN": "hf_xxx" }
-    }
-  }
-}
+```bash
+claude mcp add llm-d-bench -s user -e PYTHONPATH=/ABS/PATH -- /ABS/PATH/.venv/bin/python -m app.mcp
 ```
-
-**VS Code** (`.vscode/mcp.json` — note `servers` + `type`):
-
-```json
-{
-  "servers": {
-    "llm-d-bench": {
-      "type": "stdio",
-      "command": "/ABS/PATH/.venv/bin/llm-d-bench-mcp"
-    }
-  }
-}
-```
-
-**OpenAI Codex CLI** (`~/.codex/config.toml`):
-
-```toml
-[mcp_servers.llm_d_bench]
-command = "/ABS/PATH/.venv/bin/llm-d-bench-mcp"
-```
-
-The `env` block (e.g. `HF_TOKEN`) is optional — your `.env` already carries the LLM provider key
-and is loaded by the server regardless of how it's launched. If you skip `pip install -e .`, use
-`"command": "/ABS/PATH/.venv/bin/python", "args": ["-m", "app.mcp"]` and add
-`"PYTHONPATH": "/ABS/PATH"` to the `env` block.
 
 Smoke-test it without a client using the official inspector:
 
@@ -128,11 +100,16 @@ Smoke-test it without a client using the official inspector:
 npx @modelcontextprotocol/inspector /ABS/PATH/.venv/bin/llm-d-bench-mcp
 ```
 
+> Other MCP clients — Claude Desktop, Cursor, VS Code, OpenAI Codex CLI — are planned for a future
+> release; for now the installer wires up and verifies only Claude Code (the CLI).
+
 ## Requirements & scope
 
 - **Python ≥ 3.11** and `git` (the installer handles the venv via `uv`, or `python3 -m venv`).
-- **One LLM provider**: `claude-agent-sdk` (no key, via the `claude` CLI), `anthropic`
-  (`ANTHROPIC_API_KEY`), or any OpenAI-compatible endpoint (`OPENAI_API_KEY`).
+- **LLM provider**: `claude-agent-sdk` — no API key, authenticated via your installed `claude`
+  CLI login. (Other providers — `anthropic`, `openai` — are planned for a future release.)
+- **Client**: Claude Code (the CLI). (Claude Desktop, Cursor, VS Code, and OpenAI Codex CLI
+  support is planned for a future release.)
 - **No cluster needed** for the advisory tools and knowledge resources. The deploy/run/orchestrate
   tools need a reachable Kubernetes cluster + `kubeconfig` (and `HF_TOKEN` for gated models).
 - The read-only sibling repos (`llm-d`, `llm-d-benchmark`, `llm-d-skills`) must sit next to the
