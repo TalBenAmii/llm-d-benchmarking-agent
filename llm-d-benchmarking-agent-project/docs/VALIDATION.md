@@ -130,7 +130,7 @@ For each flow the harness runs the **real agent loop** and asserts:
 
 ## The flows today
 
-`tests/flows/flows.py` defines 40 flows (`ALL_FLOWS`), in five groups.
+`tests/flows/flows.py` defines 43 flows (`ALL_FLOWS`), in five groups.
 
 **Deploy + benchmark vertical** — the kind quickstart plus seven guide deploys:
 
@@ -180,7 +180,6 @@ live-eval target:
 | `endpoint-readiness-gate` | `check_endpoint_readiness` — endpoint is actually serving, not just present. |
 | `observe-live-usage` | `observe_run_metrics` — live pod CPU/memory during a run. |
 | `cancel-stuck-run` | Run lifecycle: `cancel_run` frees a concurrency slot held by a stuck run. |
-| `resilience-drill` | Chaos/resilience drill: inject a fault during a benchmark and verify safe recovery. |
 
 **Feature coverage** (`FEATURE_FLOWS`) — pre-deploy advice + scenario authoring + access
 surfaces. Same deterministic golden-transcript + gating treatment as the rest:

@@ -29,7 +29,7 @@ you branch — feature branches aren't gated; the `main`-only hook verifies gree
 The unit suite is **flat** (`tests/test_*.py`, ~120 files); names mirror the `app/` subsystem they
 exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` the symbol for the rest):
 - **tools** (`app/tools/`) — `test_<toolname>.py` mirrors each tool: `test_analyze*.py`, `test_autotune.py`, `test_doe.py`, `test_workload_profile.py`, `test_catalog.py`, `test_repos.py`, `test_hf_secret.py`, `test_command_events.py`, `test_convert_guide.py`, `test_multiharness.py`, `test_aggregate_runs.py`, `test_manage_runs.py`, plus `test_new_tools.py` / `test_schemas.py` (registry + schema coverage).
-- **orchestrator** — `test_orchestrator*.py`, `test_chaos_injection.py`, `test_resilience*.py`, `test_jobs_api.py`.
+- **orchestrator** — `test_orchestrator*.py`, `test_jobs_api.py`.
 - **agent loop** — `test_deterministic_msgs.py`, `test_context_mgmt.py`, `test_tool_result_budget.py`, `test_events.py`, `test_loop.py`, `test_streaming_turn.py`, `test_suggest*.py`/`test_suggestions.py`, `test_ws*.py`, `test_prewarm.py`.
 - **validation gates** — `test_report_validation.py`, `test_standard_metrics.py`, `test_runconfig_roundtrip.py`, `test_scenario_overrides.py`, `test_model_override.py`.
 - **security / allowlist** — `test_allowlist.py`, `test_api_trust.py`, `test_governance.py`, `test_concurrency.py`, `test_sessions.py`, `test_run_shell.py`, `test_auto_approve.py`, `test_qafix_infra_*.py`, `test_product_boundary.py`.

@@ -123,7 +123,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.ContentB
 Optionally return the `(content, structured_dict)` tuple form so clients that support structured tool
 output get the raw dict too; the `TextContent` JSON is the floor every client understands.
 
-**Meta-tool adaptation.** Two of the 38 are web-loop-only:
+**Meta-tool adaptation.** Two of the 37 are web-loop-only:
 1. `load_tools` — its only purpose is lazy reveal of tool groups to protect the web agent's *cached
    prompt prefix* (`registry.py` `_TOOL_GROUPS`, `STARTER_KIT` at `:618-651`). An MCP client manages its
    own tool list, so **drop it**: `_EXPOSED` is the full grouped set, flat. (If a future client proves

@@ -269,7 +269,7 @@ Never tell the user you cannot do something; just load the group and do it. The 
   observe_run_metrics, cancel_run, manage_orchestrated_runs
 - analyze (results): locate_and_parse_report, analyze_results, compare_reports, result_history
 - advanced (power features): orchestrate_sweep, autotune_search, generate_doe_experiment,
-  run_resilience_drill, export_run_bundle, reproduce_run, aggregate_runs, compare_harness_runs,
+  export_run_bundle, reproduce_run, aggregate_runs, compare_harness_runs,
   convert_guide_to_scenario"""
 
 

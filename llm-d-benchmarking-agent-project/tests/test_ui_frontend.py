@@ -158,25 +158,6 @@ def test_preflight_status_cards():
     assert ".status-dot-ok" in css and ".status-grid" in css and ".diag-list" in css
 
 
-def test_resilience_drill_card():
-    """The run_resilience_drill result renders a resilience card (injected-faults table +
-    restart panel + verdict), reusing the existing results-table / slo-pass / slo-fail visuals."""
-    js = _ui("app.js")
-    css = _ui("styles.css")
-    assert "function renderResilienceCard" in js
-    # Dispatched from finishTool by tool name…
-    assert 'data.name === "run_resilience_drill") renderResilienceCard(r)' in js
-    # …and from the results_card event (card.kind === "resilience").
-    assert 'card.kind === "resilience"' in js
-    assert "renderResilienceCard(card)" in js
-    # The card surfaces the proof's three parts.
-    assert "Injected faults" in js and "Orchestrator restart drill" in js and "Verdict:" in js
-    # A dedicated accent class on the card; otherwise it reuses the shared SLO visuals.
-    assert ".results-card.resilience" in css
-    # Exposed in the preview boot guard for hand verification.
-    assert "renderResilienceCard," in js
-
-
 def test_autotune_convergence_card():
     """The autotune_search action='status' result renders a goal-seeking convergence card
     (trial table + incumbent + SLO-feasible frontier + budget), reusing the shared
