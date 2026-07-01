@@ -105,8 +105,8 @@ Every validated command is executed by `CommandRunner`:
   never the full argv or the environment — so a token passed as an argument or env var cannot
   leak into a log line. The auth token is constant-time compared and never logged.
 - **In-cluster**, secrets are mounted from a Kubernetes `Secret` via `secretKeyRef` (never
-  inline manifest values); the example Kustomize overlay generates the Secret from a
-  `secret.env` that is gitignored. See `docs/DEPLOYMENT.md`.
+  inline manifest values); the Helm chart manages the Secret from values, or points at a
+  pre-existing one via `secret.existingSecret`. See `docs/DEPLOYMENT.md`.
 
 ## Network exposure (pairs with Phase 12: auth + rate-limit + CORS)
 

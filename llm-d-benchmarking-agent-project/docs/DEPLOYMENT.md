@@ -1,11 +1,11 @@
 # Deployment Guide
 
 How to run the agent in each of its two modes — **local** (a laptop / dev box, the
-quickstart path) and **in-cluster** (a hardened Deployment via Helm or Kustomize) — plus
+quickstart path) and **in-cluster** (a hardened Deployment via Helm) — plus
 configuration, secrets, RBAC, and observability wiring.
 
 The mechanism (the `Dockerfile`, the Helm chart under
-`deploy/helm/llm-d-benchmarking-agent/`, the Kustomize base under `deploy/kustomize/base/`)
+`deploy/helm/llm-d-benchmarking-agent/`)
 is *data*; the operational *judgment* lives in [`knowledge/packaging.md`](../knowledge/packaging.md).
 This guide ties them together.
 
@@ -62,7 +62,7 @@ uvicorn app.main:app --reload
 
 ---
 
-## Mode 2 — In-cluster (Helm / Kustomize, one command)
+## Mode 2 — In-cluster (Helm, one command)
 
 Run the agent as a Deployment inside the cluster, reachable via its Service (port 8000). Use
 this to live the agent next to the workloads it benchmarks, or to expose it to a team.
@@ -100,18 +100,6 @@ Key chart values (`deploy/helm/llm-d-benchmarking-agent/values.yaml`):
 | `resources`, `podSecurityContext`, `securityContext` | hardened defaults | Requests/limits + the non-root/read-only-rootfs posture. |
 | `metrics.podAnnotations` | `true` | Annotate the pod for Prometheus scraping of `/metrics`. |
 
-### Deploy with Kustomize (Helm-free)
-
-```bash
-kubectl apply -k deploy/kustomize/base                  # plain defaults
-# or, with a namespace + API-key Secret + pinned image:
-kubectl apply -k deploy/kustomize/overlays/example
-```
-
-The base renders the same Deployment + Service + ServiceAccount + Role/RoleBinding. Copy
-`deploy/kustomize/overlays/example/secret.env.example` to `secret.env` and pin the image
-with `kustomize edit set image .../agent@sha256:...`.
-
 ### Reach the UI
 
 ```bash
@@ -122,8 +110,7 @@ kubectl -n llmd-bench port-forward svc/llm-d-benchmarking-agent 8000:8000
 ### Image pinning (production)
 
 The tag is convenient but mutable. For reproducible rollouts pin by **digest**: set
-`image.digest: sha256:...` in Helm values (it wins over the tag), or
-`kustomize edit set image .../agent@sha256:...` for Kustomize.
+`image.digest: sha256:...` in Helm values (it wins over the tag).
 
 ---
 
@@ -131,7 +118,7 @@ The tag is convenient but mutable. For reproducible rollouts pin by **digest**: 
 
 `orchestrate_benchmark_run` submits a benchmark as a Kubernetes Job and then watches it,
 reads pods, and streams logs — all via `kubectl` (`app/orchestrator/kube.py`). In-cluster
-those calls authenticate as the pod's ServiceAccount, so the chart/base create a
+those calls authenticate as the pod's ServiceAccount, so the chart creates a
 **namespaced Role** granting only:
 
 - `batch`/`jobs`: `create, get, list, watch, patch, delete`
@@ -150,7 +137,7 @@ kind/sim.
 
 `orchestrate_benchmark_run` refuses unless `ORCHESTRATOR_IMAGE` is configured (or `image` is
 passed) — an orchestrated run is a real Job and needs an image carrying the `llmdbenchmark`
-CLI. Set `config.orchestratorImage` (Helm) / the `ORCHESTRATOR_IMAGE` env (Kustomize). Until
+CLI. Set `config.orchestratorImage` (Helm). Until
 then the agent correctly falls back to the local CLI path (`execute_llmdbenchmark`).
 
 ## Health & observability

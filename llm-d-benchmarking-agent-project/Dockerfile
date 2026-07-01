@@ -4,7 +4,7 @@
 # slim runtime that carries only the venv, the app, and the `kubectl` binary the agent shells
 # out to (the orchestrator and the observe_run_metrics tool run allowlisted `kubectl`). The
 # image runs as a non-root user; secrets are NEVER baked in (they come from the .env / a K8s
-# Secret at runtime — see deploy/helm and deploy/kustomize). `.dockerignore` keeps `.env`, the
+# Secret at runtime — see deploy/helm). `.dockerignore` keeps `.env`, the
 # workspace scratch, and the local venv out of the build context.
 #
 # Build:   docker build -t llm-d-benchmarking-agent:0.1.0 .

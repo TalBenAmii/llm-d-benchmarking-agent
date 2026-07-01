@@ -6,8 +6,9 @@
 > benchmark orchestrator** (Job lifecycle, fault classification, retry/dead-letter, parallel
 > sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
 > comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
-> **Prometheus/Grafana observability**, and a **hardened image + one-command Helm/Kustomize
-> deploy** with least-privilege RBAC. The agent now exposes a broad toolset, and the full
+> **Prometheus/Grafana observability**, and a **hardened image + one-command Helm
+> deploy** with least-privilege RBAC (Kustomize path REMOVED 2026-07-02 — Helm is the single
+> deploy mechanism, matching upstream helmfile). The agent now exposes a broad toolset, and the full
 > technical documentation suite lives under [`docs/`](docs/) (architecture, API reference,
 > deployment guide, user guide). See **[Implementation status](#implementation-status)** for
 > the MVP record; the sections after it are the original design reference (kept as written).

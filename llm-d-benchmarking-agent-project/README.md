@@ -12,7 +12,7 @@ your approval before anything changes your system.
 It exposes a broad agent toolset (catalogued in [`FEATURES.md`](FEATURES.md)) and has grown well past the original quickstart MVP into a full
 benchmarking workbench: a Kubernetes-native run orchestrator, a results analyzer (goodput /
 SLO / Pareto), multi-harness comparison, capacity pre-flight, cross-session history & trends,
-Prometheus/Grafana observability, and a one-command Helm/Kustomize deploy.
+Prometheus/Grafana observability, and a one-command Helm deploy.
 
 ---
 
@@ -298,9 +298,6 @@ docker build -t llm-d-benchmarking-agent:0.1.0 .
 helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
   --namespace llmd-bench --create-namespace \
   --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
-
-# …or Kustomize (Helm-free):
-kubectl apply -k deploy/kustomize/base
 ```
 
 Runs **non-root** with a read-only root filesystem, sources keys from a Kubernetes Secret
@@ -343,7 +340,7 @@ pytest tests/        # the full suite (also hermetic)
 | `security/allowlist.yaml` | The deny-by-default command policy (data) |
 | `knowledge/` | The agent's editable brain — playbooks & heuristics (no code) |
 | `ui/` | Static chat UI (HTML/JS/CSS) |
-| `deploy/` | Dockerfile assets, Helm chart, Kustomize base/overlay, observability |
+| `deploy/` | Dockerfile assets, Helm chart, observability |
 | `workspace/` | Gitignored runtime scratch (sessions, configs, logs) |
 | `tests/` | pytest (unit + integration + flow validation) |
 
@@ -355,7 +352,7 @@ pytest tests/        # the full suite (also hermetic)
 | [docs/GPU_CLUSTER_RUNBOOK.md](docs/GPU_CLUSTER_RUNBOOK.md) | Going beyond CPU-sim to a real single-GPU cluster |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, components, the four determinism gates, trust boundaries |
 | [docs/API.md](docs/API.md) | The HTTP/WebSocket API + the agent tool surface + the `SessionPlan` |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Running locally and in-cluster (Helm/Kustomize), config, secrets, RBAC |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Running locally and in-cluster (Helm), config, secrets, RBAC |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | The flow-validation harness — does the agent run the *right* commands? |
 | [FEATURES.md](FEATURES.md) | The authoritative, evidence-backed inventory of every feature + how to verify each |
 

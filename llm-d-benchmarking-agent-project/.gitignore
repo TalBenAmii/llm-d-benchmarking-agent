@@ -2,8 +2,6 @@
 .env
 .env.*
 !.env.example
-# Deploy secrets (Kustomize secretGenerator inputs); the .example is committed, the real one isn't.
-deploy/kustomize/overlays/*/secret.env
 
 # Runtime scratch (per-session state, generated configs, captured logs, optional repo clones)
 workspace/

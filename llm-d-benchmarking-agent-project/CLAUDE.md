@@ -50,7 +50,7 @@ llm-d-benchmarking-agent-project/
 │  └─ mcp/           📁   standalone MCP server (stdio) re-exposing tools/knowledge to external agents (python -m app.mcp)
 ├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here
 ├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
-├─ deploy/               Helm chart + Kustomize (base/overlays) + observability manifests
+├─ deploy/               Helm chart + observability manifests
 ├─ scripts/              host bootstrap + dev/eval helpers (install_prereqs.sh; flow eval = validate_flows.py + run_eval_isolated.sh)
 ├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)

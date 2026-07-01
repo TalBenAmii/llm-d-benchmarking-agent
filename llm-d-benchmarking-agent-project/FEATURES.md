@@ -28,7 +28,7 @@ explains the numbers. Around that core sit a **Kubernetes-native orchestrator**,
 analyzer** (SLO/goodput/Pareto), **cross-session history + trends**, **Prometheus
 observability**, a **deny-by-default security allowlist + per-action approval**, **optional
 auth/rate-limit/CORS**, **run lifecycle** (cancel/reattach/readiness), **workspace GC**, a
-**one-command Helm/Kustomize deploy**, and a **token-usage counter + prompt caching**. All
+**one-command Helm deploy**, and a **token-usage counter + prompt caching**. All
 *judgment* lives in editable `knowledge/` files; Python is mechanism only.
 
 ---
@@ -227,8 +227,7 @@ result.
 |---|---|---|
 | Hardened non-root container image | `Dockerfile` | ⚪ `docker build .`. |
 | **Helm chart** (Deployment, Service, SA, RBAC Role/Binding, Secret) | `deploy/helm/llm-d-benchmarking-agent/` | 🟢 `helm template deploy/helm/llm-d-benchmarking-agent` renders all 6 kinds. |
-| **Kustomize base + overlay** | `deploy/kustomize/{base,overlays/example}/` | 🟢 `kubectl kustomize deploy/kustomize/base` renders SA, Role, RoleBinding, Service, Deployment. |
-| Least-privilege RBAC | `deploy/*/rbac.yaml` | ⚪ Inspect the rendered Role rules. |
+| Least-privilege RBAC | `deploy/helm/llm-d-benchmarking-agent/templates/rbac.yaml` | ⚪ Inspect the rendered Role rules. |
 | Single source of truth for image/port/SA across artifacts | `app/packaging/assets.py` | ⚪ `tests/test_packaging.py`. |
 
 ---
@@ -323,8 +322,7 @@ artifact route                    → real chart PNG byte-identical (image/png);
 
 **Artifacts:**
 ```
-kubectl kustomize deploy/kustomize/base            → ServiceAccount, Role, RoleBinding, Service, Deployment
-helm template deploy/helm/llm-d-benchmarking-agent → + Secret  (6 kinds total)
+helm template deploy/helm/llm-d-benchmarking-agent → ServiceAccount, Role, RoleBinding, Service, Deployment, Secret  (6 kinds)
 ```
 
 ## Findings / caveats

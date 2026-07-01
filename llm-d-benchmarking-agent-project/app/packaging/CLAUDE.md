@@ -1,7 +1,7 @@
 # app/packaging/ — deploy-artifact contract + shareable HTML export
 
 Two pure-mechanism jobs: (1) `assets.py` is the **single source of truth** that asserts the deploy artifacts
-(Dockerfile / Helm / Kustomize under `deploy/`) agree with the running app — container port, health/ready/
+(Dockerfile / Helm under `deploy/`) agree with the running app — container port, health/ready/
 metrics paths, least-privilege RBAC; (2) the other two modules render **self-contained, zero-external-asset
 HTML** (provenance report card, shared-chat viewer). The whether/how-to-deploy *judgment* lives in
 `knowledge/packaging.md`. (Note: this is NOT where deploy YAML is generated — that's `deploy/`; this
@@ -19,7 +19,7 @@ package only *asserts the contract* with it.)
 - **Dependency direction: packaging → storage** (imports `ShareStore`), never the reverse.
 
 ## Key files
-- `assets.py` — deploy-artifact constants + `required_rbac_rules` / `deploy_dir` / `helm_chart_dir` / `kustomize_base_dir`.
+- `assets.py` — deploy-artifact constants + `required_rbac_rules` / `deploy_dir` / `helm_chart_dir`.
 - `report_card.py` — `render_report_card`.
 - `shared_chat.py` — `render_shared_chat` (+ `python -m app.packaging.shared_chat` CLI).
 

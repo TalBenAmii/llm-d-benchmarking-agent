@@ -1,8 +1,8 @@
 # Packaging & deployment (the production image + one-command K8s deploy)
 
 This is the *judgment* layer for how the agent is packaged and deployed. The mechanism — the
-`Dockerfile`, the Helm chart (`deploy/helm/llm-d-benchmarking-agent/`), and the Kustomize base
-(`deploy/kustomize/base/`) — is data; this file is how to reason about using it.
+`Dockerfile` and the Helm chart (`deploy/helm/llm-d-benchmarking-agent/`) — is data; this
+file is how to reason about using it.
 
 ## Two distinct ways to run the agent
 
@@ -14,7 +14,7 @@ This is the *judgment* layer for how the agent is packaged and deployed. The mec
 2. **In-cluster (the packaging deploy).** The agent service runs as a Deployment in the
    cluster, reachable via its Service (port 8000). Use this when you want the agent itself to
    live next to the workloads it benchmarks, or to expose it to a team. Deploy it with **one
-   command** via Helm or Kustomize (below).
+   command** via Helm (below).
 
 ## Deploying
 
@@ -26,21 +26,13 @@ helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
   --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
 ```
 
-Kustomize (Helm-free):
-
-```
-kubectl apply -k deploy/kustomize/base                      # plain, default values
-# or, with a namespace + API-key Secret + pinned image:
-kubectl apply -k deploy/kustomize/overlays/example
-```
-
 Then `kubectl -n <ns> port-forward svc/llm-d-benchmarking-agent 8000:8000` and open the UI.
 
 ## Image pinning (prefer digests)
 
 The image tag (`image.tag`, default = the chart's `appVersion`) is convenient but **mutable**.
 For reproducible rollouts pin by **digest**: set `image.digest: sha256:...` in Helm values
-(it wins over the tag), or `kustomize edit set image .../agent@sha256:...` for Kustomize. Tell
+(it wins over the tag). Tell
 the user this when they ask about production hardening; for a demo a tag is fine.
 
 ## RBAC: least privilege, and why an orchestrated run needs it
@@ -49,7 +41,7 @@ the user this when they ask about production hardening; for a demo a tag is fine
 reads pods, and streams logs — all by shelling out to `kubectl` (see
 `app/orchestrator/kube.py`). When the agent runs *in-cluster*, those `kubectl` calls
 authenticate as the pod's ServiceAccount, so that SA must be allowed to do exactly those
-things. The chart/base create a **namespaced Role** granting only:
+things. The chart creates a **namespaced Role** granting only:
 
 - `batch`/`jobs`: create, get, list, watch, patch, delete
 - `pods`: get, list, watch
@@ -67,7 +59,7 @@ set (local dev), the Job uses the namespace default SA — fine for kind/sim.
 
 `orchestrate_benchmark_run` refuses unless an `ORCHESTRATOR_IMAGE` is configured (or `image` is
 passed): an orchestrated run is a real Job and needs an image carrying the `llmdbenchmark` CLI.
-Set `config.orchestratorImage` (Helm) / the `ORCHESTRATOR_IMAGE` env (Kustomize) to that image.
+Set `config.orchestratorImage` (Helm) to that image.
 Until it's set, the agent correctly falls back to the local CLI path (`execute_llmdbenchmark`).
 
 ## Security posture baked into the deploy
