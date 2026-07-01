@@ -41,6 +41,7 @@ already in the file: `kind create/delete cluster`, `install_prereqs.sh`, `llmdbe
 
 ## Key files
 - `allowlist.py` — the pure validator (`validate()` → `Decision`).
+- `_validator.py` — the generic token-walk engine behind `allowlist.py` (`_Validator`, `_Reject`; owns `READ_ONLY`/`MUTATING`).
 - `runner.py` — subprocess executor (path resolve, env scrub, `shell=False`, timeout, process-group reap).
 - `quota.py` — per-session/per-day counter (mechanism; caps come from the Decision).
 - `auth.py` — optional Bearer auth + rate limiter (off by default).

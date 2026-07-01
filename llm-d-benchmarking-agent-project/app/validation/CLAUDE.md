@@ -32,7 +32,8 @@ constrained at the boundaries; the gates here are the boundaries.
 
 ## Key files
 - `session_plan.py` — SessionPlan model + catalog validation (gate 1).
-- `report.py` — BR v0.2 load / validate / parse / summarize / metric extraction (gate 4).
+- `report.py` — BR v0.2 load / validate / parse / summarize (gate 4).
+- `report_metrics.py` — §3.4 standard-metric + session-performance extraction (split from `report.py`; owns `_PCTL_KEYS`/`_stat`).
 - `doe.py` — pure DoE cross-product + structural validation (gate 3).
 - `analysis.py` — SLO evaluation, goodput estimation, Pareto/DoE analysis (consumes gate 4; no new gate).
 

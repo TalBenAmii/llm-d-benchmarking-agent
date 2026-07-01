@@ -55,6 +55,7 @@ llm-d-benchmarking-agent-project/
 ├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ ui/                   static chat UI (index.html, app.js, styles.css)
+├─ images/               committed UI screenshots (README/demo stills)
 ├─ docs/                 documentation (README index + proposals/)
 └─ workspace/            gitignored runtime scratch (per-session state, generated configs, logs)
 ```
