@@ -1,6 +1,6 @@
 """autotune_search — the closed-loop autotuner's search-state tracker (MECHANISM ONLY).
 
-Proposal: docs/proposals/01-autotuner.md. A single, action-dispatched tool (mirrors
+Proposal: docs/history/proposals/01-autotuner.md. A single, action-dispatched tool (mirrors
 ``result_history``'s shape) the agent leans on so it doesn't hand-roll the search
 bookkeeping in its context window. It:
 

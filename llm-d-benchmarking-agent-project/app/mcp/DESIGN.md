@@ -5,7 +5,7 @@
 > (ruff + pytest) is the authoritative green check. This doc stays the design of record; the file-level
 > detail below reflects the built code, with one noted deviation in §4 (the per-connection context is
 > built directly in `context_factory.py` rather than via a shared `main.py` helper). It follows the
-> locked decisions in `docs/proposals/05-mcp-server.md` §9.
+> locked decisions in `docs/history/proposals/05-mcp-server.md` §9.
 
 Decisions this implements (from proposal 05 §9): full operator (all functional tools, incl. mutating),
 judgment shipped as MCP resources + prompts + server `instructions`, **stdio** transport, one

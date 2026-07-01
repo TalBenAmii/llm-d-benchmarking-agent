@@ -1,5 +1,5 @@
 """Autotune trial-log storage — the pure, append-only search-state tracker for the
-closed-loop goal-seeking autotuner (proposal docs/proposals/01-autotuner.md).
+closed-loop goal-seeking autotuner (proposal docs/history/proposals/01-autotuner.md).
 
 This is **MECHANISM ONLY**, the autotuner's analogue of ``app/storage/history.py``:
 it reads/appends a per-search trial log under the session workspace and computes the

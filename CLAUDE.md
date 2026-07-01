@@ -9,6 +9,7 @@ This directory is a **container**, not the project. It holds:
 ├── llm-d-skills/                     # READ-ONLY upstream repo (incubation skills library) — never edit
 ├── demo-output/                      # demo videos/screenshots from the capture pipeline (git-excluded)
 ├── fresh-env/                        # throwaway fresh-WSL-distro test env (reset.sh → kind-fresh)
+├── README.md · DEVICE_BOOTSTRAP.md   # monorepo overview · fresh-device/WSL bootstrap steps
 └── llm-d-benchmarking-agent-project/ # THE project — the ONLY folder we write code in
 ```
 

@@ -25,6 +25,11 @@ rules), [`FEATURES.md`](../FEATURES.md) (live, evidence-backed feature inventory
 remaining/deferred phases), and [`plan.md`](history/plan.md) (design + status). The agent's
 *judgment* lives in [`knowledge/`](../knowledge/).
 
+Design history is archived under [`history/`](history/) — the original proposal + plan, plus
+[`history/proposals/`](history/proposals/) (the five shipped feature proposals, kept as
+design-of-record). UI screenshots used by docs/demos live in [`images/`](images/); the informal
+working backlog is [`TODO.md`](TODO.md).
+
 ## Design in one line
 
 **Thin code, thick agent.** Python is mechanism only (UI, agent loop, tools, security
