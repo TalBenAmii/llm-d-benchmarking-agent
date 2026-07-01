@@ -34,7 +34,7 @@ _TOOL_RESULT_BUDGET = 6_000  # chars of a tool result fed back to the model
 CARD_RESULT_TOOLS = frozenset({
     "locate_and_parse_report", "analyze_results", "compare_reports", "compare_harness_runs",
     "probe_environment", "check_capacity", "check_endpoint_readiness", "advise_accelerators",
-    "generate_doe_experiment", "orchestrate_benchmark_run", "run_resilience_drill",
+    "generate_doe_experiment", "orchestrate_benchmark_run",
     "autotune_search", "export_run_bundle",
     # suggest_next_steps carries no metrics card — its result is the {label,prompt} chip list the
     # UI draws as clickable next-step buttons. Persisted here so the buttons replay on resume/reload

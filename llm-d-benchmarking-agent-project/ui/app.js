@@ -1305,7 +1305,7 @@ const RUN_PHASES = [
 // Tool name -> phase index for the progress rail. Tools NOT in this map deliberately don't move
 // the rail (phaseForTool returns -1 → advancePhase no-ops): the meta / UX / alongside-any-phase
 // tools — observe_run_metrics, run_shell, cancel_run, autotune_search, export_run_bundle,
-// reproduce_run, run_resilience_drill.
+// reproduce_run.
 const TOOL_PHASE = {
   probe_environment: 0, list_catalog: 0, inspect_workload_profile: 0, estimate_run_duration: 0,
   advise_accelerators: 0, check_capacity: 0, discover_stack: 0,
@@ -1538,8 +1538,6 @@ function addCardCopy(root, text) {
 
 function renderResultsCard(card) {
   if (!card || typeof card !== "object") return;
-  // The resilience drill rides the same results_card event but has its own layout.
-  if (card.kind === "resilience") { renderResilienceCard(card); return; }
   // The closed-loop autotuner's convergence view also rides the results_card event.
   if (card.kind === "autotune") { renderAutotuneCard(card); return; }
   removeWelcomeCard();
@@ -2013,69 +2011,6 @@ function renderOrchestrateCard(r) {
   scroll();
 }
 
-// ---- resilience drill card (from a run_resilience_drill result / results_card) ----
-// Renders the injected-faults table (injected vs classified vs recovery), the restart-durability
-// panel, the SLO budget, and the verdict counts — reusing the existing results-table / slo-pass /
-// slo-fail visuals. Facts only; the resilience narrative is the agent's prose.
-function renderResilienceCard(card) {
-  if (!card || typeof card !== "object" || card.kind !== "resilience") return;
-  removeWelcomeCard();
-  const root = el("div", "results-card resilience");
-  const slo = card.slo || {};
-  const met = slo.met;
-  root.appendChild(el("div", "results-head",
-    "Resilience drill" + (met === true ? " — SLO met ✓" : met === false ? " — SLO missed ✗" : "")));
-  const sub = [card.run_id, slo.budget_s != null ? "SLO " + fmtNum(slo.budget_s) + "s" : null,
-               slo.elapsed_s != null ? fmtNum(slo.elapsed_s) + "s elapsed" : null].filter(Boolean).join(" · ");
-  if (sub) root.appendChild(el("div", "report-sub", sub));
-
-  // Injected faults: injected → classified → recovery, with correctness verdicts.
-  const injected = Array.isArray(card.injected) ? card.injected : [];
-  if (injected.length) {
-    root.appendChild(el("div", "results-subhead", "Injected faults"));
-    const table = el("table", "results-table");
-    const head = el("tr");
-    for (const h of ["fault", "@attempt", "classified", "recovery", "as designed"]) head.appendChild(el("th", null, h));
-    table.appendChild(head);
-    for (const f of injected) {
-      const tr = el("tr");
-      tr.appendChild(el("td", "results-name", f.injected_kind || ""));
-      tr.appendChild(el("td", null, f.attempt != null ? String(f.attempt) : ""));
-      const ok = f.classified_correctly === true;
-      tr.appendChild(el("td", ok ? "slo-pass" : "slo-fail",
-        (f.classified_kind || "—") + (ok ? " ✓" : " ✗")));
-      tr.appendChild(el("td", null, f.recovery_action || ""));
-      tr.appendChild(el("td", f.recovered_as_designed === true ? "slo-pass" : "slo-fail",
-        f.recovered_as_designed === true ? "✓" : "✗"));
-      table.appendChild(tr);
-    }
-    root.appendChild(table);
-  }
-
-  // Restart-durability panel.
-  const rs = card.restart;
-  if (rs && typeof rs === "object") {
-    root.appendChild(el("div", "results-subhead", "Orchestrator restart drill"));
-    if (rs.note) root.appendChild(el("div", "results-note", String(rs.note)));
-    const survived = rs.recovered === true && rs.no_duplicates === true;
-    root.appendChild(el("div", survived ? "slo-pass" : "slo-fail",
-      survived ? "✓ resumed; no duplicate Jobs" : "✗ restart recovery incomplete"));
-  }
-
-  // Verdict counts.
-  const vc = card.verdict_counts || {};
-  if (Object.keys(vc).length) {
-    const parts = [];
-    if (vc.faults_injected != null && vc.classified_correctly != null) parts.push(`${vc.classified_correctly}/${vc.faults_injected} classified correctly`);
-    if (vc.faults_injected != null && vc.recovered_as_designed != null) parts.push(`${vc.recovered_as_designed}/${vc.faults_injected} recovered as designed`);
-    if (vc.restart_survived != null) parts.push(`restart ${vc.restart_survived ? "survived" : "failed"}`);
-    root.appendChild(el("div", "results-note", "Verdict: " + parts.join("; ") + "."));
-  }
-
-  activePane.appendChild(root);
-  scroll();
-}
-
 // Reshape a raw autotune_search action='status' tool result into the autotune card shape (the
 // backend results_card already carries kind:"autotune"; this handles the raw tool_result path so
 // the card also draws from the collapsed tool panel). No-ops to null for non-status results.
@@ -2298,7 +2233,6 @@ function renderToolResultCards(data) {
   else if (data.name === "advise_accelerators") renderAcceleratorCard(r);
   else if (data.name === "generate_doe_experiment") renderDoeCard(r);  // sweep matrix
   else if (data.name === "orchestrate_benchmark_run") renderOrchestrateCard(r);
-  else if (data.name === "run_resilience_drill") renderResilienceCard(r);  // chaos / resilience drill
   else if (data.name === "autotune_search") renderAutotuneCard(_card_from_autotune_status(r));  // goal-seeking convergence
   else if (data.name === "export_run_bundle") renderReproducibilityCard(r);  // provenance bundle
   else if (data.name === "suggest_next_steps") renderAgentSuggestions(r);  // the agent's "what next?" buttons
@@ -3316,7 +3250,7 @@ if (window.__LLMD_SHARED__) {
     renderResultsCard, renderParetoCard, renderComparisonCard, renderHarnessCompareCard,
     renderResourceStats, renderAgentSuggestions,
     renderEnvStatus, renderCapacityCard, renderReadinessCard,
-    renderAcceleratorCard, renderDoeCard, renderOrchestrateCard, renderResilienceCard,
+    renderAcceleratorCard, renderDoeCard, renderOrchestrateCard,
     renderAutotuneCard,
     openBuilder, composeBrief,
     bootShareView, bootSharedStatic,

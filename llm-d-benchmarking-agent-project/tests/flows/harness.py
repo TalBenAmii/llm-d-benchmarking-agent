@@ -521,8 +521,6 @@ async def run_flow(
         llm_provider="anthropic",
         anthropic_api_key="not-used-in-scripted-mode",
         simulate=simulate,
-        # The resilience-drill flow opts into the backend chaos gate; default OFF (production).
-        chaos_enabled=getattr(flow, "chaos_enabled", False),
     )
     allowlist = Allowlist.from_file(settings.allowlist_path)
     runner = CaptureRunner(settings.repo_paths, canned=flow.canned)

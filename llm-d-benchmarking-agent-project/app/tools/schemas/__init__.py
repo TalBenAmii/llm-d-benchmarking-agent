@@ -42,7 +42,6 @@ from app.tools.schemas.orchestrate import (
     ManageOrchestratedRunsInput,
     OrchestrateBenchmarkInput,
     OrchestrateSweepInput,
-    RunResilienceDrillInput,
     SweepTreatment,
 )
 from app.tools.schemas.probe import (
@@ -98,7 +97,6 @@ __all__ = [
     "ReadRepoDocInput",
     "ReproduceRunInput",
     "ResultHistoryInput",
-    "RunResilienceDrillInput",
     "RunSetupInput",
     "RunShellInput",
     "SearchKnowledgeInput",

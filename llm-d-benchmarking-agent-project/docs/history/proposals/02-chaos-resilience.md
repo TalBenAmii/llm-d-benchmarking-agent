@@ -1,13 +1,12 @@
 # SPEC: Chaos / Fault-Injection + Orchestrator-Restart Durability + Resilience Report
 
-> **Status: IMPLEMENTED & merged** (as of 2026-06). This was a pre-implementation design
-> spec; the feature now ships essentially as designed here. The "Exact new/changed files"
-> and test-plan sections below are kept as the design record — the shipped code lives at
-> `app/orchestrator/{chaos,resilience,restart}.py`, the `run_resilience_drill` tool at
-> `app/tools/resilience.py` (registered in `app/tools/registry.py`), the `chaos_enabled`
-> gate in `app/config.py`, the resilience card in `app/agent/results_card.py`, judgment in
-> `knowledge/resilience.md`, and tests in `tests/test_{chaos_injection,orchestrator_restart,
-> resilience_report,resilience_tool}.py`. Read it as rationale, not as pending work.
+> **Status: REMOVED 2026-07-02** (was implemented & merged as of 2026-06, then retired: the
+> drill was hermetic-only — it ran against an in-process fake cluster behind the double
+> `CHAOS_ENABLED` gate — and nothing else depended on it). The `run_resilience_drill` tool,
+> `app/orchestrator/{chaos,resilience,restart}.py`, the `chaos_enabled` gate, the resilience
+> card/knowledge, and its tests were all deleted; the ordinary fault-classification /
+> retry / dead-letter path (`faults.py`, `controller.py`) it exercised remains in production.
+> This spec is kept as the historical design record only — not pending work, not a current feature.
 
 ## 0. Investigation summary (what exists today)
 

@@ -42,7 +42,7 @@ def parse_items(output: str) -> list[dict[str, Any]]:
         return []
     if isinstance(data, dict) and "items" in data:
         # Drop any non-dict element at the SOURCE so EVERY consumer (controller.status/diagnose/
-        # reconstruct, CheckpointStore.load, the chaos decorator's _run_id_of) is protected — a
+        # reconstruct, CheckpointStore.load) is protected — a
         # forged/corrupt `kubectl get ... -o json` whose `items` carries a bare str/number/list
         # would otherwise reach a consumer's `it.get(...)` and AttributeError out of the
         # watch/reconstruct loop. kubectl `items` elements are always JSON objects, so this

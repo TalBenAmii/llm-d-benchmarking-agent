@@ -210,7 +210,6 @@ is the full surface (every agent tool, grouped by what you'd want).
 | A **reproducible bundle** | *"export a provenance bundle for this run"* → repo SHAs + resolved config + report digest |
 | To **re-run an old experiment** | *"reproduce run X"* → re-derives the plan back through the approval + dry-run gates |
 | To **cancel** a run started elsewhere | *"cancel the run in my other chat"* → frees its concurrency slot |
-| To prove it **survives faults** (opt-in) | *"run a resilience drill"* → injects faults in an in-process cluster (double-gated, never touches a real one) |
 
 ---
 

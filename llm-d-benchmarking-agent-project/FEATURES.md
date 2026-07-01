@@ -126,10 +126,6 @@ It computes NO next config and returns NO converge/stop verdict — the strategy
 decision live in `knowledge/autotune_strategy.md`. Rides one upfront `SessionPlan.autotune`
 approval.
 
-**Resilience (opt-in, double-gated, hermetic):** `run_resilience_drill` — inject faults via a
-`KubeClient` decorator + prove restart durability; returns a resilience report. Requires
-`CHAOS_ENABLED=true`; runs against an in-process cluster (never a real one).
-
 **Reproducibility (read-only):** `export_run_bundle` (capture a provenance bundle — repo
 SHAs + resolved config + validated report digest), `reproduce_run` (re-derive a rerun
 proposal that goes back through the SessionPlan-approval + `--dry-run` gates).
@@ -159,7 +155,6 @@ result.
 | **Checkpoint / resume** of long DOE sweeps via a per-sweep ConfigMap (P22) | `app/orchestrator/checkpoint.py` | ⚪ `tests/test_orchestrator*`; resume a sweep with the same `sweep_id` → completed treatments are skipped. |
 | **Resource management** — nodeSelector / tolerations / affinity / GPU type + pod anti-affinity (P23) | `JobSpec`/`build_job_manifest` + `knowledge/resource_management.md` | ⚪ Pass `scheduling` to `orchestrate_benchmark_run`; inspect the rendered manifest in tests. |
 | **Endpoint readiness gate** before submit (+ approval-gated standup suggestion) (P24) | `app/orchestrator/readiness.py`, `check_endpoint_readiness` tool | ⚪ `tests/test_readyz.py` + tool tests; reads `kubectl get endpoints`, refuses to submit against an unready endpoint. |
-| **Resilience / chaos drill** — opt-in fault injection (a `KubeClient` decorator rewriting cluster reads → faults flow through the UNMODIFIED classify→retry/dead-letter path) + restart-durability proof + a resilience report. Double-gated (`CHAOS_ENABLED` + the named tool); hermetic (in-process cluster). | `app/orchestrator/chaos.py` / `resilience.py` / `restart.py`, `run_resilience_drill` tool + `knowledge/resilience.md` | ⚪ `tests/test_chaos_injection.py`, `tests/test_orchestrator_restart.py`, `tests/test_resilience_report.py`, `tests/test_resilience_tool.py`; surfaces as `llmdbench_orchestrator_faults_injected_total` in `/metrics`. |
 | Cleanup of terminal Jobs/ConfigMaps; results PVC preserved | `controller.py:cleanup` | ⚪ orchestrator tests. |
 
 ---

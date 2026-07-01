@@ -217,7 +217,6 @@ Most of the agent's tools never needed a GPU; the GPU upgrade specifically makes
 | `generate_doe_experiment` | ✅ real | each design point is a real run (slower) |
 | `autotune_search` | ✅ real | iterative real runs; works, just slow on one card |
 | `observe_run_metrics` | ✅ real | **requires the metrics-server addon** (§2) |
-| `run_resilience_drill` | ✅ real | hermetic / in-process — GPU-independent |
 | `export_run_bundle`, `reproduce_run`, `result_history` | ✅ real | provenance + history of real runs |
 | `provision_hf_secret`, `cancel_run` | ✅ real | secret only needed for gated models |
 | **P/D disaggregation** (`guides/pd-disaggregation`) | 🟡 **simulate only** | needs a prefill **and** a decode pod = ≥ 2 GPUs |

@@ -41,7 +41,6 @@ from app.tools import (
     report_locate,
     repos,
     reproducibility,
-    resilience,
     shell,
     suggest,
     tool_loader,
@@ -80,7 +79,6 @@ from app.tools.schemas import (
     ReadRepoDocInput,
     ReproduceRunInput,
     ResultHistoryInput,
-    RunResilienceDrillInput,
     RunSetupInput,
     RunShellInput,
     SearchKnowledgeInput,
@@ -104,7 +102,7 @@ _DESCRIPTIONS = {
         "(the group's tools appear in your tool list THIS same turn). Most tools are grouped and "
         "hidden by default to keep your list lean; the groups are: 'setup' (deploy & pre-flight), "
         "'run' (execute & monitor a benchmark), 'analyze' (results), and 'advanced' (power features "
-        "— sweeps, autotuning, DoE, resilience drills, run export/reproduce, cross-run/-harness "
+        "— sweeps, autotuning, DoE, run export/reproduce, cross-run/-harness "
         "comparison, scenario authoring). Pass `groups` (e.g. ['run'] or ['setup','run']). Call "
         "this the MOMENT the user's request needs a grouped tool — whether their stack is already "
         "up, they have prior results to analyze, or they want to reproduce a run. Read-only, no "
@@ -524,20 +522,6 @@ _DESCRIPTIONS = {
         "with session_id and/or sweep_id; omit both to span the namespace. WHEN to stop/reap is in "
         "knowledge/run_lifecycle.md; choosing this vs cancel_run is in knowledge/orchestrator.md."
     ),
-    "run_resilience_drill": (
-        "RESILIENCE / CHAOS DRILL: prove the orchestrator correctly classifies + recovers from "
-        "injected faults AND survives its own restart mid-run. OPT-IN and DOUBLE-gated — it "
-        "refuses unless the backend CHAOS_ENABLED flag is set, and it is NEVER reachable from "
-        "orchestrate_benchmark_run. Runs hermetically against an in-process cluster (does NOT "
-        "touch a real cluster). You supply a `chaos_plan` (the faults to inject: "
-        "evicted/oom/unschedulable/image_error/run_error/timeout/unknown, each at_attempt N) — "
-        "those flow through the UNMODIFIED classify→retry/dead-letter→reconstruct path, so the "
-        "returned resilience report is a genuine proof: per-fault injected vs classified vs "
-        "recovery, a restart-durability proof (a fresh orchestrator resumes a partial sweep from "
-        "the checkpoint with 0 duplicate Jobs), and SLO met/missed. WHICH faults to inject, and "
-        "how to read the verdict, is YOUR judgment — call read_knowledge('resilience') first (it "
-        "cross-links read_knowledge('orchestrator'))."
-    ),
 }
 
 
@@ -582,7 +566,6 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("observe_run_metrics", _DESCRIPTIONS["observe_run_metrics"], ObserveRunMetricsInput, observe.observe_run_metrics),
         ToolSpec("cancel_run", _DESCRIPTIONS["cancel_run"], CancelRunInput, cancel.cancel_run),
         ToolSpec("manage_orchestrated_runs", _DESCRIPTIONS["manage_orchestrated_runs"], ManageOrchestratedRunsInput, manage_runs.manage_orchestrated_runs),
-        ToolSpec("run_resilience_drill", _DESCRIPTIONS["run_resilience_drill"], RunResilienceDrillInput, resilience.run_resilience_drill),
         ToolSpec("suggest_next_steps", _DESCRIPTIONS["suggest_next_steps"], SuggestNextStepsInput, suggest.suggest_next_steps),
         ToolSpec("load_tools", _DESCRIPTIONS["load_tools"], LoadToolsInput, tool_loader.load_tools),
     ]
@@ -607,7 +590,7 @@ def _strip_titles(node: Any) -> Any:
 
 
 # Phase-grouped tools (load-on-demand). Each tool's JSON schema rides in the prompt-cached prefix
-# on EVERY step, so showing all 38 up front is the bulk of the per-step tool cost. Instead, only
+# on EVERY step, so showing all 37 up front is the bulk of the per-step tool cost. Instead, only
 # the STARTER_KIT (below) is shown by default; the groups here are HIDDEN until the model calls
 # ``load_tools(['<group>'])`` — which the loop folds into ``session.loaded_groups`` and then
 # re-opens the provider turn with the expanded set (callable the SAME turn). The unlock is
@@ -633,7 +616,7 @@ _TOOL_GROUPS: dict[str, frozenset[str]] = {
     }),
     # power features (the former _ADVANCED_TOOLS set)
     "advanced": frozenset({
-        "orchestrate_sweep", "autotune_search", "generate_doe_experiment", "run_resilience_drill",
+        "orchestrate_sweep", "autotune_search", "generate_doe_experiment",
         "export_run_bundle", "reproduce_run", "aggregate_runs", "compare_harness_runs",
         "convert_guide_to_scenario",
     }),
