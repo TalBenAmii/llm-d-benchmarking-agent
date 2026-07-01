@@ -1,6 +1,6 @@
 # SPEC: Closed-loop Autotuner / Goal-Seeking Mode
 
-**Status:** SHIPPED — implemented as the `autotune_search` tool (`app/tools/autotune.py` + `app/storage/autotune.py`), `knowledge/autotune_strategy.md`, the `AutotunePlan`/`AutotuneKnob` blocks in `app/validation/session_plan.py`, and `tests/test_autotune.py`. This spec is kept as the design-of-record (see `docs/history/proposals/README.md` and `FEATURES.md` for the live inventory).
+**Status:** SHIPPED, then **REMOVED 2026-07-02** — goal-seeking now rides DoE sweeps + Pareto analysis (strategy in `knowledge/sweep_playbook.md`). Was implemented as the `autotune_search` tool (`app/tools/autotune.py` + `app/storage/autotune.py`), `knowledge/autotune_strategy.md`, the `AutotunePlan`/`AutotuneKnob` blocks in `app/validation/session_plan.py`, and `tests/test_autotune.py`. This spec is kept as a historical record (see `docs/history/proposals/README.md` and `FEATURES.md` for the live inventory).
 **Invariants confirmed against:** root `CLAUDE.md`, `app/tools/CLAUDE.md`, `app/validation/CLAUDE.md`, `app/agent/CLAUDE.md`, `app/orchestrator/CLAUDE.md`, `knowledge/CLAUDE.md`
 
 ---

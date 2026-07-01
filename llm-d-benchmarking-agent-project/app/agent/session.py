@@ -236,7 +236,7 @@ class Session:
         """Best-effort transcript snapshot for resumability/debugging.
 
         Written ATOMICALLY (temp file + ``os.replace``) like every sibling store
-        (history/share/provenance/autotune). ``persist`` fires on nearly every turn event
+        (history/share/provenance). ``persist`` fires on nearly every turn event
         (channel.py/loop.py/main.py) while ``SessionManager.load``/``list`` read ``state.json``
         concurrently (a sidebar refresh, a reconnect, another tab) — a direct ``write_text`` to
         the live path let a reader observe a TORN file (``JSONDecodeError`` → the running chat

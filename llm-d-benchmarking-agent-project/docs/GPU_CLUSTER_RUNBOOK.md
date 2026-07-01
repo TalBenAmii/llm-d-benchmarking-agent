@@ -215,7 +215,6 @@ Most of the agent's tools never needed a GPU; the GPU upgrade specifically makes
 | `locate_and_parse_report`, `analyze_results` (goodput / SLO / Pareto) | ✅ real | over a real report |
 | `compare_reports`, `compare_harness_runs` | ✅ real | run twice / two harnesses, then compare |
 | `generate_doe_experiment` | ✅ real | each design point is a real run (slower) |
-| `autotune_search` | ✅ real | iterative real runs; works, just slow on one card |
 | `observe_run_metrics` | ✅ real | **requires the metrics-server addon** (§2) |
 | `export_run_bundle`, `reproduce_run`, `result_history` | ✅ real | provenance + history of real runs |
 | `provision_hf_secret`, `cancel_run` | ✅ real | secret only needed for gated models |

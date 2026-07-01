@@ -162,9 +162,9 @@ async def test_schema_validation_error_does_not_break_the_loop(tmp_path):
     ``raise``s ``ValueError``) must come back as a CLEAN, JSON-serializable tool error the model
     can self-correct from — not crash the loop.
 
-    Trigger: the model calls ``propose_session_plan`` with an ``autotune`` knob whose ``max <=
-    min``. ``AutotuneKnob``'s ``model_validator`` raises ``ValueError`` during
-    ``SessionPlan.model_validate`` (so the handler never runs); ``dispatch`` turns the
+    Trigger: the model calls ``propose_session_plan`` with an EMPTY ``slo`` block.
+    ``SLOTargets``' ``model_validator`` ("at least one SLO target must be set") raises
+    ``ValueError`` during ``SessionPlan.model_validate`` (so the handler never runs); ``dispatch`` turns the
     ``ValidationError`` into ``{"error": "invalid arguments", "details": ...}``. Pydantic's
     ``errors()`` embeds the raised ``ValueError`` OBJECT in each entry's ``ctx`` — a NON-JSON-
     serializable value. The loop then ``clamp_tool_result_content``-s every tool result with
@@ -174,16 +174,13 @@ async def test_schema_validation_error_does_not_break_the_loop(tmp_path):
     tool_call that poisons the next turn. The fix sanitizes ``details`` so the result serializes.
     """
     turns = [
-        AssistantTurn(text="Plan with a search.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+        AssistantTurn(text="Plan with QoS targets.", tool_calls=[ToolCall("c1", "propose_session_plan", {
             "use_case_summary": "x", "spec": "cicd/kind", "namespace": "ns",
             "harness": "inference-perf", "workload": "sanity_random.yaml",
-            "autotune": {
-                "strategy": "bisection", "objective": "ttft", "direction": "min", "budget": 5,
-                # max <= min trips AutotuneKnob._check -> raise ValueError -> non-serializable ctx
-                "knobs": [{"name": "c", "key": "max-concurrency", "min": 10.0, "max": 5.0}],
-            },
+            # an empty slo trips SLOTargets._at_least_one -> raise ValueError -> non-serializable ctx
+            "slo": {},
         })]),
-        AssistantTurn(text="Let me fix the bounds.", tool_calls=[]),
+        AssistantTurn(text="Let me fix the targets.", tool_calls=[]),
     ]
     events: list[tuple[str, dict]] = []
 
@@ -196,7 +193,7 @@ async def test_schema_validation_error_does_not_break_the_loop(tmp_path):
     session = _session(tmp_path)
     # Must NOT raise (the bug raised TypeError out of run_turn here).
     await AgentLoop(FakeProvider(turns)).run_turn(
-        session, "tune it", emit=emit, request_approval=request_approval)
+        session, "plan it", emit=emit, request_approval=request_approval)
 
     # The turn reached a clean end (did not die mid-loop).
     assert events[-1][0] == "done"
@@ -209,7 +206,7 @@ async def test_schema_validation_error_does_not_break_the_loop(tmp_path):
 
     # The model got a SECOND step to self-correct (the loop continued past the bad call).
     assert AgentLoop  # keep import used
-    assert any(m.get("role") == "assistant" and m.get("content") == "Let me fix the bounds."
+    assert any(m.get("role") == "assistant" and m.get("content") == "Let me fix the targets."
                for m in session.messages)
 
     # Tool-call/result pairing intact: the assistant message that issued c1 is followed by a

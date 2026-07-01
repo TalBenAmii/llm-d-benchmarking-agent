@@ -42,8 +42,6 @@ def build_results_card(tool_name: str, result: Any) -> dict[str, Any] | None:
         return None
     if tool_name == "analyze_results":
         return _card_from_analysis(result)
-    if tool_name == "autotune_search":
-        return _card_from_autotune(result)
     return None
 
 
@@ -112,54 +110,4 @@ def _single_run_analysis_card(run: dict[str, Any]) -> dict[str, Any]:
         card["standard_metrics"] = run["standard_metrics"]
     if run.get("session_performance"):
         card["session_performance"] = run["session_performance"]
-    return {k: v for k, v in card.items() if v is not None}
-
-
-def _card_from_autotune(result: dict[str, Any]) -> dict[str, Any] | None:
-    """Flat render model for an autotune_search action='status' result — the closed-loop
-    goal-seeking CONVERGENCE view. Mechanism only: it reshapes the FACTS the tool already
-    computed (the trial-by-trial table, the incumbent best_feasible, the SLO-feasible
-    frontier, budget used/remaining) into the card the UI's autotune branch renders. It makes
-    NO convergence judgment — the tool returns no stop verdict and neither does this card; the
-    'are we done?' narrative stays the agent's prose (knowledge/autotune_strategy.md).
-
-    Returns None for the non-status actions (record_trial / propose_next_config emit no card)
-    and for an empty/never-started search (no trials), so the loop simply emits nothing."""
-    # Only the status action carries the convergence facts; record/propose results have a
-    # 'recorded'/'ok' shape and nothing renderable.
-    trials = result.get("trials")
-    if not isinstance(trials, list) or not trials:
-        return None
-    if "trials_used" not in result:
-        return None
-
-    best = result.get("best_feasible")
-    card: dict[str, Any] = {
-        "kind": "autotune",
-        "search_id": result.get("search_id"),
-        "objective": result.get("objective"),
-        "direction": result.get("direction"),
-        "trials_used": result.get("trials_used"),
-        "budget_remaining": result.get("budget_remaining"),
-        "slo_boundary_bracketed": result.get("slo_boundary_bracketed"),
-        "recent_improvement_pct": result.get("recent_improvement_pct"),
-        "slo_feasible_frontier": result.get("slo_feasible_frontier") or [],
-        "frontier": result.get("frontier") or [],
-        "trials": [
-            {
-                "index": t.get("index"),
-                "config": t.get("config"),
-                "objective_value": t.get("objective_value"),
-                "feasible": t.get("feasible"),
-            }
-            for t in trials
-            if isinstance(t, dict)
-        ],
-    }
-    if isinstance(best, dict):
-        card["best_feasible"] = {
-            "trial_index": best.get("trial_index"),
-            "config": best.get("config"),
-            "objective_value": best.get("objective_value"),
-        }
     return {k: v for k, v in card.items() if v is not None}

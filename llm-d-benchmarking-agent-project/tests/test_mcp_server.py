@@ -141,7 +141,7 @@ def test_list_prompts():
     names = {p.name for p in prompts}
     assert names == {
         "benchmark_this_model", "pick_deploy_path", "interpret_this_report",
-        "design_a_sweep", "autotune_to_slo",
+        "design_a_sweep", "goal_seek_to_slo",
     }
     for p in prompts:
         assert isinstance(p.arguments, list)

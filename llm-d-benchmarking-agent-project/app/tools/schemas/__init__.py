@@ -4,7 +4,7 @@ for each tool's argument schema: they validate the LLM's tool-call arguments
 
 This package re-exports every public input model so existing call sites can keep importing
 `from app.tools.schemas import X` unchanged; the models live in per-tool-group submodules
-(probe, docs, command, config, execute, orchestrate, analysis, autotune, provenance).
+(probe, docs, command, config, execute, orchestrate, analysis, doe, provenance).
 """
 from __future__ import annotations
 
@@ -14,11 +14,6 @@ from app.tools.schemas.analysis import (
     CheckCapacityInput,
     CompareHarnessRunsInput,
     CompareReportsInput,
-)
-from app.tools.schemas.autotune import (
-    AutotuneSearchInput,
-    DoEFactor,
-    GenerateDoeInput,
 )
 from app.tools.schemas.command import (
     EnsureReposInput,
@@ -35,6 +30,10 @@ from app.tools.schemas.docs import (
     ReadKnowledgeInput,
     ReadRepoDocInput,
     SearchKnowledgeInput,
+)
+from app.tools.schemas.doe import (
+    DoEFactor,
+    GenerateDoeInput,
 )
 from app.tools.schemas.execute import ExecuteInput
 from app.tools.schemas.orchestrate import (
@@ -68,7 +67,6 @@ __all__ = [
     "AdviseAcceleratorsInput",
     "AggregateRunsInput",
     "AnalyzeResultsInput",
-    "AutotuneSearchInput",
     "CancelRunInput",
     "CheckCapacityInput",
     "CheckEndpointReadinessInput",

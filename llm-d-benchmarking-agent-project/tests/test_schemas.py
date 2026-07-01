@@ -24,7 +24,7 @@ def test_tool_definitions_complete():
         "observe_run_metrics",
         "result_history", "export_run_bundle", "reproduce_run", "cancel_run",
         "manage_orchestrated_runs",
-        "autotune_search", "suggest_next_steps",
+        "suggest_next_steps",
         "load_tools",
     }
     assert names == expected

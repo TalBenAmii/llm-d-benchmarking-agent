@@ -130,7 +130,7 @@ For each flow the harness runs the **real agent loop** and asserts:
 
 ## The flows today
 
-`tests/flows/flows.py` defines 43 flows (`ALL_FLOWS`), in five groups.
+`tests/flows/flows.py` defines 42 flows (`ALL_FLOWS`), in five groups.
 
 **Deploy + benchmark vertical** — the kind quickstart plus seven guide deploys:
 
@@ -172,7 +172,6 @@ live-eval target:
 | `compare-ab-runs` | A straight A/B via `compare_reports` — per-metric deltas. |
 | `result-history-baseline` | Cross-session history: store a validated report as a tagged baseline + read a trend. |
 | `multi-harness-compare` | Cross-harness comparison (inference-perf vs guidellm) via `compare_harness_runs`. |
-| `autotune-goal-seek` | Goal-seeking autotuner: iteratively propose/run configs to find the BEST setting (not just A/B). |
 | `export-provenance-bundle` | Capture a reproducibility/provenance bundle for a good run. |
 | `reproduce-from-bundle` | Replay an earlier run from its provenance bundle id. |
 | `capacity-preflight` | Capacity pre-flight ("will it fit?") via the benchmark repo's own planner. |

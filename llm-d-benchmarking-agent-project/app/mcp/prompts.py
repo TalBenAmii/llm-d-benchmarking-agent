@@ -78,13 +78,14 @@ _PROMPTS: tuple[_PromptSpec, ...] = (
         ),
     ),
     _PromptSpec(
-        name="autotune_to_slo",
-        description="Search the config space to hit an SLO at best goodput.",
+        name="goal_seek_to_slo",
+        description="Iteratively sweep the config space to hit an SLO at best goodput.",
         arguments=(("slo", "The SLO target to hit, e.g. 'p95 TTFT < 2s'", True),),
-        playbooks=("autotune_strategy.md",),
+        playbooks=("sweep_playbook.md",),
         directive=(
-            "Autotune toward slo={slo}: use autotune_search to adaptively search the config space for "
-            "the best goodput that still meets the SLO, following the strategy in the playbook below."
+            "Goal-seek toward slo={slo}: run iterative DoE sweep rounds (generate_doe_experiment / "
+            "orchestrate_sweep) and narrow the factor ranges around analyze_results' SLO-feasible "
+            "frontier each round, following the goal-seeking section of the playbook below."
         ),
     ),
 )

@@ -50,7 +50,7 @@ that exposes three MCP surfaces backed by the existing app:
 2. **Resources** — every `knowledge/*.md|*.yaml` file (50 files), so a connecting agent can pull the
    same playbooks our agent reads.
 3. **Prompts** — a small set of workflow prompts (interview → plan → run → explain, interpret-report,
-   design-a-sweep, autotune-to-SLO) that inject the relevant playbook + the workflow shape.
+   design-a-sweep, goal-seek-to-SLO) that inject the relevant playbook + the workflow shape.
 
 Plus the server-level `instructions` string (role + workflow), advertised at `initialize`, so even a
 client that never fetches a resource inherits the basic "how this agent behaves" shape.
@@ -123,16 +123,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.ContentB
 Optionally return the `(content, structured_dict)` tuple form so clients that support structured tool
 output get the raw dict too; the `TextContent` JSON is the floor every client understands.
 
-**Meta-tool adaptation.** Two of the 37 are web-loop-only:
+**Meta-tool adaptation.** Two of the 36 are web-loop-only:
 1. `load_tools` — its only purpose is lazy reveal of tool groups to protect the web agent's *cached
    prompt prefix* (`registry.py` `_TOOL_GROUPS`, `STARTER_KIT` at `:618-651`). An MCP client manages its
    own tool list, so **drop it**: `_EXPOSED` is the full grouped set, flat. (If a future client proves
-   to choke on 36 tools, revisit by mapping groups to `tools/list_changed`; out of scope for v1.)
+   to choke on 35 tools, revisit by mapping groups to `tools/list_changed`; out of scope for v1.)
 2. `suggest_next_steps` — **keep it**, but its output is plain structured suggestions the connecting
    agent can render however it likes (no UI buttons). No code change to the tool; it already returns a
    dict.
 
-So `_EXPOSED` = all of `REGISTRY` minus `load_tools` (37 tools). Document this in `CLAUDE.md`.
+So `_EXPOSED` = all of `REGISTRY` minus `load_tools` (35 tools). Document this in `CLAUDE.md`.
 
 ---
 
@@ -297,7 +297,7 @@ under a `repo://` scheme. Noted, not built.
 A small set of workflow prompts, each returning messages that embed the relevant playbook content + the
 workflow directive. These are the user-invokable "slash commands" a client surfaces. The playbooks live
 in `knowledge/` (per the internal map): `quickstart_playbook.md`, `deploy_path_playbook.md`,
-`sweep_playbook.md`, `autotune_strategy.md`, `results_interpretation.md`, `orchestrator.md`,
+`sweep_playbook.md`, `results_interpretation.md`, `orchestrator.md`,
 `welllit_path_advisor.yaml`, `conversation_style.md`.
 
 | Prompt name | Arguments | Returns (message content) |
@@ -306,7 +306,7 @@ in `knowledge/` (per the internal map): `quickstart_playbook.md`, `deploy_path_p
 | `pick_deploy_path` | `model?`, `accelerator?` | `deploy_path_playbook.md` + `welllit_path_advisor.yaml` |
 | `interpret_this_report` | `report_path?` | `results_interpretation.md` + `analysis.md`, directing use of `analyze_results`/`locate_and_parse_report` |
 | `design_a_sweep` | `objective?` | `sweep_playbook.md`, directing `generate_doe_experiment`/`orchestrate_sweep` |
-| `autotune_to_slo` | `slo` | `autotune_strategy.md`, directing `autotune_search` |
+| `goal_seek_to_slo` | `slo` | `sweep_playbook.md` (its goal-seeking section), directing iterative sweep rounds + `analyze_results` |
 
 ```python
 @app.get_prompt()

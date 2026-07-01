@@ -90,7 +90,7 @@ uvicorn app.main:app --reload # open http://127.0.0.1:8000
 ## Use it as an MCP server
 
 Prefer to drive the agent from Claude Code instead of the web UI? It ships a standalone **MCP
-server** (`llm-d-bench`) that re-exposes its full toolset — **37 tools**, 5 workflow prompts, and
+server** (`llm-d-bench`) that re-exposes its full toolset — **36 tools**, 5 workflow prompts, and
 the knowledge base — over the Model Context Protocol. One interactive command installs it *and*
 registers it with Claude Code:
 
@@ -200,7 +200,7 @@ is the full surface (every agent tool, grouped by what you'd want).
 | You want… | Say something like… |
 |---|---|
 | A **sweep** across configs | *"sweep batch size and concurrency and find the knee"* → `generate_doe_experiment` (parallel, concurrency-capped) |
-| **Auto-tune to an SLO** | *"find the config that hits p99 < 400 ms at best goodput"* → `autotune_search` closed-loop search |
+| **Goal-seek to an SLO** | *"find the config that hits p99 < 400 ms at best goodput"* → iterative sweep rounds narrowed by `analyze_results`' SLO-feasible frontier |
 | **Live resource usage** during a run | *"is the server near its memory limit right now?"* → `observe_run_metrics` (`kubectl top`) |
 
 ### Trust, reproduce, recover

@@ -1,12 +1,12 @@
 # app/storage/ — disk-backed persistence under <workspace>/
 
-Five best-effort, defensive stores under the shared `<workspace>/`: validated benchmark **history** + pure
-trend math, reproducibility **provenance** bundles, the **autotune** trial log, read-only shared-chat
+Four best-effort, defensive stores under the shared `<workspace>/`: validated benchmark **history** + pure
+trend math, reproducibility **provenance** bundles, read-only shared-chat
 **share** snapshots, and workspace **retention**/GC + a startup self-check. Pure mechanism — every store is
-defensive I/O; all "is this a regression / has the search converged / what to prune" *judgment* lives in
+defensive I/O; all "is this a regression / what to prune" *judgment* lives in
 `knowledge/` + the LLM.
 
-## Shared pattern (all five stores)
+## Shared pattern (all four stores)
 Filesystem-safe id/token guard **before** any path use → atomic temp-then-replace write → defensive read that
 skips corrupt files rather than crash. All share one workspace root (`settings.resolved_workspace_dir`).
 
@@ -24,17 +24,14 @@ skips corrupt files rather than crash. All share one workspace root (`settings.r
   `app/agent/prompt.py::_knowledge_sections` + `knowledge_access.EXCLUDED_KNOWLEDGE_FILES`. `build_bundle`
   refuses to certify an unvalidated report (`InvalidReportError`); a missing/empty repo (worktree case) degrades
   to `{unavailable: True}` — never fabricates a SHA.
-- **`autotune.py` contains ZERO benchmarking judgment** (no next-config / `converged` / knob pick — those are
-  `knowledge/autotune_strategy.md`); it reuses `validation.analysis.pareto_analysis` and `validation.doe._KEY_RE`
-  verbatim — don't fork those. `share.py` tokens are uuid4 hex (the unguessable bearer credential); `_TOKEN_RE`
+- **`share.py` tokens are uuid4 hex** (the unguessable bearer credential); `_TOKEN_RE`
   guards traversal before disk; `source_session_id` is kept server-side, never echoed to the public viewer.
 
 ## Key files
 - `history.py` (`HistoryStore`, `trend`) · `provenance.py` (`BundleStore`, `build_bundle`, `knowledge_hash`)
-- `autotune.py` (`AutotuneStore`, `frontier_facts`) · `retention.py` (`run_gc`, `self_check`, `readiness`)
-- `share.py` (`ShareStore`, `is_valid_token`)
+- `retention.py` (`run_gc`, `self_check`, `readiness`) · `share.py` (`ShareStore`, `is_valid_token`)
 
 ## Scoped tests
 ```bash
-pytest tests/test_history.py tests/test_provenance.py tests/test_autotune.py tests/test_retention.py tests/test_share.py
+pytest tests/test_history.py tests/test_provenance.py tests/test_retention.py tests/test_share.py
 ```

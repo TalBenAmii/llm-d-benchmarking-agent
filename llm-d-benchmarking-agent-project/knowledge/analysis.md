@@ -7,10 +7,10 @@ three things the proposal calls out as the analyzer's job: **SLO filtering**, **
 and **Pareto/DoE** frontier analysis. The tool is the *mechanism*; the judgment below is
 yours.
 
-> For **goal-seeking** (adaptive next-config: the agent picks each next config from the prior
-> result to converge on the SLO-feasible best, rather than analyzing a fixed set of runs), see
-> `read_knowledge('autotune_strategy')` — its "best feasible point" IS this analyzer's
-> `slo_frontier` pick.
+> For **goal-seeking** (iterative sweeps: each round's grid is narrowed from the prior round's
+> results to converge on the SLO-feasible best, rather than analyzing one fixed set of runs),
+> see the goal-seeking section of `read_knowledge('sweep_playbook')` — its incumbent "best
+> feasible point" IS this analyzer's `slo_frontier` pick.
 
 ## Capture the SLOs during the interview, into the plan
 
