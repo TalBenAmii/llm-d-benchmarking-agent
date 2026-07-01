@@ -8,7 +8,7 @@ agent + Kubernetes-native benchmark orchestrator + results analyzer for
 |---|---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | engineers / reviewers | System design: layers, components, the four determinism gates, request flow, trust boundaries, concurrency & resilience. |
 | [API.md](API.md) | integrators / contributors | The HTTP/WebSocket API and the agent tool surface (inputs, classification, result shapes) + the `SessionPlan`. |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | operators | Running locally and in-cluster (Helm/Kustomize), configuration, secrets, least-privilege RBAC, observability. |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | operators | Running locally and in-cluster (Helm), configuration, secrets, least-privilege RBAC, observability. |
 | [USER_GUIDE.md](USER_GUIDE.md) | end users | Using the agent end-to-end with no `llm-d-benchmark` expertise. |
 | [GPU_CLUSTER_RUNBOOK.md](GPU_CLUSTER_RUNBOOK.md) | end users / operators | Going beyond the CPU `cicd/kind` quickstart: stand up a real **single-GPU** cluster (minikube + NVIDIA, WSL2/RTX 4060 worked example), author a tiny-model scenario that fits 8 GB, and a feature-by-feature checklist of what's real vs simulated on one card. |
 | [VALIDATION.md](VALIDATION.md) | contributors | The flow-validation harness — proving the agent runs the *right* commands. |
@@ -54,7 +54,7 @@ upstream as a module in `llm-d-benchmark` (proposal §5.3 / §10). What's in pla
 - **CI + hermetic tests:** the flow-validation harness ([VALIDATION.md](VALIDATION.md)) and
   the full pytest suite run without an API key, Docker, kind, or a live cluster, so a
   reviewer can verify behavior deterministically.
-- **One-command deploy:** a hardened image + Helm chart / Kustomize base with
+- **One-command deploy:** a hardened image + Helm chart with
   least-privilege RBAC ([DEPLOYMENT.md](DEPLOYMENT.md)).
 
 Open items before a formal upstream PR are tracked in [`FEATURES.md`](../FEATURES.md)'s DEFERRED

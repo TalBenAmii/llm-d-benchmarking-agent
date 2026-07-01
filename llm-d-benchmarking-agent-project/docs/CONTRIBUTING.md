@@ -49,7 +49,7 @@ banned is anything that needs a cluster, a GPU, the network, or minutes of wall-
 
 **Do not skip-to-pass.** A test that `xfail`s, `skip`s unconditionally, or asserts nothing
 meaningful is not coverage. (Skipping an *optional external binary* check when the binary is
-absent — like `helm`/`kustomize`/`promtool` — is the one acceptable skip, because the hermetic
+absent — like `helm`/`promtool` — is the one acceptable skip, because the hermetic
 structural test already covers the contract.)
 
 **The one opt-in integration exception (`tests/integration/`).** The proposal's explicit

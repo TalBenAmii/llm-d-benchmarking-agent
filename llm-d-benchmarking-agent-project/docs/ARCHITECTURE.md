@@ -171,7 +171,7 @@ from the `observe_run_metrics` tool, which reads *live* cluster CPU/memory via `
 top`.)
 
 ### Packaging — `Dockerfile` + `deploy/` + `app/packaging/`
-A hardened non-root image and a one-command Helm chart / Kustomize base that render the
+A hardened non-root image and a one-command Helm chart that renders the
 Deployment + Service + ServiceAccount + a namespaced least-privilege Role/RoleBinding
 granting exactly the `kubectl` verbs `RealKubeClient` uses. See [`DEPLOYMENT.md`](DEPLOYMENT.md)
 and `knowledge/packaging.md`.

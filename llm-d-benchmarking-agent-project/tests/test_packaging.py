@@ -1,13 +1,13 @@
-"""Phase 8 — packaging: the production image + Helm/Kustomize one-command deploy.
+"""Phase 8 — packaging: the production image + Helm one-command deploy.
 
-Hermetic by default. The structural tests parse the shipped Dockerfile / chart templates /
-Kustomize base as text + YAML and assert they agree with the app's real contract (the port,
+Hermetic by default. The structural tests parse the shipped Dockerfile / chart templates
+as text + YAML and assert they agree with the app's real contract (the port,
 the /healthz + /metrics paths app/main.py exposes, the least-privilege RBAC the orchestrator
 actually uses, non-root hardening, no baked-in secrets, image pinning, and the orchestrator
 ServiceAccount wiring). They run with no cluster, no Docker, and no extra binaries.
 
-A second group RENDERS the chart/overlay with the real `helm`/`kustomize` when those binaries
-happen to be installed (and skips cleanly otherwise) — this catches templating errors and
+A second group RENDERS the chart with the real `helm` when that binary happens to be
+installed (and skips cleanly otherwise) — this catches templating errors and
 proves the rendered RBAC still matches the contract, without ever touching a cluster.
 """
 from __future__ import annotations
@@ -27,9 +27,7 @@ from app.packaging.assets import (
     AGENT_HEALTH_PATH,
     AGENT_METRICS_PATH,
     AGENT_READY_PATH,
-    deploy_dir,
     helm_chart_dir,
-    kustomize_base_dir,
     required_rbac_rules,
 )
 
@@ -39,10 +37,6 @@ DOCKERIGNORE = PROJECT_ROOT / ".dockerignore"
 
 
 # ---- helpers ---------------------------------------------------------------
-
-def _load_yaml_docs(path: Path) -> list[dict]:
-    return [d for d in yaml.safe_load_all(path.read_text()) if isinstance(d, dict)]
-
 
 def _norm_rules(rules: list[dict]) -> set[tuple]:
     """A Role's rules as a comparable set of (sorted groups, sorted resources, sorted verbs)."""
@@ -220,73 +214,14 @@ def test_helm_values_pin_image_and_default_safely():
     assert vals["securityContext"]["capabilities"]["drop"] == ["ALL"]
 
 
-# ===========================================================================
-# Kustomize base — structural (no kustomize binary required)
-# ===========================================================================
-
-def test_kustomize_base_lists_all_resources():
-    base = kustomize_base_dir()
-    kz = yaml.safe_load((base / "kustomization.yaml").read_text())
-    for r in ("serviceaccount.yaml", "rbac.yaml", "deployment.yaml", "service.yaml"):
-        assert r in kz["resources"]
-        assert (base / r).exists()
-    # The image is named so overlays / `kustomize edit set image` can pin it.
-    assert kz["images"] and kz["images"][0]["name"]
-
-
-def test_kustomize_rbac_matches_contract():
-    role = _find_kind(_load_yaml_docs(kustomize_base_dir() / "rbac.yaml"), "Role")
-    assert _norm_rules(role["rules"]) == CONTRACT_RULES
-
-
-def test_kustomize_deployment_matches_app_contract():
-    dep = _find_kind(_load_yaml_docs(kustomize_base_dir() / "deployment.yaml"), "Deployment")
-    spec = dep["spec"]["template"]["spec"]
-    assert spec["serviceAccountName"] == "llm-d-benchmarking-agent"
-    # Non-root + hardened.
-    assert spec["securityContext"]["runAsNonRoot"] is True
-    c = _deployment_container(dep)
-    assert c["securityContext"]["readOnlyRootFilesystem"] is True
-    assert c["securityContext"]["allowPrivilegeEscalation"] is False
-    # Probes hit the real health path on the container port.
-    port = next(p["containerPort"] for p in c["ports"] if p.get("name") == "http")
-    assert port == AGENT_CONTAINER_PORT
-    assert c["livenessProbe"]["httpGet"]["path"] == AGENT_HEALTH_PATH
-    # Readiness hits the dedicated /readyz (Phase 16), not liveness's /healthz.
-    assert c["readinessProbe"]["httpGet"]["path"] == AGENT_READY_PATH
-    # Writable scratch is an emptyDir (root FS is read-only), keyed to WORKSPACE_DIR.
-    env = {e["name"]: e for e in c["env"]}
-    assert env["WORKSPACE_DIR"]["value"] == "/workspace"
-    mounts = {m["name"]: m["mountPath"] for m in c["volumeMounts"]}
-    assert mounts.get("workspace") == "/workspace"
-    vols = {v["name"]: v for v in spec["volumes"]}
-    assert "emptyDir" in vols["workspace"]
-    # Secrets come from secretKeyRef (never inline values).
-    for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "HF_TOKEN"):
-        assert "secretKeyRef" in env[key]["valueFrom"]
-        assert "value" not in env[key]
-
-
 def test_pod_is_scrape_annotated_for_metrics():
-    for path in (helm_chart_dir() / "templates" / "deployment.yaml",
-                 kustomize_base_dir() / "deployment.yaml"):
-        text = path.read_text()
-        assert "prometheus.io/scrape" in text
-        assert AGENT_METRICS_PATH in text
-
-
-def test_overlay_keeps_secret_env_out_of_git():
-    # The example overlay generates a Secret from secret.env, which must be gitignored.
-    overlay = deploy_dir() / "kustomize" / "overlays" / "example"
-    assert (overlay / "kustomization.yaml").exists()
-    assert (overlay / "secret.env.example").exists()
-    assert not (overlay / "secret.env").exists(), "a real secret.env must never be committed"
-    gi = (PROJECT_ROOT / ".gitignore").read_text()
-    assert "secret.env" in gi
+    text = (helm_chart_dir() / "templates" / "deployment.yaml").read_text()
+    assert "prometheus.io/scrape" in text
+    assert AGENT_METRICS_PATH in text
 
 
 # ===========================================================================
-# Optional: render with the real helm/kustomize if available (still no cluster)
+# Optional: render with the real helm if available (still no cluster)
 # ===========================================================================
 
 def _render_yaml_docs(argv: list[str]) -> list[dict]:
@@ -325,12 +260,3 @@ def test_helm_digest_pin_overrides_tag():
     dep = _find_kind(docs, "Deployment")
     image = _deployment_container(dep)["image"]
     assert image.endswith("@sha256:abc123"), image
-
-
-@pytest.mark.skipif(shutil.which("kustomize") is None, reason="kustomize not installed")
-def test_kustomize_base_renders_consistent_manifests():
-    docs = _render_yaml_docs(["kustomize", "build", str(kustomize_base_dir())])
-    kinds = {d["kind"] for d in docs}
-    assert {"ServiceAccount", "Role", "RoleBinding", "Service", "Deployment"} <= kinds
-    role = _find_kind(docs, "Role")
-    assert _norm_rules(role["rules"]) == CONTRACT_RULES

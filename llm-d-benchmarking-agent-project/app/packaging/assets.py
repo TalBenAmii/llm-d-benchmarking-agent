@@ -1,7 +1,7 @@
 """The packaging contract (mechanism, no judgment).
 
 These constants are the *single source of truth* the deploy artifacts under ``deploy/``
-must agree with. Tests assert that the shipped Dockerfile / Helm chart / Kustomize base
+must agree with. Tests assert that the shipped Dockerfile / Helm chart
 actually expose this port, probe these paths, and grant exactly this RBAC — so the
 artifacts can't silently drift from the app (``app/main.py`` ``/healthz`` + ``/metrics``,
 default port 8000) or from what the orchestrator really does to the cluster.
@@ -84,7 +84,3 @@ def deploy_dir() -> Path:
 
 def helm_chart_dir() -> Path:
     return deploy_dir() / "helm" / HELM_CHART_NAME
-
-
-def kustomize_base_dir() -> Path:
-    return deploy_dir() / "kustomize" / "base"

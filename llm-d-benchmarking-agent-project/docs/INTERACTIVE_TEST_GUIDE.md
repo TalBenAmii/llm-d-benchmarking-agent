@@ -282,12 +282,10 @@ These need a real cluster. Ask the agent to use the orchestrator path:
 
 ```bash
 helm template deploy/helm/llm-d-benchmarking-agent | grep '^kind:' | sort | uniq -c
-kubectl kustomize deploy/kustomize/base            | grep '^kind:' | sort | uniq -c
 docker build -t llmd-agent:test .                  # optional: hardened non-root image
 ```
 
 - [ ] **⚪** Helm renders **6 kinds**: Deployment, Service, ServiceAccount, Role, RoleBinding, Secret.
-- [ ] **⚪** Kustomize base renders SA, Role, RoleBinding, Service, Deployment.
 - [ ] **⚪** RBAC is **least-privilege** (inspect the Role rules). *(§10)*
 
 ---
@@ -372,5 +370,5 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
 | Real benchmark numbers + inline charts | ✅ | ❌ | ✅ |
 | Orchestrator Job lifecycle / log stream | ✅ | ❌ | ✅ |
 | HTTP ops / auth / rate-limit / metrics | — | ✅ | ❌ |
-| Deploy artifacts (helm/kustomize/docker) | — | — | ❌ |
+| Deploy artifacts (helm/docker) | — | — | ❌ |
 | Hermetic suite / flows | — | — | ❌ |

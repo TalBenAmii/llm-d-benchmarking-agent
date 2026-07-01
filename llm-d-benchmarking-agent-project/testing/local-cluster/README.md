@@ -5,7 +5,7 @@ your laptop with **no real GPUs and no cloud spend**, by standing up a real Kube
 that *advertises* fake `nvidia.com/gpu` resources.
 
 > **This is debugging infrastructure, NOT part of the product.** Nothing here is imported by
-> `app/`, referenced by the Helm/Kustomize charts, or baked into the container image. See
+> `app/`, referenced by the Helm chart, or baked into the container image. See
 > [§ Product safety](#product-safety-how-we-keep-this-out-of-the-shipped-artifact).
 
 ## Why this works (no app code, no fake hardware)
