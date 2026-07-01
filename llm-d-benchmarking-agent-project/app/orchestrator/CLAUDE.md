@@ -37,7 +37,11 @@ ConfigMap checkpoint).
 - `faults.py` — failure classification.
 - `kube.py` — `KubeClient`: allowlisted `kubectl` (apply/delete mutating + approval-gated; get/logs read-only).
 - `checkpoint.py` — sweep ConfigMap checkpoint load/write/resume.
-- `readiness.py` — pure readiness analysis (endpoint / gateway / serving) — facts only, no judgment.
+- `chaos.py` — drill-only `ChaosKubeClient` decorator: rewrites cluster READS into fault-shaped JSON; `ChaosPlan` / `FaultLedger`.
+- `resilience.py` — `build_resilience_report`: pure join of injected ⋈ classified ⋈ recovered → `ResilienceReport` (facts only).
+- `restart.py` — `prove_restart_recovery`: fresh orchestrator resumes via existing reconstruct / checkpoint → `RestartProof`.
+
+(Readiness analysis moved to its own package — see `app/readiness/CLAUDE.md`.)
 
 ## Scoped tests
 ```bash

@@ -23,10 +23,8 @@ the authoritative list. Judgment about *what to do with* results lives in `knowl
   raises `ApprovalRejected`). A handler that calls neither just auto-runs (pure Python, e.g. analyze).
 - **Raise `ToolError` for any non-retryable failure** (bad input, missing repo, allowlist denial) — the
   loop turns it into a clean `{"error": ...}`. Never raise *other* exceptions (they break the session).
-- **The allowlist governs the DEDICATED command tools, not `run_shell`.** For the dedicated tools, an
-  allowlist denial is defense — widen capability in `security/allowlist.yaml` (data), don't work around it.
-  The agent's ad-hoc surface is `run_shell` (arbitrary `bash -lc`, gated by the read-only/mutating
-  classifier + approval), which deliberately does NOT consult the allowlist.
+- **An allowlist denial is defense, not a bug** — widen capability in `security/allowlist.yaml` (data),
+  don't work around it. (The allowlist-vs-`run_shell` scope split → `app/security/CLAUDE.md`.)
 - **Write only to `ctx.workspace`** (per-session). Never write into the READ-ONLY repos or `/tmp`.
 - **Return flat, JSON-serializable, secret-free dicts.** Pass HF tokens via `ctx.run_command(..., env=…)`,
   never in argv or the result. Emitted command events carry argv only, never env.
@@ -38,8 +36,10 @@ the authoritative list. Judgment about *what to do with* results lives in `knowl
 - `command_exec.py` — `CommandExecutor`: validate → quota → approval → run → record. Tools don't touch it directly.
 - `schemas/` — package of Pydantic input models, one module per tool family (`execute.py`, `orchestrate.py`, `probe.py`, `analysis.py`, `config.py`, `command.py`, `provenance.py`, `autotune.py`, `docs.py`).
 - `probe_parse.py` — pure parser for `probe.py` output. · `json_tail.py` — tail-of-JSON helper.
+- `gated_access.py` — gated-model deploy refusal (`gated_block`) at the command chokepoint; wired into `command_exec.py`/`shell.py`, verdicts recorded by the capacity bridge.
+- `catalog.py` — `build_catalog()`: live spec/harness/workload listing from the bench repo (+ `catalog_for_allowlist`); used by `context.py`/`workload_profile.py`.
 
-## Tool index (35 flat files → 38 tools, grouped by workflow phase)
+## Tool index (grouped by workflow phase)
 The files sit flat; this is the map. `registry.py` is the source of truth for the registered set/order.
 Most tool schemas are grouped (`registry._TOOL_GROUPS`: setup/run/analyze/advanced) and HIDDEN by
 default; only the `registry.STARTER_KIT` is shown. The model loads a group with `tool_loader.py`

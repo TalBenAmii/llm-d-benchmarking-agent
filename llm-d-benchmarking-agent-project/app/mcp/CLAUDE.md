@@ -37,5 +37,5 @@ app/mcp/
 ```
 
 ## Scoped tests
-`tests/test_mcp_server.py` (17 hermetic tests: tool mirror/dispatch, approval re-homing, resources,
+`tests/test_mcp_server.py` (hermetic: tool mirror/dispatch, approval re-homing, resources,
 prompts, instructions wiring). Don't run the suite by hand — the merge gate runs ruff + pytest.
