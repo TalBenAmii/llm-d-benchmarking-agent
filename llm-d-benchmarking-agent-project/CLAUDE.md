@@ -55,8 +55,7 @@ llm-d-benchmarking-agent-project/
 ├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ ui/                   static chat UI (index.html, app.js, styles.css)
-├─ images/               committed UI screenshots (README/demo stills)
-├─ docs/                 documentation (README index + proposals/)
+├─ docs/                 documentation (README index + TODO.md backlog + history/ design archive + images/ UI stills)
 └─ workspace/            gitignored runtime scratch (per-session state, generated configs, logs)
 ```
 Knowledge is loaded by `app/config.py` + `app/agent/prompt.py` from the root `knowledge/` dir — there is

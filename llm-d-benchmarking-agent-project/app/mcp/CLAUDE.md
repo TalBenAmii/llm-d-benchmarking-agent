@@ -4,7 +4,7 @@
 > Claude Code, Cursor). Pure mechanism: reuses `app/tools` (registry / `dispatch` / `ToolContext`); the
 > judgment ships as MCP resources/prompts/server-`instructions` sourced from `knowledge/` (data, never
 > duplicated here). Full design of record + rationale → **`DESIGN.md`**; locked decisions →
-> `docs/proposals/05-mcp-server.md` §9. Run it with `python -m app.mcp`.
+> `docs/history/proposals/05-mcp-server.md` §9. Run it with `python -m app.mcp`.
 
 ## Non-negotiables specific to this folder
 1. **Thin code, thick agent** — adapters + transport only, no decision logic.

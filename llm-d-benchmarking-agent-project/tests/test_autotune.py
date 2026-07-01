@@ -1,4 +1,4 @@
-"""Closed-loop autotuner tests (proposal docs/proposals/01-autotuner.md).
+"""Closed-loop autotuner tests (proposal docs/history/proposals/01-autotuner.md).
 
 Hermetic: a pure SYNTHETIC RESULT SURFACE — a function ``config -> BR v0.2 report`` written
 to a temp dir — driven through the REAL tools (record_trial / propose_next_config / status).
