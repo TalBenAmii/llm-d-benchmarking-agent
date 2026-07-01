@@ -78,25 +78,17 @@ def _seed_job(ws: Path, rid: str, *, age_days: float, size: int = 100) -> Path:
     return f
 
 
-def _seed_share(ws: Path, token: str, *, age_days: float, size: int = 100,
-                published: bool = False) -> Path:
-    """Mirror app/storage/share.py + gist_publish.py: a share is workspace/shares/<token>.json
-    (the snapshot) plus, when published, a sibling <token>.gist mapping. Both get the same mtime
-    so they age as one logical item."""
+def _seed_share(ws: Path, token: str, *, age_days: float, size: int = 100) -> Path:
+    """Mirror app/storage/share.py: a share is one workspace/shares/<token>.json snapshot."""
     d = ws / "shares"
     d.mkdir(parents=True, exist_ok=True)
     snap = d / f"{token}.json"
     snap.write_text(json.dumps({"token": token, "items": [], "pad": "x" * size}))
-    mtime = NOW - age_days * DAY
-    _set_mtime(snap, mtime)
-    if published:
-        mapping = d / f"{token}.gist"
-        mapping.write_text("gist-id-for-" + token + "\n")
-        _set_mtime(mapping, mtime)
+    _set_mtime(snap, NOW - age_days * DAY)
     return snap
 
 
-def _share_files(ws: Path, ext: str) -> set[str]:
+def _share_files(ws: Path, ext: str = ".json") -> set[str]:
     """The set of share tokens that currently have a file with extension ``ext`` on disk."""
     base = ws / "shares"
     if not base.is_dir():
@@ -272,10 +264,10 @@ def test_gc_job_manifests_age_and_bytes(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# GC: shares area — read-only conversation snapshots (+ their .gist mappings)
+# GC: shares area — read-only conversation snapshots
 # Regression: share.py's docstring promised shares are "GC-eligible exactly like" sessions/
-# history, but `shares` was missing from MANAGED_AREAS, so snapshots AND their token→gist-id
-# mappings accumulated forever (unbounded disk growth + a docstring that lied).
+# history, but `shares` was missing from MANAGED_AREAS, so snapshots accumulated forever
+# (unbounded disk growth + a docstring that lied).
 # ---------------------------------------------------------------------------
 def test_shares_is_a_managed_area():
     """The shares area must be declared (else the GC never touches it)."""
@@ -303,87 +295,37 @@ def test_gc_max_items_prunes_oldest_shares(tmp_path):
     assert shares_area.kept == 2
 
 
-def test_gc_share_snapshot_and_gist_pruned_together(tmp_path):
-    """A published share spans <token>.json + <token>.gist. The cap must count it as ONE item
-    and prune BOTH files together — never a dangling mapping. This is the core anti-dangling
-    guarantee the fix exists for."""
-    ws = tmp_path / "ws"
-    # old published share (snapshot + gist) + a fresh published share.
-    old = f"{0xa:032x}"
-    fresh = f"{0xb:032x}"
-    _seed_share(ws, old, age_days=10.0, published=True)
-    _seed_share(ws, fresh, age_days=1.0, published=True)
-    s = _settings(tmp_path, retention_max_items=1)  # keep newest 1
-
-    res = run_gc(s, active_session_ids=set(), now=NOW)
-
-    # The old share is gone ENTIRELY — neither its snapshot nor its gist mapping survives.
-    assert _share_files(ws, ".json") == {fresh}
-    assert _share_files(ws, ".gist") == {fresh}, "the gist mapping must die with its snapshot"
-    assert not (ws / "shares" / f"{old}.json").exists()
-    assert not (ws / "shares" / f"{old}.gist").exists(), "dangling .gist left behind!"
-    shares_area = next(a for a in res.areas if a.area == "shares")
-    # A published share counts as ONE scanned/removed item, not two.
-    assert shares_area.scanned == 2
-    assert set(shares_area.removed) == {old}
-    assert shares_area.kept == 1
-
-
 def test_gc_keeps_fresh_share_under_caps(tmp_path):
     """A recent, within-cap share (the user may still be viewing the link) is NEVER pruned."""
     ws = tmp_path / "ws"
     fresh = f"{0xc:032x}"
-    _seed_share(ws, fresh, age_days=0.5, published=True)
+    _seed_share(ws, fresh, age_days=0.5)
     s = _settings(tmp_path, retention_max_age_days=30.0, retention_max_items=500)
 
     run_gc(s, active_session_ids=set(), now=NOW)
 
-    assert _share_files(ws, ".json") == {fresh}
-    assert _share_files(ws, ".gist") == {fresh}
+    assert _share_files(ws) == {fresh}
 
 
 def test_gc_share_age_cap(tmp_path):
-    """Age cap applies to shares like every other area: strictly-older-than is pruned (with its
-    gist), exactly-at-cap is kept."""
+    """Age cap applies to shares like every other area: strictly-older-than is pruned,
+    exactly-at-cap is kept."""
     ws = tmp_path / "ws"
-    _seed_share(ws, f"{0x1:032x}", age_days=1.0, published=True)    # fresh -> kept
-    _seed_share(ws, f"{0x2:032x}", age_days=30.0, published=True)   # exactly cap -> kept
-    _seed_share(ws, f"{0x3:032x}", age_days=30.1, published=True)   # strictly older -> pruned
+    _seed_share(ws, f"{0x1:032x}", age_days=1.0)    # fresh -> kept
+    _seed_share(ws, f"{0x2:032x}", age_days=30.0)   # exactly cap -> kept
+    _seed_share(ws, f"{0x3:032x}", age_days=30.1)   # strictly older -> pruned
     s = _settings(tmp_path, retention_max_age_days=30.0, retention_max_items=0)
 
     run_gc(s, active_session_ids=set(), now=NOW)
 
-    assert _share_files(ws, ".json") == {f"{0x1:032x}", f"{0x2:032x}"}
-    # the pruned share's gist went with it; survivors keep theirs.
-    assert _share_files(ws, ".gist") == {f"{0x1:032x}", f"{0x2:032x}"}
-
-
-def test_gc_prunes_orphan_gist_mapping(tmp_path):
-    """A token with ONLY a .gist (a best-effort revoke that couldn't reach gh left the mapping
-    behind — see app.main.revoke_share) is an orphan; GC must still count + prune it so the area
-    can't grow unbounded with dangling mappings."""
-    ws = tmp_path / "ws"
-    d = ws / "shares"
-    d.mkdir(parents=True, exist_ok=True)
-    orphan = f"{0xf:032x}"
-    mapping = d / f"{orphan}.gist"
-    mapping.write_text("stale-gist-id\n")
-    _set_mtime(mapping, NOW - 99 * DAY)  # very old
-    s = _settings(tmp_path, retention_max_age_days=30.0, retention_max_items=0)
-
-    res = run_gc(s, active_session_ids=set(), now=NOW)
-
-    assert not mapping.exists(), "an old orphan .gist mapping must be GC'd"
-    shares_area = next(a for a in res.areas if a.area == "shares")
-    assert shares_area.scanned == 1
-    assert set(shares_area.removed) == {orphan}
+    assert _share_files(ws) == {f"{0x1:032x}", f"{0x2:032x}"}
 
 
 def test_gc_share_dry_run_keeps_files(tmp_path):
-    """dry_run reports prunable shares without deleting (snapshot or gist)."""
+    """dry_run reports prunable shares without deleting them."""
     ws = tmp_path / "ws"
     for i in range(3):
-        _seed_share(ws, f"{i:032x}", age_days=float(i + 1), published=True)
+        _seed_share(ws, f"{i:032x}", age_days=float(i + 1))
     s = _settings(tmp_path, retention_max_items=1)
 
     res = run_gc(s, active_session_ids=set(), now=NOW, dry_run=True)
@@ -391,13 +333,12 @@ def test_gc_share_dry_run_keeps_files(tmp_path):
     shares_area = next(a for a in res.areas if a.area == "shares")
     assert set(shares_area.removed) == {f"{1:032x}", f"{2:032x}"}
     # Nothing actually deleted.
-    assert _share_files(ws, ".json") == {f"{i:032x}" for i in range(3)}
-    assert _share_files(ws, ".gist") == {f"{i:032x}" for i in range(3)}
+    assert _share_files(ws) == {f"{i:032x}" for i in range(3)}
 
 
 def test_gc_share_ignores_atomic_tmp_file(tmp_path):
     """ShareStore.create writes <token>.json.tmp then renames. A leftover .tmp (crash mid-write)
-    must NOT be counted as a share item nor confuse the snapshot/gist pairing."""
+    must NOT be counted as a share item."""
     ws = tmp_path / "ws"
     d = ws / "shares"
     d.mkdir(parents=True, exist_ok=True)

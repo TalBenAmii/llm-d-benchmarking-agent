@@ -42,7 +42,6 @@ from app.observability.logging import setup_logging
 from app.observability.metrics import render_prometheus
 from app.orchestrator.controller import BenchmarkOrchestrator
 from app.orchestrator.kube import RealKubeClient
-from app.packaging import gist_publish
 from app.packaging.report_card import render_report_card
 from app.packaging.shared_chat import render_shared_chat
 from app.security.allowlist import Allowlist
@@ -477,8 +476,8 @@ async def read_share(token: str) -> JSONResponse:
 async def read_share_page(token: str) -> Response:
     """PUBLIC self-contained, offline ``.html`` export of a shared conversation — the SPA + the
     frozen snapshot inlined into ONE dependency-free file (no external assets, no network on open).
-    Host it anywhere, or open it from disk: the agent is never involved. This is the artifact the
-    publish-a-public-link path puts on a static host. 404 for a malformed/unknown/revoked token."""
+    Host it anywhere, or open it from disk: the agent is never involved. 404 for a
+    malformed/unknown/revoked token."""
     data = _share_store().read(token)
     if data is None:
         raise HTTPException(status_code=404, detail="shared conversation not found")
@@ -490,58 +489,17 @@ async def read_share_page(token: str) -> Response:
     )
 
 
-@app.post("/api/share/{token}/publish", dependencies=[Depends(rate_limit)])
-def publish_share(token: str) -> JSONResponse:
-    """Publish a shared conversation as a PUBLIC link WITHOUT exposing the agent: render its frozen
-    snapshot to a self-contained ``.html`` and upload it as a SECRET (unlisted) GitHub gist via the
-    user's ``gh`` CLI. Returns the public render URL the dialog shows by default. Owner-only
-    (auth-gated like minting/revoking — it is NOT a public GET; it creates content on the user's
-    GitHub account). 404 if the token isn't a live share; 503 (with a machine ``reason``) when ``gh``
-    is missing or fails, so the dialog can explain it and fall back to the same-origin link. Declared
-    sync on purpose: the blocking ``gh`` subprocess runs in Starlette's threadpool, off the loop."""
-    settings = get_settings()
-    data = _share_store().read(token)
-    if data is None:
-        raise HTTPException(status_code=404, detail="shared conversation not found")
-    try:
-        result = gist_publish.publish(
-            token, workspace=settings.resolved_workspace_dir, ui_dir=settings.ui_dir, snapshot=data
-        )
-    except gist_publish.GistPublishError as exc:
-        # Not a server fault — the publishing host (the user's gh/GitHub) is unavailable. Hand the
-        # reason back so the dialog can say why and fall back to the local link.
-        return JSONResponse(status_code=503, content={"detail": str(exc), "reason": exc.reason})
-    return JSONResponse({
-        "token": result.token,
-        "gist_id": result.gist_id,
-        "public_url": result.public_url,
-        "fallback_url": result.fallback_url,
-        "reused": result.reused,
-    })
-
-
 @app.delete("/api/share/{token}", dependencies=[Depends(rate_limit)])
 def revoke_share(token: str) -> JSONResponse:
-    """Revoke a share link: delete its snapshot AND, if one was published, its secret gist — so the
-    public link dies together with the in-app link. Owner-only (auth-gated). 404 if the snapshot is
-    already gone. Gist deletion is best-effort: a gh/network failure still revokes the snapshot (the
-    gist mapping survives under ``<workspace>/shares`` to be cleaned later via the script). Sync for
-    the same threadpool reason as publish."""
-    # Reject a malformed token BEFORE it reaches the filesystem (gist-mapping lookup) or the ``gh``
-    # subprocess argv — the read/delete store paths guard internally, but the gist-revoke runs first.
+    """Revoke a share link: delete its snapshot so the link stops working. Owner-only
+    (auth-gated). 404 if the snapshot is already gone."""
+    # Reject a malformed token BEFORE it becomes a filesystem path — the delete store path guards
+    # internally too; this keeps the cheap shape-check at the HTTP boundary.
     if not is_valid_token(token):
         raise HTTPException(status_code=404, detail="shared conversation not found")
-    settings = get_settings()
-    gist_revoked = False
-    if gist_publish.mapping_path(settings.resolved_workspace_dir, token).exists():
-        try:
-            gist_publish.revoke(token, workspace=settings.resolved_workspace_dir)
-            gist_revoked = True
-        except gist_publish.GistPublishError:
-            gist_revoked = False  # best-effort; the snapshot deletion below still proceeds
     if not _share_store().delete(token):
         raise HTTPException(status_code=404, detail="shared conversation not found")
-    return JSONResponse({"deleted": True, "token": token, "gist_revoked": gist_revoked})
+    return JSONResponse({"deleted": True, "token": token})
 
 
 @app.get("/share/{token}")

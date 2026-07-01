@@ -21,9 +21,7 @@ This module is pure **mechanism**, mirroring :class:`~app.storage.history.Histor
 :class:`~app.storage.provenance.BundleStore`: token minting, a filesystem-safe id guard, and
 write / read / delete over per-token JSON files. No judgment, no LLM. ``shares/`` lives under the
 same workspace the session + history stores use and is GC-eligible exactly like them: it is a
-managed retention area (see ``app.storage.retention.MANAGED_AREAS``), and the GC prunes a share's
-snapshot together with its optional ``<token>.gist`` mapping so a pruned snapshot never leaves a
-dangling mapping behind.
+managed retention area (see ``app.storage.retention.MANAGED_AREAS``).
 """
 from __future__ import annotations
 
@@ -46,9 +44,9 @@ def _is_valid_token(token: str | None) -> bool:
 
 
 def is_valid_token(token: str | None) -> bool:
-    """Public shape-check for a share token (32 lowercase hex chars). HTTP routes that touch the
-    filesystem or a ``gh`` subprocess for a token (publish/revoke) call this to reject a malformed
-    token BEFORE it reaches disk/argv — the read/delete paths already guard internally."""
+    """Public shape-check for a share token (32 lowercase hex chars). HTTP routes that build a
+    filesystem path from a token (revoke) call this to reject a malformed token BEFORE it
+    reaches disk — the read/delete paths already guard internally."""
     return _is_valid_token(token)
 
 

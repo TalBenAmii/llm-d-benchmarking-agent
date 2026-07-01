@@ -3,11 +3,11 @@
 
 The export inlines the live SPA (``styles.css`` + ``app.js``) and embeds the frozen snapshot as
 ``window.__LLMD_SHARED__`` so a shared chat renders read-only from ONE file with no server and no
-network — the artifact the "publish a public link without exposing the agent" path puts on a host.
+network — the artifact the "share a chat without exposing the agent" path sends or hosts.
 
 Covers: the XSS-safe JSON embed; the self-contained guarantee (no ``/static/`` refs, no external
 fonts, owning session id withheld); the loud failure when the UI shell drifts; and the
-``python -m app.packaging.shared_chat`` CLI the publish script shells out to.
+``python -m app.packaging.shared_chat`` terminal-export CLI.
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def test_render_is_self_contained_and_embeds_the_snapshot():
 
 
 def test_render_withholds_the_owning_session_id():
-    """A published file is public — it must carry only the transcript, never the session id."""
+    """An exported file is public — it must carry only the transcript, never the session id."""
     html = render_shared_chat(_SNAPSHOT, ui_dir=get_settings().ui_dir)
     assert "SECRET-session-id" not in html
     assert "source_session_id" not in html
@@ -87,7 +87,7 @@ def test_render_raises_loudly_when_the_ui_shell_drifts(tmp_path, kw):
         render_shared_chat(_SNAPSHOT, ui_dir=_fake_ui(tmp_path, **kw))
 
 
-# --- the `python -m app.packaging.shared_chat <token>` CLI the publish script uses -------------
+# --- the `python -m app.packaging.shared_chat <token>` terminal-export CLI ---------------------
 def _seed_share(tmp_path, monkeypatch):
     settings = get_settings().model_copy(update={"workspace_dir": tmp_path / "ws"})
     monkeypatch.setattr(config_mod, "get_settings", lambda: settings)

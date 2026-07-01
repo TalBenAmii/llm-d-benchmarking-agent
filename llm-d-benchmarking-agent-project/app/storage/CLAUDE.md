@@ -12,8 +12,8 @@ skips corrupt files rather than crash. All share one workspace root (`settings.r
 
 ## Invariants (don't break)
 - **`retention.py` is the coupling hub:** `MANAGED_AREAS` must stay in sync with where each store writes
-  (`history/`, `shares/` + `.gist`, orchestrator `jobs/`). It GC's a share's `.json` + `.gist` **as a unit**,
-  and **NEVER prunes an active/running session** (active ids passed in, skipped first). Caps are DATA on
+  (`history/`, `shares/`, orchestrator `jobs/`). It **NEVER prunes an active/running session**
+  (active ids passed in, skipped first). Caps are DATA on
   `Settings` (0/None = unlimited); `_select_for_removal` is pure (oldest-first). Self-check probes (`_CHECKS`)
   are a callable list — adding one is a list edit, not a branch — and hermetic (config-only). `readiness` feeds `/readyz`.
 - **Content-addressing mirrors across history↔provenance:** `compute_record_id` (history) and

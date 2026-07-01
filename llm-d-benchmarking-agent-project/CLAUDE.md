@@ -42,7 +42,7 @@ llm-d-benchmarking-agent-project/
 │  ├─ orchestrator/  📁   Kubernetes-native benchmark Job lifecycle + fault classification
 │  ├─ capacity/      📁   capacity pre-flight — feasibility check at the plan gate (pure, no-I/O half)
 │  ├─ readiness/     📁   endpoint/stack readiness — pure analyzer + thin probe layer
-│  ├─ packaging/     📁   deploy-artifact contract + shareable HTML report/chat + secret-gist publish
+│  ├─ packaging/     📁   deploy-artifact contract + shareable HTML report/chat export
 │  ├─ observability/ 📁   dependency-free metrics + Prometheus exposition + structured logging / CoT trace
 │  ├─ llm/           📁   provider-agnostic LLM integration (anthropic / openai-compat / claude-agent-sdk)
 │  ├─ storage/       📁   persistence: history · provenance · autotune · share · retention/GC
