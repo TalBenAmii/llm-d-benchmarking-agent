@@ -1304,7 +1304,7 @@ const RUN_PHASES = [
 ];
 // Tool name -> phase index for the progress rail. Tools NOT in this map deliberately don't move
 // the rail (phaseForTool returns -1 → advancePhase no-ops): the meta / UX / alongside-any-phase
-// tools — observe_run_metrics, run_shell, cancel_run, autotune_search, export_run_bundle,
+// tools — observe_run_metrics, run_shell, cancel_run, export_run_bundle,
 // reproduce_run.
 const TOOL_PHASE = {
   probe_environment: 0, list_catalog: 0, inspect_workload_profile: 0, estimate_run_duration: 0,
@@ -1538,8 +1538,6 @@ function addCardCopy(root, text) {
 
 function renderResultsCard(card) {
   if (!card || typeof card !== "object") return;
-  // The closed-loop autotuner's convergence view also rides the results_card event.
-  if (card.kind === "autotune") { renderAutotuneCard(card); return; }
   removeWelcomeCard();
   const root = el("div", "results-card");
   addCardCopy(root, resultsCardMarkdown(card));
@@ -2011,80 +2009,6 @@ function renderOrchestrateCard(r) {
   scroll();
 }
 
-// Reshape a raw autotune_search action='status' tool result into the autotune card shape (the
-// backend results_card already carries kind:"autotune"; this handles the raw tool_result path so
-// the card also draws from the collapsed tool panel). No-ops to null for non-status results.
-function _card_from_autotune_status(r) {
-  if (!r || typeof r !== "object" || !Array.isArray(r.trials) || r.trials_used == null) return null;
-  return Object.assign({ kind: "autotune" }, r);
-}
-
-// ---- autotuner convergence card (from an autotune_search action='status' result / results_card) ----
-// Renders the closed-loop goal-seeking search: a trial-by-trial table (config → objective →
-// SLO ✓/✗), the incumbent best-feasible point, the SLO-feasible Pareto frontier, and the budget
-// used. FACTS ONLY — the tool returns no stop verdict and neither does this card; the
-// "is the search done?" narrative is the agent's prose (knowledge/autotune_strategy.md). Reuses
-// the shared results-table / slo-pass / slo-fail visuals.
-function renderAutotuneCard(card) {
-  if (!card || typeof card !== "object" || card.kind !== "autotune") return;
-  removeWelcomeCard();
-  const root = el("div", "results-card autotune");
-  const obj = card.objective ? `${card.objective}${card.direction ? " (" + card.direction + ")" : ""}` : "objective";
-  root.appendChild(el("div", "results-head", "Autotune search — goal-seeking " + obj));
-  const sub = [
-    card.search_id,
-    card.trials_used != null ? `${card.trials_used} trial${card.trials_used === 1 ? "" : "s"} used` : null,
-    card.budget_remaining != null ? `${card.budget_remaining} left in budget` : null,
-    card.slo_boundary_bracketed === true ? "SLO boundary bracketed" : null,
-  ].filter(Boolean).join(" · ");
-  if (sub) root.appendChild(el("div", "report-sub", sub));
-
-  // Incumbent: the best SLO-feasible point found so far.
-  const best = card.best_feasible;
-  if (best && typeof best === "object") {
-    const cfg = best.config && typeof best.config === "object"
-      ? Object.entries(best.config).map(([k, v]) => `${k}=${v}`).join(", ") : "";
-    root.appendChild(el("div", "results-subhead", "Best feasible so far"));
-    root.appendChild(el("div", "results-note",
-      `${cfg || "—"} → ${card.objective || "objective"} ${fmtNum(best.objective_value)}` +
-      (best.trial_index != null ? ` (trial ${best.trial_index})` : "")));
-  }
-
-  // Trial-by-trial table.
-  const trials = Array.isArray(card.trials) ? card.trials : [];
-  if (trials.length) {
-    const frontier = new Set(card.slo_feasible_frontier || []);
-    const table = el("table", "results-table");
-    const head = el("tr");
-    for (const h of ["#", "config", card.objective || "objective", "SLO", "frontier"]) head.appendChild(el("th", null, h));
-    table.appendChild(head);
-    for (const t of trials) {
-      const tr = el("tr");
-      const cfg = t.config && typeof t.config === "object"
-        ? Object.entries(t.config).map(([k, v]) => `${k}=${v}`).join(", ") : "";
-      tr.appendChild(el("td", null, t.index != null ? String(t.index) : ""));
-      tr.appendChild(el("td", "results-name", cfg));
-      tr.appendChild(el("td", null, t.objective_value != null ? fmtNum(t.objective_value) : "—"));
-      tr.appendChild(el("td", t.feasible === true ? "slo-pass" : "slo-fail",
-        t.feasible === true ? "✓ met" : "✗ missed"));
-      tr.appendChild(el("td", null, frontier.has(cfg) ? "★" : ""));
-      table.appendChild(tr);
-    }
-    root.appendChild(table);
-  }
-
-  if (card.recent_improvement_pct != null) {
-    root.appendChild(el("div", "results-note",
-      `Recent improvement: ${fmtNum(card.recent_improvement_pct)}% over the last feasible trials ` +
-      "(a fact — the convergence call is the agent's)."));
-  }
-  root.appendChild(el("div", "results-note",
-    "★ = SLO-feasible Pareto frontier. These are facts; the agent decides whether the search has converged."));
-
-  activePane.appendChild(root);
-  scroll();
-}
-
 function renderHistory(items) {
   for (const it of items) {
     if (it.role === "user") addBubble("user", it.text);
@@ -2233,7 +2157,6 @@ function renderToolResultCards(data) {
   else if (data.name === "advise_accelerators") renderAcceleratorCard(r);
   else if (data.name === "generate_doe_experiment") renderDoeCard(r);  // sweep matrix
   else if (data.name === "orchestrate_benchmark_run") renderOrchestrateCard(r);
-  else if (data.name === "autotune_search") renderAutotuneCard(_card_from_autotune_status(r));  // goal-seeking convergence
   else if (data.name === "export_run_bundle") renderReproducibilityCard(r);  // provenance bundle
   else if (data.name === "suggest_next_steps") renderAgentSuggestions(r);  // the agent's "what next?" buttons
 }
@@ -3223,7 +3146,6 @@ if (window.__LLMD_SHARED__) {
     renderResourceStats, renderAgentSuggestions,
     renderEnvStatus, renderCapacityCard, renderReadinessCard,
     renderAcceleratorCard, renderDoeCard, renderOrchestrateCard,
-    renderAutotuneCard,
     openBuilder, composeBrief,
     bootShareView, bootSharedStatic,
   };

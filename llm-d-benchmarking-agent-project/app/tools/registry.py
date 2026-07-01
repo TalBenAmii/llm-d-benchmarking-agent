@@ -20,7 +20,6 @@ from app.tools import (
 )
 from app.tools import (
     analyze,
-    autotune,
     cancel,
     capacity,
     compare,
@@ -51,7 +50,6 @@ from app.tools.schemas import (
     AdviseAcceleratorsInput,
     AggregateRunsInput,
     AnalyzeResultsInput,
-    AutotuneSearchInput,
     CancelRunInput,
     CheckCapacityInput,
     CheckEndpointReadinessInput,
@@ -424,25 +422,6 @@ _DESCRIPTIONS = {
         "Returns facts (values + direction); call read_knowledge('history') to interpret trends "
         "and give the verdict."
     ),
-    "autotune_search": (
-        "CLOSED-LOOP GOAL-SEEKING search-state tracker. Use it when the user states a GOAL ('hit "
-        "p95 TTFT under 300ms at the best throughput, spend at most 6 runs') rather than asking to "
-        "compare N fixed configs. It tracks the trial log, VALIDATES the next candidate YOU "
-        "computed, and surfaces convergence FACTS — it does NOT pick the next config and does NOT "
-        "decide whether to stop. The search STRATEGY and the STOP decision are YOURS, grounded in "
-        "read_knowledge('autotune_strategy'). All actions auto-run (read/write only the "
-        "workspace). Three actions: (1) 'record_trial' (config + report_source + the plan's "
-        "slo/objective/direction) validates the report, evaluates it against the SLO via the "
-        "agent's analyzer, and appends the trial — it REFUSES an unvalidated report. (2) "
-        "'propose_next_config' (candidate + knobs + budget) PURELY VALIDATES the config you "
-        "computed (in-bounds? duplicate? budget left?) — it never produces the value. (3) 'status' "
-        "returns the incumbent best_feasible, the slo_feasible_frontier, budget_remaining, "
-        "recent_improvement_pct, and slo_boundary_bracketed — FACTS ONLY, NO stop verdict. Ride "
-        "ONE upfront SessionPlan approval (the plan's `autotune` block bounds the search); "
-        "per-trial runs still go through execute_llmdbenchmark/orchestrate_benchmark_run + their "
-        "normal approval gate. WHEN to goal-seek vs sweep, the strategy, and the convergence rubric "
-        "are ALL in read_knowledge('autotune_strategy')."
-    ),
     "export_run_bundle": (
         "Capture a one-click REPRODUCIBILITY PROVENANCE BUNDLE for a VALIDATED run: both read-only "
         "repo SHAs (+ dirty flags), the exact resolved run-config, an environment snapshot, the "
@@ -558,7 +537,6 @@ def build_registry() -> dict[str, ToolSpec]:
         ToolSpec("compare_harness_runs", _DESCRIPTIONS["compare_harness_runs"], CompareHarnessRunsInput, multiharness.compare_harness_runs),
         ToolSpec("analyze_results", _DESCRIPTIONS["analyze_results"], AnalyzeResultsInput, analyze.analyze_results),
         ToolSpec("result_history", _DESCRIPTIONS["result_history"], ResultHistoryInput, history.result_history),
-        ToolSpec("autotune_search", _DESCRIPTIONS["autotune_search"], AutotuneSearchInput, autotune.autotune_search),
         ToolSpec("export_run_bundle", _DESCRIPTIONS["export_run_bundle"], ExportRunBundleInput, reproducibility.export_run_bundle),
         ToolSpec("reproduce_run", _DESCRIPTIONS["reproduce_run"], ReproduceRunInput, reproducibility.reproduce_run),
         ToolSpec("orchestrate_benchmark_run", _DESCRIPTIONS["orchestrate_benchmark_run"], OrchestrateBenchmarkInput, orchestrate.orchestrate_benchmark_run),
@@ -590,7 +568,7 @@ def _strip_titles(node: Any) -> Any:
 
 
 # Phase-grouped tools (load-on-demand). Each tool's JSON schema rides in the prompt-cached prefix
-# on EVERY step, so showing all 37 up front is the bulk of the per-step tool cost. Instead, only
+# on EVERY step, so showing all 36 up front is the bulk of the per-step tool cost. Instead, only
 # the STARTER_KIT (below) is shown by default; the groups here are HIDDEN until the model calls
 # ``load_tools(['<group>'])`` — which the loop folds into ``session.loaded_groups`` and then
 # re-opens the provider turn with the expanded set (callable the SAME turn). The unlock is
@@ -614,9 +592,9 @@ _TOOL_GROUPS: dict[str, frozenset[str]] = {
     "analyze": frozenset({
         "locate_and_parse_report", "analyze_results", "compare_reports", "result_history",
     }),
-    # power features (the former _ADVANCED_TOOLS set)
+    # power features
     "advanced": frozenset({
-        "orchestrate_sweep", "autotune_search", "generate_doe_experiment",
+        "orchestrate_sweep", "generate_doe_experiment",
         "export_run_bundle", "reproduce_run", "aggregate_runs", "compare_harness_runs",
         "convert_guide_to_scenario",
     }),
@@ -624,9 +602,6 @@ _TOOL_GROUPS: dict[str, frozenset[str]] = {
 
 # Every tool that belongs to some load-on-demand group (the inverse of the starter kit).
 _GROUPED_TOOLS: frozenset[str] = frozenset().union(*_TOOL_GROUPS.values())
-
-# Back-compat alias — the former "advanced tier" is now just one group.
-_ADVANCED_TOOLS = _TOOL_GROUPS["advanced"]
 
 # Always-resident tools: everything NOT in a group. These start a session, ground choices, gate
 # mutations (propose_session_plan), preview workloads, run ad-hoc commands, and reach the groups
@@ -674,7 +649,7 @@ async def dispatch(ctx: ToolContext, name: str, raw_input: dict[str, Any]) -> di
         # ``details`` is fed straight back to the model (so it can self-correct) AND serialized by
         # the loop (``clamp_tool_result_content`` -> ``json.dumps``) before it is appended to the
         # transcript. A custom field/model validator that ``raise``s ``ValueError``/``AssertionError``
-        # (e.g. AutotuneKnob's ``max > min`` check) makes Pydantic embed the raised EXCEPTION OBJECT
+        # (e.g. ``SLOTargets``' at-least-one-target check) makes Pydantic embed the raised EXCEPTION OBJECT
         # in each entry's ``ctx`` — which is NOT JSON-serializable. Left in, that ``json.dumps`` would
         # raise ``TypeError`` OUTSIDE the loop's per-tool guard, crashing the turn AND leaving an
         # orphaned tool_call with no matching tool_result (poisoning the next turn). Drop ``ctx``

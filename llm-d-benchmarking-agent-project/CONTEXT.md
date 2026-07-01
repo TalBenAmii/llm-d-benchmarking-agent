@@ -114,9 +114,9 @@ _Avoid_: "best results", "optimal point" (it's a *frontier* of trade-offs, not o
 A parameter sweep — the cross-product of factor levels run as multiple treatments. Built as a **pure** cross-product (no benchmarking judgment in the builder); run locally via the CLI's native `experiment` subcommand or K8s-natively via the orchestrator's parallel Job path.
 _Avoid_: "grid search", "batch run", "matrix" loosely — "sweep" and "DoE" are the canonical terms; one cell is a **treatment**.
 
-**autotuner**:
-A closed-loop goal-seeker (`autotune_search`) that adaptively searches configurations toward an SLO at best goodput. It only tracks/validates the agent's next candidate and surfaces convergence FACTS — it computes no next config and issues no stop verdict; that strategy lives in `knowledge/autotune_strategy.md`.
-_Avoid_: "optimizer", "tuning loop" — and don't attribute the *decision* to the tool; the agent decides.
+**goal-seeking**:
+Converging on the best config that meets an SLO by iterating sweeps: a coarse DoE round -> `analyze_results` (SLO-feasible frontier + goodput) -> narrow the factor ranges around the incumbent -> re-sweep, within a total-run budget agreed up front. No dedicated tool — the strategy lives in `knowledge/sweep_playbook.md` (its goal-seeking section); each round rides the normal SessionPlan/sweep approval.
+_Avoid_: "optimizer", "tuning loop" — and don't attribute the *decision* to a tool; the agent decides.
 
 ### Orchestrator & results
 

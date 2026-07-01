@@ -118,13 +118,10 @@ which `cancel_run` does NOT; also mirrored read-only at `GET /api/jobs`), `provi
 **Analysis / history (read-only):** `compare_reports`, `compare_harness_runs`,
 `analyze_results`, `aggregate_runs`, `result_history`, `cancel_run`.
 
-**Closed-loop goal-seeking (read-only, auto-run):** `autotune_search` — the autotuner's
-search-state tracker for an adaptive search to an SLO at best goodput. Tracks the trial log,
-validates the agent's next candidate (bounds/duplicate/budget), and surfaces convergence
-FACTS (incumbent, SLO-feasible frontier via the reused `pareto_analysis`, budget remaining).
-It computes NO next config and returns NO converge/stop verdict — the strategy + stop
-decision live in `knowledge/autotune_strategy.md`. Rides one upfront `SessionPlan.autotune`
-approval.
+**Goal-seeking (no dedicated tool):** "hit this SLO at best goodput" now rides the DoE sweep
++ Pareto path — iterative `generate_doe_experiment`/`orchestrate_sweep` rounds narrowed by
+`analyze_results`' SLO-feasible frontier, steered by the goal-seeking section of
+`knowledge/sweep_playbook.md` (the closed-loop `autotune_search` tool was removed 2026-07-02).
 
 **Reproducibility (read-only):** `export_run_bundle` (capture a provenance bundle — repo
 SHAs + resolved config + validated report digest), `reproduce_run` (re-derive a rerun

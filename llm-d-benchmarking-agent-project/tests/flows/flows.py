@@ -701,45 +701,6 @@ RESULT_HISTORY_BASELINE = Flow(
     required_tools=["result_history"],
 )
 
-AUTOTUNE_GOAL_SEEK = Flow(
-    name="autotune-goal-seek",
-    title="closed-loop goal-seeking (autotune to an SLO at best goodput)",
-    description="The closed-loop autotuner: the user states a GOAL (hit a p95 TTFT SLO at the "
-                "best output throughput, within a trial budget) rather than a fixed set of "
-                "configs to compare. The agent treats it as a bounded adaptive SEARCH — it "
-                "reads the strategy, proposes ONE plan with an `autotune` block (slo + objective "
-                "+ knob bounds + budget) for a single upfront approval, and drives autotune_search "
-                "to track trials, validate each next candidate IT computes, and read the "
-                "convergence facts. Scored on reading autotune_strategy + choosing autotune_search "
-                "(NOT a static generate_doe_experiment grid). The strategy + stop decision are the "
-                "agent's; the tool is pure mechanism.",
-    repo_state="present_with_venv",
-    tools_present=["docker", "kind", "kubectl"],
-    canned={"get pods": _PODS_RUNNING, "get endpoints": _ENDPOINTS_READY,
-            "list-endpoints": _LIST_ENDPOINTS_READY},
-    mock_user_input="My chat app stack is already up. Don't just compare a few configs — find the "
-                    "BEST setting for me: push request concurrency as high as you can while keeping "
-                    "p95 time-to-first-token under 300 ms, and report the highest output-token "
-                    "throughput you can hit. Spend at most 6 benchmark runs.",
-    turns=[
-        _turn("This is a goal, so I'll treat it as a bounded goal-seeking search. Reading the "
-              "autotune strategy first.",
-              _tc("read_knowledge", name="autotune_strategy")),
-        _turn("Recording the first trial's result into the search log and reading the convergence "
-              "facts to pick the next concurrency myself.",
-              _tc("autotune_search", action="status", search_id="chat-ttft-concurrency",
-                  slo={"ttft_ms": 300, "percentile": "p95"},
-                  objective="output_token_rate", direction="max", budget=6)),
-        _turn("I'll tune request concurrency (one stack, re-benchmarked per step), bisecting to "
-              "the highest concurrency that still meets p95 TTFT ≤ 300 ms, up to 6 runs. The next "
-              "config and the stop call are mine; the tool just tracks trials and the SLO-feasible "
-              "frontier."),
-    ],
-    required_tools=["autotune_search"],
-    forbidden_tools=["generate_doe_experiment"],
-    live_modes=frozenset({"simulate"}),
-)
-
 EXPORT_PROVENANCE_BUNDLE = Flow(
     name="export-provenance-bundle",
     title="capture a reproducibility provenance bundle",
@@ -997,7 +958,6 @@ MANAGE_ORCHESTRATED_RUNS = Flow(
 TOOL_CHOICE_FLOWS = [
     DOE_RUN_SWEEP, DOE_FULL_EXPERIMENT,
     ANALYZE_SLO_PARETO, COMPARE_AB_RUNS, RESULT_HISTORY_BASELINE, MULTI_HARNESS_COMPARE,
-    AUTOTUNE_GOAL_SEEK,
     EXPORT_PROVENANCE_BUNDLE, REPRODUCE_RUN_FLOW,
     CAPACITY_PREFLIGHT,
     ORCHESTRATE_K8S_JOB, ORCHESTRATE_SWEEP, ENDPOINT_READINESS_GATE, OBSERVE_LIVE_USAGE,

@@ -45,7 +45,7 @@ llm-d-benchmarking-agent-project/
 │  ├─ packaging/     📁   deploy-artifact contract + shareable HTML report/chat export
 │  ├─ observability/ 📁   dependency-free metrics + Prometheus exposition + structured logging / CoT trace
 │  ├─ llm/           📁   provider-agnostic LLM integration (anthropic / openai-compat / claude-agent-sdk)
-│  ├─ storage/       📁   persistence: history · provenance · autotune · share · retention/GC
+│  ├─ storage/       📁   persistence: history · provenance · share · retention/GC
 │  ├─ web/           📁   pure, decorator-free HTTP/SSE helpers extracted from main
 │  └─ mcp/           📁   standalone MCP server (stdio) re-exposing tools/knowledge to external agents (python -m app.mcp)
 ├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here

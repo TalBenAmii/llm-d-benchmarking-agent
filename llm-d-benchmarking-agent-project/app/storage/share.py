@@ -87,7 +87,7 @@ class ShareStore:
             "items": items,
             "usage": usage,
         }
-        # Atomic write (temp + replace), matching HistoryStore / BundleStore / autotune: a
+        # Atomic write (temp + replace), matching HistoryStore / BundleStore: a
         # concurrent reader of /share/<token> never observes a half-written file, and a crash
         # mid-write can't leave a corrupt snapshot — it honors the docstring's "durable write".
         path = self._root / f"{token}.json"

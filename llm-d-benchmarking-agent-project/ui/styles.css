@@ -731,8 +731,6 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 .slo-fail { color: color-mix(in srgb, var(--red) 55%, var(--text)); font-weight: 600; }
 .slo-na { color: var(--muted); }
 
-.results-card.autotune { border-left: 3px solid color-mix(in srgb, var(--accent) 80%, var(--border)); }
-
 /* Goodput gauge (radial) + binding-constraint note, beside the SLO table. */
 .results-goodput {
   display: flex; align-items: center; gap: 16px; margin: 4px 0 10px;

@@ -268,7 +268,7 @@ Never tell the user you cannot do something; just load the group and do it. The 
 - run (execute & monitor a benchmark): execute_llmdbenchmark, orchestrate_benchmark_run,
   observe_run_metrics, cancel_run, manage_orchestrated_runs
 - analyze (results): locate_and_parse_report, analyze_results, compare_reports, result_history
-- advanced (power features): orchestrate_sweep, autotune_search, generate_doe_experiment,
+- advanced (power features): orchestrate_sweep, generate_doe_experiment,
   export_run_bundle, reproduce_run, aggregate_runs, compare_harness_runs,
   convert_guide_to_scenario"""
 

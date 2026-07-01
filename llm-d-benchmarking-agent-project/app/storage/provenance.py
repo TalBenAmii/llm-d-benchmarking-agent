@@ -188,7 +188,7 @@ def _compute_bundle_id(
 
     The ``report_digest`` (sha256 of the validated report bytes + its summary) is part of the
     basis because ``run_uid`` is OPTIONAL — a report with no ``run.uid`` (``run_uid is None``)
-    written to a REUSED ``report_path`` (e.g. a re-benchmark / autotune trial overwriting the
+    written to a REUSED ``report_path`` (e.g. a re-benchmark overwriting the
     same run dir) with the same repo SHAs would otherwise hash to an IDENTICAL id, so the store
     would silently OVERWRITE the first bundle with the second — two genuinely different validated
     runs collapsing onto one provenance node. Mixing the digest in keeps idempotency (the same
