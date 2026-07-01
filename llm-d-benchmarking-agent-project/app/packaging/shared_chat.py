@@ -7,10 +7,10 @@ to system fonts). ``app.js``'s boot detects the embedded snapshot and renders it
 **no network at all** — so a shared chat can live as one file on any static host, or be opened
 straight from disk, with the agent never involved.
 
-This is the "publish a public link without exposing the agent" foundation: the agent only ever
-*produces* this static file; putting it on a host is a separate, outward step (a vetted script the
-user runs). Reusing the real SPA means the export is pixel-identical to the live viewer with zero
-renderer drift — the same trick the in-app viewer already uses (it reuses ``renderHistory``).
+This is the "share a chat without exposing the agent" foundation: the agent only ever *produces*
+this static file; sending it to someone or dropping it on a static host is the user's separate,
+outward step. Reusing the real SPA means the export is pixel-identical to the live viewer with
+zero renderer drift — the same trick the in-app viewer already uses (it reuses ``renderHistory``).
 
 Pure mechanism: it RENDERS an already-frozen snapshot (the same dict ``/api/share/<token>``
 returns); it adds no judgment, computes nothing, and fetches nothing. If the UI shell ever loses
@@ -23,7 +23,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-# Only the fields the viewer reads — deliberately WITHOUT ``source_session_id`` (a published file
+# Only the fields the viewer reads — deliberately WITHOUT ``source_session_id`` (an exported file
 # must never carry the owning session id), mirroring the ``/api/share/<token>`` response shape.
 _PUBLIC_FIELDS = ("title", "created_at", "shared_at", "items", "usage")
 
@@ -90,8 +90,8 @@ def render_shared_chat(snapshot: dict[str, Any], *, ui_dir: Path) -> str:
 
 # ---------------------------------------------------------------------------
 # CLI entry: ``python -m app.packaging.shared_chat <token> [-o out.html]``. Reads the frozen
-# snapshot from the share store and writes the self-contained file. Used by the publish script so
-# it needn't call the running server.
+# snapshot from the share store and writes the self-contained file — a terminal-side export that
+# needn't call the running server.
 # ---------------------------------------------------------------------------
 def main(argv: list[str] | None = None) -> int:
     import argparse

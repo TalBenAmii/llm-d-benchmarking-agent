@@ -6,13 +6,11 @@ what the verdicts MEAN lives in ``knowledge/workspace_lifecycle.md`` — thin co
 1. **Retention / GC** (:func:`run_gc`). Per-session state (``workspace/sessions/<id>``),
    per-run scratch (``workspace/runs/<id>`` and the orchestrator's ``workspace/jobs``), the
    cross-session history store (``workspace/history/*.json``), and the read-only conversation
-   snapshots (``workspace/shares/<token>.json`` + optional ``.gist`` mappings) all grow without
-   bound on a long-lived server. The GC walks each area, sorts its items oldest-first by mtime,
-   and removes the oldest beyond the configured caps (``RETENTION_MAX_AGE_DAYS`` /
-   ``RETENTION_MAX_ITEMS`` / ``RETENTION_MAX_BYTES``; 0/None = unlimited). It NEVER removes an
-   item belonging to an active/running session — those ids are passed in and skipped before any
-   cap is applied. A share is one logical item that may span two files (snapshot + gist mapping);
-   they are pruned together so a removed snapshot never leaves a dangling mapping.
+   snapshots (``workspace/shares/<token>.json``) all grow without bound on a long-lived server.
+   The GC walks each area, sorts its items oldest-first by mtime, and removes the oldest beyond
+   the configured caps (``RETENTION_MAX_AGE_DAYS`` / ``RETENTION_MAX_ITEMS`` /
+   ``RETENTION_MAX_BYTES``; 0/None = unlimited). It NEVER removes an item belonging to an
+   active/running session — those ids are passed in and skipped before any cap is applied.
 
 2. **Startup self-check** (:func:`self_check`). Validates that the workspace paths are writable,
    the configured LLM provider is coherent, and the read-only sibling repos resolve — returning a
@@ -40,9 +38,8 @@ from app.config import Settings
 # ``item-kind`` selects how an area's items are enumerated:
 #   "dir"   -> each immediate child DIRECTORY is one item (sessions/, runs/)
 #   "file"  -> each immediate child FILE is one item        (jobs/*.yaml, history/*.json)
-#   "share" -> each share TOKEN is one item, even though it spans up to TWO files on disk
-#              (``<token>.json`` snapshot + an optional ``<token>.gist`` token→gist-id mapping).
-#              The two are GC'd as a unit so a pruned snapshot never leaves a dangling mapping.
+#   "share" -> each ``<token>.json`` snapshot FILE is one item; anything else in the dir (the
+#              atomic-write ``.json.tmp``, a stray dir) is ignored rather than counted.
 # The active-session guard only applies to the "sessions" area (only sessions can be "running").
 # This is DATA describing WHERE scratch lives — not decision logic; the walk below is uniform.
 #
@@ -52,11 +49,9 @@ from app.config import Settings
 # today); keeping it declared means it's GC'd the moment something starts using it.
 #
 # ``shares`` is the read-only conversation-snapshot store (app/storage/share.py): one
-# ``<token>.json`` per shared chat, plus an optional ``<token>.gist`` when the share was published
-# as a secret gist (app/packaging/gist_publish.py). Shares live until explicitly revoked and so
-# accumulate without bound on a long-lived server — share.py's docstring already promises they are
-# "GC-eligible exactly like" sessions/history; this area is what makes that true. Pruning removes
-# BOTH the snapshot and its mapping together (see the "share" branch in _enumerate / _remove).
+# ``<token>.json`` per shared chat. Shares live until explicitly revoked and so accumulate
+# without bound on a long-lived server — share.py's docstring already promises they are
+# "GC-eligible exactly like" sessions/history; this area is what makes that true.
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class ManagedArea:
@@ -100,19 +95,12 @@ class RetentionCaps:
 
 @dataclass
 class _Item:
-    """One prunable thing in an area: a path, its mtime, and its on-disk size (bytes).
-
-    A logical item may span MORE than one file on disk (a share is ``<token>.json`` plus an
-    optional ``<token>.gist``). ``path`` is the canonical/primary file (drives mtime + id);
-    ``extra_paths`` are siblings deleted together with it so a prune never leaves a dangling
-    half (e.g. a snapshot pruned but its gist mapping left behind). ``size`` already covers all
-    of them, so byte accounting stays correct."""
+    """One prunable thing in an area: a path, its mtime, and its on-disk size (bytes)."""
     path: Path
     mtime: float
     size: int
     item_id: str            # the session/run id (dir name) or record id (file stem)
     active: bool = False     # an active/running session — never prunable
-    extra_paths: list[Path] = field(default_factory=list)
 
 
 @dataclass
@@ -196,40 +184,18 @@ def _remove(path: Path) -> None:
 
 
 def _enumerate_shares(children: list[Path]) -> list[_Item]:
-    """List the shares area's prunable items: ONE item per token, even though a published share
-    spans two files (``<token>.json`` snapshot + ``<token>.gist`` mapping). The snapshot is the
-    canonical artifact (it defines a live share), so when present it drives the item's id, mtime,
-    and active-never (shares have no live owner). A token that only has a stray ``.gist`` (a
-    best-effort revoke that couldn't reach ``gh`` — see app.main.revoke_share) is an orphan
-    mapping; we still surface it so the area can't grow unbounded with dangling mappings. Both
-    files are recorded so a prune deletes them as a unit (no dangling half)."""
-    by_token: dict[str, dict[str, Path]] = {}
+    """List the shares area's prunable items: one per ``<token>.json`` snapshot (the artifact
+    that defines a live share; shares have no live owner so none is ever active). Anything else
+    in the dir — the atomic-write ``.json.tmp``, a stray dir — is ignored, not counted."""
+    items: list[_Item] = []
     for child in children:
         try:
-            if not child.is_file():
-                continue  # shares/ holds only files; skip a stray dir
+            if not child.is_file() or child.suffix != ".json":
+                continue  # ignore the atomic-write ``.json.tmp``, a stray dir, and anything else
+            mtime = child.stat().st_mtime
         except OSError:
             continue
-        suffix = child.suffix
-        if suffix not in (".json", ".gist"):
-            continue  # ignore the atomic-write ``.json.tmp`` and anything else
-        by_token.setdefault(child.stem, {})[suffix] = child
-
-    items: list[_Item] = []
-    for token, files in by_token.items():
-        snapshot = files.get(".json")
-        mapping = files.get(".gist")
-        primary = snapshot or mapping
-        if primary is None:  # pragma: no cover - by_token only holds the two suffixes
-            continue
-        try:
-            mtime = primary.stat().st_mtime
-        except OSError:
-            continue
-        # _dir_size is best-effort (0 on error), so a sibling that vanished mid-pass never aborts.
-        size = sum(_dir_size(f) for f in (snapshot, mapping) if f is not None)
-        extra = [mapping] if (snapshot is not None and mapping is not None) else []
-        items.append(_Item(path=primary, mtime=mtime, size=size, item_id=token, extra_paths=extra))
+        items.append(_Item(path=child, mtime=mtime, size=_dir_size(child), item_id=child.stem))
     return items
 
 
@@ -336,10 +302,7 @@ def gc_area(
     for it in to_remove:
         if not dry_run:
             try:
-                # An item may span multiple files (a share's snapshot + its gist mapping);
-                # remove them as a unit so a prune never leaves a dangling half.
-                for p in (it.path, *it.extra_paths):
-                    _remove(p)
+                _remove(it.path)
             except Exception as exc:  # noqa: BLE001 — one bad entry must not abort the pass
                 result.errors.append(f"{it.item_id}: {exc}")
                 continue
