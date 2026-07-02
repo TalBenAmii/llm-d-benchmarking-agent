@@ -390,8 +390,8 @@ main {
   letter-spacing: .06em; min-width: 60px; padding-top: 9px; text-align: right;
 }
 
-/* Assistant/report/provenance/error: the text "who" label is replaced by the real llm-d
-   official llm-d mark avatar (inline SVG built in app.js whoEl(); .logo fills its paths), so it
+/* Assistant/report/provenance/error: the text "who" label is replaced by the official
+   llm-d mark avatar (inline SVG built in app.js whoEl(); .logo fills its paths), so it
    matches the sidebar brand mark and auto-themes. The 30px rounded box frames it. */
 .msg.assistant .who, .msg.report .who, .msg.error .who {
   min-width: 0; width: 30px; height: 30px; flex: none; padding: 0; margin-top: 1px;
@@ -401,11 +401,11 @@ main {
   display: inline-flex; align-items: center; justify-content: center;
 }
 .msg.assistant .who svg, .msg.report .who svg, .msg.error .who svg {
-  width: 22px; height: 23px; display: block; overflow: visible;
+  width: 20px; height: 23px; display: block; overflow: visible;
 }
-/* Fallback for any avatar slot still rendered WITHOUT the inline mesh svg (e.g. an older code
+/* Fallback for any avatar slot still rendered WITHOUT the inline mark svg (e.g. an older code
    path): paint a single brand hexagon via mask so the box is never empty. Hidden the moment a
-   real <svg> mesh is present (the avatar SVG sits above this absolutely-positioned layer). */
+   real <svg> mark is present (the avatar SVG sits above this absolutely-positioned layer). */
 .msg.assistant .who:not(:has(svg))::after,
 .msg.report .who:not(:has(svg))::after,
 .msg.error .who:not(:has(svg))::after {
@@ -1050,7 +1050,7 @@ main::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover, #input:
    composer and the sidebar lists. */
 #input, .conv-list, .history-list { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 
-/* ── "Working" indicator (spinning llm-d hexagon + live status) ───────────
+/* ── "Working" indicator (spinning llm-d mark + live status) ──────────────
    Slotted in as the FIRST row INSIDE the composer box while a turn is in flight: it expands the
    composer's rounded-bordered box UPWARD so the bar sits within the same border, separated from
    the input row by a hairline. The llm-d mark spins and its three "d" units pulse on a

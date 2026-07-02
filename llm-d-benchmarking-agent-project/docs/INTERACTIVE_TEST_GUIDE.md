@@ -126,7 +126,7 @@ Then follow the agent. Watch the tool-call cards and the "Executed commands" pan
 - [ ] **[A/B]** Agent proposes a **SessionPlan card** with `<spec, harness, workload>` (expect
   `cicd/kind` + `inference-perf` + `sanity_random.yaml` for the quickstart) and **waits for
   Approve/Reject**. Nothing mutating runs before you approve. *(§2 determinism gate)*
-- [ ] **[A/B]** **Working indicator** (spinning hexagon + live tool name) shows while it thinks.
+- [ ] **[A/B]** **Working indicator** (spinning llm-d mark + live tool name) shows while it thinks.
 - [ ] **[A/B]** **Per-turn token line** appears under the turn: `↑up ↓down · N this turn (X calls · Y cached)`. *(§12)*
 - [ ] **[A]** Approve the plan. Each mutating step (ensure_repos / setup / standup / run /
   teardown) appears as an **approval card showing the exact argv**. Approve them. In SIMULATE,
