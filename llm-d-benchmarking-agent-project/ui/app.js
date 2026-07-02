@@ -3100,6 +3100,17 @@ function renderSharedSnapshot(data) {
   meta.appendChild(el("div", "share-meta-title", data.title || "Shared conversation"));
   const when = data.shared_at ? relTime(data.shared_at) : "";
   meta.appendChild(el("div", "share-meta-sub", "Read-only snapshot" + (when ? " · shared " + when : "")));
+  // The session's cumulative token spend, frozen into the snapshot's `usage` at share time.
+  // Mirrors the live per-turn footer's ↑/↓ shape (appendTurnTokens) so the numbers read the same
+  // way; `context` is the "N ctx" meter the owner saw when the link/export was made.
+  const u = data.usage || {};
+  if (u.total) {
+    const up = (u.input || 0) + (u.cache_read || 0) + (u.cache_write || 0);
+    let line = `Tokens: ↑${fmtTokens(up)} ↓${fmtTokens(u.output || 0)} · ${fmtTokens(u.total)} total`;
+    if (u.cache_read > 0) line += ` (${fmtTokens(u.cache_read)} cached)`;
+    if (u.context > 0) line += ` · ${fmtTokens(u.context)} ctx at share time`;
+    meta.appendChild(el("div", "share-meta-sub", line));
+  }
   activePane.appendChild(meta);
   renderHistory(data.items || []);
   if (!(data.items || []).length) addBubble("assistant", "_This conversation is empty._");
