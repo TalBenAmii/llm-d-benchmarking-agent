@@ -1,8 +1,8 @@
 """Self-contained, shareable report-card HTML for a reproducibility provenance bundle.
 
 ``render_report_card(bundle) -> str`` produces ONE ``.html`` string with **zero external
-assets**: system-stack fonts, all CSS inlined in a ``<style>`` block, the agent's hex logo as an
-inline SVG data URI. No jinja (keeps it dependency-light + hermetic): every interpolated value is
+assets**: system-stack fonts, all CSS inlined in a ``<style>`` block, the official llm-d mark as an
+inline ``<svg>``. No jinja (keeps it dependency-light + hermetic): every interpolated value is
 HTML-escaped via ``_esc`` so a value in the bundle (a model name, a SHA, a config body) can never
 inject markup.
 
@@ -24,13 +24,20 @@ from typing import Any
 from app.dig import dict_or_empty as _d
 from app.dig import dig
 
-# The agent's hex logo as an INLINE <svg> element (HTML5 needs no xmlns; same mark as
-# ui/preview.html). Inlined, not a data URI / <img src>, so the document carries ZERO URLs at
-# all (not even the SVG namespace URI) — keeping the "no external asset link" guarantee airtight.
+# The official llm-d mark (llm-d.ai/img/llm-d-icon.svg, coordinates rebased + minified) as an
+# INLINE <svg> element (HTML5 needs no xmlns; same mark as ui/index.html). Inlined, not a data
+# URI / <img src>, so the document carries ZERO URLs at all (not even the SVG namespace URI) —
+# keeping the "no external asset link" guarantee airtight.
 _LOGO_SVG = (
-    '<svg viewBox="0 0 32 32" width="40" height="42" role="img" aria-label="llm-d">'
-    '<path d="M16 3 27 9.5 27 22.5 16 29 5 22.5 5 9.5Z" fill="none" stroke="#7f317f" '
-    'stroke-width="3.2" stroke-linejoin="round" /></svg>'
+    '<svg viewBox="0 0 69.37 78.7" width="37" height="42" role="img" aria-label="llm-d">'
+    '<g stroke-width="1.74">'
+    '<path fill="#595959" stroke="#595959" d="m52.97,43.51c-0.83,0-1.65,0.21-2.39,0.64l-10.73,6.19c-1.48,0.85-2.39,2.43-2.39,4.14v12.38c0,1.7,0.91,3.29,2.39,4.14l10.73,6.19c1.47,0.85,3.3,0.85,4.78,0l10.73-6.19c1.48-0.85,2.39-2.43,2.39-4.14v-12.38c0-1.7-0.91-3.28-2.39-4.14v0l-10.73-6.19c-0.74-0.43-1.56-0.64-2.39-0.64zm0,3.74c0.18,0,0.35,0.05,0.52,0.14l10.73,6.19v0c0.32,0.18,0.51,0.52,0.51,0.89v12.38c0,0.37-0.19,0.71-0.52,0.89l-10.73,6.19c-0.32,0.19-0.71,0.19-1.03,0l-10.73-6.19v0c-0.32-0.18-0.51-0.52-0.51-0.89v-12.38c0-0.37,0.19-0.71,0.52-0.89l10.73-6.19c0.16-0.09,0.34-0.14,0.52-0.14z" />'
+    '<path fill="#595959" stroke="#595959" stroke-linecap="round" d="m64.73,35.25v22.34a1.87,1.87,0,0,0,1.87,1.87,1.87,1.87,0,0,0,1.87-1.87v-24.51z" />'
+    '<path fill="#7f317f" stroke="#7f317f" d="m38.07,26.55c0.41,0.72,1,1.33,1.74,1.76l10.7,6.24c1.47,0.86,3.3,0.86,4.77,0.02l10.75-6.15c1.48-0.85,2.4-2.42,2.4-4.13l0.05-12.38c0.01-1.7-0.9-3.29-2.37-4.15l-10.7-6.24c-1.47-0.86-3.3-0.86-4.78-0.02l-10.75,6.15c-1.48,0.85-2.4,2.42-2.4,4.13v0l-0.05,12.39c0,0.85,0.22,1.67,0.63,2.39zm3.25-1.86c-0.09-0.15-0.14-0.33-0.13-0.52l0.05-12.39h0c0-0.37,0.2-0.7,0.52-0.89l10.75-6.15c0.32-0.18,0.71-0.18,1.03,0l10.7,6.24c0.32,0.19,0.51,0.52,0.51,0.9l-0.05,12.39h0c0,0.37-0.2,0.7-0.52,0.89l-10.75,6.15c-0.32,0.18-0.71,0.18-1.03,0l-10.7-6.24c-0.16-0.09-0.29-0.22-0.38-0.38z" />'
+    '<path fill="#7f317f" stroke="#7f317f" stroke-linecap="round" d="m25.07,20.44,19.4-11.09a1.87,1.87,0,0,0,0.7-2.55,1.87,1.87,0,0,0-2.55-0.7l-21.27,12.17z" />'
+    '<path fill="#7f317f" stroke="#7f317f" d="m31.23,47.82c0.41-0.71,0.65-1.53,0.65-2.39l0.03-12.39c0-1.7-0.91-3.29-2.38-4.14l-10.71-6.22c-1.47-0.86-3.3-0.86-4.78-0.01l-10.74,6.17c-1.48,0.85-2.39,2.43-2.4,4.13l-0.03,12.39c0,1.7,0.91,3.29,2.38,4.14l10.71,6.22c1.47,0.86,3.3,0.86,4.78,0.01v0l10.74-6.17c0.74-0.42,1.34-1.03,1.75-1.74zm-3.23-1.88c-0.09,0.15-0.22,0.28-0.38,0.38l-10.74,6.17v0c-0.32,0.18-0.71,0.18-1.03,0l-10.71-6.22c-0.32-0.19-0.51-0.52-0.51-0.89l0.03-12.39c0-0.37,0.19-0.71,0.52-0.89l10.74-6.17v0c0.32-0.18,0.71-0.18,1.03,0l10.71,6.22c0.32,0.19,0.52,0.52,0.51,0.89l-0.03,12.39c0,0.19-0.05,0.36-0.14,0.52z" />'
+    '<path fill="#7f317f" stroke="#7f317f" stroke-linecap="round" d="m32.46,62.14-19.32-11.22a1.87,1.87,0,0,0-2.56,0.68,1.87,1.87,0,0,0,0.68,2.56l21.19,12.31z" />'
+    '</g></svg>'
 )
 
 # System font stacks only — no Google Fonts <link> (which would be an external asset).
@@ -43,7 +50,7 @@ body {
 }
 .wrap { max-width: 900px; margin: 0 auto; padding: 28px 22px 64px; }
 header.card-head { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
-header.card-head svg { width: 40px; height: 42px; flex: 0 0 auto; }
+header.card-head svg { width: 37px; height: 42px; flex: 0 0 auto; }
 h1 { font-size: 1.45rem; margin: 0; }
 h2 { font-size: 1.05rem; margin: 30px 0 10px; border-bottom: 1px solid #3a3447; padding-bottom: 6px; }
 .sub { color: #b3acc4; font-size: .9rem; margin: 2px 0 0; }

@@ -293,7 +293,7 @@ function evictPanes() {
   }
 }
 
-// "working" indicator state (spinning-hexagon status line; see helpers below)
+// "working" indicator state (spinning-mark status line; see helpers below)
 let workTimer = null, wordTimer = null, workStart = 0, workActivity = null, workWordFixed = false;
 
 // ---- token usage (REAL provider counts; see the `usage` event) -----------
@@ -945,30 +945,31 @@ function renderMarkdown(text) {
   return html;
 }
 
-// The assistant/report/provenance avatar: the real llm-d 3-hexagon mesh (same shape as the
-// sidebar brand logo), painted as an inline SVG into the .who box so it auto-themes (its strokes
-// use the brand-purple via the .logo CSS). Replaces the single masked hexagon for a crisper,
-// on-brand mark. The user role keeps a plain (hidden) label; everything else gets the mesh.
+// The assistant/report/provenance avatar: the official llm-d mark (three hexagon-and-stem "d"
+// glyphs, from llm-d.ai/img/llm-d-icon.svg — same shape as the sidebar brand logo), painted as an
+// inline SVG into the .who box so it auto-themes (the .logo CSS fills the paths). The user role
+// keeps a plain (hidden) label; everything else gets the mark.
 function meshAvatarSvg() {
   const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", "0 0 30 32");
-  svg.setAttribute("width", "22");
+  svg.setAttribute("viewBox", "0 0 69.37 78.7");
+  svg.setAttribute("width", "20");
   svg.setAttribute("height", "23");
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", "llm-d");
   const g = document.createElementNS(SVG_NS, "g");
-  g.setAttribute("fill", "none");
-  g.setAttribute("stroke-width", "2.6");
-  g.setAttribute("stroke-linejoin", "round");
-  g.setAttribute("stroke-linecap", "round");
+  g.setAttribute("stroke-width", "1.74");
   const paths = [
-    ["hx-p", "M15 2.5 22.36 6.75 22.36 15.25 15 19.5 7.64 15.25 7.64 6.75Z"],
-    ["hx-g", "M9.5 12 16.86 16.25 16.86 24.75 9.5 29 2.14 24.75 2.14 16.25Z"],
-    ["hx-p", "M20.5 12 27.86 16.25 27.86 24.75 20.5 29 13.14 24.75 13.14 16.25Z"],
+    ["hx-g", "", "m52.97,43.51c-0.83,0-1.65,0.21-2.39,0.64l-10.73,6.19c-1.48,0.85-2.39,2.43-2.39,4.14v12.38c0,1.7,0.91,3.29,2.39,4.14l10.73,6.19c1.47,0.85,3.3,0.85,4.78,0l10.73-6.19c1.48-0.85,2.39-2.43,2.39-4.14v-12.38c0-1.7-0.91-3.28-2.39-4.14v0l-10.73-6.19c-0.74-0.43-1.56-0.64-2.39-0.64zm0,3.74c0.18,0,0.35,0.05,0.52,0.14l10.73,6.19v0c0.32,0.18,0.51,0.52,0.51,0.89v12.38c0,0.37-0.19,0.71-0.52,0.89l-10.73,6.19c-0.32,0.19-0.71,0.19-1.03,0l-10.73-6.19v0c-0.32-0.18-0.51-0.52-0.51-0.89v-12.38c0-0.37,0.19-0.71,0.52-0.89l10.73-6.19c0.16-0.09,0.34-0.14,0.52-0.14z"],
+    ["hx-g", "round", "m64.73,35.25v22.34a1.87,1.87,0,0,0,1.87,1.87,1.87,1.87,0,0,0,1.87-1.87v-24.51z"],
+    ["hx-p", "", "m38.07,26.55c0.41,0.72,1,1.33,1.74,1.76l10.7,6.24c1.47,0.86,3.3,0.86,4.77,0.02l10.75-6.15c1.48-0.85,2.4-2.42,2.4-4.13l0.05-12.38c0.01-1.7-0.9-3.29-2.37-4.15l-10.7-6.24c-1.47-0.86-3.3-0.86-4.78-0.02l-10.75,6.15c-1.48,0.85-2.4,2.42-2.4,4.13v0l-0.05,12.39c0,0.85,0.22,1.67,0.63,2.39zm3.25-1.86c-0.09-0.15-0.14-0.33-0.13-0.52l0.05-12.39h0c0-0.37,0.2-0.7,0.52-0.89l10.75-6.15c0.32-0.18,0.71-0.18,1.03,0l10.7,6.24c0.32,0.19,0.51,0.52,0.51,0.9l-0.05,12.39h0c0,0.37-0.2,0.7-0.52,0.89l-10.75,6.15c-0.32,0.18-0.71,0.18-1.03,0l-10.7-6.24c-0.16-0.09-0.29-0.22-0.38-0.38z"],
+    ["hx-p", "round", "m25.07,20.44,19.4-11.09a1.87,1.87,0,0,0,0.7-2.55,1.87,1.87,0,0,0-2.55-0.7l-21.27,12.17z"],
+    ["hx-p", "", "m31.23,47.82c0.41-0.71,0.65-1.53,0.65-2.39l0.03-12.39c0-1.7-0.91-3.29-2.38-4.14l-10.71-6.22c-1.47-0.86-3.3-0.86-4.78-0.01l-10.74,6.17c-1.48,0.85-2.39,2.43-2.4,4.13l-0.03,12.39c0,1.7,0.91,3.29,2.38,4.14l10.71,6.22c1.47,0.86,3.3,0.86,4.78,0.01v0l10.74-6.17c0.74-0.42,1.34-1.03,1.75-1.74zm-3.23-1.88c-0.09,0.15-0.22,0.28-0.38,0.38l-10.74,6.17v0c-0.32,0.18-0.71,0.18-1.03,0l-10.71-6.22c-0.32-0.19-0.51-0.52-0.51-0.89l0.03-12.39c0-0.37,0.19-0.71,0.52-0.89l10.74-6.17v0c0.32-0.18,0.71-0.18,1.03,0l10.71,6.22c0.32,0.19,0.52,0.52,0.51,0.89l-0.03,12.39c0,0.19-0.05,0.36-0.14,0.52z"],
+    ["hx-p", "round", "m32.46,62.14-19.32-11.22a1.87,1.87,0,0,0-2.56,0.68,1.87,1.87,0,0,0,0.68,2.56l21.19,12.31z"],
   ];
-  for (const [cls, d] of paths) {
+  for (const [cls, cap, d] of paths) {
     const p = document.createElementNS(SVG_NS, "path");
     p.setAttribute("class", cls);
+    if (cap) p.setAttribute("stroke-linecap", cap);
     p.setAttribute("d", d);
     g.appendChild(p);
   }
@@ -976,12 +977,12 @@ function meshAvatarSvg() {
   return svg;
 }
 
-// Build the .who avatar slot for a message role. Assistant/report/provenance/error → the 3-hex
-// mesh logo; user → the (CSS-hidden) "you" label. Shared by every bubble/card builder so the
+// Build the .who avatar slot for a message role. Assistant/report/provenance/error → the
+// official llm-d mark; user → the (CSS-hidden) "you" label. Shared by every bubble/card builder so the
 // avatar is identical everywhere.
 function whoEl(role) {
   if (role === "user") return el("div", "who", "you");
-  const who = el("div", "who logo");   // .logo gives the hex strokes their brand colours
+  const who = el("div", "who logo");   // .logo gives the mark its brand fill colours
   who.appendChild(meshAvatarSvg());
   return who;
 }
@@ -2641,7 +2642,7 @@ function addDecisionCard(it) {
 // scrolled-up reading position — and a restored position on switch-back — instead of yanking down.
 function scroll() { if (stickBottom) transcript.scrollTop = transcript.scrollHeight; updateJumpBtn(); }
 
-// ---- "working" indicator (spinning hexagon + live status) ----------------
+// ---- "working" indicator (spinning llm-d mark + live status) -------------
 // Shown while a turn is in flight. The word cycles through generic gerunds while
 // we're waiting on the model, and snaps to a specific verb/activity when a tool
 // or command is running. Elapsed time ticks live.
