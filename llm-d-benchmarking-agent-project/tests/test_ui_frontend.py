@@ -382,6 +382,14 @@ def test_share_a_chat_via_link():
     assert "body.share-view footer" in css and "body.share-view #sidebar" in css
     assert "body.share-view #composer" not in css  # composer is hidden via <footer>, not directly
     assert ".share-dialog::backdrop" in css
+    # The full-session snapshot cues: the frozen token totals render as a meta line, the run-stage
+    # rail and the agent's next-step chips STAY visible (they replay from the snapshot's items) —
+    # the chips inert, not hidden — while the dead report-action buttons stay stripped.
+    assert "data.usage" in js and "ctx at share time" in js
+    assert "body.share-view .report-actions { display: none !important; }" in css
+    assert "body.share-view .next-steps .chip { pointer-events: none; cursor: default; }" in css
+    assert "body.share-view .next-steps,\n" not in css   # no longer in the display:none list
+    assert "body.share-view #run-steps" not in css       # the stage rail shows in shared mode
     # Offline self-contained export: the SAME SPA boots from an EMBEDDED snapshot, no network.
     assert "window.__LLMD_SHARED__" in js and "function bootSharedStatic" in js
     assert "function renderSharedSnapshot" in js   # the render path shared by live + static viewers

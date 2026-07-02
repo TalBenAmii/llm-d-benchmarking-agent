@@ -26,7 +26,8 @@ _SNAPSHOT = {
         {"role": "user", "text": "hi & welcome <b>friend</b>"},
         {"role": "assistant", "text": "On it."},
     ],
-    "usage": {"total": 42},
+    # The full-session token picture the viewer renders (incl. cache_write + context at share time).
+    "usage": {"input": 12, "output": 8, "cache_read": 20, "cache_write": 2, "total": 42, "context": 30},
     "source_session_id": "SECRET-session-id",   # must NEVER appear in the exported file
 }
 
@@ -53,6 +54,8 @@ def test_render_is_self_contained_and_embeds_the_snapshot():
     assert "window.__LLMD_SHARED__ = " in html
     assert "bootSharedStatic" in html
     assert '"deploy a tiny model"' in html
+    # The frozen usage block rides along whole — the offline viewer renders the token totals.
+    assert '"usage": {"input": 12' in html and '"context": 30' in html
 
 
 def test_render_withholds_the_owning_session_id():

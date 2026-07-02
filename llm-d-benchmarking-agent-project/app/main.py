@@ -445,7 +445,11 @@ async def create_share(sid: str) -> JSONResponse:
             "input": session.total_input_tokens,
             "output": session.total_output_tokens,
             "cache_read": session.total_cache_read_tokens,
+            "cache_write": session.total_cache_write_tokens,
             "total": session.session_total,
+            # Context-window occupancy at share time — the "N ctx" meter the owner saw, frozen so
+            # the shared/exported viewer can show the session's full token picture.
+            "context": session.last_context_tokens,
         },
     )
     # Absolute public URL when SHARE_BASE_URL is set (shareable off-host); otherwise a relative

@@ -114,6 +114,12 @@ def _seed_chat(client, *, title="deploy a tiny model", with_pending=False):
     if with_pending:
         s.in_flight_approvals = [{"tool_call_id": "tc1", "request_id": "r2", "kind": "command",
                                   "payload": {"argv": ["kubectl", "delete", "ns", "x"]}}]
+    # Realistic token counters, so the frozen snapshot's `usage` block is exercised end-to-end.
+    s.total_input_tokens = 1200
+    s.total_output_tokens = 340
+    s.total_cache_read_tokens = 5600
+    s.total_cache_write_tokens = 700
+    s.last_context_tokens = 8100
     s.title = title
     s.persist()
     return s
@@ -186,6 +192,21 @@ def test_snapshot_is_immutable_after_more_messages(client_with_share):
     after = client.get(f"/api/share/{token}").json()["items"]
     assert after == before          # the frozen snapshot is unchanged
     assert all(it.get("text") != "now scale it to 500 users" for it in after)
+
+
+def test_share_snapshot_carries_full_session_usage(client_with_share):
+    """The frozen `usage` block carries the WHOLE token picture — cumulative totals including
+    cache_write, plus the context-window occupancy at share time — so the shared/exported viewer
+    can show the session's token spend exactly as the owner saw it."""
+    client, _ = client_with_share
+    s = _seed_chat(client)
+    token = client.post(f"/api/sessions/{s.id}/share").json()["token"]
+    usage = client.get(f"/api/share/{token}").json()["usage"]
+    assert usage == {
+        "input": 1200, "output": 340, "cache_read": 5600, "cache_write": 700,
+        "total": 1200 + 340 + 5600 + 700,   # session_total sums all four counters
+        "context": 8100,
+    }
 
 
 def test_pending_approval_is_filtered_from_snapshot(client_with_share):
