@@ -17,7 +17,6 @@ from app.security.allowlist import READ_ONLY, Allowlist
 from app.security.runner import TIMEOUT_MARKER, CommandRunner, RunResult, SimRunner
 from tests._helpers import _session
 
-
 # ── test_qafix_infra_allowlist.py ──
 # """QA-fix infra tests: narrow allowlist entries for multi-cluster context recovery.
 #

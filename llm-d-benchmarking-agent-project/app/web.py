@@ -27,7 +27,6 @@ from fastapi.staticfiles import StaticFiles
 from app.agent.ws_schemas import ValidationError
 from app.storage.provenance import BundleStore
 
-
 # ── inbound-frame validation-error formatting (WS protocol ``error`` event) ─────────────────
 
 

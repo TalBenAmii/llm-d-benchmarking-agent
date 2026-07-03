@@ -25,7 +25,6 @@ from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 from tests.orchestrator_fakes import FakeKubeClient, make_pod
 
-
 # ── test_orchestrator_tool.py ──
 # Phase 3e — the orchestrate_benchmark_run agent tool: wires the orchestrator to the agent,
 # end-to-end through dispatch + the allowlisted kubectl runner (CaptureRunner), no cluster.

@@ -24,7 +24,6 @@ from app.orchestrator.job import LABEL_MANAGED, LABEL_RUN, LABEL_SWEEP, MANAGED_
 from app.orchestrator.kube import KubeClient
 from tests.orchestrator_fakes import FakeKubeClient, make_pod
 
-
 # ── test_orchestrator_checkpoint.py ──
 # Phase 22 — DOE checkpoint/resume for long sweeps.
 #

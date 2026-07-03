@@ -46,7 +46,6 @@ from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 from tests.orchestrator_fakes import FakeKubeClient, make_job, make_pod
 
-
 # ---- allowlist: the new kubectl surface -----------------------------------
 
 ALLOW = [
