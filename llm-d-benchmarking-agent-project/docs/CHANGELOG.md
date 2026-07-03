@@ -34,6 +34,11 @@ chat to a public link, a single-GPU-cluster runbook, and assorted UI/observabili
   judgment lives in exactly one canonical place.
 
 ### Fixed
+- **Chain-of-thought recovered on the streaming path** — on the persistent per-turn Agent SDK path
+  (`include_partial_messages=True`) the CLI delivers reasoning only as `thinking_delta` stream
+  events and omits the final `ThinkingBlock`; `_consume` now accumulates those deltas so the
+  per-session cot trace is no longer empty, while never streaming them into the visible answer
+  (`app/llm/agent_sdk_provider.py`).
 - **DoE list-indexed override keys are now rejected with the WHY** — a numeric dotted segment (e.g.
   `load.stages.0.rate`) indexes a LIST element, which upstream `apply_overrides` cannot apply (it
   walks dicts only, so the override never lands and no-ops at runtime); the rejection now names that
