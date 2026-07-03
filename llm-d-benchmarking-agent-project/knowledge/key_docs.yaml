@@ -112,11 +112,11 @@ docs:
   - path: llm-d-benchmark/config/specification/guides/agentic-serving.yaml.j2
     task: agentic_serving
     why: The benchmark spec for the agentic-serving guide (--spec guides/agentic-serving).
-  - path: llm-d/guides/multimodal-serving/optimized-baseline/README.md
+  - path: llm-d/guides/multimodal-serving/README.md
     task: multimodal_serving
     why: >
-      multimodal-serving has NO top-level README — the canonical guide is the optimized-baseline
-      SUBDIR (this path). Image+text serving (Qwen3-VL). Workload profile guide_multimodal-serving_1.yaml
+      The multimodal-serving guide's top-level README (aggregation / e-disaggregation subdirs
+      hang off it). Image+text serving (Qwen3-VL). Workload profile guide_multimodal-serving_1.yaml
       (inference-perf, data.type shared_prefix, 4 images/request, api type=chat). No dedicated
       multimodal .yaml.j2 spec exists on disk.
 

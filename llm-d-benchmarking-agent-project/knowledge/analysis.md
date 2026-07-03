@@ -204,7 +204,8 @@ to run `analysis.ipynb`) or the pipeline overview `read_repo_doc('llm-d-benchmar
 - **`docs/analysis/to_be_incorporated/plot_ttft_vs_qps.py` / `plot_itl_vs_qps.py` /
   `plot_throughput_vs_qps.py` / `plot_benchmark_metrics.py` / `plot_pd_results.py`** — **experimental
   template** scripts. **Do NOT run these** as the agent: each is **hardcoded** to read CSVs from
-  `../data/k8s/lmbenchmark` (relative to its own location) and to write its PNG **back into the
+  a repo-relative path (most from `../data/k8s/lmbenchmark`; `plot_pd_results.py` from
+  `../../collected/data/openshift/exp-7/H100`) and to write its PNG **back into the
   repo directory** — so they cannot be pointed at a user results dir and they would write into the
   read-only repo. They are illustrative starting points a user **copies and adapts** by hand; point
   at them, but never invoke them.

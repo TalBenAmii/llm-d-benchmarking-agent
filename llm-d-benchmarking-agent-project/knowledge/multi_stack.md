@@ -2,7 +2,7 @@
 
 Some scenarios are **multi-stack**: they deploy **N independent model pools behind one
 gateway**, each serving a different model on its own URL path. The canonical example is
-`guides/multi-model-wva` (the `multi-model-wva` example scenario), whose `scenario:` list holds
+`examples/multi-model-wva` (the `multi-model-wva` example scenario), whose `scenario:` list holds
 two stacks — `qwen3-06b` and `llama-31-8b` — each its own deployment/service/route, routed at
 `/{stack.name}/...`. A single-stack scenario (the Kind MVP `cicd/kind`, `guides/optimized-baseline`)
 has exactly one pool, so NOTHING here applies — `--stack`/`--parallel` are inert and you should

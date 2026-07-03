@@ -118,7 +118,8 @@ metrics:
 # yet declare session_performance (Results has additionalProperties:false), so a multi-turn
 # report surfaces it as a NON-FATAL additionalProperties DEVIATION under validate_report
 # (the report is newer than the pinned schema). Validation still passes; the numbers are
-# real. Teaching the extractor a renamed/new session field is a one-line edit here — no
+# real. (Upstream's br_v0_2_1_json_schema.json DOES declare session_performance /
+# SessionRequests / session_rate — the deviation applies only while validation pins v0.2.) Teaching the extractor a renamed/new session field is a one-line edit here — no
 # code change.
 #
 # Two field families (the field names are the EXACT keys under sessions.*):

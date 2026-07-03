@@ -50,8 +50,12 @@ pass/fail + reason). Probes:
   (`ANTHROPIC_API_KEY` for anthropic, `OPENAI_API_KEY` for openai/openai-compatible/vllm). The
   most common misconfiguration (provider named, key forgotten) surfaces here, not on first chat.
   It only inspects config — it never contacts the provider.
-- **repos_resolvable** — both read-only sibling repos (`llm-d/`, `llm-d-benchmark/`) resolve on
-  disk. Missing repos break catalog/report/capacity paths. Set `REPOS_DIR` correctly.
+- **repos_resolvable** — all three read-only sibling repos (`llm-d/`, `llm-d-benchmark/`,
+  `llm-d-skills/`) resolve on disk. Missing repos break catalog/report/capacity paths (and the
+  skills grounding). Set `REPOS_DIR` correctly.
+- **runner_ok** — the deny-by-default allowlist policy loads + schema-validates. Without it the
+  command runner can validate nothing and every command would be refused. Config-only — it never
+  executes anything.
 - **auth_coherent** — if `AUTH_ENABLED` is set, `AUTH_TOKEN` must be non-empty (else every
   request 401s). Mirrors the fail-loud startup guard as a structured readiness signal.
 

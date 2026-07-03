@@ -31,11 +31,12 @@ merged DONE (57 & 58 deferred).
 
 ## Default-on (with a knowledge-driven opt-out)
 - **`--monitoring`** — lights up `results.observability` (KV-cache hit rate, schedule delay,
-  GPU util) the report parses. Default ON; emit `--no-monitoring` on Kind / clusters lacking
-  Prometheus-operator CRDs. Decision lives in `knowledge/observability.md`.
+  GPU util) the report parses. Default ON is the AGENT's policy (upstream `run` defaults it OFF,
+  and only standup accepts `--no-monitoring` — `build_argv` omits the flag elsewhere); opt out on
+  Kind / clusters lacking Prometheus-operator CRDs. Decision lives in `knowledge/observability.md`.
 
 ## Optional to surface to users (offer when their context calls for it)
-- Model override `-m/--models` · cluster access `-k`/URL/token · HuggingFace gated-model
+- Model override (`-m/--model`, singular, on `run`; `-m/--models` on plan/standup/teardown/experiment) · cluster access `-k`/URL/token · HuggingFace gated-model
   secret · gateway class `--gateway-class` · multi-stack `--stack`/`--parallel` · WVA
   `-u/--wva` (Workload Variant Autoscaler — for multi-variant deployments across heterogeneous
   GPU types; HPA+WVA path, not OpenShift-only, 🟡) · cloud results sink `-r gs://`/`s3://` ·
@@ -43,11 +44,11 @@ merged DONE (57 & 58 deferred).
   `tracing:` block.
 
 ## Harnesses (Area C)
-Six workload harnesses ship on disk under `workload/profiles/`: **inference-perf** (the
+Seven workload harnesses ship on disk under `workload/profiles/`: **inference-perf** (the
 default, SLO/latency), **guidellm** (throughput sweeps), **vllm-benchmark** (dataset replay /
-max-concurrency), **aiperf**, **inferencemax**, **nop**. The agent primarily surfaces
-inference-perf + guidellm + vllm-benchmark (and nop for plumbing); aiperf/inferencemax are
-present but rarely surfaced. For the live, harness-scoped workload set, see
+max-concurrency), **aiperf**, **inferencemax**, **eval-containers**, **nop**. The agent primarily
+surfaces inference-perf + guidellm + vllm-benchmark (and nop for plumbing);
+aiperf/inferencemax/eval-containers are present but rarely surfaced. For the live, harness-scoped workload set, see
 `usecase_to_profile.yaml` / `list_catalog` — that is the source of truth for what's runnable.
 
 Full catalog: docs/BENCHMARK_FEATURE_COVERAGE.md

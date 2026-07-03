@@ -26,7 +26,9 @@ helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
   --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
 ```
 
-Then `kubectl -n <ns> port-forward svc/llm-d-benchmarking-agent 8000:8000` and open the UI.
+Then `kubectl -n <ns> port-forward svc/bench-agent-llm-d-benchmarking-agent 8000:8000` and open
+the UI (the Service name is `<release>-<chart>` via the fullname template — adjust if you chose a
+different release name or set `fullnameOverride`).
 
 ## Image pinning (prefer digests)
 
@@ -46,13 +48,16 @@ things. The chart creates a **namespaced Role** granting only:
 - `batch`/`jobs`: create, get, list, watch, patch, delete
 - `pods`: get, list, watch
 - `pods/log`: get
+- `configmaps`: get, list, watch, create, patch — the agent's OWN per-sweep checkpoint
+  ConfigMaps (DOE sweep resume); no delete
 
-and nothing else — no ClusterRole, no secrets/exec/portforward, no write to anything but the
-benchmark Jobs in its own namespace. This is what lets an orchestrated Job actually run live
+No ClusterRole, no secrets/exec/portforward — the only writes are the benchmark Jobs and its
+own sweep-checkpoint ConfigMaps in its own namespace. This is what lets an orchestrated Job actually run live
 (the capability Phase 3 deferred to packaging) without handing the agent broad cluster power.
 
-Set `ORCHESTRATOR_SERVICE_ACCOUNT` (the deploy does this) so the benchmark Jobs the agent
-submits also run under that least-privilege SA rather than the namespace default. If it isn't
+Set `ORCHESTRATOR_SERVICE_ACCOUNT` in the backend env (the chart does not set it today) so the
+benchmark Jobs the agent submits also run under that least-privilege SA rather than the
+namespace default. If it isn't
 set (local dev), the Job uses the namespace default SA — fine for kind/sim.
 
 ## Enabling in-cluster orchestrated runs

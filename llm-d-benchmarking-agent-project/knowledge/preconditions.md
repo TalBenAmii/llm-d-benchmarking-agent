@@ -31,9 +31,10 @@ When the user wants to deploy a published **llm-d well-lit-path guide** (the gui
 — `optimized-baseline` is the reference; see `deploy_path_playbook.md`), the guide expects the
 **deployment client toolchain** to be present: `helm` + the **helm-diff** plugin, `helmfile`,
 `kustomize`, `yq` (mikefarah), and `kubectl`. The llm-d guides ship their own installer for
-exactly this — `helpers/client-setup/install-deps.sh` in the llm-d repo (allowlisted as the
-bare `install-deps.sh`). OFFER to run it when those client tools are missing **before** a
-guide-based deploy:
+most of this — `helpers/client-setup/install-deps.sh` in the llm-d repo (allowlisted as the
+bare `install-deps.sh`) — but it does NOT install `helmfile` or the `helm-diff` plugin; those
+two must be installed separately (per `helpers/client-setup/README.md`). OFFER to run it when
+those client tools are missing **before** a guide-based deploy:
 - `run_shell("install-deps.sh")` → install the basic guide client tools.
 - `run_shell("install-deps.sh --dev")` → also install `chart-testing` (ct), the
   Helm chart-testing tool (only needed if the user will lint/test charts).
@@ -44,7 +45,8 @@ it prints. Know the THREE distinct install steps and pick the right one — do N
 - `install.sh` (benchmark repo, via `run_setup`) → the **benchmark framework** venv/toolchain
   (also pulls helm/helmfile/kustomize/yq/kubectl) — run it when you'll drive `llmdbenchmark`.
 - `install-deps.sh` (llm-d guide repo) → the GUIDE's **deployment client** toolchain
-  (helm/helm-diff/helmfile/kustomize/yq/kubectl) — run it when the user deploys an llm-d guide
+  (git/curl/tar/yq/kubectl/helm/kustomize — NOT helmfile or helm-diff, which are installed
+  separately) — run it when the user deploys an llm-d guide
   directly and `run_setup`/`install.sh` hasn't already provided those tools. If `install.sh`
   already ran and the client tools are present, you do NOT also need `install-deps.sh`.
 - `venv.exists == false` → run `run_setup` before any `llmdbenchmark` command.

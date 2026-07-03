@@ -17,7 +17,9 @@ tool with the resolved `env` map.
    (`kustomization.yaml` + JSON patches). Track each value's source file + line numbers for the
    `sources` provenance map.
 2. **Read the live defaults.** Only set a var when the guide differs from the framework default
-   (`setup/env.sh` in the benchmark repo — read it at runtime; representative defaults below).
+   (`config/templates/values/defaults.yaml` in the benchmark repo — read it at runtime;
+   representative defaults below. The old `setup/env.sh` is gone; upstream's convert-guide
+   skill still cites it).
 3. **Map each value** to its `LLMDBENCH_*` var (tables below).
 4. **Apply the standard practices** (next section) regardless of what the guide says.
 5. **Call `convert_guide_to_scenario`** with `name`, the resolved `env` map, optional `sources`,
@@ -133,8 +135,8 @@ version; only set registry/repo/name when they differ from the default `ghcr.io/
 
 - `LLMDBENCH_HARNESS_NAME=inference-perf` (the converter default; pass `harness` to override).
 - `LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=sanity_random.yaml` (pass `profile` to override).
-- Representative defaults — only override when the guide differs (read `setup/env.sh` for the
-  authoritative live values): `MAX_MODEL_LEN=16384`, `BLOCK_SIZE=64`, `ACCELERATOR_MEM_UTIL=0.95`,
+- Representative defaults — only override when the guide differs (read
+  `config/templates/values/defaults.yaml` for the authoritative live values): `MAX_MODEL_LEN=16384`, `BLOCK_SIZE=64`, `ACCELERATOR_MEM_UTIL=0.95`,
   `ACCELERATOR_NR=auto`, `INFERENCE_PORT=8000`, `METRICS_PORT=8200`, `MULTINODE=false`,
   `GATEWAY_CLASS_NAME=istio`.
 

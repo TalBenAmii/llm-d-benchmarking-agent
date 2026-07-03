@@ -16,7 +16,7 @@ There are two independent timeouts in play. Keep them straight:
 
 | Layer | Where it lives | What it bounds | How long |
 |-------|----------------|----------------|----------|
-| **Runner deadline** (outer) | `security/allowlist.yaml` `timeout_s` per subcommand (DATA), enforced by `asyncio.wait_for` in the runner | The **whole** CLI process — if it overruns, the child process group is SIGKILLed | standup/run **3600**, teardown **900**, experiment **14400**, plan/results **300** |
+| **Runner deadline** (outer) | `security/allowlist.yaml` `timeout_s` per subcommand (DATA), enforced by `asyncio.wait_for` in the runner | The **whole** CLI process — if it overruns, the child process group is SIGKILLed | standup/run **3600**, teardown **900**, experiment **14400**, plan **300**, results **600** |
 | **CLI per-phase timeout** (inner, Phase 38) | The `--*-timeout` flags here | One **phase** inside the CLI run (one deploy / bind / wait / drain) | Whatever you pass |
 
 **THE RULE: every per-phase timeout MUST stay strictly BELOW the runner `timeout_s` ceiling for
