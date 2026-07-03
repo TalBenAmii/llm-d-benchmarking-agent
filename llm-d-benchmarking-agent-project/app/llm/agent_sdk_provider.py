@@ -471,24 +471,31 @@ async def _consume(
 
     text_parts: list[str] = []
     thinking_parts: list[str] = []
+    thinking_delta_parts: list[str] = []
     tool_calls: list[ToolCall] = []
     usage = Usage()
     assistant_error: str | None = None
     fatal: str | None = None
     async for msg in stream:
         if isinstance(msg, StreamEvent):
-            # include_partial_messages=True surfaces the raw Anthropic SSE events. Forward only
-            # text deltas to the UI; the authoritative full text is taken from the AssistantMessage
-            # TextBlock(s) below, so a dropped/duplicated delta never corrupts the recorded turn.
-            # thinking_delta events are intentionally NOT forwarded — reasoning is captured from
-            # the ThinkingBlock(s) below for the trace, never streamed into the visible answer.
+            # include_partial_messages=True surfaces the raw Anthropic SSE events. Two delta kinds
+            # matter here. text_delta is forwarded to the UI as it arrives; the authoritative full
+            # text is still taken from the AssistantMessage TextBlock(s) below, so a dropped/
+            # duplicated delta never corrupts the recorded turn. thinking_delta is ACCUMULATED (not
+            # forwarded — reasoning must never leak into the visible answer): on this streaming path
+            # the CLI delivers the chain-of-thought ONLY as these deltas and does NOT re-send it as a
+            # ThinkingBlock in the final AssistantMessage (unlike the one-shot query() path), so
+            # dropping them loses thinking from the per-session trace entirely.
             ev = msg.event or {}
-            if ev.get("type") == "content_block_delta" and on_text is not None:
+            if ev.get("type") == "content_block_delta":
                 delta = ev.get("delta") or {}
-                if delta.get("type") == "text_delta":
+                dtype = delta.get("type")
+                if dtype == "text_delta" and on_text is not None:
                     chunk = delta.get("text") or ""
                     if chunk:
                         await on_text(chunk)
+                elif dtype == "thinking_delta":
+                    thinking_delta_parts.append(delta.get("thinking") or "")
         elif isinstance(msg, AssistantMessage):
             if msg.error:
                 assistant_error = str(msg.error)
@@ -511,7 +518,11 @@ async def _consume(
         raise ProviderError(f"Agent SDK error: {assistant_error}")
     if fatal:
         raise ProviderError(f"Agent SDK {fatal}")
-    return "".join(text_parts), tool_calls, usage, "".join(thinking_parts)
+    # Prefer the authoritative ThinkingBlock(s) when the CLI included them; otherwise fall back to
+    # the streamed thinking_delta chunks (the partial-messages path delivers reasoning only there).
+    # Either way the 4th slot is a plain thinking string, identical in shape to the one-shot path.
+    thinking = "".join(thinking_parts) or "".join(thinking_delta_parts)
+    return "".join(text_parts), tool_calls, usage, thinking
 
 
 class _AgentSdkTurn:

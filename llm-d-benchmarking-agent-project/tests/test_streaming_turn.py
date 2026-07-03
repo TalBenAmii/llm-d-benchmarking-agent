@@ -87,6 +87,13 @@ def _delta(text: str) -> sdk.StreamEvent:
     )
 
 
+def _thinking_delta(text: str) -> sdk.StreamEvent:
+    return sdk.StreamEvent(
+        uuid="u", session_id="s",
+        event={"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": text}},
+    )
+
+
 async def test_consume_collects_text_tool_calls_usage_and_streams_deltas():
     deltas: list[str] = []
 
@@ -120,6 +127,51 @@ async def test_consume_collects_text_tool_calls_usage_and_streams_deltas():
     assert len(tool_calls) == 1
     assert (tool_calls[0].name, tool_calls[0].input) == ("probe_environment", {"namespace": "llm-d"})
     assert (usage.output_tokens, usage.cache_read_tokens) == (9, 100)
+
+
+async def test_consume_captures_thinking_from_deltas_when_no_thinking_block():
+    """The persistent per-turn path runs include_partial_messages=True and the CLI delivers the
+    chain-of-thought ONLY as thinking_delta stream events — the final AssistantMessage carries NO
+    ThinkingBlock. _consume must accumulate those deltas so the reasoning still reaches the trace
+    (the cot_trace-lost-thinking bug), and must never stream them into the visible answer."""
+    deltas: list[str] = []
+
+    async def on_text(t: str) -> None:
+        deltas.append(t)
+
+    msgs = [
+        _thinking_delta("Let me probe "),
+        _thinking_delta("the cluster first."),
+        _delta("Hel"),
+        _delta("lo"),
+        # No ThinkingBlock in the final assistant message on this streaming path.
+        sdk.AssistantMessage(content=[sdk.TextBlock(text="Hello")], model="m"),
+        sdk.ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
+                          num_turns=1, session_id="s", usage=None),
+    ]
+    text, tool_calls, usage, thinking = await _consume(_stream(msgs), on_text)
+
+    assert text == "Hello"                                       # authoritative text unchanged
+    assert thinking == "Let me probe the cluster first."         # reasoning recovered from deltas
+    assert deltas == ["Hel", "lo"]                               # only text streamed to the UI...
+    assert "probe" not in "".join(deltas)                        # ...thinking never leaks into it
+
+
+async def test_consume_prefers_thinking_block_over_deltas_when_both_present():
+    """If the CLI DOES send a populated ThinkingBlock, it is authoritative and the deltas are not
+    appended on top of it — no double-counting."""
+    msgs = [
+        _thinking_delta("partial reasoning"),
+        sdk.AssistantMessage(
+            content=[sdk.ThinkingBlock(thinking="full reasoning", signature="sig"),
+                     sdk.TextBlock(text="ok")],
+            model="m",
+        ),
+        sdk.ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
+                          num_turns=1, session_id="s", usage=None),
+    ]
+    _text, _tc, _usage, thinking = await _consume(_stream(msgs), None)
+    assert thinking == "full reasoning"
 
 
 async def test_consume_without_on_text_still_parses():
