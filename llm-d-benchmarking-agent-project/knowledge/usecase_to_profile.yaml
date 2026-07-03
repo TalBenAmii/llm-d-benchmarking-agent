@@ -74,5 +74,5 @@ concurrency_hints:
 # ENGAGE the user's concrete number ("~500 concurrent users") — stock ladders top out FAR below
 # hundreds and silently under-test at that scale. A CONCURRENCY-shaped ask (N in-flight users) →
 # the ready-made `random_concurrent.yaml` (set concurrency_level = N), NOT the rate-based profiles
-# above; the exact knobs + run-sizing recipes → read_knowledge('dataset_replay').
+# above; the exact knobs + run-sizing recipes → read_knowledge('conversation_replay').
 # ALWAYS inspect_workload_profile before characterizing a workload — its filename is not its shape.
