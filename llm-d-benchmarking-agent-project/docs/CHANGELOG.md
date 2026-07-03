@@ -32,6 +32,18 @@ chat to a public link, a single-GPU-cluster runbook, and assorted UI/observabili
   that point at focused on-demand guides (9 new ones, incl. `observability_monitoring.md`,
   `router_features.md`, and the `sweep_*` set), with ~25 fact fixes across the corpus so each
   judgment lives in exactly one canonical place.
+- **Live-probe knowledge hardening (2026-07-04 sweep)** — graded live probes across the use-case
+  families (SLO/goodput, RAG, reproducibility, teardown, baseline comparison, TP sweeps, capability
+  questions) drove targeted fixes: an SLA-phrasing → SLO-key translation block in `analysis.md`
+  ("N tok/s per user" → `tpot_ms = 1000/N`, never an aggregate floor), a new
+  `shared_prefix_workloads.md` (real `data.shared_prefix.*` keys + the SHARED:UNIQUE-ratio honesty
+  rule), an explicit deploy-origin gate in `teardown.md` (enumerate session state / helm releases /
+  `stood-up-from` labels before any deletion), a baseline-compare playbook + run-output-location
+  truth in `history.md`, a named TP-sweep bullet (`decode.parallelism.tensor`) in
+  `sweep_authoring.md`, and cue wiring so each of these is actually read at its decision point
+  (CORE cues for cleanup + capability asks; tool-description cues on the compare/history/DoE tools;
+  `benchmark_feature_coverage.md` now cross-cues `multi_harness`/`sweep_authoring` instead of
+  inviting "unsupported" extrapolation).
 
 ### Fixed
 - **Chain-of-thought recovered on the streaming path** — on the persistent per-turn Agent SDK path
