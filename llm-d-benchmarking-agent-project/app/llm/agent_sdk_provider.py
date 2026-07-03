@@ -457,9 +457,10 @@ async def _consume(
     parsing in :meth:`AgentSdkProvider.chat`; used by the persistent per-turn path
     (:class:`_AgentSdkTurn`), whose ``receive_response()`` iterator terminates cleanly on the
     ``ResultMessage`` (it does NOT raise ``error_max_turns`` the way the one-shot ``query()``
-    iterator does). Thinking is collected from the authoritative ``ThinkingBlock``(s) — never
-    forwarded to ``on_text``, so the model's chain-of-thought never leaks into the UI text bubble;
-    the loop persists it to the per-session debug trace instead."""
+    iterator does). Thinking is collected from the authoritative ``ThinkingBlock``(s) when present,
+    else from streamed ``thinking_delta`` events (the CLI omits the final ``ThinkingBlock`` on the
+    partial-messages path) — never forwarded to ``on_text``, so the model's chain-of-thought never
+    leaks into the UI text bubble; the loop persists it to the per-session debug trace instead."""
     from claude_agent_sdk import (
         AssistantMessage,
         ResultMessage,
