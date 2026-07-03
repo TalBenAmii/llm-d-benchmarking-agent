@@ -75,6 +75,11 @@ below hold for that pin; re-verify if the image tag moves):
   200 users** — only `concurrency` conversations are ever in flight, think-time included. To model
   N truly-concurrent users you must set concurrency = N (see the recipe below), not add think-time
   to a smaller pool.
+- **If the user's actual GOAL is decoupling active users from in-flight concurrency** (thinking
+  users must NOT hold a slot — "N active users, C < N concurrent"), inference-perf cannot express
+  it; do NOT conclude "no harness supports this" — `read_knowledge('multi_harness')` §"Route by
+  the user's GOAL" routes to aiperf (user-centric steady-state) or guidellm (`requeue_delay`
+  releases the slot).
 - **Conversations are RECYCLED by default** (closed-loop replenishment): when a conversation
   finishes, its slot resets to a fresh conversation at turn 0 (the data generator is an infinite
   cycle). You do **not** need a workaround to keep load steady. **Sizing recipe:**
