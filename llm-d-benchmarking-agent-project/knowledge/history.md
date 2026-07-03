@@ -6,6 +6,11 @@ facts and returns value-series; *you* supply the judgment (is this a regression?
 drift acceptable?). Nothing here touches the cluster or the repos, so every action
 auto-runs (no approval).
 
+> **"Re-run the run from <date>"** is a reproducibility ask, not just a lookup. Locate the record
+> here first (`result_history` list/trend), then follow the full path
+> `result_history → export_run_bundle → reproduce_run` — see `read_knowledge('reproducibility')`. If
+> nothing is stored for that date, that empty result IS the answer (below); don't fabricate a baseline.
+
 ## When to store a result
 Store a run the user will care about *later*, **after** you've already located/parsed it
 (`locate_and_parse_report`) and, ideally, analyzed it (`analyze_results`):

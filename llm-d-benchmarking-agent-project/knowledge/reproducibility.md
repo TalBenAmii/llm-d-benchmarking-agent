@@ -29,6 +29,16 @@ is worth keeping, a bundle makes it *reproducible*, not just *stored*. Make it O
 (see `read_knowledge('conversation_style')` for the one-offer cadence), e.g. "Want me to capture a
 reproducibility bundle (repo versions + exact config) so this run can be regenerated or shared?"
 
+### "Reproduce the run from <date>" with NO saved bundle/record
+
+When the user asks to re-run a past result but neither `result_history` nor a saved bundle has a
+record for that date, **be honest first**: there's no captured provenance, so an *exact* reproduction
+isn't possible — you can only **reconstruct** the run from what the user can still state (spec /
+harness / workload / model), and the numbers may differ (tooling and environment have moved on). Then
+**close the gap for next time**: once you've driven the reconstructed rerun through the gates and
+parsed a validated report, OFFER `export_run_bundle` on it so this run *is* captured and the
+"no record" gap never recurs. Never invent a bundle_id or present a reconstruction as an exact replay.
+
 ## Make it byte-reproducible FIRST (generate the run-config)
 
 The bundle inlines the CLI's own **resolved run-config** so a replay is byte-identical. If this
