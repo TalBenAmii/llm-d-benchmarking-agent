@@ -14,7 +14,7 @@ from app.agent.context_mgmt import compact_messages, estimate_context_size
 from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.results_card import build_results_card
 from app.agent.session import Session
-from app.agent.tool_result_budget import clamp_tool_result_content
+from app.agent.tool_result_budget import DEFAULT_TOOL_RESULT_BUDGET, clamp_tool_result_content
 from app.llm.provider import LLMProvider, Usage, open_provider_turn
 from app.observability.cot_trace import TurnTrace
 from app.observability.logctx import bind as log_bind
@@ -24,7 +24,7 @@ from app.tools.registry import dispatch, tool_definitions
 log = logging.getLogger("app.agent.loop")
 
 MAX_STEPS = 24
-_TOOL_RESULT_BUDGET = 6_000  # chars of a tool result fed back to the model
+_TOOL_RESULT_BUDGET = DEFAULT_TOOL_RESULT_BUDGET  # chars of a tool result fed back to the model
 
 # Tools whose FULL result the UI re-renders as a rich card (report summary + clickable charts,
 # Pareto/comparison/env/capacity/etc.). Their un-clamped result is persisted to

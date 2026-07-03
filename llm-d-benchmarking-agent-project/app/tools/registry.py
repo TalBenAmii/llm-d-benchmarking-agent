@@ -155,7 +155,9 @@ _DESCRIPTIONS = {
         "(e.g. read_knowledge('capacity')). The system prompt inlines the core guides and "
         "lists the rest in a knowledge index with their topics; call this to pull in the "
         "relevant guide BEFORE interpreting that kind of result or making that decision. "
-        "Read-only; auto-runs. On an unknown name it returns the valid topics."
+        "Read-only; auto-runs. On an unknown name it returns the valid topics. A large guide is "
+        "clamped to a leading preview before you see it; the result then NAMES the dropped_sections "
+        "(the headings past the cut) — re-fetch any one with section='<heading>'."
     ),
     "search_knowledge": (
         "SEARCH the agent's knowledge base (and the curated upstream repo-doc index) by "

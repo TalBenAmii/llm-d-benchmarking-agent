@@ -11,12 +11,14 @@ re-exports these names for backwards compatibility; new code should import them 
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from app.agent.tool_result_budget import DEFAULT_TOOL_RESULT_BUDGET
 from app.paths import is_within
 from app.tools.context import ToolContext, ToolError
 
@@ -194,11 +196,107 @@ def _knowledge_files(ctx: ToolContext) -> list[Path]:
     return sorted(files, key=lambda p: p.name)
 
 
-def read_knowledge(ctx: ToolContext, *, name: str) -> dict[str, Any]:
+# --- markdown section addressing (truncation UX) -------------------------------------------
+# A large knowledge guide overflows the loop's per-tool-result feed-back budget and is clamped
+# (app/agent/tool_result_budget.py) to a leading PREVIEW before the MODEL sees it — so the LATER
+# sections silently vanish and the model never learns they exist. Two mechanisms fix that, both
+# pure: (1) when a guide won't fit the budget, read_knowledge annotates its result with the ##
+# headings that fall PAST the clamp's cut (a short signal string the clamp preserves intact) plus
+# a note, so the model knows what it is missing; (2) a `section` arg returns just one named section
+# verbatim, so the model can re-fetch a dropped section. Crucially the FULL content stays in the
+# returned dict — only the model-facing clamped COPY is bounded — so the UI/persistence and callers
+# still get the whole guide. No judgment here — WHICH section to read is the model's call.
+_ATX_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(\S.*?)[ \t]*#*[ \t]*$")
+# Headings past this raw-content offset are reported as dropped. The clamp's preview shows roughly
+# the leading ``budget`` chars of the SERIALIZED result minus its envelope overhead; this reserve
+# is deliberately generous so the cut estimate is conservative (better to flag a borderline section
+# as dropped than to let one vanish unmentioned).
+_DROPPED_CUT_RESERVE = 1500
+# Keep the dropped-heading list a short signal scalar so the loop's clamp preserves it verbatim
+# (a longer string would be treated as bulk payload and clipped away exactly when it is needed).
+_DROPPED_LIST_MAX_CHARS = 450
+
+
+def _markdown_headings(text: str) -> list[tuple[int, int, str]]:
+    """(level, char-offset, heading-text) for every ATX markdown heading in ``text``, in order.
+    Pure mechanism — the outline used to address a section and to name the dropped ones."""
+    out: list[tuple[int, int, str]] = []
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        m = _ATX_HEADING_RE.match(line.rstrip("\n"))
+        if m:
+            out.append((len(m.group(1)), offset, m.group(2).strip()))
+        offset += len(line)
+    return out
+
+
+def _extract_section(text: str, wanted: str) -> tuple[str, str] | None:
+    """Return (heading-text, section-body) for the ATX heading whose text matches ``wanted``
+    (case-insensitive; a leading '#'/'##' in the request is ignored). The body runs from the
+    matched heading up to the next heading of the SAME-or-shallower level (or EOF), so a '##'
+    section carries its own '###' subsections. None when no heading matches."""
+    headings = _markdown_headings(text)
+    target = wanted.lstrip("#").strip().lower()
+    for i, (level, start, htext) in enumerate(headings):
+        if htext.lower() == target:
+            end = len(text)
+            for level2, start2, _h2 in headings[i + 1:]:
+                if level2 <= level:
+                    end = start2
+                    break
+            return htext, text[start:end].strip()
+    return None
+
+
+def _join_dropped(headings: list[str]) -> str:
+    """Join dropped-heading names into ONE short signal string (capped so the loop's clamp keeps
+    it intact). If too many to fit, keep the first that fit and count the remainder."""
+    out: list[str] = []
+    used = 0
+    for i, h in enumerate(headings):
+        add = (3 if out else 0) + len(h)  # ' · ' separator + heading
+        if used + add > _DROPPED_LIST_MAX_CHARS and out:
+            return " · ".join(out) + f" · …(+{len(headings) - i} more)"
+        out.append(h)
+        used += add
+    return " · ".join(out)
+
+
+def _annotate_budget_overflow(result: dict[str, Any], content: str, budget: int) -> None:
+    """The guide's serialized result exceeds the feed-back budget, so the loop's clamp will show
+    the model only a leading preview. Annotate the result IN PLACE — WITHOUT touching ``content``
+    (callers/UI still get the whole guide) — with the ## headings that fall past the clamp's cut
+    plus a re-fetch note, both short signal strings the clamp preserves. Pure formatting."""
+    cut = max(0, budget - _DROPPED_CUT_RESERVE)
+    dropped = [htext for _lvl, off, htext in _markdown_headings(content) if off >= cut]
+    if dropped:
+        result["dropped_sections"] = _join_dropped(dropped)
+        result["note"] = (
+            f"guide '{result['topic']}' exceeds the tool-result feed-back budget, so only a "
+            f"leading preview reaches you; the sections in 'dropped_sections' fall past the cut — "
+            f"re-fetch any ONE with read_knowledge(name='{result['topic']}', section='<heading>')."
+        )
+    else:
+        result["note"] = (
+            f"guide '{result['topic']}' exceeds the tool-result feed-back budget, so only a "
+            f"leading preview reaches you; fetch a specific section with "
+            f"read_knowledge(name='{result['topic']}', section='<heading>')."
+        )
+
+
+def read_knowledge(
+    ctx: ToolContext, *, name: str, section: str | None = None,
+) -> dict[str, Any]:
     """Return the FULL text of ONE knowledge guide by its basename (e.g. 'capacity' or
-    'capacity.md'). The system prompt inlines the core guides and indexes the rest; call
-    this to load an on-demand guide BEFORE interpreting that kind of result. Read-only,
-    auto-runs. Strictly validated: no path traversal, no absolute paths, no '..'."""
+    'capacity.md'), or — with ``section`` — just that one named markdown section of it. The
+    system prompt inlines the core guides and indexes the rest; call this to load an on-demand
+    guide BEFORE interpreting that kind of result. Read-only, auto-runs. Strictly validated: no
+    path traversal, no absolute paths, no '..'.
+
+    The FULL guide text is always returned, but a large one is clamped to a leading preview before
+    the MODEL sees it; when that happens the result also lists the ``dropped_sections`` (the ##
+    headings past the cut) so nothing vanishes silently — re-fetch any one by passing
+    ``section='<heading>'`` (which returns just that section, never clamped)."""
     files = _knowledge_files(ctx)
     valid = [f.name for f in files]
     requested = (name or "").strip()
@@ -220,6 +318,21 @@ def read_knowledge(ctx: ToolContext, *, name: str) -> dict[str, Any]:
         return {"error": f"unknown knowledge topic {name!r}", "valid_topics": valid}
 
     content = match.read_text()
+
+    # A targeted section fetch returns just that one section verbatim (always small, never
+    # clamped) — the escape hatch for a section the whole-guide read dropped. Not de-duped: it is
+    # a different, narrower payload than the whole guide, and re-fetching a section is cheap.
+    if section is not None and section.strip():
+        found = _extract_section(content, section)
+        if found is None:
+            return {
+                "error": f"no section {section!r} in knowledge topic {match.stem!r}",
+                "name": match.name, "topic": match.stem,
+                "available_sections": [h for _lvl, _off, h in _markdown_headings(content)],
+            }
+        heading, body = found
+        return {"name": match.name, "topic": match.stem, "section": heading, "content": body}
+
     # Per-session de-dup: a guide already loaded this session is in the conversation above, so an
     # EXACT repeat returns a back-reference rather than re-injecting the full guide every turn.
     if len(content) >= _DEDUP_OVER_CHARS and _doc_seen(ctx, f"knowledge:{match.name}"):
@@ -227,7 +340,14 @@ def read_knowledge(ctx: ToolContext, *, name: str) -> dict[str, Any]:
             "topic", match.stem,
             reload_hint="Its full text is unchanged; re-load it only if you truly need it again.",
         )
-    return {"name": match.name, "topic": match.stem, "content": content}
+
+    result: dict[str, Any] = {"name": match.name, "topic": match.stem, "content": content}
+    # The FULL content stays put; if it would overflow the loop's feed-back budget (and be clamped
+    # to a blind preview for the model), add the clamp-surviving 'dropped_sections' + note so the
+    # model still learns which sections it is missing and how to re-fetch them.
+    if len(json.dumps(result)) > DEFAULT_TOOL_RESULT_BUDGET:
+        _annotate_budget_overflow(result, content, DEFAULT_TOOL_RESULT_BUDGET)
+    return result
 
 
 # --- search_knowledge: lexical search over knowledge/ + the curated repo-doc index ---------
