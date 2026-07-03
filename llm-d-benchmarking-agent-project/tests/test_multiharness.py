@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from app.tools import multiharness
+from app.tools import compare
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import CompareHarnessRunsInput
 from app.validation.report import (
@@ -187,7 +187,7 @@ async def test_compare_harness_runs_mixed_harnesses(tool_ctx, br_example, tmp_pa
     _write_report(ip, base, harness="inference-perf", ttft_s=0.12, out_rate=200.0)
     _write_report(gl, base, harness="guidellm", ttft_s=0.18, out_rate=400.0)
 
-    out = await multiharness.compare_harness_runs(
+    out = await compare.compare_harness_runs(
         tool_ctx, sources=[str(ip), str(gl)], labels=["SLO", "sweep"]
     )
     assert out["compared"] is True and out["n"] == 2
@@ -205,7 +205,7 @@ async def test_compare_harness_runs_single_harness_points_at_compare_reports(too
     a, b = tmp_path / "a", tmp_path / "b"
     _write_report(a, base, harness="inference-perf", ttft_s=0.10, out_rate=100.0)
     _write_report(b, base, harness="inference-perf", ttft_s=0.40, out_rate=350.0)
-    out = await multiharness.compare_harness_runs(tool_ctx, sources=[str(a), str(b)])
+    out = await compare.compare_harness_runs(tool_ctx, sources=[str(a), str(b)])
     assert out["compared"] is False
     assert "compare_reports" in out["hint"]
 
@@ -218,7 +218,7 @@ async def test_compare_harness_runs_skips_missing_and_invalid(tool_ctx, br_examp
     bad.mkdir()
     (bad / "benchmark_report_v0.2.yaml").write_text(yaml.safe_dump({"version": "0.2", "run": {}}))
     # only one valid report (the invalid one is skipped, the missing dir too) -> refuse.
-    out = await multiharness.compare_harness_runs(
+    out = await compare.compare_harness_runs(
         tool_ctx, sources=[str(ip), str(bad), str(tmp_path / "missing")]
     )
     assert out["compared"] is False
@@ -238,7 +238,7 @@ async def test_compare_harness_runs_skips_unreadable_report(tool_ctx, br_example
     corrupt = tmp_path / "corrupt"
     corrupt.mkdir()
     (corrupt / "benchmark_report_v0.2.json").write_text('{"truncated": ')  # invalid JSON
-    out = await multiharness.compare_harness_runs(
+    out = await compare.compare_harness_runs(
         tool_ctx, sources=[str(ip), str(corrupt)]
     )  # must NOT raise
     assert out["compared"] is False  # only one valid report remains

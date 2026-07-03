@@ -29,7 +29,7 @@ from app.config import Settings
 from app.security.allowlist import MUTATING, Allowlist
 from app.security.runner import CommandRunner
 from app.tools.context import ToolContext
-from app.tools.hf_secret import provision_hf_secret
+from app.tools.repos import provision_hf_secret
 from app.tools.registry import REGISTRY, tool_definitions
 from tests.flows.harness import CaptureRunner
 

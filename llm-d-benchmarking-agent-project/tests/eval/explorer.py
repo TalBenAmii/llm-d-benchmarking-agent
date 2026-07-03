@@ -20,7 +20,7 @@ import random
 from pathlib import Path
 from typing import Any
 
-from app.tools.json_tail import find_last_json
+from app.dig import find_last_json
 
 from .app_driver import (
     Player,

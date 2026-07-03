@@ -163,7 +163,7 @@ result.
 | Report parsing + plain-language summary (validated against repo BR-v0.2 schema) | `app/validation/report.py`, `locate_and_parse_report` | 🔵 The "Benchmark results" card you saw in chat. ⚪ `tests/test_report_validation.py`. |
 | SLO-aware filtering + **goodput estimate** + Pareto/DoE frontier | `app/validation/analysis.py`, `analyze_results` | ⚪ `tests/test_analyze.py`. |
 | A/B comparison of 2+ runs (per-metric deltas + per-metric winner) | `app/tools/compare.py` | ⚪ `tests/` (compare). |
-| **Cross-harness** comparison (inference-perf vs guidellm on the same stack) | `app/tools/multiharness.py` | ⚪ `tests/test_multiharness.py`. |
+| **Cross-harness** comparison (inference-perf vs guidellm on the same stack) | `app/tools/compare.py` (`compare_harness_runs`) | ⚪ `tests/test_multiharness.py`. |
 | Metric extraction incl. **KV-cache hit rate, schedule delay, GPU utilization** (P25) | `report.py`/`analysis.py` + `knowledge/standard_metrics.yaml` | ⚪ tests; `None` when a harness doesn't emit them. |
 | **Cross-session result history** (`store`/`list`/`get`/`delete`) | `app/storage/history.py`, `result_history` tool, `GET /api/history` | 🟢 `GET /api/history` returns `records` + the 11 trendable `metrics`. Store one in chat to populate it. |
 | **Metric trends over time** (`trend`) + sidebar sparkline | `GET /api/history/trend?metric=<m>` | 🟢 Live (see evidence). Valid metrics: `ttft, tpot, itl, request_latency, output_token_rate, total_token_rate, request_rate, success_rate_pct, kv_cache_hit_rate, gpu_utilization, schedule_delay`. |
@@ -182,7 +182,7 @@ result.
 | Feature | Where | How to see / verify |
 |---|---|---|
 | Prometheus metrics endpoint (agent's own counters/histograms/gauges) | `app/observability/metrics.py`, `GET /metrics` | 🟢 `curl /metrics` — exposes `llmdbench_agent_commands_total`, `_command_duration_seconds`, `llmdbench_orchestrator_run_attempts_total`, `_run_faults_total`, `_runs_in_flight`, `_runs_submitted_total`, `_runs_terminal_total`. |
-| Live cluster resource usage during a run (`kubectl top`) | `app/tools/observe.py`, `observe_run_metrics` tool | 🔵 Call it while a run is in flight (needs the in-cluster metrics-server, which kind / the `cicd/kind` spec do NOT install — add it separately). |
+| Live cluster resource usage during a run (`kubectl top`) | `app/tools/manage_runs.py`, `observe_run_metrics` tool | 🔵 Call it while a run is in flight (needs the in-cluster metrics-server, which kind / the `cicd/kind` spec do NOT install — add it separately). |
 | Per-cluster metrics-server installer (enables the live stats above) | `scripts/install_metrics_server.sh`, `install_metrics_server.sh` allowlist exec | 🔵 `probe_environment` reports `metrics_server.available` up front (pre-flight); on kind where it is false the agent OFFERS `run_shell("install_metrics_server.sh --kubelet-insecure-tls")` BEFORE the run (mutating → approval). Judgment in `knowledge/observability.md`; rule in `app/agent/prompt.py` HARD_RULES. |
 | Grafana dashboard + Prometheus scrape config + **alert rules** | `deploy/observability/{grafana-dashboard.json,prometheus-scrape.yaml,alerts.rules.yaml}` | ⚪ Files render/import directly. |
 
@@ -210,7 +210,7 @@ result.
 | **Structured JSON logging + correlation IDs** (P11) | `app/observability/logging.py` | 🟢 Server stdout is JSON (`{"timestamp":...,"level":"INFO","logger":"app.main","message":"startup",...}`). |
 | Liveness `/healthz` | `app/main.py` | 🟢 `{"ok":true}`. |
 | **Readiness `/readyz` + startup self-check** (P16/P18) — workspace writable, provider coherent, repos resolvable, runner ok, auth coherent | `app/main.py`, `app/storage/retention.py` | 🟢 `curl /readyz` returns the full per-check report (all green here). |
-| **Run lifecycle**: cancel a run in another chat, reattach, graceful shutdown (P16) | `app/tools/cancel.py` (`cancel_run`), `app/agent/lifecycle.py` | ⚪ `tests/test_run_lifecycle.py`; 🔵 `cancel_run` frees a stuck run's concurrency slot. |
+| **Run lifecycle**: cancel a run in another chat, reattach, graceful shutdown (P16) | `app/tools/manage_runs.py` (`cancel_run`), `app/agent/lifecycle.py` | ⚪ `tests/test_run_lifecycle.py`; 🔵 `cancel_run` frees a stuck run's concurrency slot. |
 | Concurrency cap on simultaneous runs | `app/agent/*`, `tests/test_concurrency.py` | ⚪ `tests/test_concurrency.py`. |
 | **WS protocol hardening + live event buffer** (P15) | `app/agent/ws_schemas.py`, `channel.py` | ⚪ `tests/test_ws.py`. |
 | **Workspace retention / GC + startup cleanup** (P18) | `app/storage/retention.py` | 🟢 Startup log: `{"message":"retention.gc","removed":0,"reclaimed_bytes":0}`. |
