@@ -45,9 +45,7 @@ Report only numbers from the comparison object (validated reports) — never inv
 extrapolate. If a treatment's report is missing or schema-invalid, `compare_reports` lists it
 under `skipped`; say so plainly rather than comparing a partial set silently.
 
-**Attribute a delta only to a config difference you can point to.** Before you say "config A won
-because of X", confirm X actually differed between the treatments (the validity gate above, plus
-the treatment's own overrides). If the cause isn't visible in the configs, say the delta is real
-but its *cause* is undetermined from this data, and propose how to find out — don't invent a
-causal story, and never assert one your own tool result contradicts. (Same rule for trends across
-stored runs: `read_knowledge('history')`.)
+**Attribute a delta only to a config difference you can point to** — confirm X actually differed
+between the treatments before you credit it; if the cause isn't visible, say the delta is real but
+its cause is undetermined. This is the same rule as trend attribution across stored runs; the full
+statement lives there → `read_knowledge('history')`.

@@ -3,8 +3,6 @@
 > Extracted from `knowledge/observability.md` §4 — read this when the user asks about OpenTelemetry
 > tracing. The entry file keeps a pointer (`read_knowledge('observability_tracing')`).
 
-## 4. Distributed tracing — configuring the `tracing:` block (CONFIG-ONLY)
-
 This is an **advanced**, opt-in feature for users who already run an OpenTelemetry backend. Read
 the limitation first, because it shapes everything you tell the user:
 

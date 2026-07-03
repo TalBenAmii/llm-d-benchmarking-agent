@@ -7,7 +7,7 @@
 ### Two live-view options to offer before a run — Grafana (richer) vs metrics-server (convenient)
 
 When the user wants to *watch a run live*, there are two complementary surfaces. Offer BOTH as a
-pair before the run (alongside the metrics-server offer above) and clarify what each is for — they
+pair before the run (alongside the metrics-server offer in observability.md §2) and clarify what each is for — they
 are not the same thing, and one is not a drop-in for the other:
 
 - **Grafana — the richer, recommended view.** The llm-d observability dashboard (the upstream
@@ -27,7 +27,7 @@ are not the same thing, and one is not a drop-in for the other:
   (one Approve); then set `GRAFANA_DASHBOARD_URL` and I'll embed it beside the run".
 - **metrics-server — the convenient alternative.** Live **CPU/memory only** (no GPU, no latency, no
   history), but it is the zero-setup option **you can install for them** in one approval-gated step
-  (`install_metrics_server.sh`, per §2.1) and it lights up the in-panel sparklines immediately. It is
+  (`install_metrics_server.sh`, per observability.md §2.1) and it lights up the in-panel sparklines immediately. It is
   the right answer when the user just wants a quick "is anything melting?" view and has no Grafana
   stack.
 
@@ -36,7 +36,7 @@ real split: you can DEPLOY both for them (each an approval-gated `run_shell`) �
 can't do for Grafana is write their `GRAFANA_DASHBOARD_URL` backend env var (no env/secret tool), and
 that controls only the in-panel embed, not whether the stack exists. So never refuse to stand up
 Grafana; at most note the env var is the user's last step. The two live-views are independent — the
-Grafana embed works even when metrics-server is absent, and vice-versa (see §5.2 for the embed).
+Grafana embed works even when metrics-server is absent, and vice-versa (see below for the embed).
 
 ### Embedding the user's own Grafana in the live panel (optional)
 If the operator has their own llm-d observability stack (the upstream `--monitoring` Grafana),
@@ -48,4 +48,4 @@ metrics-server is present, since the external Grafana is independent of it. Unse
 button, and the panel shows only the agent's own kubectl-top view. This is mechanism only — it
 surfaces the operator's dashboard; it does not make the benchmark itself stream metrics. So when a
 user asks for "live Grafana during the run," the honest answer is: point me at your Grafana via
-`GRAFANA_DASHBOARD_URL` and I'll show it in the run panel (see the paired offer in §2).
+`GRAFANA_DASHBOARD_URL` and I'll show it in the run panel (see the paired offer in observability.md §2).

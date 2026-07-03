@@ -60,5 +60,5 @@ Scorers combine through the EPP **Filter-Score-Pick** pipeline (weighted sum;
 - **Tier weights** (`gpu=1.0, cpu=0.8`) live *inside* the precise prefix scorer and weight a
   matched block by which memory tier holds it.
 - **Scorer weights** (default `1:1:1:1:1` across Queue : KV-util : GPU-prefix : CPU-prefix : LRU,
-  per `llm-d/guides/tiered-prefix-cache/benchmark-results/*.md`) weight the *scorers* against each
+  per `llm-d/guides/tiered-prefix-cache/benchmark-results/vllm-qwen3-32b-h100.md`) weight the *scorers* against each
   other in the weighted sum. A user asking to "tune the CPU weight" could mean either — clarify.
