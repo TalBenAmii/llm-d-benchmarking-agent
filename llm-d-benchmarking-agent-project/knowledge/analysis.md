@@ -9,7 +9,7 @@ yours.
 
 > For **goal-seeking** (iterative sweeps: each round's grid is narrowed from the prior round's
 > results to converge on the SLO-feasible best, rather than analyzing one fixed set of runs),
-> see the goal-seeking section of `read_knowledge('sweep_playbook')` — its incumbent "best
+> see `read_knowledge('sweep_goalseek')` — its incumbent "best
 > feasible point" IS this analyzer's `slo_frontier` pick.
 
 ## Capture the SLOs during the interview, into the plan

@@ -4,6 +4,19 @@ This agent exposes two complementary observability surfaces. Use them to *explai
 happening*, not to make decisions silently — surface the signal to the user and reason about
 it out loud.
 
+## Operative summary (this file is long — read_knowledge may truncate the tail below; these are the load-bearing calls)
+- **You CAN deploy the live-view stacks yourself** — both are approval-gated `run_shell` steps,
+  not "advice only". The **Grafana** observability stack (§2, richer: GPU/latency/throughput/history)
+  and the **metrics-server** (§2, live CPU/mem sparklines) are each installable BY the agent. The
+  ONLY piece that is the user's is setting the `GRAFANA_DASHBOARD_URL` env var (controls the in-panel
+  embed, not whether the stack exists). Never refuse to stand up Grafana.
+- **Default benchmark monitoring ON** (§3) so the report's `results.observability` block is populated
+  (KV-cache/GPU/queue). Opt out (`monitoring: false`) only on a truly Prometheus-CRD-less cluster.
+- **Distributed tracing is CONFIG-ONLY** (§4): the agent configures the `tracing:` block so pods
+  *emit* OTLP spans, but it CANNOT show traces — the user views them in their own Jaeger/Tempo.
+- **Live metric streaming + custom PromQL are UPSTREAM-UNIMPLEMENTED** (§5): don't promise a live
+  metric chart; offer `observe_run_metrics` (kubectl top) + live pod-log streaming instead.
+
 ## 1. The agent's own metrics — `/metrics` (Prometheus)
 
 The backend exports its own counters/gauges in Prometheus text format at the HTTP endpoint

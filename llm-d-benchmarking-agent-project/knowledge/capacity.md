@@ -107,6 +107,10 @@ exact verdict **up front, at the plan gate, before any mutating step** — so a 
 hears "your token can't pull this model, here's the fix" instead of watching a long deploy
 die. The result carries three facts (plus a per-model `gated_access.models` breakdown):
 
+Never label a model "gated" (or "public") from memory or a guess — that verdict is a PROBE
+fact. Run `check_capacity` (its `check_model_access` / HF lookup) and read the `gated` field
+below; if you haven't probed, say gating is "unverified", don't assert it.
+
 - **`gated`** — `true` if any served model is gated, `false` if all are public, `null` if
   the gating check couldn't run (offline / HF unreachable — see below).
 - **`authorized`** — for the gated case: `true` if your `HF_TOKEN` can pull **every** gated

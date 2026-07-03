@@ -19,7 +19,12 @@ use_cases:
     emphasize_metrics: [ttft, itl, request_latency]
 
   code_completion:
-    description: IDE/code completion; short prompts, latency-sensitive.
+    # Despite the name, the upstream code_completion_synthetic.yaml is NOT "short prompts":
+    # it is mean ~2048-token INPUT / ~128-token output (large context, small completion), driven
+    # by a constant-RATE ladder 1/2/4/8 req/s (no concurrency knob). Inspect the real shape with
+    # inspect_workload_profile before you describe it — never infer token/load shape from a name.
+    description: IDE/code completion; large context (~2048-tok input), short (~128-tok) completion;
+      latency-sensitive; rate-based load (1-8 req/s), no concurrency knob.
     prefer_harness: inference-perf
     candidate_workloads: [code_completion_synthetic.yaml]
     emphasize_metrics: [ttft, tpot]
@@ -71,6 +76,9 @@ concurrency_hints:
 # ENGAGE a concrete user number ("~500 concurrent users") — don't ignore it. Stock workload
 # ladders top out FAR below hundreds, so a stock profile silently under-tests at that scale.
 # Map the number to the load config with an explicit override (this is judgment the user asked for):
+#   * CONCURRENCY-shaped ask (N in-flight users) → the ready-made concurrency-DRIVEN inference-perf
+#     profile is `random_concurrent.yaml` (`load.type: concurrent`, a `concurrency_level` ladder with
+#     `num_requests` per stage) — NOT the rate-based synthetic profiles above. Set concurrency_level = N.
 #   * inference-perf conversation_replay (concurrent): set concurrency_level = N, then size the run
 #     num_requests = N × turns × num_rounds. (Think-time users still count against N — it does NOT
 #     free a slot.)
@@ -78,3 +86,5 @@ concurrency_hints:
 #     load, target rate ≈ N / mean_request_latency (Little's Law), NOT rate = N.
 # The exact knobs + verified semantics live in read_knowledge('dataset_replay') (conversation_replay
 # load semantics); confirm profile defaults against list_catalog before quoting a ladder.
+# ALWAYS inspect_workload_profile before characterizing a workload's token OR load shape to the user
+# — the profile is the source of truth, its filename is not (see code_completion above).

@@ -86,6 +86,13 @@ metrics" and its "Trending these over time" note) and `knowledge/observability.m
   target is a real regression. Tie the trend back to `analyze_results` when SLOs exist.
 - The series carries `run_uid`, `label`, and `tags` per point — name the specific runs when
   you explain a change so the user can go look at them.
+- **Explain a delta only from what the records actually show.** Before you attribute a change
+  between two stored runs (e.g. "the new router config helped"), READ each record's config /
+  label / tags FIRST and attribute the delta only to a difference you can *see* there. If the
+  configs are identical or the cause isn't in the stored data, say so plainly — "the cause isn't
+  determinable from these records" — and propose how to find out (re-run with monitoring on, diff
+  the rendered per-treatment configs). Never invent a causal story the records don't support, and
+  never assert one your own tool result contradicts. (Sweep deltas: `read_knowledge('sweep_results')`.)
 - If `n` is 0 or 1, say there isn't enough history yet to call a trend, and suggest storing
   more baselines first.
 

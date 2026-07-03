@@ -121,6 +121,19 @@ For prefill/decode **disaggregation** and **prefix-cache-aware routing**:
   **`guides/precise-prefix-cache-routing`** scenario turns on (read
   `config/scenarios/guides/precise-prefix-cache-routing.yaml`). Pair with a routing connector
   that consumes them.
+**Tiered-KV / CPU-offload TRAPS — keys that silently do NOTHING (get these wrong and the run
+looks fine but offloads nothing):**
+- The CPU-block count for `OffloadingConnector` is **`vllmCommon.kvTransfer.extraConfig.num_cpu_blocks`**
+  (renders into `kv_connector_extra_config` in the generated `--kv-transfer-config` JSON). The
+  look-alike **`vllmCommon.flags.numCpuBlocks` is a no-op** — no template reads that path, so it is
+  silently dropped (upstream `experiments/tiered-prefix-cache.yaml` documents it "silently no-op'd").
+- **`vllmCommon.flags.cpuOffloadGb` does not exist** in the repos — don't author it. (vLLM's own
+  `--cpu-offload-gb` offloads model **WEIGHTS**, not KV cache, and is not the tiered-KV mechanism
+  nor exposed as a benchmark scenario knob.)
+- The tiered CPU/disk KV path is the **`OffloadingConnector`** via `vllmCommon.kvTransfer.*`
+  (`connector: OffloadingConnector` + `extraConfig {num_cpu_blocks, cpu_bytes_to_use}`), **NOT**
+  `kvTransfer.connector: NixlConnector` — Nixl is the P/D-disaggregation transfer, a different path.
+
 These only matter on a real multi-pod stack; on the single-pod kind/CPU-sim quickstart they
 add config noise without changing the measurement — don't set them there.
 
