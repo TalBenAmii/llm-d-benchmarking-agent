@@ -35,8 +35,8 @@ from app.agent.ws_schemas import (
 from app.config import get_settings
 from app.llm.provider import get_provider
 from app.observability import metrics as instrument
-from app.observability.logging import new_corr_id, setup_logging
 from app.observability.logging import bind as log_bind
+from app.observability.logging import new_corr_id, setup_logging
 from app.observability.metrics import render_prometheus
 from app.orchestrator.controller import BenchmarkOrchestrator
 from app.orchestrator.kube import RealKubeClient

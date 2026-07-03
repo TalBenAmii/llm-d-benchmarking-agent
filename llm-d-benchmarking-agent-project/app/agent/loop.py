@@ -11,7 +11,11 @@ from typing import Any
 
 from app.agent import events
 from app.agent.cards import build_results_card
-from app.agent.context_mgmt import clamp_tool_result_content, compact_messages, estimate_context_size
+from app.agent.context_mgmt import (
+    clamp_tool_result_content,
+    compact_messages,
+    estimate_context_size,
+)
 from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.session import Session
 from app.llm.provider import LLMProvider, Usage, open_provider_turn
