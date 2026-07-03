@@ -33,10 +33,16 @@ full DoE, `"run"` for a run-only sweep), always `flags={dry_run: true}` first.
 
 ### Picking factors for common questions
 - **"What's the optimal prefill/decode ratio / split?"** — full DoE. Sweep the prefill and
-  decode replica counts (and/or their tensor-parallelism) as `setup_factors`, e.g.
-  `decode.replicas: [1,2,4]` × `prefill.replicas: [1,2]`. Keep the model, the workload, and
-  the token mix fixed. Read the actual `LLMDBENCH_VLLM_MODELSERVICE_*REPLICAS` /
-  `*_TENSOR_PARALLELISM` keys from `docs/doe.md` for the scenario you're using.
+  decode replica counts as `setup_factors`, e.g. `decode.replicas: [1,2,4]` × `prefill.replicas:
+  [1,2]`. Keep the model, the workload, and the token mix fixed. Read the actual
+  `LLMDBENCH_VLLM_MODELSERVICE_*REPLICAS` keys from `docs/doe.md` for the scenario you're using.
+- **"What tensor-parallelism (TP) degree is best?"** — full DoE with the TP degree as a
+  `setup_factor`; the canonical setup key is `decode.parallelism.tensor` (prefill has its own),
+  e.g. `decode.parallelism.tensor: [2,4,8]`. The `docs/doe.md` env-var equivalents are
+  `LLMDBENCH_VLLM_MODELSERVICE_{DECODE,PREFILL}_TENSOR_PARALLELISM` and
+  `LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM`. Each level re-deploys, so hold the model/workload
+  fixed. TP levels are **bounded by the GPUs available per node/replica** — a degree above that
+  won't schedule, so don't sweep past that ceiling.
 - **"How does latency scale with load?"** — run-only sweep. Sweep one load knob
   (`max-concurrency` for vllm-benchmark, or `rate`/QPS) as a single `run_factor`. One stack,
   N runs. Cheapest; prefer this on kind/CPU-sim.

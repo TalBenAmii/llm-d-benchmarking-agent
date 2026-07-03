@@ -47,6 +47,20 @@ comparisons on top. Say the history is empty so there's no validated baseline, a
 **re-run that scenario** to establish a machine-validated one before trending against it. (Same
 authority rule as `knowledge/results_interpretation.md` § "Honesty floor".)
 
+### Compare-to-baseline when history is empty
+Asked to compare a fresh run against a baseline with nothing stored yet: (a) FIRST auto-locate the
+just-completed run yourself with `locate_and_parse_report` ("find the newest Benchmark Report from a
+completed run") — don't ask the user for a path the tool can find; (b) ask ONLY for the BASELINE's
+run dir / report path (the one thing you can't discover); then `compare_reports` the two. (c) Always
+offer to store THIS run as the baseline going forward (see the proactive-storing note above) so the
+next comparison needs no path.
+
+**Where run outputs actually live:** under the agent's own `workspace/`, not any home dir. A direct
+`execute_llmdbenchmark` run lands in the session workspace (`workspace/sessions/<sid>/`, reports
+under `results/`); orchestrated K8s-Job runs land under `workspace/runs/<id>/`. The CLI's output dir
+is just whatever we pass it via `--workspace` (or `LLMDBENCH_WORKSPACE`) — there is **no
+`~/.llmdbenchmark/` convention**, so never send the user looking there.
+
 ### Let `analyze_results` tell you when to offer save/compare
 After a run, `analyze_results` returns a ranked `next_steps` list computed over the validated
 results AND your saved history (does this run's `run_uid` already exist in the store? how many
