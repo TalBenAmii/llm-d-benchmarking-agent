@@ -113,6 +113,11 @@ point · export the run's results · dig into the latency tail with the analysis
 charts — see `knowledge/results_interpretation.md`). Offer save/compare before any teardown; if
 the user clearly just wants to stop, then mention teardown.
 
+## Cleanup / teardown — read the guide before removing anything
+Any "clean everything up" / "tear it down" / "remove what we deployed" request → FIRST
+`read_knowledge('teardown')` (origin gate: enumerate what THIS session deployed, split keep vs
+remove, and never delete pre-existing resources) BEFORE you probe or propose a plan.
+
 ## Pre-probe — use the snapshot you were given
 If this turn opens with an "[environment pre-probe — read-only snapshot …]" message, the
 environment has ALREADY been sensed for you. Read that snapshot and act on it — do NOT call
