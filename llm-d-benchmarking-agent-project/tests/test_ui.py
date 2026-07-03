@@ -549,3 +549,155 @@ def test_approval_resolve_guards_socket_before_send():
     seg = js[i:i + 600]
     assert "ws.readyState !== WebSocket.OPEN" in seg          # the guard exists in resolve
     assert seg.index("readyState") < seg.index('type: "approval"')  # …and BEFORE the send
+
+
+# ── test_ui_streaming.py ──
+# Structural wiring tests for the live token-streaming UI (no JS runtime in CI).
+#
+# Like the other ``test_ui_*`` suites these assert the static asset stays internally consistent —
+# the streaming handlers exist and are hooked into the right lifecycle points — rather than
+# running the JS. The visual behaviour is exercised by hand via ``ui/preview.html``.
+
+
+def _app_js() -> str:
+    return (get_settings().ui_dir / "app.js").read_text(encoding="utf-8")
+
+
+def test_assistant_delta_case_and_helpers_are_wired():
+    js = _app_js()
+    # the live-delta event is handled, and finalize/append helpers exist and are used
+    assert 'case "assistant_delta":' in js
+    assert "function appendStreamDelta(" in js
+    assert "function finalizeStreamBubble(" in js
+    assert "appendStreamDelta(data.text" in js
+    # assistant_text finalizes the streamed bubble (falling back to a fresh bubble if none open)
+    assert "finalizeStreamBubble(data.text)" in js
+
+
+def test_stream_bubble_reset_on_pane_clear_and_turn_end():
+    js = _app_js()
+    assert "function resetStreamBubble(" in js
+    # the live-bubble reference must be dropped when the pane is wiped and when a turn terminates,
+    # so the next turn's first delta starts a fresh bubble instead of appending to a stale node.
+    assert js.count("resetStreamBubble()") >= 4  # clearActivePane + done + error + cancelled
+
+
+# ── test_ui_split_view.py ──
+# Structural regression tests for the live-resource SPLIT VIEW (A3, TODO #2/#8).
+#
+# There is no JS runtime in CI, so these assert the served static assets are mutually consistent:
+# the right-hand resource panel exists in the HTML, the split layout exists in the CSS, and the JS
+# renders the live resource stats into that shared panel (chat-adjacent) rather than inline in the
+# transcript — opening the split on a `resource_stats` event and collapsing it on `done`.
+
+
+def test_index_has_resource_side_panel():
+    html = _ui("index.html")
+    # The split view's right-hand panel + its body slot the JS writes into.
+    assert 'id="resource-side"' in html
+    assert 'id="resource-side-body"' in html
+    # A manual collapse affordance.
+    assert 'id="resource-side-close"' in html
+
+
+def test_styles_define_split_layout():
+    css = _ui("styles.css")
+    # The layout toggles on body.split: the side panel opens and the chat column narrows.
+    assert "body.split .resource-side" in css
+    assert ".resource-side" in css
+    # Degrades gracefully on narrow screens (the panel overlays rather than squeezing the chat).
+    assert "@media (max-width: 900px)" in css
+    # The reusable inner table styles survive the move into the side panel.
+    assert ".resource-table" in css
+
+
+def test_app_js_renders_resource_stats_into_shared_side_panel():
+    js = _ui("app.js")
+    # The shared panel is referenced (not an inline transcript card).
+    assert 'getElementById("resource-side")' in js
+    assert "renderResourceSide" in js
+    # `resource_stats` opens the split; `done` collapses it.
+    assert 'case "resource_stats": renderResourceStats(data)' in js
+    assert "clearResourceStats" in js
+    assert 'classList.add("split")' in js
+    assert 'classList.remove("split")' in js
+
+
+def test_app_js_resource_view_is_per_chat_and_dashboard_ready():
+    js = _ui("app.js")
+    # Per-chat snapshot so a chat switch re-renders the front chat's run in the shared panel.
+    assert "resourceData" in js
+    assert "resourceActive" in js
+    # When the event carries a Grafana URL, an "Open Grafana" button (above the metrics) opens the
+    # dashboard in a modal overlay; otherwise the live kubectl-top table stands in (graceful fallback).
+    assert "dashboard_url" in js
+    assert "resource-dash-btn" in js     # the button replaces the old always-on inline iframe
+    assert "openGrafanaModal" in js      # click → modal overlay, not an always-on embed
+    assert "grafana-modal-frame" in js   # the lazily-loaded iframe lives in the modal now
+    # The old always-on inline iframe is gone (replaced by the button-triggered modal).
+    assert "resource-dash-frame" not in js
+
+
+def test_old_inline_resource_panel_is_gone():
+    """The old inline transcript card (`.resource-panel` / ensureResourcePanel) is fully replaced
+    by the split view, so neither the CSS class nor the helper lingers."""
+    css = _ui("styles.css")
+    js = _ui("app.js")
+    assert ".resource-panel" not in css
+    assert "ensureResourcePanel" not in js
+
+
+# ── test_ui_reproducibility.py ──
+# Structural regression tests for the reproducibility UI affordances.
+#
+# No JS runtime in CI, so (like test_ui_frontend.py) these assert the served static assets stay
+# mutually consistent: the report card + results sidebar expose Reproduce + Export, the
+# export_run_bundle result renders its own card, the affordances point at the new backend routes,
+# and app.js stays brace-balanced. Behaviour itself is exercised by hand via ui/preview.html.
+
+
+def test_app_js_still_brace_balanced():
+    js = _ui("app.js")
+    assert js.count("{") == js.count("}"), "app.js brace mismatch — likely a broken edit"
+
+
+def test_report_actions_helper_offers_reproduce_and_export():
+    js = _ui("app.js")
+    assert "function reportActions" in js
+    # Reproduce sends a canned user message (prompts the agent to call reproduce_run) — NOT a
+    # direct mutation. Export opens the self-contained report-card download.
+    assert "Reproduce this run" in js
+    assert "Export report card" in js
+    assert "sendUserMessage(`Reproduce this run from its provenance bundle" in js
+    assert "/report-card.html" in js
+    assert "window.open(" in js
+
+
+def test_export_bundle_result_renders_its_own_card():
+    js = _ui("app.js")
+    # finishTool dispatches the export_run_bundle result to its renderer.
+    assert 'data.name === "export_run_bundle"' in js
+    assert "renderReproducibilityCard(r)" in js
+    assert "function renderReproducibilityCard" in js
+    # The card shows a loud dirty banner + the copy-paste regenerate command (reuses copy helper).
+    assert "prov-dirty-banner" in js
+    assert "wrapWithCopy(pre)" in js
+
+
+def test_report_summary_card_gains_reproducibility_footer():
+    js = _ui("app.js")
+    # renderReportSummary appends a .report-actions footer wired to the current session.
+    assert "reportActions(result.bundle_id, currentSession)" in js
+
+
+def test_history_sidebar_rows_get_affordances_when_a_bundle_exists():
+    js = _ui("app.js")
+    # A stored record with a bundle_id (+ its own session_id) gets Reproduce + Export.
+    assert "rec.bundle_id && rec.session_id" in js
+    assert "reportActions(rec.bundle_id, rec.session_id)" in js
+
+
+def test_reproducibility_css_present():
+    css = _ui("styles.css")
+    for sel in (".report-actions", ".report-action", ".prov-dirty-banner", ".prov-chip", ".prov-cmd"):
+        assert sel in css, f"missing {sel} in styles.css"
