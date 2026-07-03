@@ -327,8 +327,9 @@ _DESCRIPTIONS = {
         "auto-runs. Then pass the returned `path` as flags.experiments to execute_llmdbenchmark "
         "(subcommand='experiment' for a full DoE, or 'run' for a run-parameter sweep) — preview "
         "with flags.dry_run first. WHICH factors/levels to sweep is YOUR judgment: "
-        "read_knowledge('sweep_playbook') to pick them. Read the repo's experiment examples "
-        "(read_repo_doc) to pick real override keys."
+        "read_knowledge('sweep_playbook') to pick them, and read_knowledge('sweep_validity') to "
+        "confirm the keys/levels you chose actually apply (some dotted keys silently don't). Read "
+        "the repo's experiment examples (read_repo_doc) to pick real override keys."
     ),
     "execute_llmdbenchmark": (
         "Run the llmdbenchmark CLI: subcommand is one of plan/standup/smoketest/run/"
@@ -370,7 +371,10 @@ _DESCRIPTIONS = {
         "report from a DoE 'experiment' sweep) and return per-metric deltas vs a baseline "
         "plus the winning run for each metric (latency: lower is better; throughput: higher). "
         "Read-only. Pass `sources` (run dirs/files, with optional `labels`) OR `experiment_dir` "
-        "(scans for all reports under it). Use after a sweep or to compare two configurations."
+        "(scans for all reports under it). Use after a sweep or to compare two configurations. "
+        "Before attributing any delta to a version/config change, confirm the runs are "
+        "like-for-like (same harness/workload/load) — read_knowledge('sweep_validity') is the "
+        "post-run validity gate."
     ),
     "compare_harness_runs": (
         "Cross-harness comparison for a MULTI-HARNESS session: contrast Benchmark Reports produced "
