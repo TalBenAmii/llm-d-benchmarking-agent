@@ -47,16 +47,14 @@ prefix" + "catalog injected exactly once".
 ## Key files
 - `loop.py` — the turn loop: LLM call → tool dispatch (approval gating) → result feedback.
 - `prompt.py` — byte-stable cached prefix + per-turn catalog/env synthetic messages.
-- `context_mgmt.py` — compaction of old tool results.
+- `context_mgmt.py` — compaction of old tool results + `clamp_tool_result_content` (caps tool-result feedback via a valid-JSON truncation envelope).
 - `session.py` — per-session state, persistence, one-shot flags, title derivation.
-- `welcome.py` · `results_card.py` — deterministic, knowledge-sourced cards (mechanism only).
+- `cards.py` — deterministic, knowledge/data-sourced UI content (mechanism only): the welcome card, the post-run results card, and the `suggestions.yaml` start-of-chat chips (data only; deliberately outside `knowledge/`).
 - `channel.py` — per-session turn↔socket link: turns survive disconnects; buffers/replays live events + pending approvals.
 - `events.py` — WS event-type constants + the documented server↔client event contract.
 - `lifecycle.py` — `RunRegistry`: cancel / reattach / graceful-shutdown of in-flight turn tasks (frees the semaphore slot).
 - `ws_schemas.py` — Pydantic validation of inbound WS frames (tagged union on `type`) + the `outbound` envelope.
 - `transcript.py` — `history_items`: pure replay transcript for resumed/shared chats (session → WS item shape).
-- `tool_result_budget.py` — `clamp_tool_result_content`: caps tool-result feedback via a valid-JSON truncation envelope.
-- `suggestions.py` — loads `suggestions.yaml` start-of-chat chips (data only; deliberately outside `knowledge/`).
 
 ## Scoped tests
 ```bash

@@ -6,7 +6,7 @@ token cost — so the wording lives here (knowledge, editable) while the event/U
 stays mechanism. Keep it aligned with the "What can you do?" bullets in
 conversation_style.md so the deterministic welcome matches the agent's own voice.
 
-The loader (app/agent/welcome.py) parses this file deterministically:
+The loader (app/agent/cards.py) parses this file deterministically:
 - the **last** `## ` heading's text becomes the card **heading** (the first `## ` is the
   file's own title above, so put the greeting in the last `## `);
 - every `- ` bullet under the `### Capabilities` section becomes a capability bullet;

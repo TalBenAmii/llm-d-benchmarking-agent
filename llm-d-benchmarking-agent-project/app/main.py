@@ -17,12 +17,11 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 
 from app.agent import events as ws_events
 from app.agent.channel import Channel
+from app.agent.cards import build_welcome, load_suggestions
 from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
-from app.agent.suggestions import load_suggestions
 from app.agent.transcript import history_items as _history_items
-from app.agent.welcome import build_welcome
 from app.agent.ws_schemas import (
     ApprovalIn,
     CancelIn,

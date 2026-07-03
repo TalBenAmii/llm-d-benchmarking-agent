@@ -391,7 +391,7 @@ def test_history_items_card_result_emits_results_card_for_analyzer():
     s.messages.append({"role": "assistant", "content": "",
                        "tool_calls": [{"id": "tc1", "name": "analyze_results", "input": {}}]})
     # A minimal analyzed result that build_results_card will turn into a card.
-    from app.agent.results_card import build_results_card
+    from app.agent.cards import build_results_card
     result = {"analyzed": True, "report": {"summary": {"model": "m"}}}
     s.record_card_result({"tool_call_id": "tc1", "name": "analyze_results", "result": result})
 
