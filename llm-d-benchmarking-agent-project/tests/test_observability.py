@@ -301,7 +301,7 @@ def test_observability_knowledge_documents_streaming_unimplemented_and_substitut
     config-only assertion). Read the file directly: no app behavior changed."""
     from app.config import get_settings
 
-    md = (get_settings().knowledge_dir / "observability.md").read_text()
+    md = (get_settings().knowledge_dir / "observability_streaming.md").read_text()
     lower = md.lower()
 
     # The upstream gap is stated as unimplemented (not the agent's fault to apologize for).
@@ -336,7 +336,7 @@ def test_observability_knowledge_documents_grafana_vs_metrics_server_offer():
     in-panel embed, not whether the stack exists). That judgment lives in knowledge, not Python."""
     from app.config import get_settings
 
-    md = (get_settings().knowledge_dir / "observability.md").read_text()
+    md = (get_settings().knowledge_dir / "observability_grafana.md").read_text()
     lower = md.lower()
 
     # Both options are named together as a pair.

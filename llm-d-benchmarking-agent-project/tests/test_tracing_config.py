@@ -317,7 +317,7 @@ def test_observability_knowledge_documents_config_only_limitation():
     observability knowledge file states it explicitly and documents the dotted keys + the gate."""
     from app.config import get_settings
 
-    md = (get_settings().knowledge_dir / "observability.md").read_text()
+    md = (get_settings().knowledge_dir / "observability_tracing.md").read_text()
     lower = md.lower()
     # The section exists and states CONFIGURE-not-COLLECT.
     assert "tracing" in lower
@@ -334,7 +334,7 @@ def test_observability_knowledge_documents_config_only_limitation():
         "tracing.serviceNames",
         "tracing.vllm.collectDetailedTraces",
     ):
-        assert key in md, f"{key} not documented in knowledge/observability.md"
+        assert key in md, f"{key} not documented in knowledge/observability_tracing.md"
     # It steers the agent through the determinism gate (plan/--dry-run with spec_path).
     assert "dry_run" in lower or "dry-run" in lower
     # And cites upstream truth (config-only is grounded, not invented).
