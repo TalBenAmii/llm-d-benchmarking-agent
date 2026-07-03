@@ -80,6 +80,23 @@ explicitly (and show the per-request latency you used), or defer the number to t
 pre-flight's **"max concurrent requests"** sizing line above — don't do throughput-as-concurrency
 back-of-envelope math.
 
+### Borderline "just fits" — leftover after weights is NOT all KV cache
+
+Memory left after the weights does **not** all become KV cache / concurrency headroom. The engine
+also needs **activation + runtime overhead** — CUDA context, activation buffers, CUDA-graph
+capture, the framework's own working set — on the order of **~2–5 GB per GPU** before a single
+request's KV cache. The planner's sizing accounts for this, but when *you* eyeball a borderline
+result, don't spend that overhead as if it were serving capacity:
+
+- When leftover memory is thin (the model loads with only a couple of GB to spare), the honest
+  verdict is **"this will likely fail to start / OOM on load"**, NOT "it fits, good for ~N
+  concurrent chats." A config that barely loads has **no** headroom to quote a concurrency number
+  from — quoting "N concurrent users" there is doubly wrong (it may not even boot).
+- Reach for a concurrency figure **only** off the planner's own **"max concurrent requests"**
+  sizing line (which already nets out weights + overhead), never from raw leftover memory. If that
+  line is small or absent on a borderline fit, say the config is memory-bound and suggest the same
+  fixes as a hard fail (smaller/quantized model, more GPUs/TP, bigger GPU, lower `max_model_len`).
+
 ## Gated-model access pre-flight — "can your token even pull the weights?"
 
 `check_capacity` pairs the "will it fit?" sizing verdict with a **gated-model access**

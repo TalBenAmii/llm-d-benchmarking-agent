@@ -50,6 +50,36 @@ Do **not** use it:
 - **As a way to "keep the cluster warm"** — it pins real pods; tear it down when done.
 - **On `teardown`** — see the table above; it means `--deep` there.
 
+## Triage FIRST: "0 successful requests" (before debug mode OR a redeploy)
+
+When a run completes with **0 successful requests** (or a near-zero `success_rate`), do NOT
+jump to "the deploy is broken, redeploy". Redeploying is the most expensive guess and usually
+fixes nothing. Walk the differential cheapest-first — most zero-success runs are a wiring
+problem, not a broken stack:
+
+1. **Is the endpoint even reachable/ready?** Run `check_endpoint_readiness` and read it per
+   `readiness_probes.md`: `/health` 200 but `/v1/models` 503 = still loading (wait, don't
+   redeploy); `/health` refused / crash-looping = the server never came up. A run fired at a
+   NotReady endpoint fails every request.
+2. **Does the harness's requested model name MATCH the served model?** The single most common
+   cause: the workload requests a model id (`--model` / served-model-name) the server doesn't
+   serve, so every request 404/400s. Compare the name the harness uses against `/v1/models`'s
+   returned id — they must be identical.
+3. **Auth.** A gated endpoint / router expecting a bearer token (or an HF-gated model whose
+   weights never pulled) rejects every request. Check for 401/403; confirm the token/secret is
+   present (see `capacity.md` gated-access + `provision_hf_secret`).
+4. **Then read the harness pod logs** — the launcher/harness pod's own stderr says *why* each
+   request failed (connection refused, DNS, 404 model, 401, timeout). Also decode any 429 /
+   `x-llm-d-request-dropped-reason` as capacity shedding, not breakage (`epp_headers.yaml`).
+   For a live pod to inspect by hand, THEN reach for debug mode (below).
+5. **Only after 1–4 point at the deployment itself** (wrong image, bad scenario, unschedulable)
+   is a teardown + redeploy warranted — and that's approval-gated.
+
+Report each check as what it *showed* ("`/v1/models` returned 503", "harness requested
+`llama-3.1-8b` but the server serves `meta-llama/Llama-3.1-8B-Instruct`"), not "the deploy
+passed/failed" — see `conversation_style.md` on not declaring success/failure before the output
+confirms it.
+
 ## The hard boundary: you EXPLAIN the exec, you do NOT drive the shell
 
 The most important rule of this feature. The interactive in-pod shell is a **manual, user-driven

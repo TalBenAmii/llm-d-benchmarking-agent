@@ -67,3 +67,14 @@ concurrency_hints:
   "a few users": low constant rate
   "hundreds of concurrent users": higher constant rate or a staged ramp
   "spiky / bursty": a staged/ramp profile rather than constant
+
+# ENGAGE a concrete user number ("~500 concurrent users") — don't ignore it. Stock workload
+# ladders top out FAR below hundreds, so a stock profile silently under-tests at that scale.
+# Map the number to the load config with an explicit override (this is judgment the user asked for):
+#   * inference-perf conversation_replay (concurrent): set concurrency_level = N, then size the run
+#     num_requests = N × turns × num_rounds. (Think-time users still count against N — it does NOT
+#     free a slot.)
+#   * constant/poisson synthetic: ensure num_workers × worker_max_concurrency ≥ N; for rate-based
+#     load, target rate ≈ N / mean_request_latency (Little's Law), NOT rate = N.
+# The exact knobs + verified semantics live in read_knowledge('dataset_replay') (conversation_replay
+# load semantics); confirm profile defaults against list_catalog before quoting a ladder.
