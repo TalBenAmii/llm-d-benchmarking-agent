@@ -117,7 +117,7 @@ what a load number means. (inference-perf verified at **v0.6.0**, the tag `llm-d
 
 | Harness | Think-time knob | Does think-time hold the concurrency slot? | Conversation recycling |
 |---|---|---|---|
-| **inference-perf** (`conversation_replay`) | `tool_call_latency_sec` | **YES** — a thinking user still occupies a slot (see `dataset_replay.md`) | **Built-in** (closed-loop: slot resets to a fresh conversation at turn 0) |
+| **inference-perf** (`conversation_replay`) | `tool_call_latency_sec` | **YES** — a thinking user still occupies a slot (see `conversation_replay.md`) | **Built-in** (closed-loop: slot resets to a fresh conversation at turn 0) |
 | **guidellm** | `requeue_delay` | **NO** — releases the slot during think-time (the *opposite* of inference-perf) | No explicit recycling; draws new conversations from a cycling dataset |
 | **aiperf** | `turn_delay` (fixed, or mean/stddev) | **Split**: the optional `--concurrency` SESSION cap IS held through think-time, but `--prefill-concurrency` releases at TTFT, and user-centric mode is open-loop (no cap by default) | Recycling to fill `request_count`; also a user-centric steady-state mode |
 | **vllm bench serve** | — | — | **Single-turn only**, no recycling (a `multi_turn` script exists upstream but isn't driven by llm-d-benchmark) |

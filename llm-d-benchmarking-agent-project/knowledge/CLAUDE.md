@@ -20,6 +20,11 @@ for *you* editing these files; it is deliberately excluded from the runtime know
   half of a session (interview/plan/deploy). The prefix has already been trimmed to its low-risk floor.
 
 ## Invariants / gotchas
+- **After ANY edit, check `wc -c` ≤ ~6,000** (the whole-guide `read_knowledge` clamp,
+  `DEFAULT_TOOL_RESULT_BUDGET`). Adding even one bullet to an over-budget file EVICTS its own tail
+  from the preview — and `dropped_sections` only names HEADINGS past the cut, so vanished
+  mid-section bullets give the agent zero signal (a live probe regressed exactly this way,
+  2026-07-04). Over budget → split into a new file + a stub cross-cue, don't trim facts.
 - **Renaming a file breaks its `read_knowledge('<stem>')` cues** (and any test). Grep `knowledge/` for the
   old stem before renaming. Cross-file cueing convention: a file says `read_knowledge('other')` to defer.
 - **Test-pinned content** — keep these or hermetic tests fail:
