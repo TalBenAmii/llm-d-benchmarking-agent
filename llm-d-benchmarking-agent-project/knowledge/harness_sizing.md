@@ -82,12 +82,14 @@ headroom without over-requesting on a tiny node.
 
 ## Boundaries
 
-- **`harness_cpu_nr` is the ONLY launcher-resource knob `execute_llmdbenchmark` exposes** —
-  there is **no `harness_mem` (nor `harness_cpu_mem`) flag in the tool's schema.** Do not tell the
-  user you can set the launcher's memory; you cannot. The companion `LLMDBENCH_HARNESS_CPU_MEM`
-  (default `32Gi`, per `docs/run.md`) is a real upstream env var but is **not settable via the tool
-  today** — this phase plumbs only `LLMDBENCH_HARNESS_CPU_NR`. (If a launcher OOMs, that's the CPU
-  launcher's memory limit, adjustable only upstream — flag it, don't claim a flag for it.)
+- **Two launcher-resource knobs `execute_llmdbenchmark` exposes:** `harness_cpu_nr` (CPU request,
+  `LLMDBENCH_HARNESS_CPU_NR`, default `16`) and `harness_mem` (MEMORY request,
+  `LLMDBENCH_HARNESS_CPU_MEM`, default `32Gi`, per `docs/run.md`). Both are backend-only ENV VARS
+  (never CLI flags, never in the allowlist or a `command` event). `harness_mem` takes a Kubernetes
+  memory quantity (`48Gi`, `512Mi`) — validated at the tool boundary, so a typo is a clean error,
+  not a late pod-apply failure. **If a launcher OOMs, RAISE `harness_mem`** (e.g. `48Gi`/`64Gi`);
+  lower it on a tiny node. Same headroom split as CPU: the multi-process `inference-perf` launcher
+  needs more than single-process `vllm-benchmark`.
 - The value is a backend env var, not an argv flag — it is never in the allowlist and never in
   a `command` event, so it stays off the browser/UI surface entirely.
 - Repos are read-only; this is a runtime decision, not a repo edit.
