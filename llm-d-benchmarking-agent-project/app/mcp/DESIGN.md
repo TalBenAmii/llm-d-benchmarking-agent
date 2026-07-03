@@ -64,7 +64,7 @@ its hands; the resources/prompts/instructions are the nudge toward our judgment.
 
 | File | Responsibility |
 |---|---|
-| `__init__.py` | exports `main`; package docstring |
+| `__init__.py` | exports `build_server`, `main`; package docstring |
 | `__main__.py` | `python -m app.mcp` → `main()` |
 | `server.py` | builds the low-level `Server`, registers all six handlers, runs the stdio loop (`main`) |
 | `adapters.py` | the per-connection adapters: stands up one `ToolContext` + `Session` per connection without the web loop and wires the approval/emit adapters (`build_connection_context`); the `ApproveFn` adapter (client-gated commands + elicitation/sentinel for SessionPlan); the `EmitFn` adapter → MCP logging notifications (best-effort) + structured log |

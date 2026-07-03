@@ -1,6 +1,6 @@
 """Structural regression tests for the frontend UI/UX iteration.
 
-There is no JS runtime in CI, so (like ``test_ui_split_view.py``) these assert the three served
+There is no JS runtime in CI, so (like the split-view section below) these assert the three served
 static assets stay mutually consistent: every element the JS reaches for exists in the HTML, every
 new visual component is wired in all three files, and ``app.js`` stays brace-balanced. They guard
 the wiring against drift; the visual behaviour itself is exercised by hand via ``ui/preview.html``.
