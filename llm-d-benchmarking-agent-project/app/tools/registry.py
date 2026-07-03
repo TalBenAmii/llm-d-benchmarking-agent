@@ -364,7 +364,9 @@ _DESCRIPTIONS = {
         "Find the newest Benchmark Report from a completed run, validate it against the "
         "repo schema, and return a plain-language metric summary. Read-only. Use after a run. "
         "Call read_knowledge('results_interpretation') BEFORE interpreting or summarizing the "
-        "report for the user."
+        "report for the user. On a baseline/regression comparison ask — especially when history "
+        "is empty — read_knowledge('history') §\"Compare-to-baseline when history is empty\" for "
+        "the real report locations and the always-offer-to-store-as-baseline rule."
     ),
     "compare_reports": (
         "Compare 2+ Benchmark Reports side by side (an A/B of separate runs, or every "
@@ -423,7 +425,9 @@ _DESCRIPTIONS = {
         "success_rate_pct) across runs; 'delete' forgets a record. Store a result the user wants "
         "to keep AFTER you've analyzed it; use 'trend' to answer 'has performance regressed?'. "
         "Returns facts (values + direction); call read_knowledge('history') to interpret trends "
-        "and give the verdict."
+        "and give the verdict. For a baseline/regression comparison when nothing is stored yet, "
+        "read_knowledge('history') §\"Compare-to-baseline when history is empty\" for the real "
+        "output locations and the always-offer-to-store-as-baseline rule."
     ),
     "export_run_bundle": (
         "Capture a one-click REPRODUCIBILITY PROVENANCE BUNDLE for a VALIDATED run: both read-only "
