@@ -15,10 +15,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from app.agent.cards import build_results_card
 from app.agent.loop import CARD_RESULT_TOOLS
-from app.agent.results_card import build_results_card
+from app.dig import find_last_json
 from app.tools import report_locate
-from app.tools.json_tail import find_last_json
 
 
 def history_items(session) -> list[dict[str, Any]]:

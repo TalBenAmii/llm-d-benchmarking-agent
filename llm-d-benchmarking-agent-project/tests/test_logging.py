@@ -22,13 +22,14 @@ from app.agent.loop import AgentLoop
 from app.agent.session import Session
 from app.config import get_settings
 from app.llm.provider import AssistantTurn, ToolCall
-from app.observability.logctx import bind as log_bind
-from app.observability.logctx import get_corr_id, new_corr_id
 from app.observability.logging import (
     ContextFilter,
     JsonFormatter,
+    get_corr_id,
+    new_corr_id,
     setup_logging,
 )
+from app.observability.logging import bind as log_bind
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
 from app.tools.context import ToolContext

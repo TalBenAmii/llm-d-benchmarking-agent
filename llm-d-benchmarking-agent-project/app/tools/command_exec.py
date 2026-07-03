@@ -22,7 +22,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from app.observability import instrument
+from app.observability import metrics as instrument
 from app.security.allowlist import MUTATING, READ_ONLY, Decision
 from app.security.quota import QuotaExceeded
 from app.security.runner import RunResult, simulated_run_result

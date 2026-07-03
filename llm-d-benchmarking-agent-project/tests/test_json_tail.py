@@ -1,4 +1,4 @@
-"""Tests for app.tools.json_tail.find_last_json.
+"""Tests for app.dig.find_last_json.
 
 Covers the contract (last balanced JSON value off a noisy stream) and pins the raw_decode
 rewrite to be result-identical to the original naive backward-scan via an oracle.
@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from app.tools.json_tail import find_last_json, parse_bridge_dict
+from app.dig import find_last_json, parse_bridge_dict
 
 
 def _naive_find_last_json(text, opener):

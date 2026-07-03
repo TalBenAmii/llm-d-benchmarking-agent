@@ -26,7 +26,7 @@ import contextlib
 import shlex
 from typing import Any
 
-from app.observability import instrument
+from app.observability import metrics as instrument
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.security.runner import simulated_run_result
 from app.tools import gated_access

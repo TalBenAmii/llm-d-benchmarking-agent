@@ -29,9 +29,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.dig import parse_bridge_dict
 from app.paths import is_within
 from app.tools.context import ToolContext, ToolError
-from app.tools.json_tail import parse_bridge_dict
 
 _REQUEST_FILENAME = "aggregate_request.json"
 _OUTPUT_DIRNAME = "aggregated"
@@ -134,5 +134,5 @@ async def aggregate_runs(
 def _parse_bridge_output(output: str) -> dict[str, Any]:
     """Parse the aggregation wrapper's single stdout JSON object (tolerant of leading noise).
 
-    Thin wrapper over the shared ``json_tail.parse_bridge_dict`` (shared with capacity)."""
+    Thin wrapper over the shared ``dig.parse_bridge_dict`` (shared with capacity)."""
     return parse_bridge_dict(output, "aggregation")

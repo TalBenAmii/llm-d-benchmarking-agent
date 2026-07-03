@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from app.tools.json_tail import find_last_json
+from app.dig import find_last_json
 
 RUBRIC_PATH = Path(__file__).resolve().parent / "rubric.md"
 

@@ -35,7 +35,7 @@ the authoritative list. Judgment about *what to do with* results lives in `knowl
 - `context.py` — `ToolContext` DI container + thin `run_command`/`run_readonly` delegators; `ToolError`/`ApprovalRejected`/`QuotaError`.
 - `command_exec.py` — `CommandExecutor`: validate → quota → approval → run → record. Tools don't touch it directly.
 - `schemas/` — package of Pydantic input models, one module per tool family (`execute.py`, `orchestrate.py`, `probe.py`, `analysis.py`, `config.py`, `command.py`, `provenance.py`, `doe.py`, `docs.py`).
-- `probe_parse.py` — pure parser for `probe.py` output. · `json_tail.py` — tail-of-JSON helper.
+- `probe_parse.py` — pure parser for `probe.py` output. (The tolerant tail-of-JSON helper `find_last_json`/`parse_bridge_dict` now lives in `app/dig.py`.)
 - `gated_access.py` — gated-model deploy refusal (`gated_block`) at the command chokepoint; wired into `command_exec.py`/`shell.py`, verdicts recorded by the capacity bridge.
 - `catalog.py` — `build_catalog()`: live spec/harness/workload listing from the bench repo (+ `catalog_for_allowlist`); used by `context.py`/`workload_profile.py`.
 
@@ -46,9 +46,9 @@ default; only the `registry.STARTER_KIT` is shown. The model loads a group with 
 (load_tools) when a request needs it — see `app/agent/CLAUDE.md`.
 - **Probe & discover** — `probe.py` (probe_environment · list_catalog · advise_accelerators) · `workload_profile.py` (inspect_workload_profile · estimate_run_duration) · `discover.py` (discover_stack) · `capacity.py` (check_capacity) · `check_endpoint_readiness` lives in `app/readiness/`.
 - **Knowledge & advice** — `knowledge_access.py` (read_knowledge · search_knowledge · read_repo_doc · fetch_key_docs) · `convert_guide.py` (convert_guide_to_scenario) · `suggest.py` (suggest_next_steps) · `tool_loader.py` (load_tools — loads a hidden tool group on demand).
-- **Plan, config & setup** — `plan.py` (propose_session_plan) · `repos.py` (ensure_repos · run_setup) · `config_artifact.py` (write_and_validate_config) · `doe.py` (generate_doe_experiment) · `hf_secret.py` (provision_hf_secret).
-- **Run & orchestrate** — `execute.py` (execute_llmdbenchmark) · `shell.py` (run_shell — the agent's always-on ad-hoc command tool) · `orchestrate.py` (orchestrate_benchmark_run · orchestrate_sweep) · `observe.py` (observe_run_metrics) · `cancel.py` (cancel_run) · `manage_runs.py` (manage_orchestrated_runs).
-- **Analyze & results** — `report_locate.py` (locate_and_parse_report) · `analyze.py` (analyze_results) · `compare.py` (compare_reports) · `multiharness.py` (compare_harness_runs) · `history.py` (result_history) · `aggregate_runs.py` (aggregate_runs) · `reproducibility.py` (export_run_bundle · reproduce_run).
+- **Plan, config & setup** — `plan.py` (propose_session_plan) · `repos.py` (ensure_repos · run_setup · provision_hf_secret) · `config_artifact.py` (write_and_validate_config) · `doe.py` (generate_doe_experiment).
+- **Run & orchestrate** — `execute.py` (execute_llmdbenchmark) · `shell.py` (run_shell — the agent's always-on ad-hoc command tool) · `orchestrate.py` (orchestrate_benchmark_run · orchestrate_sweep) · `manage_runs.py` (manage_orchestrated_runs · observe_run_metrics · cancel_run).
+- **Analyze & results** — `report_locate.py` (locate_and_parse_report) · `analyze.py` (analyze_results) · `compare.py` (compare_reports · compare_harness_runs) · `history.py` (result_history) · `aggregate_runs.py` (aggregate_runs) · `reproducibility.py` (export_run_bundle · reproduce_run).
 
 ## Gotchas
 - Schema validation errors are **returned, not raised** — surface your own enum/range errors as a dict with `"error"`, don't raise mid-handler.

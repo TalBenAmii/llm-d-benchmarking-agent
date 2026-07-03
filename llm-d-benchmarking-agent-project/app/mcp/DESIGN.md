@@ -4,7 +4,7 @@
 > exists and is import-checked + unit-tested (`tests/test_mcp_server.py`, 17 tests); the merge gate
 > (ruff + pytest) is the authoritative green check. This doc stays the design of record; the file-level
 > detail below reflects the built code, with one noted deviation in §4 (the per-connection context is
-> built directly in `context_factory.py` rather than via a shared `main.py` helper). It follows the
+> built directly in `adapters.py` rather than via a shared `main.py` helper). It follows the
 > locked decisions in `docs/history/proposals/05-mcp-server.md` §9.
 
 Decisions this implements (from proposal 05 §9): full operator (all functional tools, incl. mutating),
@@ -64,20 +64,16 @@ its hands; the resources/prompts/instructions are the nudge toward our judgment.
 
 | File | Responsibility |
 |---|---|
-| `__init__.py` | exports `main`; package docstring |
+| `__init__.py` | exports `build_server`, `main`; package docstring |
 | `__main__.py` | `python -m app.mcp` → `main()` |
 | `server.py` | builds the low-level `Server`, registers all six handlers, runs the stdio loop (`main`) |
-| `context_factory.py` | stands up one `ToolContext` + `Session` per connection without the web loop; wires the approval/emit adapters |
-| `approval.py` | the `ApproveFn` adapter (client-gated commands + elicitation/sentinel for SessionPlan) |
-| `events.py` | the `EmitFn` adapter → MCP logging notifications (best-effort) + structured log |
-| `resources.py` | `knowledge/` → MCP resources (list/read), `doc://knowledge/<stem>` scheme |
-| `prompts.py` | playbooks → MCP prompts (list/get) |
-| `instructions.py` | the server `instructions` string (reuses `ROLE` from `app/agent/prompt.py`, trimmed of web-UI references, + an MCP workflow preamble) |
+| `adapters.py` | the per-connection adapters: stands up one `ToolContext` + `Session` per connection without the web loop and wires the approval/emit adapters (`build_connection_context`); the `ApproveFn` adapter (client-gated commands + elicitation/sentinel for SessionPlan); the `EmitFn` adapter → MCP logging notifications (best-effort) + structured log |
+| `content.py` | the knowledge-exposure surface: `knowledge/` → MCP resources (list/read), `doc://knowledge/<stem>` scheme; playbooks → MCP prompts (list/get); the server `instructions` string (reuses `ROLE` from `app/agent/prompt.py`, trimmed of web-UI references, + an MCP workflow preamble) |
 | `CLAUDE.md` | scoped map of this package (file-level detail) |
 | `DESIGN.md` | this spec |
 
 All judgment-bearing text lives in `knowledge/` (data) and is *referenced*, not duplicated, by
-`resources.py`/`prompts.py`/`instructions.py`.
+`content.py`.
 
 ---
 
@@ -136,7 +132,7 @@ So `_EXPOSED` = all of `REGISTRY` minus `load_tools` (35 tools). Document this i
 
 ---
 
-## 4. Per-connection context (`context_factory.py`)
+## 4. Per-connection context (`adapters.py`)
 
 A stdio server process serves exactly **one** client connection, so "one `Session` per connection"
 (decision 05 §9.5) collapses to **one `ToolContext` + `Session` per process**, built lazily on first use
@@ -170,7 +166,7 @@ def build_connection_context(settings: Settings) -> ToolContext:
 
 **Decision taken (deviation from the original plan).** Rather than refactor `app/main.py`'s startup to
 share a `build_context(...)` helper (which would touch the web path with no local way to run the suite
-and verify it), `context_factory.build_connection_context` constructs the deps directly — mirroring
+and verify it), `adapters.build_connection_context` constructs the deps directly — mirroring
 `app/main.py:90-108` (`Allowlist.from_file` / `CommandRunner(repo_paths, extra_env=…)` /
 `asyncio.Semaphore(max_concurrent_runs)` / `RunRegistry()`) with a pointer comment. The drift surface is
 ~5 lines and a later refactor can still extract the shared helper. The benefit: the change stayed purely
@@ -185,7 +181,7 @@ Confirm during build; if any exposed tool reads `Session`, attach a minimal one.
 
 ---
 
-## 5. Approval adapter (`approval.py`)
+## 5. Approval adapter (`adapters.py`)
 
 `ToolContext.request_approval` has type `ApproveFn = Callable[[str, dict], Awaitable[bool]]`
 (`context.py:51`), called with `kind ∈ {"command", "session_plan"}`. The adapter:
@@ -236,7 +232,7 @@ only decides the human-gate question, never whether a command is *allowed*.
 
 ---
 
-## 6. Event adapter (`events.py`)
+## 6. Event adapter (`adapters.py`)
 
 `EmitFn = Callable[[str, dict], Awaitable[None]]` (`context.py:52`) feeds the web UI's live event
 stream (streaming output, cards). MCP has no equivalent rich surface. Map best-effort:
@@ -252,7 +248,7 @@ tool failure).
 
 ---
 
-## 7. Resources (`resources.py`)
+## 7. Resources (`content.py`)
 
 Publish every knowledge file as an MCP resource. Source of truth is the same glob the prompt builder
 uses (`_knowledge_sections`, `prompt.py:293-333`): `knowledge/*.md|*.yaml|*.yml`, minus
@@ -292,7 +288,7 @@ under a `repo://` scheme. Noted, not built.
 
 ---
 
-## 8. Prompts (`prompts.py`)
+## 8. Prompts (`content.py`)
 
 A small set of workflow prompts, each returning messages that embed the relevant playbook content + the
 workflow directive. These are the user-invokable "slash commands" a client surfaces. The playbooks live
@@ -324,7 +320,7 @@ The directive text is the only new prose; the substance is loaded from `knowledg
 
 ---
 
-## 9. Server instructions (`instructions.py`)
+## 9. Server instructions (`content.py`)
 
 Advertised once at `initialize`; many clients fold it into their system prompt. Assemble from the
 existing `ROLE` constant in `app/agent/prompt.py` (reuse, don't duplicate), stripped of web-UI specifics
@@ -443,7 +439,7 @@ directly with a fake `request_context`. Keep the suite in the ~14s hermetic budg
 ## 14. Build order (status)
 
 1. ✅ `mcp>=1.28,<2` dependency + `app/mcp/` skeleton (`__init__`, `__main__`, `server.main`).
-2. ✅ `context_factory.build_connection_context` (§4) — built directly, not via a `main.py` refactor.
+2. ✅ `adapters.build_connection_context` (§4) — built directly, not via a `main.py` refactor.
 3. ✅ Tools: `list_tools` + `call_tool` (`run_tool`) (§3); `command`-kind approval returns True.
 4. ✅ Resources (§7) + path-traversal guard (whitelist by stem).
 5. ✅ Prompts (§8) + server `instructions` (§9).

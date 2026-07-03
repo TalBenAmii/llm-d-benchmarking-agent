@@ -3,9 +3,9 @@ structured post-run results card. Hermetic — pure functions over hand-built da
 knowledge/welcome.md; no cluster, no LLM."""
 from __future__ import annotations
 
-from app.agent import events, welcome
-from app.agent.results_card import build_results_card
-from app.agent.welcome import build_welcome, parse_welcome
+from app.agent import cards as welcome
+from app.agent import events
+from app.agent.cards import build_results_card, build_welcome, parse_welcome
 
 
 class FakeProvider:

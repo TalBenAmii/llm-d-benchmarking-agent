@@ -30,8 +30,8 @@ import json
 from typing import Any
 
 from app.dig import dict_or_empty as _d
+from app.dig import find_last_json
 from app.tools.context import ToolContext, ToolError
-from app.tools.json_tail import find_last_json
 
 # Where the raw discovery output + the wrapped scenario-capture land in the session workspace.
 _DISCOVERY_FILENAME = "stack_discovery.json"

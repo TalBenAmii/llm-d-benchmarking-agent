@@ -11,8 +11,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.agent.cards import build_results_card
 from app.agent.loop import CARD_RESULT_TOOLS
-from app.agent.results_card import build_results_card
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import SuggestNextStepsInput
 
