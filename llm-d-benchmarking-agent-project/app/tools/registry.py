@@ -157,7 +157,8 @@ _DESCRIPTIONS = {
         "relevant guide BEFORE interpreting that kind of result or making that decision. "
         "Read-only; auto-runs. On an unknown name it returns the valid topics. A large guide is "
         "clamped to a leading preview before you see it; the result then NAMES the dropped_sections "
-        "(the headings past the cut) — re-fetch any one with section='<heading>'."
+        "(the headings past the cut) — re-fetch any one with section='<heading>' (a very large "
+        "section is itself annotated with its dropped sub-sections rather than promised whole)."
     ),
     "search_knowledge": (
         "SEARCH the agent's knowledge base (and the curated upstream repo-doc index) by "

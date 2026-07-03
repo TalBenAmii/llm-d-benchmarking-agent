@@ -200,13 +200,19 @@ def _knowledge_files(ctx: ToolContext) -> list[Path]:
 # A large knowledge guide overflows the loop's per-tool-result feed-back budget and is clamped
 # (app/agent/tool_result_budget.py) to a leading PREVIEW before the MODEL sees it — so the LATER
 # sections silently vanish and the model never learns they exist. Two mechanisms fix that, both
-# pure: (1) when a guide won't fit the budget, read_knowledge annotates its result with the ##
+# pure: (1) when a guide won't fit the budget, read_knowledge annotates its result with the
 # headings that fall PAST the clamp's cut (a short signal string the clamp preserves intact) plus
 # a note, so the model knows what it is missing; (2) a `section` arg returns just one named section
 # verbatim, so the model can re-fetch a dropped section. Crucially the FULL content stays in the
 # returned dict — only the model-facing clamped COPY is bounded — so the UI/persistence and callers
 # still get the whole guide. No judgment here — WHICH section to read is the model's call.
-_ATX_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(\S.*?)[ \t]*#*[ \t]*$")
+# CommonMark allows an ATX heading up to 3 leading spaces of indentation; keep that latitude so an
+# indented '### Sub' (as under capacity.md's provisioning block) is still seen as a heading.
+_ATX_HEADING_RE = re.compile(r"^ {0,3}(#{1,6})[ \t]+(\S.*?)[ \t]*#*[ \t]*$")
+# A fenced code block opens/closes on a line of >=3 backticks or tildes (up to 3 leading spaces).
+# Heading-lookalike lines INSIDE a fence (e.g. a shell '# comment') are NOT headings, so the
+# outline walk must track fences and skip their contents.
+_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 # Headings past this raw-content offset are reported as dropped. The clamp's preview shows roughly
 # the leading ``budget`` chars of the SERIALIZED result minus its envelope overhead; this reserve
 # is deliberately generous so the cut estimate is conservative (better to flag a borderline section
@@ -219,13 +225,24 @@ _DROPPED_LIST_MAX_CHARS = 450
 
 def _markdown_headings(text: str) -> list[tuple[int, int, str]]:
     """(level, char-offset, heading-text) for every ATX markdown heading in ``text``, in order.
-    Pure mechanism — the outline used to address a section and to name the dropped ones."""
+    Pure mechanism — the outline used to address a section and to name the dropped ones. Fenced
+    code blocks are tracked so a heading-lookalike line inside a ``` / ~~~ fence (a shell comment,
+    a commented-out '# heading') is not mis-parsed as a real heading."""
     out: list[tuple[int, int, str]] = []
     offset = 0
+    fence: str | None = None  # the fence char (` or ~) while inside a code block, else None
     for line in text.splitlines(keepends=True):
-        m = _ATX_HEADING_RE.match(line.rstrip("\n"))
-        if m:
-            out.append((len(m.group(1)), offset, m.group(2).strip()))
+        stripped = line.rstrip("\n")
+        fm = _FENCE_RE.match(stripped)
+        if fence is None:
+            if fm:
+                fence = fm.group(1)[0]  # a fence opens; suspend heading detection until it closes
+            else:
+                m = _ATX_HEADING_RE.match(stripped)
+                if m:
+                    out.append((len(m.group(1)), offset, m.group(2).strip()))
+        elif fm and fm.group(1)[0] == fence:
+            fence = None  # a same-marker fence line closes the block
         offset += len(line)
     return out
 
@@ -262,25 +279,30 @@ def _join_dropped(headings: list[str]) -> str:
     return " · ".join(out)
 
 
-def _annotate_budget_overflow(result: dict[str, Any], content: str, budget: int) -> None:
-    """The guide's serialized result exceeds the feed-back budget, so the loop's clamp will show
-    the model only a leading preview. Annotate the result IN PLACE — WITHOUT touching ``content``
-    (callers/UI still get the whole guide) — with the ## headings that fall past the clamp's cut
-    plus a re-fetch note, both short signal strings the clamp preserves. Pure formatting."""
+def _annotate_budget_overflow(
+    result: dict[str, Any], content: str, budget: int, *, unit: str = "section",
+) -> None:
+    """The serialized result exceeds the feed-back budget, so the loop's clamp will show the model
+    only a leading preview. Annotate the result IN PLACE — WITHOUT touching ``content`` (callers/UI
+    still get the whole thing) — with the headings that fall past the clamp's cut plus a re-fetch
+    note, both short signal strings the clamp preserves. ``unit`` names what the model can re-fetch:
+    'section' on a whole-guide read; 'sub-section' on a large section read (whose ### sub-headings
+    are what fell past the cut, re-fetchable the same way). Pure formatting."""
     cut = max(0, budget - _DROPPED_CUT_RESERVE)
     dropped = [htext for _lvl, off, htext in _markdown_headings(content) if off >= cut]
+    topic = result["topic"]
     if dropped:
         result["dropped_sections"] = _join_dropped(dropped)
         result["note"] = (
-            f"guide '{result['topic']}' exceeds the tool-result feed-back budget, so only a "
-            f"leading preview reaches you; the sections in 'dropped_sections' fall past the cut — "
-            f"re-fetch any ONE with read_knowledge(name='{result['topic']}', section='<heading>')."
+            f"guide '{topic}' exceeds the tool-result feed-back budget, so only a leading preview "
+            f"reaches you; the {unit}s in 'dropped_sections' fall past the cut — re-fetch any ONE "
+            f"with read_knowledge(name='{topic}', section='<heading>')."
         )
     else:
         result["note"] = (
-            f"guide '{result['topic']}' exceeds the tool-result feed-back budget, so only a "
-            f"leading preview reaches you; fetch a specific section with "
-            f"read_knowledge(name='{result['topic']}', section='<heading>')."
+            f"guide '{topic}' exceeds the tool-result feed-back budget, so only a leading preview "
+            f"reaches you; fetch a specific {unit} with "
+            f"read_knowledge(name='{topic}', section='<heading>')."
         )
 
 
@@ -294,9 +316,10 @@ def read_knowledge(
     path traversal, no absolute paths, no '..'.
 
     The FULL guide text is always returned, but a large one is clamped to a leading preview before
-    the MODEL sees it; when that happens the result also lists the ``dropped_sections`` (the ##
+    the MODEL sees it; when that happens the result also lists the ``dropped_sections`` (the
     headings past the cut) so nothing vanishes silently — re-fetch any one by passing
-    ``section='<heading>'`` (which returns just that section, never clamped)."""
+    ``section='<heading>'`` (which returns just that section — itself annotated with its dropped
+    ``### sub-sections`` in the rare case that one section alone still overflows the budget)."""
     files = _knowledge_files(ctx)
     valid = [f.name for f in files]
     requested = (name or "").strip()
@@ -319,9 +342,11 @@ def read_knowledge(
 
     content = match.read_text()
 
-    # A targeted section fetch returns just that one section verbatim (always small, never
-    # clamped) — the escape hatch for a section the whole-guide read dropped. Not de-duped: it is
-    # a different, narrower payload than the whole guide, and re-fetching a section is cheap.
+    # A targeted section fetch returns just that one section verbatim — the escape hatch for a
+    # section the whole-guide read dropped. Not de-duped: it is a different, narrower payload than
+    # the whole guide, and re-fetching a section is cheap. It is usually small, but a large section
+    # can itself overflow the budget, so it gets the SAME clamp-surviving annotation (naming its
+    # ### sub-sections past the cut) as the whole-guide path.
     if section is not None and section.strip():
         found = _extract_section(content, section)
         if found is None:
@@ -331,7 +356,13 @@ def read_knowledge(
                 "available_sections": [h for _lvl, _off, h in _markdown_headings(content)],
             }
         heading, body = found
-        return {"name": match.name, "topic": match.stem, "section": heading, "content": body}
+        sec_result: dict[str, Any] = {
+            "name": match.name, "topic": match.stem, "section": heading, "content": body,
+        }
+        if len(json.dumps(sec_result)) > DEFAULT_TOOL_RESULT_BUDGET:
+            _annotate_budget_overflow(sec_result, body, DEFAULT_TOOL_RESULT_BUDGET,
+                                      unit="sub-section")
+        return sec_result
 
     # Per-session de-dup: a guide already loaded this session is in the conversation above, so an
     # EXACT repeat returns a back-reference rather than re-injecting the full guide every turn.

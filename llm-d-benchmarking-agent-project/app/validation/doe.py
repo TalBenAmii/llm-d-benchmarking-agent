@@ -55,19 +55,21 @@ _LIST_INDEX_SEG_RE = re.compile(r"(?:^|\.)(\d+)(?:\.|$)")
 def _list_index_reason(key: Any) -> str:
     """Extra rejection detail when a rejected key indexes a LIST element via a numeric segment.
 
-    Upstream ``apply_overrides`` (llm-d-benchmark utilities/profile_renderer.py) walks DICTS ONLY:
-    a numeric segment isn't a dict key, so the path never matches and the override is SILENTLY
-    DROPPED at runtime (no error, the value just never applies). Naming that here stops a caller
-    from hand-editing YAML around a rejection that is actually protecting them from a no-op run."""
+    Upstream ``apply_overrides`` (llmdbenchmark/utilities/profile_renderer.py) walks DICTS ONLY: a
+    numeric segment isn't a dict key, so the path never matches and the override never applies. The
+    current upstream RETURNS such keys as ``unmatched_keys`` for the caller to warn on (they were
+    silently dropped under the old API), but either way the override is a runtime no-op. Naming that
+    here stops a caller from hand-editing YAML around a rejection that is actually protecting them
+    from a no-op run."""
     if not isinstance(key, str):
         return ""
     m = _LIST_INDEX_SEG_RE.search(key)
     if not m:
         return ""
     return (f" — segment {m.group(1)!r} indexes a LIST element, which upstream apply_overrides "
-            "cannot apply (it walks dicts only, so a list-indexed override is SILENTLY DROPPED at "
-            "runtime and no-ops); use a dict-keyed path, or vary this via a different "
-            "profile/workload rather than a list index")
+            "cannot apply (it walks dicts only, so a list-indexed override never lands — upstream "
+            "returns it as an unmatched key and it no-ops at runtime); use a dict-keyed path, or "
+            "vary this via a different profile/workload rather than a list index")
 
 
 class DoEError(ValueError):
