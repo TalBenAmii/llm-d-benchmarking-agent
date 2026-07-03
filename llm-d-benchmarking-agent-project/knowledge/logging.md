@@ -2,7 +2,7 @@
 
 The backend emits **structured logs** so a single benchmark run can be traced after the
 fact. This file is the *interpretation* guidance (thick agent); the *mechanism* lives in
-`app/observability/logging.py` + `app/observability/logctx.py` and is wired once at startup.
+`app/observability/logging.py` (which also carries the per-turn correlation context) and is wired once at startup.
 
 ## What you get
 - **One JSON object per line** (newline-delimited JSON) when `LOG_FORMAT=json` (the default).

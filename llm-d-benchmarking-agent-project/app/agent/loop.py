@@ -17,7 +17,7 @@ from app.agent.session import Session
 from app.agent.tool_result_budget import clamp_tool_result_content
 from app.llm.provider import LLMProvider, Usage, open_provider_turn
 from app.observability.cot_trace import TurnTrace
-from app.observability.logctx import bind as log_bind
+from app.observability.logging import bind as log_bind
 from app.tools.context import ApprovalRejected, QuotaError, ToolError
 from app.tools.registry import dispatch, tool_definitions
 

@@ -207,7 +207,7 @@ result.
 
 | Feature | Where | How to see / verify |
 |---|---|---|
-| **Structured JSON logging + correlation IDs** (P11) | `app/observability/logging.py`, `logctx.py` | 🟢 Server stdout is JSON (`{"timestamp":...,"level":"INFO","logger":"app.main","message":"startup",...}`). |
+| **Structured JSON logging + correlation IDs** (P11) | `app/observability/logging.py` | 🟢 Server stdout is JSON (`{"timestamp":...,"level":"INFO","logger":"app.main","message":"startup",...}`). |
 | Liveness `/healthz` | `app/main.py` | 🟢 `{"ok":true}`. |
 | **Readiness `/readyz` + startup self-check** (P16/P18) — workspace writable, provider coherent, repos resolvable, runner ok, auth coherent | `app/main.py`, `app/storage/retention.py` | 🟢 `curl /readyz` returns the full per-check report (all green here). |
 | **Run lifecycle**: cancel a run in another chat, reattach, graceful shutdown (P16) | `app/tools/cancel.py` (`cancel_run`), `app/agent/lifecycle.py` | ⚪ `tests/test_run_lifecycle.py`; 🔵 `cancel_run` frees a stuck run's concurrency slot. |

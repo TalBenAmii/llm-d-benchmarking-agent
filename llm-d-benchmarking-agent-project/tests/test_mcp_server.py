@@ -12,11 +12,10 @@ from types import SimpleNamespace
 import pytest
 
 from app.config import get_settings
-from app.mcp import prompts as mcp_prompts
-from app.mcp import resources as mcp_resources
+from app.mcp import content
 from app.mcp import server as mcp_server
-from app.mcp.approval import make_approval_fn
-from app.mcp.instructions import INSTRUCTIONS
+from app.mcp.adapters import make_approval_fn
+from app.mcp.content import INSTRUCTIONS
 from app.tools.context import ApprovalRejected
 from app.tools.registry import tool_definitions
 
@@ -113,9 +112,9 @@ async def test_session_plan_sentinel_when_elicitation_unsupported():
 
 def test_resources_match_knowledge_glob():
     kd = _knowledge_dir()
-    res = mcp_resources.list_resource_objects(kd)
+    res = content.list_resource_objects(kd)
     names = {r.name for r in res}
-    expected = {p.stem for p in mcp_resources._knowledge_files(kd)}
+    expected = {p.stem for p in content._knowledge_files(kd)}
     assert names == expected
     assert all(str(r.uri).startswith("doc://knowledge/") for r in res)
     # the excluded agent-context files never leak as resources
@@ -124,20 +123,20 @@ def test_resources_match_knowledge_glob():
 
 def test_read_resource_returns_contents():
     kd = _knowledge_dir()
-    res = mcp_resources.list_resource_objects(kd)
-    contents = mcp_resources.read_resource_contents(kd, res[0].uri)
+    res = content.list_resource_objects(kd)
+    contents = content.read_resource_contents(kd, res[0].uri)
     assert contents and len(contents[0].content) > 0
 
 
 def test_read_resource_rejects_unknown_uri():
     with pytest.raises(ValueError):
-        mcp_resources.read_resource_contents(_knowledge_dir(), "doc://knowledge/../../etc/passwd")
+        content.read_resource_contents(_knowledge_dir(), "doc://knowledge/../../etc/passwd")
 
 
 # --- prompts -----------------------------------------------------------------------------------
 
 def test_list_prompts():
-    prompts = mcp_prompts.list_prompt_objects()
+    prompts = content.list_prompt_objects()
     names = {p.name for p in prompts}
     assert names == {
         "benchmark_this_model", "pick_deploy_path", "interpret_this_report",
@@ -148,7 +147,7 @@ def test_list_prompts():
 
 
 def test_get_prompt_embeds_playbook():
-    res = mcp_prompts.build_prompt_result(_knowledge_dir(), "benchmark_this_model", {"model": "llama-3-8b"})
+    res = content.build_prompt_result(_knowledge_dir(), "benchmark_this_model", {"model": "llama-3-8b"})
     text = res.messages[0].content.text
     assert "llama-3-8b" in text
     assert "## quickstart_playbook.md" in text
@@ -156,7 +155,7 @@ def test_get_prompt_embeds_playbook():
 
 def test_get_prompt_unknown_raises():
     with pytest.raises(ValueError):
-        mcp_prompts.build_prompt_result(_knowledge_dir(), "does_not_exist", {})
+        content.build_prompt_result(_knowledge_dir(), "does_not_exist", {})
 
 
 # --- instructions / wiring ---------------------------------------------------------------------

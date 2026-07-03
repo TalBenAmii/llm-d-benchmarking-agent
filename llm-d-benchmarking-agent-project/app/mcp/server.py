@@ -18,10 +18,8 @@ from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
 from app.config import Settings
-from app.mcp.context_factory import build_connection_context
-from app.mcp.instructions import INSTRUCTIONS
-from app.mcp.prompts import register_prompts
-from app.mcp.resources import register_resources
+from app.mcp.adapters import build_connection_context
+from app.mcp.content import INSTRUCTIONS, register_prompts, register_resources
 from app.tools.context import ApprovalRejected, ToolContext, ToolError
 from app.tools.registry import dispatch, tool_definitions
 

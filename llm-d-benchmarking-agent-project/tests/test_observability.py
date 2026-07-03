@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from app.config import Settings
-from app.observability import instrument
+from app.observability import metrics as instrument
 from app.observability.metrics import MetricsRegistry, render_prometheus
 from app.security.allowlist import Allowlist
 from app.tools.context import ApprovalRejected, ToolContext

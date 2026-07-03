@@ -6,9 +6,13 @@ a metric means, *when* to act on it, and how to read a correlated log trail live
 """
 from __future__ import annotations
 
-from app.observability.logctx import bind as log_bind
-from app.observability.logctx import get_corr_id, new_corr_id
-from app.observability.logging import JsonFormatter, setup_logging
+from app.observability.logging import (
+    JsonFormatter,
+    get_corr_id,
+    new_corr_id,
+    setup_logging,
+)
+from app.observability.logging import bind as log_bind
 from app.observability.metrics import (
     Counter,
     Gauge,
