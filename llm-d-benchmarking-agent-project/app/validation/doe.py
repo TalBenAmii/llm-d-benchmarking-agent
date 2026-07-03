@@ -48,6 +48,26 @@ from typing import Any
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]*$")
 # A dotted override key: dot-separated identifier segments, e.g. ``decode.parallelism.tensor``.
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_\-]*(\.[A-Za-z_][A-Za-z0-9_\-]*)*$")
+# A purely-numeric dotted segment means the key INDEXES A LIST element (e.g. ``load.stages.0.rate``).
+_LIST_INDEX_SEG_RE = re.compile(r"(?:^|\.)(\d+)(?:\.|$)")
+
+
+def _list_index_reason(key: Any) -> str:
+    """Extra rejection detail when a rejected key indexes a LIST element via a numeric segment.
+
+    Upstream ``apply_overrides`` (llm-d-benchmark utilities/profile_renderer.py) walks DICTS ONLY:
+    a numeric segment isn't a dict key, so the path never matches and the override is SILENTLY
+    DROPPED at runtime (no error, the value just never applies). Naming that here stops a caller
+    from hand-editing YAML around a rejection that is actually protecting them from a no-op run."""
+    if not isinstance(key, str):
+        return ""
+    m = _LIST_INDEX_SEG_RE.search(key)
+    if not m:
+        return ""
+    return (f" — segment {m.group(1)!r} indexes a LIST element, which upstream apply_overrides "
+            "cannot apply (it walks dicts only, so a list-indexed override is SILENTLY DROPPED at "
+            "runtime and no-ops); use a dict-keyed path, or vary this via a different "
+            "profile/workload rather than a list index")
 
 
 class DoEError(ValueError):
@@ -93,7 +113,7 @@ def _coerce_factor(raw: Any, *, phase: str, index: int) -> Factor:
     if not isinstance(key, str) or not _KEY_RE.match(key):
         raise DoEError(
             f"{phase}.factors[{index}].key must be a dotted override key like "
-            f"'decode.parallelism.tensor' (got {key!r})"
+            f"'decode.parallelism.tensor' (got {key!r}){_list_index_reason(key)}"
         )
     if not isinstance(levels, list) or len(levels) == 0:
         raise DoEError(f"{phase}.factors[{index}].levels must be a non-empty list (got {levels!r})")
@@ -195,7 +215,9 @@ def _constants_map(raw: Any, *, phase: str) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for k, v in raw.items():
         if not isinstance(k, str) or not _KEY_RE.match(k):
-            raise DoEError(f"{phase}.constants key {k!r} must be a dotted override key")
+            raise DoEError(
+                f"{phase}.constants key {k!r} must be a dotted override key{_list_index_reason(k)}"
+            )
         out[k] = v
     return out
 
