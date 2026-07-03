@@ -108,6 +108,49 @@ it under `skipped`; say so plainly rather than contrasting a partial set silentl
 harness actually produced a valid report, the tool refuses and points you at `compare_reports`
 — don't fabricate the missing side.
 
+## Think-time & conversation recycling differ by harness (multi-turn load)
+
+When the user asks "is there a benchmark that models multi-turn users with think-time / recycles
+conversations?", survey the harnesses — they handle it **differently**, and the difference changes
+what a load number means. (inference-perf verified at **v0.6.0**, the tag `llm-d-benchmark`'s
+`build/Dockerfile` pins; guidellm/aiperf/vllm checked on `main`, not a pinned tag.)
+
+| Harness | Think-time knob | Does think-time hold the concurrency slot? | Conversation recycling |
+|---|---|---|---|
+| **inference-perf** (`conversation_replay`) | `tool_call_latency_sec` | **YES** — a thinking user still occupies a slot (see `dataset_replay.md`) | **Built-in** (closed-loop: slot resets to a fresh conversation at turn 0) |
+| **guidellm** | `requeue_delay` | **NO** — releases the slot during think-time (the *opposite* of inference-perf) | No explicit recycling; draws new conversations from a cycling dataset |
+| **aiperf** | `turn_delay` (fixed, or mean/stddev) | **Split**: the optional `--concurrency` SESSION cap IS held through think-time, but `--prefill-concurrency` releases at TTFT, and user-centric mode is open-loop (no cap by default) | Recycling to fill `request_count`; also a user-centric steady-state mode |
+| **vllm bench serve** | — | — | **Single-turn only**, no recycling (a `multi_turn` script exists upstream but isn't driven by llm-d-benchmark) |
+
+### Route by the user's GOAL — the slot-holding split matters
+
+"N users with think-time" is **not portable** across harnesses, so pick by what the user is
+actually modelling — there are two different goals here, and the right harness differs:
+
+- **GOAL: recycling + realistic think-time in ONE harness** (multi-turn conversations that
+  replenish, on the llm-d-benchmark path) → **inference-perf `conversation_replay`**. It has both
+  built-in. `vllm bench serve` can't do multi-turn here at all.
+- **GOAL: separate "active users" from request-concurrency** — the user says thinking users must
+  **NOT** consume inference concurrency ("model 500 active users but only ~100 in flight",
+  "decouple users from concurrency"). **inference-perf CANNOT express this** — its think-time
+  *holds* the slot, so active users and concurrency are the same number. Recommend instead:
+  - **aiperf** — its **user-centric / steady-state mode** spawns users on an absolute QPS schedule,
+    **open-loop and independent of any concurrency cap by default** — thinking users consume no
+    request concurrency, and prefill concurrency is released at TTFT either way. One caveat: if the
+    optional `--concurrency` SESSION cap is set, a thinking conversation DOES hold one of those
+    session slots for its whole lifetime (in that one sense it behaves like inference-perf).
+  - **guidellm** — its `requeue_delay` **releases** the slot during think-time, matching
+    "thinking users don't occupy concurrency".
+- **If the user must stay on inference-perf** for this goal, be HONEST about the framing:
+  **concurrency = active users** there; think-time just *dilutes effective load* (each slot spends
+  part of its time thinking). That's still perfectly fine for a **KV working-set / cache sweep**,
+  because KV footprint is driven by `num_conversations × prefix size`, not by whether think-time
+  frees a slot — so inference-perf remains the right tool when the *question* is about KV/cache
+  behavior, even though it can't decouple users from concurrency.
+
+Don't let the recycling-goal answer bleed into the decoupling-goal answer: inference-perf wins the
+first, aiperf/guidellm win the second.
+
 ## The kind/CPU-sim caveat still applies
 
 On the simulated CPU engine the absolute numbers aren't representative of GPU serving (see

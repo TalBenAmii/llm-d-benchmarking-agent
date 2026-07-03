@@ -1,7 +1,8 @@
 # Right-sizing the harness launcher CPU request (`LLMDBENCH_HARNESS_CPU_NR`)
 
-This is the JUDGMENT for the `harness_cpu_nr` flag of `execute_llmdbenchmark`. The tool is
-pure mechanism: when you supply `flags.harness_cpu_nr`, it sets the **backend-only env var**
+This is the JUDGMENT for the launcher-resource flags of `execute_llmdbenchmark` — `harness_cpu_nr`
+(CPU request) and its sibling `harness_mem` (memory request, see the knobs bullet below). The tool
+is pure mechanism: when you supply `flags.harness_cpu_nr`, it sets the **backend-only env var**
 `LLMDBENCH_HARNESS_CPU_NR` on the `llmdbenchmark` subprocess (never a CLI flag, never sent to
 the browser). **You** decide whether to lower it and to what — this file is how. Omit it and
 the harness keeps its default, so nothing changes for clusters that already fit.
@@ -82,8 +83,12 @@ headroom without over-requesting on a tiny node.
 
 ## Boundaries
 
-- This sets only `LLMDBENCH_HARNESS_CPU_NR`. The companion `LLMDBENCH_HARNESS_CPU_MEM`
-  (default `32Gi`) is a separate memory request; this phase does not plumb it.
-- The value is a backend env var, not an argv flag — it is never in the allowlist and never in
-  a `command` event, so it stays off the browser/UI surface entirely.
+- **Two launcher-resource knobs `execute_llmdbenchmark` exposes:** `harness_cpu_nr` (CPU request,
+  `LLMDBENCH_HARNESS_CPU_NR`, default `16`) and `harness_mem` (MEMORY request,
+  `LLMDBENCH_HARNESS_CPU_MEM`, default `32Gi`, per `docs/run.md`). Both are backend-only ENV VARS
+  (never CLI flags, never in the allowlist or a `command` event). `harness_mem` takes a Kubernetes
+  memory quantity (`48Gi`, `512Mi`) — validated at the tool boundary, so a typo is a clean error,
+  not a late pod-apply failure. **If a launcher OOMs, RAISE `harness_mem`** (e.g. `48Gi`/`64Gi`);
+  lower it on a tiny node. Same headroom split as CPU: the multi-process `inference-perf` launcher
+  needs more than single-process `vllm-benchmark`.
 - Repos are read-only; this is a runtime decision, not a repo edit.

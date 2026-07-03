@@ -42,7 +42,7 @@ request_headers:
 # ---------------------------------------------------------------------------
 # (2) Service Level Objective (SLO) set-headers. The client/benchmark sets these on the REQUEST;
 # admission-control and load-balancing plugins use them to decide whether a request can be
-# admitted while still meeting its latency goal. These are the four-but-here-two latency targets
+# admitted while still meeting its latency goal. These are the two latency-target SLO headers
 # the agent should DECODE when narrating an SLO-aware run.
 slo_headers:
   - name: x-llm-d-slo-ttft-ms

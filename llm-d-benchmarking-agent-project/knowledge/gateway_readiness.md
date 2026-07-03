@@ -3,7 +3,7 @@
 **When to read this:** a `check_endpoint_readiness` result carries a `gateway` block (gateway-mode
 deploy) and especially when it carries `gateway_readiness_guidance` — i.e. the model pods may be
 Ready, but the Gateway-API control plane is **not wired** yet, so *traffic cannot reach the pods*.
-Source: `llm-d/guides/prereq/gateways/gke.md` (GKE), plus the Istio / agentgateway sibling guides.
+Source: `llm-d/docs/infrastructure/gateway/gke.md` (GKE), plus the Istio / agentgateway sibling guides.
 
 This is the **judgment layer**. The Python analyzer (`app/readiness/diagnostics.py:analyze_gateway`)
 only extracts conditions into facts; it never decides wait-vs-stand-up-vs-config-error. YOU make that

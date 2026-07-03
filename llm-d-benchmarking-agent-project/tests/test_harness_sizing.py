@@ -15,7 +15,10 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import pytest
+
 from app.tools import probe
+from app.tools.context import ToolError
 from app.tools.execute import execute_llmdbenchmark
 from app.tools.probe import _parse_cpu_quantity, probe_environment
 from tests._helpers import _ctx
@@ -175,6 +178,74 @@ async def test_harness_cpu_nr_actually_reaches_built_child_env(tmp_path):
     with patch.dict("os.environ", {"LLMDBENCH_HARNESS_CPU_NR": "16"}):
         env2 = runner._build_env({"LLMDBENCH_HARNESS_CPU_NR": "2"})
     assert env2["LLMDBENCH_HARNESS_CPU_NR"] == "2"
+
+
+# ---- (2b) harness_mem: the launcher MEMORY request, sibling of harness_cpu_nr ----
+
+async def test_run_carries_harness_mem_env(tmp_path):
+    """harness_mem plumbs the launcher pod's memory request as LLMDBENCH_HARNESS_CPU_MEM on the
+    subprocess child_env (a backend-only ENV VAR, never a CLI flag), alongside the CPU request."""
+    ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON)
+    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+        await execute_llmdbenchmark(
+            ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
+            harness="inference-perf", workload="sanity_random.yaml",
+            flags={"harness_cpu_nr": 3, "harness_mem": "48Gi"},
+        )
+    call = _last_run_call(runner)
+    assert call["extra_env"] == {
+        "LLMDBENCH_HARNESS_CPU_NR": "3", "LLMDBENCH_HARNESS_CPU_MEM": "48Gi",
+    }
+    # It is an ENV VAR, NOT a CLI flag: nothing memory-related is in argv.
+    assert not any("48Gi" in tok or "MEM" in tok for tok in call["argv"])
+
+
+async def test_harness_mem_default_omitted_when_unset(tmp_path):
+    """Omit harness_mem and the launcher keeps the upstream default 32Gi — no env override."""
+    ctx, runner = _ctx(tmp_path, nodes_json=LARGE_NODE_JSON)
+    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+        await execute_llmdbenchmark(
+            ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
+            harness="inference-perf", workload="sanity_random.yaml", flags={},
+        )
+    assert _last_run_call(runner)["extra_env"] is None
+
+
+async def test_harness_mem_rejects_malformed_quantity(tmp_path):
+    """A value that is not a Kubernetes memory quantity is rejected AT THE BOUNDARY with a clean,
+    self-correctable ToolError — never forwarded to become a late pod-apply failure."""
+    ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON)
+    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+        with pytest.raises(ToolError, match="Kubernetes memory quantity"):
+            await execute_llmdbenchmark(
+                ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
+                harness="inference-perf", workload="sanity_random.yaml",
+                flags={"harness_mem": "48 gigs"},
+            )
+    # Rejected before the launcher ran — nothing benchmark-related was dispatched.
+    assert not any(c["argv"][:1] == ["llmdbenchmark"] for c in runner.calls)
+
+
+async def test_harness_mem_never_appears_in_browser_command_events(tmp_path):
+    """Scrub invariant (shared with harness_cpu_nr): the memory value must NOT appear in any
+    browser-facing `command` event, even though it IS applied to the backend child env."""
+    events: list[tuple[str, dict]] = []
+
+    async def emit(t, p):
+        events.append((t, p))
+
+    ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON, emit=emit)
+    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+        await execute_llmdbenchmark(
+            ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
+            harness="inference-perf", workload="sanity_random.yaml",
+            flags={"harness_mem": "48Gi"},
+        )
+    assert _last_run_call(runner)["extra_env"] == {"LLMDBENCH_HARNESS_CPU_MEM": "48Gi"}
+    for _t, p in [(t, p) for (t, p) in events if t == "command"]:
+        blob = json.dumps(p)
+        assert "LLMDBENCH_HARNESS_CPU_MEM" not in blob and "48Gi" not in blob
+        assert "extra_env" not in p and "env" not in p
 
 
 # ---- (3) the value never reaches the browser ------------------------------

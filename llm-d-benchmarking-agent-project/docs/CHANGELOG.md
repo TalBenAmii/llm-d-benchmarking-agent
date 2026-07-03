@@ -15,6 +15,30 @@ exhaustive — see `FEATURES.md` for the evidence-backed inventory): interactive
 co-creation, proactive metrics-server pre-flight + pre-run install offer, one-command publish of a
 chat to a public link, a single-GPU-cluster runbook, and assorted UI/observability refinements.
 
+### Added
+- **Harness launcher MEMORY sizing flag** — `harness_mem` on `execute_llmdbenchmark` sets the
+  backend-only env var `LLMDBENCH_HARNESS_CPU_MEM` (default `32Gi`), a Kubernetes-quantity value
+  validated at the tool boundary so a typo is a clean error, not a late pod-apply failure
+  (`app/tools/execute.py`). It rides alongside the existing CPU knob; the WHEN/how-much judgment is
+  data in `knowledge/harness_sizing.md` (raise on launcher OOM, lower on a tiny node).
+- **`read_knowledge` section addressing + truncation UX** — a `section=` arg returns one named
+  markdown section verbatim, and a whole-guide read that overflows the tool-result feed-back budget
+  is annotated with the `dropped_sections` (the headings past the clamp's cut) + a re-fetch note, so
+  a large guide's later sections never vanish silently (`app/tools/knowledge_access.py`,
+  `app/tools/schemas/docs.py`).
+
+### Changed
+- **Knowledge audit + splits** — `observability.md` and `sweep_playbook.md` slimmed to hub files
+  that point at focused on-demand guides (9 new ones, incl. `observability_monitoring.md`,
+  `router_features.md`, and the `sweep_*` set), with ~25 fact fixes across the corpus so each
+  judgment lives in exactly one canonical place.
+
+### Fixed
+- **DoE list-indexed override keys are now rejected with the WHY** — a numeric dotted segment (e.g.
+  `load.stages.0.rate`) indexes a LIST element, which upstream `apply_overrides` cannot apply (it
+  walks dicts only, so the override never lands and no-ops at runtime); the rejection now names that
+  cause so a caller doesn't hand-edit around a guard that is protecting them (`app/validation/doe.py`).
+
 ## [0.3.0] — v3: proposal-completion features + token-tracking (Phases 19-26)
 
 Developed on the `feature/roadmap-v3` integration branch and merged into `main`. This wave closes

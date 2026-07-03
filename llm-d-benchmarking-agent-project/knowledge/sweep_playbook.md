@@ -1,25 +1,27 @@
-# Sweeps & A/B comparison playbook
+# Sweeps & A/B comparison playbook (entry)
 
 Use this when the user wants to compare configurations — "how does latency change as
 concurrency grows?", "is config A faster than B?", "find the best batch size", "sweep QPS".
-The mechanism is two tools; the *judgment* (what to vary, how to read the deltas) is here.
+The mechanism is two tools; the *judgment* is split across this family of guides:
 
-> For **goal-seeking** (the user states a *target* and wants the best operating point, with each
-> round's grid chosen from the last round's results — not one fixed grid), see the
-> "Goal-seeking" section at the end of this playbook.
+- **This file** — pick the sweep SHAPE + reach a ready-made experiment file.
+- `read_knowledge('sweep_authoring')` — author a custom grid (`generate_doe_experiment`
+  factors/levels, which knobs to pick, eliciting token characteristics).
+- `read_knowledge('sweep_validity')` — **which override keys actually apply** (list-index traps,
+  kustomize deploys) + the **post-run validity gate** (did the sweep really vary anything?).
+- `read_knowledge('sweep_results')` — compare/analyze the reports and read the deltas.
+- `read_knowledge('sweep_goalseek')` — converge on the best config meeting an SLO (iterative).
 
 ## End-to-end A/B of two STACK configs → the upstream `compare-llm-d-configurations` skill
-For an explicit A/B that **deploys, benchmarks, and tears down each configuration** and emits a
-side-by-side report — including comparing a config against a **no-llm-d baseline** (a model server
-with no inference scheduler) — the canonical workflow is the **compare-llm-d-configurations skill**:
-read it with `fetch_key_docs(task='compare_skill')` (it ships `resources/no-llm-d-baseline.md` for
-the baseline setup). Our mechanism for it is the **full DoE** below (`subcommand="experiment"` with
-`setup_factors` that change the deployment, one standup+teardown per treatment) plus
-`compare_reports` / `analyze_results` for the side-by-side. Adapt the skill to OUR tooling — our
-architecture stays authoritative: deploy/teardown flow through the SessionPlan gate +
+For an explicit A/B that **deploys, benchmarks, and tears down each configuration** (including
+against a **no-llm-d baseline** — a model server with no inference scheduler), read the
+**compare-llm-d-configurations skill** with `fetch_key_docs(task='compare_skill')` (it ships
+`resources/no-llm-d-baseline.md`). Our mechanism is the **full DoE** below (`subcommand="experiment"`
+with `setup_factors`, one standup+teardown per treatment) plus `compare_reports` / `analyze_results`.
+Adapt the skill to OUR tooling: deploy/teardown flow through the SessionPlan gate +
 `execute_llmdbenchmark` / `run_shell` (never the skill's raw helm or `ask_followup_question`),
-results come from validated **BR-v0.2** reports (never scraped), per-config state/repro artifacts
-live in the session workspace, and teardown between configs follows `read_knowledge('teardown')`.
+results come from validated **BR-v0.2** reports (never scraped), and teardown follows
+`read_knowledge('teardown')`.
 
 ## Decide the shape first
 
@@ -30,12 +32,9 @@ Ask (or infer) **what single thing varies** and **whether it changes the deploym
   deployed **once**, then benchmarked N times. Cheap and fast.
   → `execute_llmdbenchmark(subcommand="run", flags={experiments: "<treatments.yaml>"})`
   against an already-stood-up stack. One `standup`, N runs (the CLI runs them **sequentially**).
-  → **Parallel / K8s-native alternative:** `orchestrate_sweep` runs the same treatments as
-  Kubernetes Jobs under a `max_parallel` concurrency cap — each individually retryable, a failing
-  treatment dead-letters without sinking the rest, and progress is checkpointed so the sweep
-  resumes after an interruption. Pass the run treatments from `generate_doe_experiment` as its
-  `treatments` list. Prefer it when speed/scale matters and the orchestrator image is configured;
-  see `read_knowledge('orchestrator')`.
+  → **Parallel / K8s-native alternative:** `orchestrate_sweep` runs the same treatments (from
+  `generate_doe_experiment`) as retryable Kubernetes Jobs under a `max_parallel` cap, checkpointed
+  and resumable. Prefer it when speed/scale matters; see `read_knowledge('orchestrator')`.
 - **Full DoE sweep.** The thing you vary changes the *deployment itself* (replicas, tensor
   parallelism, prefill/decode split, model). Each treatment needs its own standup+teardown.
   → `execute_llmdbenchmark(subcommand="experiment", flags={experiments: "<doe.yaml>"})`.
@@ -43,231 +42,38 @@ Ask (or infer) **what single thing varies** and **whether it changes the deploym
   single local kind cluster, prefer the run-parameter sweep; full DoE shines on real/GPU.
 
 Keep everything else **fixed** across the sweep — vary one factor at a time, or the deltas
-aren't attributable.
+aren't attributable. (Authoring the matrix: `read_knowledge('sweep_authoring')`.)
 
-## Build the experiments file (read the repo truth — don't guess)
+## Reuse-first: use-case → ready-made experiment file (all at repo-root `experiments/`)
 
-Before writing one, read the authoritative format and examples (they are read-only refs):
-- `read_repo_doc(path="llm-d-benchmark/docs/doe.md")` and
-  `read_repo_doc(path="llm-d-benchmark/llmdbenchmark/experiment/README.md")`.
-- Ready-made examples: `experiments/max-concurrency-sweep.yaml` (a run-parameter
-  sweep — top-level `treatments:` list, each a name + a workload override) and
-  `docs/tutorials/kubecon/experiments/smoke.yaml` (full DoE — `setup.factors`/`treatments`
-  + `run.factors`/`treatments`). The ready-made experiment YAMLs live at the repo-ROOT
-  `experiments/` dir, NOT `workload/experiments/`.
-
-### Reuse-first: use-case → ready-made experiment file (all at repo-root `experiments/`)
-Match the user's goal to one of these before authoring a custom grid (reach them via the
-`--experiments` flag to `execute_llmdbenchmark`); author a new one only if none fits:
+Before authoring a custom grid, read the authoritative format + examples (read-only refs):
+`read_repo_doc(path="llm-d-benchmark/docs/doe.md")` and
+`read_repo_doc(path="llm-d-benchmark/llmdbenchmark/experiment/README.md")`. The ready-made
+experiment YAMLs live at the repo-ROOT `experiments/` dir, NOT `workload/experiments/`. Reach
+them via the `--experiments` flag; author a new one (`sweep_authoring`) only if none fits:
 - **P/D prefill/decode ratio** → `experiments/pd-disaggregation.yaml`
 - **Tiered KV cache (CPU/disk offload)** → `experiments/tiered-prefix-cache.yaml`
 - **Optimized-baseline load ladder** → `experiments/optimized-baseline.yaml`
 - **Agentic / RAG session-rate sweep** → `experiments/otel-session-rate-sweep.yaml`
-  (inference-perf + `otel_traces.yaml`; the swept key is `load.stages.0.session_rate`)
-- **Precise prefix-cache** → `experiments/precise-prefix-cache-aware.yaml` (NOTE: the
-  experiment file is `precise-prefix-cache-aware`, while the deploy spec/scenario is
+  (inference-perf + `otel_traces.yaml`). ⚠️ **As shipped this file does NOT actually vary the
+  rate:** its treatments override the LIST-INDEXED key `load.stages.0.session_rate`, which the
+  renderer silently DROPS (list indices never apply — `read_knowledge('sweep_validity')`). Run
+  the validity gate and use a dict-keyed alternative before trusting its comparison.
+- **Precise prefix-cache** → `experiments/precise-prefix-cache-aware.yaml` (NOTE: the experiment
+  file is `precise-prefix-cache-aware`, while the deploy spec/scenario is
   `guides/precise-prefix-cache-routing` — the two names differ).
 
-The experiment YAML's top-level `experiment:` block tunes the run: `experiment: {name (defaults
-to the filename), harness (OVERRIDES the scenario harness — use `vllm-benchmark` when sweeping
-max-concurrency so the experiment doesn't inherit the scenario's inference-perf harness),
-profile (overrides the scenario's workload profile)}`.
-
-If the user's grid maps onto an existing example, reuse it. If it needs a custom grid,
-**author it with `generate_doe_experiment`** (see "Generate the matrix" below) — it
-cross-products your factors × levels into the full treatments matrix and writes a
-structurally-validated experiment YAML into the workspace. (`write_and_validate_config`
-remains for a hand-built one-off config that isn't a factor sweep.)
-Note: `max-concurrency` is a **vllm-benchmark** profile field; the quickstart's default
-harness is `inference-perf`. Match the swept key to the chosen harness/workload, or switch
-harness accordingly.
-
-## Generate the matrix with `generate_doe_experiment` (you choose the factors)
-
-`generate_doe_experiment` is the MECHANISM that turns *factors × levels* into a full,
-deduped, named **treatments** matrix and emits a valid experiment YAML. **YOU decide which
-factors and levels to sweep — that judgment is below; the tool never picks for you.**
-
-Each factor is `{name, key, levels}`:
-- `name` — a short token used to build treatment names (e.g. `tp`, `rep`, `numCpuBlocks`).
-- `key` — the **dotted override key** the level sets. **Read the repo's experiment examples
-  first** (`read_repo_doc(path="llm-d-benchmark/llmdbenchmark/experiment/README.md")`,
-  `read_repo_doc(path="llm-d-benchmark/docs/doe.md")`, and the files under the repo-root
-  `experiments/` dir) to pick keys that actually exist. Setup-phase keys override the
-  scenario config (e.g. `decode.parallelism.tensor`, `vllmCommon.flags.numCpuBlocks`); run-phase
-  keys override the workload profile (e.g. `data.shared_prefix.num_groups`, `rate`).
-- `levels` — the scalar values to sweep, e.g. `[2, 4, 8]`.
-
-`run_factors` is required (the workload knobs, swept against one stack). `setup_factors` is
-optional and only for a **full DoE** where the *deployment itself* changes (each setup
-treatment gets its own standup/teardown). The emitted matrix is `setup × run` treatments.
-Hold everything you are NOT sweeping fixed via `setup_constants` / `run_constants` so the
-deltas are attributable. The tool returns the workspace `path`; pass it as `flags.experiments`
-to `execute_llmdbenchmark` (`subcommand="experiment"` for a full DoE, `"run"` for a run-only
-sweep), always with `flags={dry_run: true}` first.
-
-### Picking factors for common questions
-- **"What's the optimal prefill/decode ratio / split?"** — full DoE. Sweep the prefill and
-  decode replica counts (and/or their tensor-parallelism) as `setup_factors`, e.g.
-  `decode.replicas: [1,2,4]` × `prefill.replicas: [1,2]`. Keep the model, the workload, and
-  the token mix fixed. Read the actual `LLMDBENCH_VLLM_MODELSERVICE_*REPLICAS` /
-  `*_TENSOR_PARALLELISM` keys from `docs/doe.md` for the scenario you're using.
-- **"How does latency scale with load?"** — run-only sweep. Sweep one load knob
-  (`max-concurrency` for vllm-benchmark, or `rate`/QPS) as a single `run_factor`. One stack,
-  N runs. Cheapest; prefer this on kind/CPU-sim.
-- **"Does prefix caching help my workload?"** — sweep the prefix knobs (`num_groups`,
-  `system_prompt_len`) as `run_factors` against a prefix-cache-aware scenario (often paired
-  with a `setup_factor` over the cache config). See `precise-prefix-cache-aware.yaml`.
-- **"Which batch size / model is fastest?"** — the batch knob is a run factor; a different
-  model changes the deployment, so model is a `setup_factor`.
-
-**Vary one thing at a time** unless you specifically want interaction effects — then a small
-full-factorial (2–3 factors, 2–3 levels each) is fine, but the matrix grows multiplicatively
-(3 factors × 3 levels = 27 treatments), and a full DoE re-deploys per setup treatment, so
-keep it small on a single kind cluster.
-
-## Elicit token characteristics during the interview (drives the workload + the grid)
-
-Before designing a sweep — and ideally during the initial interview — **explicitly elicit the
-workload's token characteristics**, because they determine the workload profile AND which
-factors are worth sweeping. Ask (or infer from the use case):
-
-- **Input (prompt) length distribution** — typical and tail. Short prompts (chat turns) vs
-  long context (RAG, doc QA, agents) stress *prefill* very differently. → drives
-  `prompt_tokens` / context-length factors and whether prefill is the bottleneck.
-- **Output (generation) length distribution** — short answers vs long completions. Output
-  length dominates *decode* cost and TPOT. → drives `output_tokens` factors and the
-  decode-replica/parallelism sweep.
-- **System-prompt / prefix reuse ratio** — how much of each request is a shared prefix
-  (a fixed system prompt, a shared RAG preamble, few-shot examples) reused across requests.
-  HIGH reuse → **prefix caching** matters a lot: pick a prefix-cache-aware scenario and sweep
-  the prefix knobs (`num_groups`, `system_prompt_len`) and/or the cache config. LOW/no reuse →
-  prefix caching won't help; don't sweep it. Map reuse to the `shared_prefix` workload's
-  `num_groups` (more groups = less sharing) and `system_prompt_len`.
-- **Concurrency / arrival pattern** — steady QPS vs bursty; expected in-flight requests. →
-  drives the load factor (`max-concurrency` / `rate`) range.
-
-Tie these back to the goal: interactive/chat → low TTFT & TPOT (sweep to find the knee before
-latency degrades); batch/offline → high throughput (push load until throughput plateaus).
-When the user can't give exact numbers, propose a sensible default distribution from the use
-case, state your assumption, and let them correct it — don't silently guess.
+The experiment YAML's top-level `experiment:` block tunes the run: `name` (defaults to the
+filename), `harness` (OVERRIDES the scenario harness — use `vllm-benchmark` when sweeping
+max-concurrency so it doesn't inherit the scenario's inference-perf harness), and `profile`
+(overrides the scenario's workload profile). Note: `max-concurrency` is a **vllm-benchmark**
+field; the quickstart default harness is `inference-perf` — match the swept key to the chosen
+harness/workload, or switch harness accordingly.
 
 ## Always preview, then run gated
 
-`experiment`/`run` are mutating (they deploy). Add `flags={dry_run: true}` first to preview
-the plan; the user approves the real sweep. Per-treatment reports are written under the
-session workspace automatically (`experiment` → `workspace/experiment`, `run` → `workspace/results`).
-
-## Compare the results
-
-After the sweep, call **`compare_reports`**:
-- Sweep via `experiment`/`run --experiments`: pass `experiment_dir` = the output dir
-  (e.g. the `results_dir` returned by the run). It finds **every** report under it.
-- Two separate runs (A/B): pass `sources=[dirA, dirB]` with `labels=["A","B"]`.
-
-It validates each report against the BR v0.2 schema and returns per-metric **deltas vs a
-baseline** plus the winning run for each metric.
-
-For SLO-aware analysis — **goodput**, SLO pass/fail filtering, and **Pareto-optimal**
-config selection across the sweep — use **`analyze_results`** instead (same `sources` /
-`experiment_dir` shapes, plus the `slo` targets from the approved plan). See
-`knowledge/analysis.md`. Rule of thumb: `compare_reports` for raw side-by-side deltas;
-`analyze_results` when the user has QoS targets or wants "the best config".
-
-`compare_reports`/`analyze_results` contrast **configurations of the same harness**. If you
-ran **two different harnesses** in one session (e.g. `inference-perf` for SLO validation +
-`guidellm` for a throughput sweep against the same stack), contrast *those* with
-**`compare_harness_runs`** — see `knowledge/multi_harness.md`.
-
-## Reading the deltas (what to tell the user)
-
-`compare_reports` marks each metric's direction:
-- **Latency — lower is better:** TTFT (time to first token), TPOT (time per output token),
-  ITL (inter-token latency), end-to-end request latency.
-- **Throughput — higher is better:** output/total token rate, request rate.
-- **Success rate — higher is better** (watch for runs that "win" on throughput only because
-  many requests failed — always check success rate before declaring a winner).
-
-The central tradeoff to explain: **raising concurrency/QPS usually increases throughput but
-also latency** (queuing). There is rarely a single "best" run — there's the best run *for the
-user's goal*. Tie the recommendation back to what they care about:
-- "Chat / interactive" → prioritize low TTFT & TPOT (responsiveness), accept lower throughput.
-- "Batch / offline / cost" → prioritize high token throughput, tolerate higher latency.
-- Look for the knee of the curve: the highest load where latency is still acceptable.
-
-Report only numbers from the comparison object (validated reports) — never invent or
-extrapolate. If a treatment's report is missing or schema-invalid, `compare_reports` lists it
-under `skipped`; say so plainly rather than comparing a partial set silently.
-
-## Goal-seeking: converge on the best config meeting an SLO
-
-Use this when the user states a **goal** — "hit p95 TTFT under 300 ms at the best
-output-token throughput you can", "find the most concurrency I can run while staying under
-1 s end-to-end" — rather than asking to compare a fixed set of configs. A goal means:
-*optimize one objective subject to an SLO constraint.* There is no dedicated search tool;
-you converge by running **rounds of the same sweep + analyze machinery above**, narrowing
-the grid each round. The judgment (what to sweep, when to stop) is yours.
-
-### Goal-seek vs a one-shot sweep
-- **One-shot sweep:** the user already knows the N configs ("compare tp=1,2,4") — expand the
-  grid once, run it, compare. No iteration.
-- **Goal-seek (this section):** the user has a *target* and wants the best operating point —
-  you don't know the answer up front, so you iterate: coarse round → read the frontier →
-  narrow → re-sweep.
-- If the plausible range is narrow enough that ONE grid at the resolution you care about
-  covers it (a handful of treatments), just run the one-shot sweep — iterate only when the
-  space is too wide to grid affordably in one round.
-
-### Agree the run budget FIRST
-Before the first round, agree a **max total-run budget** with the user ("I'll spend at most
-12 benchmark runs finding this") and honor it across ALL rounds: count every treatment you
-run, keep the running total in your narration ("run 7 of 12"), and stop when it's spent —
-even mid-plan. Never start an unbounded loop.
-
-### The iterate loop
-1. **Coarse round.** Pick ONE knob from the taxonomy above (prefer run/workload knobs —
-   cheapest loop; deployment knobs only when a run knob can't express the goal) and 3–4
-   well-separated levels around the starting point, chosen to *straddle* the SLO boundary
-   (a sane low end plus a high end you believe will breach it). Start point from the use
-   case: interactive/chat → start low and push load up; batch/offline → start mid and push
-   hard. → `generate_doe_experiment`, then `execute_llmdbenchmark` (run-parameter sweep) or
-   `orchestrate_sweep`, `dry_run: true` first.
-2. **Analyze.** `analyze_results` with the plan's `slo` → per-run SLO verdicts, goodput, and
-   the SLO-feasible frontier. The **incumbent** = the best feasible point so far (the
-   analyzer's `slo_frontier` pick).
-3. **Narrow.** Next round's levels bracket the incumbent — between the best feasible level
-   and the nearest infeasible one (where the SLO crossing must sit), at finer resolution.
-   2–3 levels usually suffice.
-4. **Repeat** until a stop rule fires.
-
-### Never re-run a tried treatment
-Before each round, check what has already been run — this session's prior sweep treatments
-and `result_history` for earlier runs on the same stack/model/workload — and drop duplicates
-from the new grid. A repeated treatment spends budget to learn nothing; re-run one only if
-you suspect the first result was noisy, and say that's why.
-
-### Stop rules (your call — narrate why)
-- **SLO met with margin + plateau** — the incumbent meets the SLO and the objective/goodput
-  improved less than ~5% across the last round: the surface has flattened; recommend the
-  incumbent. (Adjust the threshold up for a noisy surface and say so.)
-- **Boundary resolved** — the gap between the best feasible and the nearest infeasible level
-  is at or below the smallest step worth distinguishing (e.g. 1 for integer concurrency):
-  the incumbent IS the answer.
-- **Budget exhausted** — recommend the incumbent as the best found within N runs.
-- **No feasible point** — the agreed range is exhausted and no treatment met the SLO: report
-  the nearest miss plainly and offer to relax the SLO or widen the range — don't keep
-  spending runs.
-
-### Approval + honesty
-Each round's sweep rides the **normal SessionPlan / sweep approval** — propose the round's
-grid, preview with `dry_run`, run gated. There is no special goal-seeking approval block;
-the agreed total budget is a promise you restate in each round's plan so the user can approve
-quickly. And the converged pick is the best point **found under this budget on this
-surface** — not a proven global optimum, and goodput stays an estimate
-(`read_knowledge('analysis')`). Say "best found within N runs", never "optimal".
-
-Narration (`read_knowledge('conversation_style')`): one short line per round — the grid, the
-SLO verdicts, the incumbent, and the next move ("all feasible → push load higher", "16
-missed → narrow between 8 and 16"). When you stop, give the incumbent, its objective value
-and SLO metric, and that it's the best *found* under the budget — then make ONE next offer
-(save as baseline, or push past the SLO to find the ceiling), not a menu.
+`experiment`/`run` are mutating (they deploy). Add `flags={dry_run: true}` first to preview the
+plan; the user approves the real sweep. Per-treatment reports are written under the session
+workspace automatically (`experiment` → `workspace/experiment`, `run` → `workspace/results`).
+**After the dry-run, check the validity gate** (`read_knowledge('sweep_validity')`) — a dropped
+override key means a treatment silently won't vary what you think.

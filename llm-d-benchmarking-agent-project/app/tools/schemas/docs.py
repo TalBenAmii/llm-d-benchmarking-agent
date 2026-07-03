@@ -26,6 +26,14 @@ class ReadKnowledgeInput(BaseModel):
                     "of the on-demand topics listed in the system prompt's knowledge index. "
                     "No paths, no '..', no absolute paths.",
     )
+    section: str | None = Field(
+        default=None,
+        description="Optional: return ONLY this one markdown section of the guide (its ## / "
+                    "### heading text, e.g. 'Distributed tracing') instead of the whole file. "
+                    "Use it to re-fetch a section a prior whole-guide read reported under "
+                    "'dropped_sections' (a large guide is truncated to a leading preview to fit "
+                    "the result budget). Case-insensitive; a leading '#' is ignored.",
+    )
 
 
 class SearchKnowledgeInput(BaseModel):

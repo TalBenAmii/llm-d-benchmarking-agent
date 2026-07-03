@@ -204,6 +204,49 @@ def test_bad_override_key_rejected():
         raise AssertionError("bad override key should be rejected")
 
 
+def test_list_indexed_factor_key_rejected_with_reason():
+    """A dotted key that indexes a LIST element (numeric segment, e.g. load.stages.0.rate) is
+    rejected with the WHY: upstream apply_overrides walks dicts only, so it would be silently
+    dropped at runtime. A real session hand-wrote YAML around this rejection and the run no-opped,
+    so the message must explain the runtime consequence — not read as mere pedantry."""
+    try:
+        build_doe_experiment(
+            name="x", run_factors=[{"name": "c", "key": "load.stages.0.rate", "levels": [1]}]
+        )
+    except DoEError as exc:
+        msg = str(exc)
+        assert "LIST element" in msg
+        assert "no-ops at runtime" in msg
+        assert "apply_overrides" in msg
+    else:  # pragma: no cover
+        raise AssertionError("list-indexed override key should be rejected")
+
+
+def test_list_indexed_constant_key_rejected_with_reason():
+    """The same list-index reason is surfaced for a phase CONSTANT key, not just a factor key."""
+    try:
+        build_doe_experiment(
+            name="x",
+            run_factors=[{"name": "c", "key": "a.b", "levels": [1]}],
+            run_constants={"load.stages.0.rate": 5},
+        )
+    except DoEError as exc:
+        assert "LIST element" in str(exc) and "no-ops at runtime" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("list-indexed constant key should be rejected")
+
+
+def test_non_list_bad_key_keeps_generic_message():
+    """A malformed key WITHOUT a numeric segment keeps the plain message — the list-index reason
+    is added ONLY when a segment actually indexes a list."""
+    try:
+        build_doe_experiment(name="x", run_factors=[{"name": "c", "key": "not a key!", "levels": [1]}])
+    except DoEError as exc:
+        assert "LIST element" not in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("bad override key should be rejected")
+
+
 def test_nested_level_rejected():
     try:
         build_doe_experiment(name="x", run_factors=[{"name": "c", "key": "a.b", "levels": [{"nested": 1}]}])

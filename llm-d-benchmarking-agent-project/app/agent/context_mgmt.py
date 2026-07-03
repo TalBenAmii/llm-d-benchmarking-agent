@@ -234,6 +234,13 @@ def compact_messages(messages: list[dict[str, Any]]) -> int:
 # size, and (c) carries a clipped preview of the full payload with an explicit note so the model
 # knows it is seeing only the leading portion and should narrow its query.
 
+# The char budget the agent loop applies to every tool result before feeding it back to the
+# model (loop.py sets ``_TOOL_RESULT_BUDGET`` from this). Exported here — where the clamp itself
+# lives — so tools that want to pre-empt the clamp with a smarter, self-shaped truncation (e.g.
+# read_knowledge listing the section headings it dropped) can size against the SAME budget
+# without importing the loop.
+DEFAULT_TOOL_RESULT_BUDGET = 6_000
+
 _TRUNC_NOTE = (
     "tool result exceeded the feed-back budget and was truncated; the 'preview' field holds "
     "its leading portion. Re-run with a narrower query or request specific fields for the rest."

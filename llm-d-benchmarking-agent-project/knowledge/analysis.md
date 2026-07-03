@@ -9,7 +9,7 @@ yours.
 
 > For **goal-seeking** (iterative sweeps: each round's grid is narrowed from the prior round's
 > results to converge on the SLO-feasible best, rather than analyzing one fixed set of runs),
-> see the goal-seeking section of `read_knowledge('sweep_playbook')` — its incumbent "best
+> see `read_knowledge('sweep_goalseek')` — its incumbent "best
 > feasible point" IS this analyzer's `slo_frontier` pick.
 
 ## Capture the SLOs during the interview, into the plan
@@ -26,7 +26,9 @@ Express latency targets as **maxima in milliseconds** (`ttft_ms`, `tpot_ms`, `it
 the SLO is really about - usually **p99** (the tail users actually feel); use `mean` only
 if the user truly means the average. Don't invent targets the user didn't state; if they
 have none, run `analyze_results` without `slo` for a pure frontier analysis, or just use
-`compare_reports`.
+`compare_reports`. If the user wants *help* picking a target, the rule-of-thumb TTFT/TPOT bands
+per use case in `knowledge/results_interpretation.md` ("is this number good?") are a starting
+anchor — heuristics to propose, not measured SLOs to assert.
 
 ## Goodput is the differentiator - and be honest about how it's computed
 
@@ -72,6 +74,15 @@ rather than a p99 verdict. When that happens:
 
 This is the same honesty floor as `knowledge/results_interpretation.md` (§ "Honesty floor"):
 only validated-report numbers are authoritative, and an absent number is "not available".
+
+**Exact field names differ by report path — don't promise keys that don't exist:**
+- **SIMULATE report** — a FLAT payload with only `ttft_ms_p50`, `ttft_ms_p90`, `itl_ms_mean`
+  (plus `requests`/`success_rate`/`throughput_tokens_per_s`). There is **no `ttft_ms_p99`**, and
+  **no tpot / request-latency fields at all**. Don't offer a p99 SLO verdict on a SIMULATE run.
+- **Real harness report (BR v0.2)** — a NESTED structure: `summary.latency.<ttft|tpot|itl|
+  request_latency>.<mean|p50|p90|p95|p99|p99p9>` (there are **no** flat `ttft_ms_*` keys here).
+  A real run **does** carry `p99` (and `p99p9`), so a p99 SLO is verifiable once you've actually
+  run the real harness — the missing-p99 problem is specific to SIMULATE, not to the report format.
 
 ### Only validated-report data feeds the analyzer
 
@@ -204,7 +215,8 @@ to run `analysis.ipynb`) or the pipeline overview `read_repo_doc('llm-d-benchmar
 - **`docs/analysis/to_be_incorporated/plot_ttft_vs_qps.py` / `plot_itl_vs_qps.py` /
   `plot_throughput_vs_qps.py` / `plot_benchmark_metrics.py` / `plot_pd_results.py`** — **experimental
   template** scripts. **Do NOT run these** as the agent: each is **hardcoded** to read CSVs from
-  `../data/k8s/lmbenchmark` (relative to its own location) and to write its PNG **back into the
+  a repo-relative path (most from `../data/k8s/lmbenchmark`; `plot_pd_results.py` from
+  `../../collected/data/openshift/exp-7/H100`) and to write its PNG **back into the
   repo directory** — so they cannot be pointed at a user results dir and they would write into the
   read-only repo. They are illustrative starting points a user **copies and adapts** by hand; point
   at them, but never invoke them.

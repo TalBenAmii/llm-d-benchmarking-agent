@@ -14,6 +14,12 @@ from app.tools.context import ToolContext, ToolError
 
 _SUBCOMMANDS = {"plan", "standup", "smoketest", "run", "teardown", "results", "experiment"}
 
+# A Kubernetes memory quantity: an integer/decimal amount with an optional binary (Ki/Mi/Gi/…) or
+# decimal (k/M/G/…) suffix — e.g. ``48Gi``, ``512Mi``, ``0``. Used to validate ``harness_mem`` at
+# the tool boundary before it becomes the launcher pod's memory request env (a malformed value
+# would otherwise only be caught later by the Kubernetes API server at pod-apply time).
+_K8S_MEM_QUANTITY_RE = re.compile(r"^\d+(\.\d+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|k|m)?$")
+
 # Subcommands that actually exercise the cluster long enough for live resource stats to be
 # meaningful; we poll ``kubectl top`` alongside them (namespace-wide). plan/dry_run/list_endpoints
 # are previews and never wrapped.
@@ -404,6 +410,19 @@ async def execute_llmdbenchmark(
     child_env: dict[str, str] = {}
     if flags.get("harness_cpu_nr") is not None:
         child_env["LLMDBENCH_HARNESS_CPU_NR"] = str(flags["harness_cpu_nr"])
+    # Sibling of harness_cpu_nr: the launcher pod's MEMORY request (LLMDBENCH_HARNESS_CPU_MEM,
+    # default 32Gi) — also a backend-only ENV VAR, NOT a CLI flag, carried the same scrubbed way.
+    # Raise it when the launcher OOMs, lower it on a tiny node. Validate the K8s quantity format at
+    # this boundary (determinism gate) so a typo is a clean, self-correctable error rather than a
+    # late pod-apply failure. WHETHER/what to set is judgment in knowledge/harness_sizing.md.
+    if flags.get("harness_mem") is not None:
+        mem = str(flags["harness_mem"])
+        if not _K8S_MEM_QUANTITY_RE.match(mem):
+            raise ToolError(
+                f"harness_mem must be a Kubernetes memory quantity like '48Gi' or '512Mi' "
+                f"(got {mem!r})"
+            )
+        child_env["LLMDBENCH_HARNESS_CPU_MEM"] = mem
 
     # Remote-cluster access by API-server URL + bearer TOKEN (Phase 29). These ride the SAME
     # backend-only `env=child_env` overlay as LLMDBENCH_HARNESS_CPU_NR — they are ENV VARS, NOT

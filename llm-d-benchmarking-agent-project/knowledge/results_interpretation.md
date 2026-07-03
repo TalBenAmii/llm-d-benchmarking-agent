@@ -66,6 +66,25 @@ See `knowledge/analysis.md` for the same authority/absent-metric constraints app
 - **throughput.request_rate** — requests/sec completed.
 - **success_rate_pct** — fraction of requests that succeeded; flag anything below ~100%.
 
+## Rule-of-thumb bands — "is this number good?" (heuristics, NOT a verdict)
+
+When the user has **no stated SLO** and asks "is 1.2s to first token bad?", you may anchor the
+answer to these rough, use-case-dependent bands. They are **industry rules of thumb, not
+measured targets** — say so, and a user's own stated SLO always overrides them. Never turn a band
+into a PASS/FAIL (that needs a real SLO + the honesty floor above).
+
+| Use case | TTFT (responsiveness) | TPOT / ITL (streaming pace) | What dominates |
+|---|---|---|---|
+| **Interactive chat / assistant** | good ≲300 ms, OK ≲1 s, sluggish ≳1 s | ≲50 ms/tok (~≥20 tok/s feels fluid) | TTFT + steady stream |
+| **Code completion (inline IDE)** | tight — good ≲200 ms, OK ≲500 ms | fast, but completions are short | TTFT (must feel instant) |
+| **RAG / long-context** | larger budget — ≲1 s often fine (retrieval + long-prefix prefill) | secondary | end-to-end request latency |
+| **Batch / offline** | largely irrelevant | largely irrelevant | throughput (tokens/s) |
+
+So "1.2 s to first token" is **borderline-sluggish for interactive chat** but **fine for RAG or
+batch** — the answer depends on the use case, which is why you tie it to what the user is
+building. These bands help set an SLO to then verify with `analyze_results` (see
+`knowledge/analysis.md`); they don't replace one.
+
 ## When requests fail: 429s and EPP drop reasons
 A non-100% `success_rate` is NOT automatically "the system was broken." If the run (or a
 harness/report) surfaces 429s or an `x-llm-d-request-dropped-reason` header, those are the

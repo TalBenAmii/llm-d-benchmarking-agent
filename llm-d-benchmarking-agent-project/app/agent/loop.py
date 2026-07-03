@@ -12,6 +12,7 @@ from typing import Any
 from app.agent import events
 from app.agent.cards import build_results_card
 from app.agent.context_mgmt import (
+    DEFAULT_TOOL_RESULT_BUDGET,
     clamp_tool_result_content,
     compact_messages,
     estimate_context_size,
@@ -27,7 +28,7 @@ from app.tools.registry import dispatch, tool_definitions
 log = logging.getLogger("app.agent.loop")
 
 MAX_STEPS = 24
-_TOOL_RESULT_BUDGET = 6_000  # chars of a tool result fed back to the model
+_TOOL_RESULT_BUDGET = DEFAULT_TOOL_RESULT_BUDGET  # chars of a tool result fed back to the model
 
 # Tools whose FULL result the UI re-renders as a rich card (report summary + clickable charts,
 # Pareto/comparison/env/capacity/etc.). Their un-clamped result is persisted to

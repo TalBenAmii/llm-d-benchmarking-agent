@@ -57,7 +57,9 @@ deployment client toolchain (`helm` + helm-diff plugin, `helmfile`, `kustomize`,
 reported by `probe_environment` in `tools.*`. When the user wants a guide-based deploy and those
 client tools are absent (and `run_setup`/`install.sh` hasn't already supplied them), OFFER the
 UPSTREAM guide installer `run_shell("install-deps.sh")` (add `--dev` for chart-testing);
-mutating → user Approves. This is the llm-d guide repo's OWN `helpers/client-setup/install-deps.sh`
+mutating → user Approves. NOTE: it installs git/curl/tar/yq/kubectl/helm/kustomize but NOT
+`helmfile` or the `helm-diff` plugin — those two must be installed separately (per the upstream
+`helpers/client-setup/README.md`). This is the llm-d guide repo's OWN `helpers/client-setup/install-deps.sh`
 — DISTINCT from `install_prereqs.sh` (Docker daemon + kind binary) and the benchmark repo's
 `install.sh` (framework venv). See `preconditions.md` ("Guide-based deploy: the UPSTREAM client
 prerequisites") for which install step to run when, and never re-offer one whose tools are present.
