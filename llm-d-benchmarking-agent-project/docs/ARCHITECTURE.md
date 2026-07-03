@@ -164,7 +164,7 @@ the verdict-interpretation judgment is in `knowledge/capacity.md`.
 
 ### Observability — `app/observability/` + `deploy/observability/`
 A dependency-free metrics registry (`metrics.py`) with Prometheus text exposition, plus
-instrumentation hooks (`instrument.py`) wired through `ToolContext` and the orchestrator so
+the instrumentation hooks (metric defs + `record_*` helpers, also in `metrics.py`) wired through `ToolContext` and the orchestrator so
 tool calls, commands, and orchestrated runs are counted/timed. `GET /metrics` exposes them.
 A Grafana dashboard + Prometheus scrape config ship under `deploy/observability/`. (Distinct
 from the `observe_run_metrics` tool, which reads *live* cluster CPU/memory via `kubectl

@@ -4,7 +4,7 @@ Hermetic by default (like ``tests/test_packaging.py``): the doc tests read the s
 markdown as text and assert the required files exist and carry the expected sections; the
 alert-rules tests parse ``deploy/observability/alerts.rules.yaml`` as YAML, assert it is a
 structurally valid Prometheus rule file, and — crucially — assert every metric name it
-references is one the app ACTUALLY exports (derived live from ``app.observability.instrument``
+references is one the app ACTUALLY exports (derived live from ``app.observability.metrics``
 so the test can never drift from the code). An optional ``promtool check rules`` runs only if
 the binary happens to be installed, and skips cleanly otherwise.
 
@@ -21,7 +21,7 @@ import pytest
 import yaml
 
 from app.config import PROJECT_ROOT
-from app.observability import instrument
+from app.observability import metrics as instrument
 from app.observability.metrics import Histogram, MetricsRegistry
 
 DOCS = Path(PROJECT_ROOT) / "docs"

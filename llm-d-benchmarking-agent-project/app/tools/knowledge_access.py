@@ -18,7 +18,7 @@ from typing import Any
 
 import yaml
 
-from app.agent.tool_result_budget import DEFAULT_TOOL_RESULT_BUDGET
+from app.agent.context_mgmt import DEFAULT_TOOL_RESULT_BUDGET
 from app.paths import is_within
 from app.tools.context import ToolContext, ToolError
 
@@ -198,7 +198,7 @@ def _knowledge_files(ctx: ToolContext) -> list[Path]:
 
 # --- markdown section addressing (truncation UX) -------------------------------------------
 # A large knowledge guide overflows the loop's per-tool-result feed-back budget and is clamped
-# (app/agent/tool_result_budget.py) to a leading PREVIEW before the MODEL sees it — so the LATER
+# (app/agent/context_mgmt.py) to a leading PREVIEW before the MODEL sees it — so the LATER
 # sections silently vanish and the model never learns they exist. Two mechanisms fix that, both
 # pure: (1) when a guide won't fit the budget, read_knowledge annotates its result with the
 # headings that fall PAST the clamp's cut (a short signal string the clamp preserves intact) plus

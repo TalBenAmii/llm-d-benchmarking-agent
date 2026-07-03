@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from app.agent.tool_result_budget import (
+from app.agent.context_mgmt import (
     DEFAULT_TOOL_RESULT_BUDGET,
     clamp_tool_result_content,
 )

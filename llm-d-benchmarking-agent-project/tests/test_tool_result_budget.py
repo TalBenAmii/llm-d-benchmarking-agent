@@ -1,4 +1,4 @@
-"""Tests for app.agent.tool_result_budget.clamp_tool_result_content.
+"""Tests for app.agent.context_mgmt.clamp_tool_result_content.
 
 The agent loop feeds each tool result back to the model as a string. The clamp must keep that
 string within the char budget AND keep it valid JSON — the old `json.dumps(result)[:budget]`
@@ -6,7 +6,7 @@ sliced mid-structure and handed the model malformed JSON.
 """
 import json
 
-from app.agent.tool_result_budget import clamp_tool_result_content
+from app.agent.context_mgmt import clamp_tool_result_content
 
 
 def test_small_result_passes_through_unchanged():

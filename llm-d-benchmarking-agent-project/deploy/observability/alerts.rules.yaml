@@ -8,7 +8,7 @@
 # companion dashboard is deploy/observability/grafana-dashboard.json.
 #
 # Every expression below references a metric the agent ACTUALLY exports from
-# app/observability/instrument.py (see knowledge/observability.md):
+# app/observability/metrics.py (see knowledge/observability.md):
 #   - llmdbench_agent_commands_total{exe,mode,auto_run}           (counter)
 #   - llmdbench_agent_command_duration_seconds{exe,mode}          (histogram → _bucket/_sum/_count)
 #   - llmdbench_orchestrator_runs_submitted_total                 (counter)

@@ -19,7 +19,7 @@ from pathlib import Path
 
 import yaml
 
-from app.observability import instrument
+from app.observability import metrics as instrument
 from app.orchestrator.checkpoint import CheckpointStore, SweepCheckpoint
 from app.orchestrator.faults import EVICTED, TIMEOUT, UNKNOWN, Failure, classify_failure
 from app.orchestrator.job import (

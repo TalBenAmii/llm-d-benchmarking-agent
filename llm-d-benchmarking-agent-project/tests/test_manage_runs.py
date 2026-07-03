@@ -1,7 +1,7 @@
 """T3 — the manage_orchestrated_runs tool: list / stop / reap the orchestrator's K8s Jobs ON
 THE CLUSTER, end-to-end through dispatch + the allowlisted kubectl runner (CaptureRunner), no
 cluster. This is the surface that makes a submitted Job actually stoppable — cancel_run only
-stops the in-process watch. Mirrors tests/test_orchestrator_sweep_tool.py's hermetic setup.
+stops the in-process watch. Mirrors tests/test_orchestrator_tools.py's hermetic setup.
 """
 from __future__ import annotations
 

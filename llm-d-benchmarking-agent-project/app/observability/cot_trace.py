@@ -23,7 +23,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from app.observability.logctx import get_corr_id
+from app.observability.logging import get_corr_id
 
 log = logging.getLogger("app.observability.cot_trace")
 

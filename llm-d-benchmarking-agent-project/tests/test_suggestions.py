@@ -3,7 +3,7 @@ filtered to well-formed {label, prompt} entries, and degrades to [] on a missing
 """
 from __future__ import annotations
 
-from app.agent import suggestions
+from app.agent import cards as suggestions
 from app.config import Settings
 
 

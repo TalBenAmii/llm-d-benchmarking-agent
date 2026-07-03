@@ -16,13 +16,12 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 from app.agent import events as ws_events
+from app.agent.cards import build_welcome, load_suggestions
 from app.agent.channel import Channel
 from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
-from app.agent.suggestions import load_suggestions
 from app.agent.transcript import history_items as _history_items
-from app.agent.welcome import build_welcome
 from app.agent.ws_schemas import (
     ApprovalIn,
     CancelIn,
@@ -35,10 +34,9 @@ from app.agent.ws_schemas import (
 )
 from app.config import get_settings
 from app.llm.provider import get_provider
-from app.observability import instrument
-from app.observability.logctx import bind as log_bind
-from app.observability.logctx import new_corr_id
-from app.observability.logging import setup_logging
+from app.observability import metrics as instrument
+from app.observability.logging import bind as log_bind
+from app.observability.logging import new_corr_id, setup_logging
 from app.observability.metrics import render_prometheus
 from app.orchestrator.controller import BenchmarkOrchestrator
 from app.orchestrator.kube import RealKubeClient
@@ -53,11 +51,15 @@ from app.storage.share import ShareStore, is_valid_token
 from app.tools.context import ToolContext
 from app.tools.manage_runs import serialize_status
 from app.tools.probe import probe_environment
-from app.web.errors import first_validation_message as _first_validation_message
-from app.web.paths import resolve_artifact, resolve_bundle
-from app.web.share import redact_share_items as _redact_share_items
-from app.web.static import RevalidateStaticFiles, install_cors
-from app.web.views import history_record_view as _history_record_view
+from app.web import (
+    RevalidateStaticFiles,
+    install_cors,
+    resolve_artifact,
+    resolve_bundle,
+)
+from app.web import first_validation_message as _first_validation_message
+from app.web import history_record_view as _history_record_view
+from app.web import redact_share_items as _redact_share_items
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
 _PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -359,7 +361,7 @@ async def history_trend(metric: str, tag: str | None = None, model: str | None =
 # session's analysis/ dir) live under the gitignored workspace, which the /static mount does
 # NOT serve. This read-only route exposes them so the UI can show a run's charts inline next to
 # its summary. Hardened (image suffixes only + INSIDE the named session dir — see
-# app.web.paths.resolve_artifact). Auth-gated by the app-level dependency; rate-limited like the
+# app.web.resolve_artifact). Auth-gated by the app-level dependency; rate-limited like the
 # rest of /api. The chart paths come from locate_and_parse_report's `charts` field.
 @app.get("/api/sessions/{sid}/artifact", dependencies=[Depends(rate_limit)])
 async def session_artifact(sid: str, path: str) -> FileResponse:
@@ -375,7 +377,7 @@ def _resolve_bundle(sid: str, bundle_id: str) -> dict[str, Any]:
     """Resolve one provenance bundle's JSON for the routes below — a thin wrapper that resolves
     the workspace via the module-level ``get_settings`` (kept here so a test monkeypatching
     ``app.main.get_settings`` still steers which dir is read, exactly as before) and delegates the
-    path-traversal hardening to ``app.web.paths.resolve_bundle``."""
+    path-traversal hardening to ``app.web.resolve_bundle``."""
     sessions_root = (get_settings().resolved_workspace_dir / "sessions").resolve()
     return resolve_bundle(sessions_root, sid, bundle_id)
 
@@ -413,7 +415,7 @@ def _share_store() -> ShareStore:
     return ShareStore(get_settings().resolved_workspace_dir)
 
 
-# The PUBLIC-share path-redaction (constants + ``_redact_share_items``) lives in app.web.share;
+# The PUBLIC-share path-redaction (constants + ``_redact_share_items``) lives in app.web;
 # imported above. Applied below before a snapshot is frozen so the unauthenticated link never
 # leaks the host path layout / owning session id those internal paths embed.
 

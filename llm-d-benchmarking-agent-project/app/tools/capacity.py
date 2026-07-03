@@ -37,10 +37,9 @@ from app.capacity.planner import (
     merge_gated_access,
     plan_config_for_spec,
 )
-from app.dig import dig
+from app.dig import dig, parse_bridge_dict
 from app.tools.context import ToolContext, ToolError
 from app.tools.gated_access import record_capacity_verdict
-from app.tools.json_tail import parse_bridge_dict
 
 _REQUEST_FILENAME = "capacity_request.json"
 
@@ -178,5 +177,5 @@ _GATED_NOTE = (
 def _parse_bridge_output(output: str) -> dict[str, Any]:
     """Parse the capacity bridge's single stdout JSON object (tolerant of leading log noise).
 
-    Thin wrapper over the shared ``json_tail.parse_bridge_dict`` (shared with aggregate_runs)."""
+    Thin wrapper over the shared ``dig.parse_bridge_dict`` (shared with aggregate_runs)."""
     return parse_bridge_dict(output, "capacity")
