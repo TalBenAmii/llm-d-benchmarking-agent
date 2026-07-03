@@ -16,8 +16,8 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 from app.agent import events as ws_events
-from app.agent.channel import Channel
 from app.agent.cards import build_welcome, load_suggestions
+from app.agent.channel import Channel
 from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
