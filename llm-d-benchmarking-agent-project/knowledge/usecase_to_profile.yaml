@@ -30,6 +30,8 @@ use_cases:
     prefer_harness: inference-perf
     candidate_workloads: [shared_prefix_synthetic.yaml, shared_prefix_multi_turn_chat.yaml]
     emphasize_metrics: [ttft, total_token_rate]
+    # Stock shapes are 83–94% shared; override system_prompt_len/question_len to the user's real
+    # SHARED:UNIQUE ratio or prefix-cache benefit is overstated → read_knowledge('shared_prefix_workloads').
 
   summarization_batch:
     description: Long inputs, throughput-oriented, latency-tolerant.

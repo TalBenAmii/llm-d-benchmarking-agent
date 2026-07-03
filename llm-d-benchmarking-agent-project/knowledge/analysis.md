@@ -30,6 +30,25 @@ have none, run `analyze_results` without `slo` for a pure frontier analysis, or 
 per use case in `knowledge/results_interpretation.md` ("is this number good?") are a starting
 anchor — heuristics to propose, not measured SLOs to assert.
 
+### SLA phrasing → SLO keys (translate BEFORE you encode — a per-user rate ≠ a run floor)
+
+The same word ("tokens/sec") maps to two different keys depending on scope; pick wrong and one SLO
+silently no-ops:
+- **"N tokens/sec per user"** is a **per-request decode rate**, not an aggregate. Convert it to a
+  per-output-token latency: `tpot_ms = 1000/N` (30 tok/s/user → ~33 ms). This DOES enter goodput
+  (a latency verdict on `summary.latency.tpot.<percentile>`). Encoding it as
+  `throughput_floor_tok_s=30` is WRONG: 30 tok/s as a whole-run floor is trivially passed, **and** a
+  throughput floor never enters the goodput estimate (see below) — so that SLO drops out of goodput
+  entirely and looks satisfied when it wasn't checked per-user at all.
+- **`throughput_floor_tok_s`** is a **whole-run minimum** → run-level `summary.throughput.output_token_rate`
+  (mean vs floor). It gates pass/fail but is per-run, never per-user, and never enters goodput.
+- When the wording is **ambiguous** between per-user and aggregate (a bare "at least 30 tok/s"),
+  **ASK** which they mean before encoding — the two translations are different keys.
+
+Field paths for the verdicts (per `app/validation/analysis.py`): latency SLOs read
+`summary.latency.<ttft|tpot|itl|request_latency>.<percentile>` (default `p99`); the throughput floor
+reads `summary.throughput.output_token_rate`.
+
 ## Goodput is the differentiator - and be honest about how it's computed
 
 **Goodput = the fraction of requests that meet ALL the SLO targets.** It is the headline

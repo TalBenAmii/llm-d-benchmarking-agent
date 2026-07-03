@@ -7,7 +7,11 @@ from pydantic import BaseModel, Field
 
 
 class ExecuteInput(BaseModel):
-    subcommand: Literal["plan", "standup", "smoketest", "run", "teardown", "results", "experiment"]
+    subcommand: Literal["plan", "standup", "smoketest", "run", "teardown", "results", "experiment"] = Field(
+        description="For 'teardown', FIRST read_knowledge('teardown') — the origin gate (enumerate "
+                    "what THIS session deployed; keep/remove split; never delete pre-existing "
+                    "stacks without origin confirmation) applies before any deletion is proposed.",
+    )
     spec: str | None = Field(default=None, description="Spec name from the catalog, e.g. 'cicd/kind'")
     namespace: str | None = None
     harness: str | None = Field(default=None, description="run/experiment only")
