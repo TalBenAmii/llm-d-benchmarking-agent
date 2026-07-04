@@ -9,7 +9,7 @@ agent interviews you, inspects your environment, proposes a plan you approve, de
 driving the real `llmdbenchmark` CLI on your behalf, inside a strict security sandbox, asking
 your approval before anything changes your system.
 
-It exposes a broad agent toolset (catalogued in [`FEATURES.md`](FEATURES.md)) and has grown well past the original quickstart MVP into a full
+It exposes a broad agent toolset (catalogued in [`FEATURES.md`](docs/FEATURES.md)) and has grown well past the original quickstart MVP into a full
 benchmarking workbench: a Kubernetes-native run orchestrator, a results analyzer (goodput /
 SLO / Pareto), multi-harness comparison, capacity pre-flight, cross-session history & trends,
 Prometheus/Grafana observability, and a one-command Helm deploy.
@@ -47,7 +47,7 @@ knowledge lives in the agent's editable "brain" ([`knowledge/`](knowledge/)), no
 
 ## Quick start
 
-**First-time, full bootstrap** — `install.sh` sets up *everything* needed to actually run a
+**First-time, full bootstrap** — `scripts/install.sh` sets up *everything* needed to actually run a
 benchmark: on a fresh Debian/Ubuntu box it bootstraps the base tools it needs (`git`, `curl`,
 `python3-venv`) automatically, then clones the two upstream repos if missing, installs the
 `llm-d` client toolchain (kubectl/helm/helmfile/kustomize/yq) and the `llmdbenchmark` CLI, and
@@ -55,16 +55,16 @@ finally builds this project's venv + `.env`. Add `--prereqs` to also install Doc
 (needs passwordless sudo):
 
 ```bash
-./install.sh            # repos + client deps + benchmark CLI + this app
-./install.sh --prereqs  # …and Docker + kind for the local kind quickstart
+./scripts/install.sh            # repos + client deps + benchmark CLI + this app
+./scripts/install.sh --prereqs  # …and Docker + kind for the local kind quickstart
 ```
 
-**Then launch** — `run.sh` builds the venv (if needed), installs the app, ensures a `.env`,
+**Then launch** — `scripts/run.sh` builds the venv (if needed), installs the app, ensures a `.env`,
 and starts the server:
 
 ```bash
-./run.sh            # then open http://127.0.0.1:8000
-./run.sh --open     # …and open it in your browser automatically
+./scripts/run.sh            # then open http://127.0.0.1:8000
+./scripts/run.sh --open     # …and open it in your browser automatically
 ```
 
 **Give it an LLM to think with** (one of):
@@ -77,7 +77,7 @@ and starts the server:
 That's the only configuration most people need. To try it **without a cluster at all**, set
 `SIMULATE=1` (see [Simulate Mode](#simulate-mode)).
 
-Manual install instead of `run.sh`:
+Manual install instead of `scripts/run.sh`:
 
 ```bash
 cp .env.example .env          # set your provider + key
@@ -95,10 +95,10 @@ the knowledge base — over the Model Context Protocol. One interactive command 
 registers it with Claude Code:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/install-mcp.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install-mcp.sh)
 ```
 
-(or clone first and run `./install-mcp.sh`). It uses the `claude-agent-sdk` provider (no API key)
+(or clone first and run `./scripts/install-mcp.sh`). It uses the `claude-agent-sdk` provider (no API key)
 and runs over stdio on your machine; mutations are gated by Claude Code's own approval prompt.
 Other providers (`anthropic`, `openai`) and clients (Claude Desktop, Cursor, VS Code, OpenAI Codex
 CLI) are planned for a future release. Full showcase, manual config, and the security model:
@@ -354,7 +354,7 @@ pytest tests/        # the full suite (also hermetic)
 | [docs/API.md](docs/API.md) | The HTTP/WebSocket API + the agent tool surface + the `SessionPlan` |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Running locally and in-cluster (Helm), config, secrets, RBAC |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | The flow-validation harness — does the agent run the *right* commands? |
-| [FEATURES.md](FEATURES.md) | The authoritative, evidence-backed inventory of every feature + how to verify each |
+| [FEATURES.md](docs/FEATURES.md) | The authoritative, evidence-backed inventory of every feature + how to verify each |
 
 See [`docs/README.md`](docs/README.md) for the full index, and [`CLAUDE.md`](CLAUDE.md) for the
 project's working rules.

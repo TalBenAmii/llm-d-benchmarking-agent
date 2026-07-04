@@ -5,17 +5,17 @@
 # ensures a .env exists, then launches the FastAPI/uvicorn server. HOST/PORT are
 # read from .env (defaults 127.0.0.1:8000) and can be overridden via flags.
 #
-#   ./run.sh                  # start with autoreload on http://127.0.0.1:8000
-#   ./run.sh --open           # ...and open it in a browser
-#   ./run.sh --port 9000      # override the port
-#   ./run.sh --no-reload      # disable autoreload
-#   ./run.sh --reinstall      # force-reinstall dependencies first
+#   ./scripts/run.sh                  # start with autoreload on http://127.0.0.1:8000
+#   ./scripts/run.sh --open           # ...and open it in a browser
+#   ./scripts/run.sh --port 9000      # override the port
+#   ./scripts/run.sh --no-reload      # disable autoreload
+#   ./scripts/run.sh --reinstall      # force-reinstall dependencies first
 #
 # The LLM API key lives only in .env (never committed). The UI serves without a
 # key; a live benchmarking session needs one (ANTHROPIC_API_KEY or OPENAI_API_KEY).
 set -euo pipefail
 
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # project root (this script lives in scripts/)
 VENV=".venv"
 PY="$VENV/bin/python"
 
@@ -38,6 +38,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 log() { printf '\033[35m▸\033[0m %s\n' "$*"; }   # llm-d purple bullet
+# shellcheck source-path=SCRIPTDIR/..
 # shellcheck source=scripts/_env.sh
 source "scripts/_env.sh"   # cwd is the project root (cd above); provides ensure_env
 

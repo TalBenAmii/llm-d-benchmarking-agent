@@ -14,9 +14,9 @@
 # CLI) are planned for a future release — see the repo-root README.md.
 #
 # Usage:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/install-mcp.sh)
-#   ./install-mcp.sh            # same script, run from inside a checkout
-#   ./install-mcp.sh -h
+#   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install-mcp.sh)
+#   ./scripts/install-mcp.sh            # same script, run from inside a checkout
+#   ./scripts/install-mcp.sh -h
 #
 # Env overrides:
 #   INSTALL_DIR=/path   where to clone the project in curl-bootstrap mode (default: ~/llm-d-benchmarking-agent)
@@ -53,7 +53,7 @@ find_project_root() {
     [[ -f "$d/llm-d-benchmarking-agent-project/app/mcp/__main__.py" ]] && { printf '%s' "$d/llm-d-benchmarking-agent-project"; return 0; }
     d="$(dirname "$d")"
   done
-  local sd; sd="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" 2>/dev/null && pwd || true)"
+  local sd; sd="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/.." 2>/dev/null && pwd || true)"   # script lives in scripts/
   [[ -n "$sd" && -f "$sd/app/mcp/__main__.py" ]] && { printf '%s' "$sd"; return 0; }
   return 1
 }
@@ -70,9 +70,9 @@ if [[ -z "$PROJECT_DIR" ]]; then
     git clone "https://github.com/TalBenAmii/llm-d-benchmarking-agent" "$INSTALL_DIR"
   fi
   PROJECT_DIR="$INSTALL_DIR/llm-d-benchmarking-agent-project"
-  [[ -f "$PROJECT_DIR/install-mcp.sh" ]] || die "cloned repo is missing $PROJECT_DIR/install-mcp.sh"
+  [[ -f "$PROJECT_DIR/scripts/install-mcp.sh" ]] || die "cloned repo is missing $PROJECT_DIR/scripts/install-mcp.sh"
   export _MCP_BOOTSTRAPPED=1
-  exec bash "$PROJECT_DIR/install-mcp.sh" "$@"   # re-run on-disk so paths resolve normally
+  exec bash "$PROJECT_DIR/scripts/install-mcp.sh" "$@"   # re-run on-disk so paths resolve normally
 fi
 
 cd "$PROJECT_DIR"
@@ -153,6 +153,7 @@ fi
 log "Installed. The agent imports OK."
 
 # ── Step 4: configure the LLM provider (claude-agent-sdk) and write .env ──
+# shellcheck source-path=SCRIPTDIR/..
 # shellcheck source=scripts/_env.sh
 source "$PROJECT_DIR/scripts/_env.sh"
 ensure_env   # create .env from .env.example if missing

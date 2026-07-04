@@ -13,18 +13,18 @@
 # Optionally also installs the host cluster prereqs (Docker + the kind binary) via the
 # vetted scripts/install_prereqs.sh (with --prereqs).
 #
-# When it finishes:   ./run.sh   →   http://127.0.0.1:8000
+# When it finishes:   ./scripts/run.sh   →   http://127.0.0.1:8000
 #
 # Usage:
-#   ./install.sh                 # full bootstrap (repos + client deps + bench + app)
-#   ./install.sh --dev           # + dev extras (chart-testing; this project's .[dev])
-#   ./install.sh --prereqs       # + Docker & kind (host cluster prereqs; needs passwordless sudo)
-#   ./install.sh --app-only      # ONLY this project's venv + .env (skip the upstream installers)
-#   ./install.sh --no-client     # skip the llm-d client toolchain step
-#   ./install.sh --no-bench      # skip the llm-d-benchmark framework step
-#   ./install.sh --no-clone      # don't clone missing repos (fail if a needed repo is absent)
-#   ./install.sh --uv | --no-uv  # force the venv backend (default: uv if present, else python3 -m venv)
-#   ./install.sh -h | --help
+#   ./scripts/install.sh                 # full bootstrap (repos + client deps + bench + app)
+#   ./scripts/install.sh --dev           # + dev extras (chart-testing; this project's .[dev])
+#   ./scripts/install.sh --prereqs       # + Docker & kind (host cluster prereqs; needs passwordless sudo)
+#   ./scripts/install.sh --app-only      # ONLY this project's venv + .env (skip the upstream installers)
+#   ./scripts/install.sh --no-client     # skip the llm-d client toolchain step
+#   ./scripts/install.sh --no-bench      # skip the llm-d-benchmark framework step
+#   ./scripts/install.sh --no-clone      # don't clone missing repos (fail if a needed repo is absent)
+#   ./scripts/install.sh --uv | --no-uv  # force the venv backend (default: uv if present, else python3 -m venv)
+#   ./scripts/install.sh -h | --help
 #
 # The two repos are expected as siblings of this project. Override their location with
 # REPOS_DIR=/path (matches the agent's own REPOS_DIR setting).
@@ -36,7 +36,7 @@
 set -euo pipefail
 
 # ── Resolve locations ─────────────────────────────────────────────────────
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # this script lives in scripts/
 REPOS_DIR="${REPOS_DIR:-$(dirname "$PROJECT_DIR")}"   # repos are siblings of the project
 GUIDE_REPO="$REPOS_DIR/llm-d"
 BENCH_REPO="$REPOS_DIR/llm-d-benchmark"
@@ -66,6 +66,7 @@ step() { printf '\n\033[1;35m━━ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[install] %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31m[install] ERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 trap 'rc=$?; [[ $rc -ne 0 ]] && printf "\n\033[1;31m[install] aborted (exit %s).\033[0m See the message above; fix it and re-run (the script is idempotent).\n" "$rc" >&2' EXIT
+# shellcheck source-path=SCRIPTDIR/..
 # shellcheck source=scripts/_env.sh
 source "$PROJECT_DIR/scripts/_env.sh"
 
@@ -215,7 +216,7 @@ if [[ "$APP_ONLY" != 1 ]]; then
 fi
 printf '  agent venv       : %s\n' "$VENV"
 printf '\n'
-log "Done. Start the agent with:  ./run.sh   (then open http://127.0.0.1:8000)"
+log "Done. Start the agent with:  ./scripts/run.sh   (then open http://127.0.0.1:8000)"
 [[ "$PREREQS" != 1 && "$APP_ONLY" != 1 ]] && \
   log "To benchmark on a local kind cluster you'll also need Docker + kind — re-run with --prereqs (needs passwordless sudo), or let the agent install them on demand."
 trap - EXIT

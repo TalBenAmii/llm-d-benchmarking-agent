@@ -25,7 +25,7 @@ configures the `claude-agent-sdk` provider, and registers the server with Claude
 (or prints the config to paste yourself):
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/install-mcp.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install-mcp.sh)
 ```
 
 Prefer to clone first? The same script runs from inside a checkout:
@@ -33,7 +33,7 @@ Prefer to clone first? The same script runs from inside a checkout:
 ```bash
 git clone https://github.com/TalBenAmii/llm-d-benchmarking-agent.git
 cd llm-d-benchmarking-agent/llm-d-benchmarking-agent-project
-./install-mcp.sh
+./scripts/install-mcp.sh
 ```
 
 It is idempotent (safe to re-run). The provider is `claude-agent-sdk`, which needs **no API key**

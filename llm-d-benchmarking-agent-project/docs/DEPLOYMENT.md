@@ -25,12 +25,12 @@ the one the kind/sim quickstart uses.
   a key the server still boots and the deterministic test/validation paths run.
 
 ### Run it
-The quickest way — `run.sh` sets up a venv, installs the app, ensures a `.env`, and starts
+The quickest way — `scripts/run.sh` sets up a venv, installs the app, ensures a `.env`, and starts
 the server (reads `HOST`/`PORT` from `.env`; defaults to `127.0.0.1:8000`):
 
 ```bash
-./run.sh            # then open http://127.0.0.1:8000
-./run.sh --open     # ...and open it in a browser automatically
+./scripts/run.sh            # then open http://127.0.0.1:8000
+./scripts/run.sh --open     # ...and open it in a browser automatically
 ```
 
 Or manually:

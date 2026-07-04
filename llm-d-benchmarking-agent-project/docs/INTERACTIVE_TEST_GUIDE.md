@@ -60,7 +60,7 @@ PORT=8000
 Install + launch:
 
 ```bash
-./run.sh                  # sets up venv, installs, starts uvicorn (reads HOST/PORT from .env)
+./scripts/run.sh                  # sets up venv, installs, starts uvicorn (reads HOST/PORT from .env)
 # or manually:  pip install -e .  &&  uvicorn app.main:app --reload
 ```
 
