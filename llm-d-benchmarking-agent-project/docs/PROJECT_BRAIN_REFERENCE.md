@@ -24,8 +24,8 @@ multi-harness compare, capacity pre-flight, history/trends, observability, one-c
 - **Tool count is never hard-coded here** — `app/tools/registry.py` (`build_registry()`) is the only source of truth.
 
 ## Documentation map
-The full docs index lives in **[`README.md`](README.md)** (every `docs/` page + the project-root
-docs: `README.md`, `FEATURES.md`, `knowledge/`; plus `docs/history/plan.md`). Not repeated here.
+The full docs index lives in **[`README.md`](README.md)** (every `docs/` page + the repo-root
+`README.md`, `docs/FEATURES.md`, `knowledge/`; plus `docs/history/plan.md`). Not repeated here.
 Items the index doesn't list:
 - `docs/history/llm-d-benchmarking-agent-proposal.md` — the original proposal / requirements (the "north star").
 - `docs/INTERACTIVE_TEST_GUIDE.md` — follow-along runbook to drive every feature by hand with a real LLM.
