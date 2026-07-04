@@ -11,7 +11,7 @@
 #
 # Scope (for now): the only verified path is the claude-agent-sdk provider + the Claude Code CLI
 # client. Other providers (anthropic, openai) and clients (Claude Desktop, Cursor, VS Code, Codex
-# CLI) are planned for a future release — see the repo-root README.md.
+# CLI) are planned for a future release — see docs/MCP.md.
 #
 # Usage:
 #   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install-mcp.sh)
@@ -23,7 +23,7 @@
 #   REPOS_DIR=/path     where the sibling repos live (default: the project's parent dir)
 #
 # Transport is stdio / local single-user (the server runs on YOUR machine against YOUR kubeconfig);
-# there is no network/remote mode. See the repo-root README.md for the security model and manual config.
+# there is no network/remote mode. See docs/MCP.md for the security model and manual config.
 set -euo pipefail
 
 # ── Logging (matches install.sh house style) ──────────────────────────────
@@ -216,9 +216,9 @@ esac
 # ── Summary ───────────────────────────────────────────────────────────────
 step "Done"
 log "Launch command : $CMD_DISPLAY"
-log "Smoke-test it  : npx @modelcontextprotocol/inspector $CMD_DISPLAY   (lists 37 tools, 5 prompts, knowledge resources)"
+log "Smoke-test it  : npx @modelcontextprotocol/inspector $CMD_DISPLAY   (lists 35 tools, 5 prompts, knowledge resources)"
 log "Provider/config: $PROJECT_DIR/.env"
 log "The server is stdio/local — it runs on this machine against your kubeconfig. Advisory tools work"
 log "with no cluster; deploy/run tools need a reachable cluster. Mutations are approved in YOUR client's"
-log "own tool-permission prompt. Full details: the repo-root README.md"
+log "own tool-permission prompt. Full details: docs/MCP.md"
 trap - EXIT
