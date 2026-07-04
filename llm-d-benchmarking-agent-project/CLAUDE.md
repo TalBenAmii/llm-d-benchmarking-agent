@@ -51,25 +51,25 @@ llm-d-benchmarking-agent-project/
 ├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here
 ├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
 ├─ deploy/               Helm chart + observability manifests
-├─ scripts/              host bootstrap + dev/eval helpers (install_prereqs.sh; flow eval = validate_flows.py + run_eval_isolated.sh)
+├─ scripts/              entry points (install.sh · run.sh · install-mcp.sh) + host bootstrap (install_prereqs.sh) + flow eval (validate_flows.py + run_eval_isolated.sh)
 ├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ ui/                   static chat UI (index.html, app.js, styles.css)
-├─ docs/                 documentation (README index + TODO.md backlog + history/ design archive + images/ UI stills)
+├─ docs/                 documentation (README index + FEATURES.md inventory + CONTEXT.md glossary + TODO.md backlog + history/ design archive + images/ UI stills)
 └─ workspace/            gitignored runtime scratch (per-session state, generated configs, logs)
 ```
 Knowledge is loaded by `app/config.py` + `app/agent/prompt.py` from the root `knowledge/` dir — there is
 no `app/knowledge/` package.
 
 ## Reference — fetch on demand (NOT inlined here)
-- **What's built / status / feature set** → `FEATURES.md` (read first; how to verify each) + `docs/PROJECT_BRAIN_REFERENCE.md`; gaps → the DEFERRED phases in `FEATURES.md`
+- **What's built / status / feature set** → `docs/FEATURES.md` (read first; how to verify each) + `docs/PROJECT_BRAIN_REFERENCE.md`; gaps → the DEFERRED phases in `docs/FEATURES.md`
 - **Coding conventions** (+ what the finish-time review checks) → **`coding-guidelines`** skill
 - **Finish loop** (commit → review → `--no-ff` merge to main; the `main`-only git hook gates ruff+pytest) → **`finish-implementation`** skill
 - **Test env + run commands + gotchas** → `tests/CLAUDE.md`
 - **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/UPSTREAM_REUSE_PATHS.md`
-- **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `CONTEXT.md`
+- **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `docs/CONTEXT.md`
 - **Full doc map + run-locally quickstart** → `docs/README.md`
-- **SIMULATE=1** — dry-run toggle (walk the whole workflow; read-only commands run for real, mutations no-op) → `CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
+- **SIMULATE=1** — dry-run toggle (walk the whole workflow; read-only commands run for real, mutations no-op) → `docs/CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
 
 ## Capturing recurring conclusions (standing instruction to future-me)
 When you derive a conclusion you'd otherwise re-investigate later (env/build gotchas, locked decisions),

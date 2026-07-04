@@ -6,7 +6,7 @@ file is how to reason about using it.
 
 ## Two distinct ways to run the agent
 
-1. **Local (the default for the quickstart / a laptop demo).** `./run.sh` or
+1. **Local (the default for the quickstart / a laptop demo).** `./scripts/run.sh` or
    `uvicorn app.main:app`. The agent drives the *local* `llmdbenchmark` CLI
    (`execute_llmdbenchmark`) and shells out to your local `kubectl`/`kind`. No container, no
    in-cluster RBAC. This remains the simplest path and the one the kind/sim quickstart uses.
