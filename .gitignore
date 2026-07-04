@@ -12,3 +12,6 @@
 
 # Local-only scratch todo list — kept on disk, never committed
 /todo
+
+# Editor config — local-only (kept on disk; each device sets its own)
+.vscode/
