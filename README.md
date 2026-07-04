@@ -45,7 +45,7 @@ sibling folders are read-only upstream repos the agent reads at runtime
   at 200 req/s" — the agent maps it to a real benchmark profile.
 - **You want it done safely.** Every system-changing step is shown to you and waits for a click.
 
-That expertise lives in the agent's editable brain
+The `llm-d-benchmark` expertise lives in the agent's editable brain
 ([`knowledge/`](llm-d-benchmarking-agent-project/knowledge/)), not in your head.
 
 ---
@@ -70,8 +70,7 @@ Then give it an LLM to think with — set one of these in `.env`:
 | Any **OpenAI-compatible** endpoint | `LLM_PROVIDER=openai` + `OPENAI_API_KEY` (+ `OPENAI_BASE_URL`) |
 | Your local **Claude Code** login — no API key | `LLM_PROVIDER=claude-agent-sdk` |
 
-That's all the configuration most people need. To try it without a cluster, set `SIMULATE=1`
-(see [Simulate Mode](#simulate-mode)).
+To try it without a cluster, set `SIMULATE=1` (see [Simulate Mode](#simulate-mode)).
 
 ---
 
@@ -209,18 +208,15 @@ delay, GPU utilization** — and reports `None` rather than guessing when a harn
 
 ## How it stays safe
 
-The point is that you can hand it real install/deploy privileges without worry.
-
 - **Deny-by-default allowlist**
   ([`security/allowlist.yaml`](llm-d-benchmarking-agent-project/security/allowlist.yaml)) — the
-  agent can run *only* an explicit set of commands: `llmdbenchmark`; read-only
+  dedicated command tools can run *only* an explicit set of commands: `llmdbenchmark`; read-only
   `kubectl`/`kind`/`docker` probes; `git clone` of the llm-d repos; the install scripts;
-  `kind create`/`delete cluster`. No raw `apt`/`curl`/`sudo`. The policy is **data** — widening
-  it is a reviewed config change, not a code change.
-- **No shell, ever.** Commands run as argv lists with `shell=False` — command injection is
-  structurally impossible.
-- **Per-action approval.** Read-only probes auto-run; every *mutating* command shows you the
-  **exact command** and waits for Approve/Reject.
+  `kind create`/`delete cluster`. Allowlisted commands run as argv lists with `shell=False`. The
+  policy is **data** — widening it is a reviewed config change, not a code change.
+- **Per-action approval.** Read-only commands auto-run; every *mutating or unknown* command —
+  including anything the general `run_shell` tool proposes — shows you the **exact command**
+  and waits for Approve/Reject.
 - **Full transparency.** Every command appears in the chat with a read-only/mutating badge.
   Nothing runs off-screen.
 - **Secrets stay server-side.** LLM/HF keys live only in the backend; the browser never sees
@@ -268,9 +264,11 @@ install).
 ```bash
 cd llm-d-benchmarking-agent-project
 docker build -t llm-d-benchmarking-agent:0.1.0 .
+# make the image visible to your cluster, e.g.:  kind load docker-image llm-d-benchmarking-agent:0.1.0
 
 helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
   --namespace llmd-bench --create-namespace \
+  --set image.repository=llm-d-benchmarking-agent \
   --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
 ```
 
