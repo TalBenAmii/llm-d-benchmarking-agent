@@ -6,10 +6,12 @@ text, structured events, and Approve/Reject decisions — never API keys, never 
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import json
 import logging
 import signal
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
@@ -432,6 +434,44 @@ def _share_store() -> ShareStore:
 # leaks the host path layout / owning session id those internal paths embed.
 
 
+def _inline_share_chart_artifacts(
+    items: list[dict[str, Any]], *, sessions_root: Path
+) -> list[dict[str, Any]]:
+    """Make a public share's report charts self-contained: replace each chart's session-relative
+    ``{session_id, path}`` reference with an inline ``data:`` URI of the PNG bytes, so the shared
+    JSON AND its offline ``page.html`` export render charts from the snapshot ITSELF — never from
+    ``/api/sessions/<id>/artifact`` (no live session dir, no real session id in a public URL, and
+    the charts survive deletion of the source session). Reuses ``resolve_artifact``'s path-traversal
+    + image-suffix hardening; a chart whose file is missing/unreadable is dropped so a gone artifact
+    can never fail the share. Returns NEW item dicts — the live session is never mutated."""
+    out: list[dict[str, Any]] = []
+    for it in items:
+        result = it.get("result") if it.get("role") == "tool_result" else None
+        if not isinstance(result, dict):
+            out.append(it)
+            continue
+        charts = result.get("charts")
+        if not isinstance(charts, list) or not charts:
+            out.append(it)
+            continue
+        inlined: list[dict[str, Any]] = []
+        for c in charts:
+            if not (isinstance(c, dict)
+                    and isinstance(c.get("session_id"), str)
+                    and isinstance(c.get("path"), str)):
+                continue
+            try:
+                candidate, media_type = resolve_artifact(sessions_root, c["session_id"], c["path"])
+                data = candidate.read_bytes()
+            except (HTTPException, OSError):
+                continue      # missing / unreadable / bad path → drop this chart, never crash
+            chart = {k: v for k, v in c.items() if k not in ("session_id", "path")}
+            chart["src"] = f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}"
+            inlined.append(chart)
+        out.append({**it, "result": {**result, "charts": inlined}})
+    return out
+
+
 @app.post("/api/sessions/{sid}/share", dependencies=[Depends(rate_limit)])
 async def create_share(sid: str) -> JSONResponse:
     """Mint a read-only public link for a chat — an immutable snapshot of its transcript NOW.
@@ -444,12 +484,23 @@ async def create_share(sid: str) -> JSONResponse:
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     items = [it for it in _history_items(session) if it.get("role") != "approval_request"]
-    # A public share is UNAUTHENTICATED: scrub server-internal absolute paths (the located
-    # report's path, search roots) from card results before they're frozen into the snapshot, so
-    # the link never leaks the host path layout or the owning session id those paths embed.
-    items = _redact_share_items(items)
     if not items:
         raise HTTPException(status_code=400, detail="nothing to share yet")
+    # Two ordered mint passes. FIRST inline each report chart as a self-contained data: URI: this
+    # needs the chart's REAL session_id to resolve the PNG off disk, then DROPS that id (so the
+    # public snapshot and its offline page.html export render from the snapshot itself — no live
+    # session dir, no session id in a URL, and charts survive deletion of the source session). Done
+    # at mint so both the share and export inherit it.
+    sessions_root = (get_settings().resolved_workspace_dir / "sessions").resolve()
+    items = _inline_share_chart_artifacts(items, sessions_root=sessions_root)
+    # THEN redact: a public share is UNAUTHENTICATED, so a single recursive scrub masks every
+    # remaining server-internal absolute path + the owning session id (command trails, tool-call
+    # inputs, and the NESTED report_path under runs[]/reports[]) to placeholders before the snapshot
+    # is frozen — the inlined data: URIs carry none. Redaction runs LAST so it can't clobber the
+    # chart session_id the inlining pass depends on.
+    items = _redact_share_items(
+        items, workspace_root=get_settings().resolved_workspace_dir, session_id=session.id,
+        home=str(Path.home()))
     token = _share_store().create(
         items=items,
         title=session.title or "Shared conversation",
