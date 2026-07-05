@@ -2,14 +2,14 @@
 
 > **Status — implemented & verified; grown well past the MVP.** All MVP steps below are
 > done, and the project has since landed the full roadmap feature set (see
-> [`FEATURES.md`](FEATURES.md) for the live inventory): a **Kubernetes-native
+> [`FEATURES.md`](../FEATURES.md) for the live inventory): a **Kubernetes-native
 > benchmark orchestrator** (Job lifecycle, fault classification, retry/dead-letter, parallel
 > sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
 > comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
 > **Prometheus/Grafana observability**, and a **hardened image + one-command Helm
 > deploy** with least-privilege RBAC (Kustomize path REMOVED 2026-07-02 — Helm is the single
 > deploy mechanism, matching upstream helmfile). The agent now exposes a broad toolset, and the full
-> technical documentation suite lives under [`docs/`](docs/) (architecture, API reference,
+> technical documentation suite lives under [`docs/`](../) (architecture, API reference,
 > deployment guide, user guide). See **[Implementation status](#implementation-status)** for
 > the MVP record; the sections after it are the original design reference (kept as written).
 >
@@ -23,43 +23,10 @@
 
 ## Implementation status
 
-**Built:** the full MVP vertical — chat UI → agent loop → schema-validated, approval-gated
-tools → real `llmdbenchmark` execution → validated Benchmark Report summary. The project
-has since grown substantially; see [`FEATURES.md`](FEATURES.md) for the authoritative,
-current feature inventory (the former `ROADMAP_V4.md` Phases 27-66 are now
-merged, 57 & 58 deferred; remaining/deferred work is tracked in `FEATURES.md`).
-The MVP step record below is preserved for tracking; the design sections after it are the
-original design
-reference (kept as written).
-
-MVP plan steps (all 8 complete):
-- 1. Scaffold + docs (`CLAUDE.md`, `plan.md`, `README.md`, `pyproject.toml`, `.env.example`, `.gitignore`, package tree) — done
-- 2. Security core (`security/allowlist.yaml` + `app/security/allowlist.py` validator + `runner.py`; allowlist tests) — done
-- 3. Read-only tools + validation (`probe_environment`, `list_catalog`, `read_repo_doc`, `locate_and_parse_report`; `app/validation/report.py`) — done
-- 4. Provider + agent loop (`app/llm/`, `app/agent/{loop,session,prompt,events}.py`, registry + pydantic tool schemas, `SessionPlan`) — done
-- 5. Mutating tools (`ensure_repos`, `run_setup`, `execute_llmdbenchmark`, `write_and_validate_config`) — done
-- 6. Knowledge files (`knowledge/` playbooks + `usecase_to_profile.yaml`) — done
-- 7. Chat UI + FastAPI (`ui/`, `app/main.py` WebSocket + approval round-trip + static serving) — done
-- 8. Verify (`pytest tests/`; live checks) — done
-
-**Design notes / findings during build (still relevant):**
-- The repo's committed `br_v0_2_json_schema.json` is generated from pydantic
-  (`extra="forbid"`) and is **stale vs its own example** (`session_performance`). So
-  `validate_report` treats `additionalProperties` violations as non-fatal *deviations*
-  and hard-fails only on structural errors. Report YAML is loaded with a loader that keeps
-  ISO timestamps as strings (PyYAML→`datetime` otherwise breaks JSON-Schema string checks).
-- `execute_llmdbenchmark` defaults a `run`'s `-r/--output` to the session workspace so the
-  report is easy to locate.
-- The allowlist deliberately extends beyond `llmdbenchmark` (to `install.sh --uv`,
-  URL-restricted `git clone`, and read-only `docker`/`kind`/`kubectl`) so the quickstart is
-  actually reachable — as agreed.
-
-> **Note:** the MVP-era "deferred" items DoE/`experiment` sweeps, multi-harness & A/B
-> comparison, capacity pre-flight, history, observability, and generated workloads have
-> since shipped — see `FEATURES.md`. GPU / `llm-d/guides/*` deploy execution
-> remains future work (path 2 is advisory-only per `knowledge/deploy_path_playbook.md`; the
-> Kustomize/WVA guide knobs are tracked in `FEATURES.md`). The roadmap record (the former
-> `ROADMAP_V4.md`) — its Phases 27-66 are now merged (57 & 58 deferred).
+> The MVP was built and verified end-to-end, and the project has since grown well past it.
+> This block used to duplicate the status record; that record is now carried authoritatively by
+> [`../FEATURES.md`](../FEATURES.md) §2 (current feature inventory) and
+> [`../CHANGELOG.md`](../CHANGELOG.md) v1 entry (shipped-phase history) — see those two.
 
 ---
 

@@ -35,12 +35,8 @@ auth/rate-limit/CORS**, **run lifecycle** (cancel/reattach/readiness), **workspa
 
 ## 1. How to launch it and see everything yourself
 
-```bash
-cd llm-d-benchmarking-agent-project
-cp .env.example .env            # set ANTHROPIC_API_KEY or an OpenAI-compatible key (already configured here)
-pip install -e .                # or: uv pip install -e .
-uvicorn app.main:app --reload   # then open http://127.0.0.1:8000
-```
+Launch it with `./scripts/run.sh` (then open http://127.0.0.1:8000) — full quickstart in the
+[root README](../../README.md#quick-start) / [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 The browser chat is where the **user-facing** features live. The HTTP endpoints
 (`/healthz`, `/readyz`, `/metrics`, `/api/sessions`, `/api/history`) are where the
@@ -151,7 +147,7 @@ result.
 | **Real-time pod log streaming** → live `output` events during a run (P21) | `controller.run_attempt` + `kube.stream_logs(follow=True)` | 🔵 Run `orchestrate_benchmark_run` on a cluster; logs stream into the console panel live, not just at the end. |
 | **Checkpoint / resume** of long DOE sweeps via a per-sweep ConfigMap (P22) | `app/orchestrator/checkpoint.py` | ⚪ `tests/test_orchestrator*`; resume a sweep with the same `sweep_id` → completed treatments are skipped. |
 | **Resource management** — nodeSelector / tolerations / affinity / GPU type + pod anti-affinity (P23) | `JobSpec`/`build_job_manifest` + `knowledge/resource_management.md` | ⚪ Pass `scheduling` to `orchestrate_benchmark_run`; inspect the rendered manifest in tests. |
-| **Endpoint readiness gate** before submit (+ approval-gated standup suggestion) (P24) | `app/orchestrator/readiness.py`, `check_endpoint_readiness` tool | ⚪ `tests/test_readyz.py` + tool tests; reads `kubectl get endpoints`, refuses to submit against an unready endpoint. |
+| **Endpoint readiness gate** before submit (+ approval-gated standup suggestion) (P24) | `app/readiness/probes.py` + `diagnostics.py`, `check_endpoint_readiness` tool | ⚪ `tests/test_endpoint_readiness.py` + tool tests; reads `kubectl get endpoints`, refuses to submit against an unready endpoint. |
 | Cleanup of terminal Jobs/ConfigMaps; results PVC preserved | `controller.py:cleanup` | ⚪ orchestrator tests. |
 
 ---

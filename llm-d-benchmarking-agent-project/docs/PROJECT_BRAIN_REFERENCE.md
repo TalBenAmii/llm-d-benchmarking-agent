@@ -26,17 +26,10 @@ multi-harness compare, capacity pre-flight, history/trends, observability, one-c
 ## Documentation map
 The full docs index lives in **[`README.md`](README.md)** (every `docs/` page + the repo-root
 `README.md`, `docs/FEATURES.md`, `knowledge/`; plus `docs/history/plan.md`). Not repeated here.
-Items the index doesn't list:
-- `docs/history/llm-d-benchmarking-agent-proposal.md` — the original proposal / requirements (the "north star").
-- `docs/INTERACTIVE_TEST_GUIDE.md` — follow-along runbook to drive every feature by hand with a real LLM.
-- `docs/BENCHMARK_FEATURE_COVERAGE.md` — benchmark-CLI feature-coverage catalog (✅/🟡/⬜).
-- `docs/USEFUL_REPO_DOCS.md` — curated index of which upstream `llm-d` / `llm-d-benchmark` docs matter and why.
 
 **Agent brain** — `knowledge/*.md|*.yaml` hold all *judgment* (loaded at runtime; not docs to edit
 casually). See `knowledge/CLAUDE.md` before editing them.
 
 ## Run locally
 See **[`DEPLOYMENT.md`](DEPLOYMENT.md)** for running locally and in-cluster (config, secrets, RBAC,
-observability). The short version: `cp .env.example .env` (fill `ANTHROPIC_API_KEY`; never commit it)
-→ `pip install -e .` → `uvicorn app.main:app --reload` → http://127.0.0.1:8000; `pytest tests/` runs
-hermetically without a key.
+observability); `scripts/run.sh` is the quickest launch.

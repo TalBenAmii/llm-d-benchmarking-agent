@@ -8,7 +8,7 @@ _An Intelligent, Kubernetes-Native Workload Design and Execution Service for the
 
 > **Historical document — the original project proposal (the "north star").** It records the
 > initial requirements/scope and is kept for reference; it is **not** a description of the current
-> system. For what the agent actually does today see [`FEATURES.md`](FEATURES.md) (the live,
+> system. For what the agent actually does today see [`FEATURES.md`](../FEATURES.md) (the live,
 > evidence-backed feature inventory); for design rationale and the implemented-status record see
 > [`plan.md`](plan.md).
 

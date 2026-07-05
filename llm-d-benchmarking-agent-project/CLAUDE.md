@@ -68,7 +68,7 @@ no `app/knowledge/` package.
 - **Test env + run commands + gotchas** → `tests/CLAUDE.md`
 - **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/UPSTREAM_REUSE_PATHS.md`
 - **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `docs/CONTEXT.md`
-- **Full doc map + run-locally quickstart** → `docs/README.md`
+- **Full doc map** → `docs/README.md`; **run-locally quickstart** → root `README.md` / `docs/DEPLOYMENT.md`
 - **SIMULATE=1** — dry-run toggle (walk the whole workflow; read-only commands run for real, mutations no-op) → `docs/CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
 
 ## Capturing recurring conclusions (standing instruction to future-me)

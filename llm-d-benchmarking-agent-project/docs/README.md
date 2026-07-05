@@ -17,6 +17,9 @@ agent + Kubernetes-native benchmark orchestrator + results analyzer for
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | operators | Symptom → what to check; debug mode; the structured logs + `corr_id`; the readiness/metrics endpoints. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | contributors | How to add a tool/flow/phase; the two laws (thin-code, allowlist-as-data); the hermetic-test rule. |
 | [CHANGELOG.md](CHANGELOG.md) | everyone | Keep-a-Changelog history (v1 phases 0-10, v2 operability phases 11-18, v3 proposal-completion phases 19-26 + token-tracking). |
+| [INTERACTIVE_TEST_GUIDE.md](INTERACTIVE_TEST_GUIDE.md) | contributors / testers | Follow-along runbook to drive every feature by hand with a real LLM. |
+| [BENCHMARK_FEATURE_COVERAGE.md](BENCHMARK_FEATURE_COVERAGE.md) | contributors / reviewers | Benchmark-CLI feature-coverage catalog (✅/🟡/⬜) — what's wired vs deferred. |
+| [USEFUL_REPO_DOCS.md](USEFUL_REPO_DOCS.md) | contributors | Curated index of which upstream `llm-d` / `llm-d-benchmark` docs matter and why. |
 
 Ops assets live under [`deploy/observability/`](../deploy/observability/): a Prometheus scrape
 config, alert rules (`alerts.rules.yaml`), and a Grafana dashboard.
