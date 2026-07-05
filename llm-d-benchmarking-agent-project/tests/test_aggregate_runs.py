@@ -27,9 +27,10 @@ import pytest
 import yaml
 
 from app.config import get_settings
+from app.dig import parse_bridge_dict
 from app.security.allowlist import READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunnerError
-from app.tools.aggregate_runs import _parse_bridge_output, aggregate_runs
+from app.tools.aggregate_runs import aggregate_runs
 from app.tools.context import ToolError
 from app.tools.registry import dispatch, tool_definitions
 from app.validation.report import load_report
@@ -278,8 +279,8 @@ def test_aggregate_runs_is_registered_as_a_tool():
 
 
 def test_parse_bridge_empty_is_not_ok():
-    assert _parse_bridge_output("")["ok"] is False
-    assert _parse_bridge_output("not json at all")["ok"] is False
+    assert parse_bridge_dict("", "aggregation")["ok"] is False
+    assert parse_bridge_dict("not json at all", "aggregation")["ok"] is False
 
 
 # ============================================================================

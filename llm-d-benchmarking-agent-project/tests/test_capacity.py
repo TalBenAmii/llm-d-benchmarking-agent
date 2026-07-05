@@ -21,9 +21,10 @@ from app.capacity.planner import (
     plan_config_for_spec,
     resolve_scenario_file,
 )
+from app.dig import parse_bridge_dict
 from app.security.allowlist import READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunnerError
-from app.tools.capacity import _parse_bridge_output, check_capacity
+from app.tools.capacity import check_capacity
 from app.tools.context import ToolError
 from app.tools.registry import dispatch, tool_definitions
 from tests._helpers import _real_repo_ctx
@@ -138,19 +139,19 @@ def test_override_none_value_is_skipped():
 
 def test_parse_bridge_clean_json():
     out = json.dumps({"ok": True, "diagnostics": ["a", "b"]})
-    parsed = _parse_bridge_output(out)
+    parsed = parse_bridge_dict(out, "capacity")
     assert parsed["ok"] is True and parsed["diagnostics"] == ["a", "b"]
 
 
 def test_parse_bridge_tolerates_leading_log_noise():
     out = "WARNING: some hub chatter\n" + json.dumps({"ok": True, "diagnostics": []})
-    parsed = _parse_bridge_output(out)
+    parsed = parse_bridge_dict(out, "capacity")
     assert parsed["ok"] is True
 
 
 def test_parse_bridge_empty_is_not_ok():
-    assert _parse_bridge_output("")["ok"] is False
-    assert _parse_bridge_output("not json at all")["ok"] is False
+    assert parse_bridge_dict("", "capacity")["ok"] is False
+    assert parse_bridge_dict("not json at all", "capacity")["ok"] is False
 
 
 # ---- the tool end-to-end (real plan_config + faked bridge) --------------------
