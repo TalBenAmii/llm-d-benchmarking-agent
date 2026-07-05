@@ -46,7 +46,8 @@ uvicorn app.main:app --reload
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_PROVIDER` | `anthropic` | `anthropic` or `openai`. |
+| `LLM_PROVIDER` | `anthropic` | `anthropic`, `openai`, or `claude-agent-sdk` (your Claude Pro/Max plan via the local `claude` CLI login — no API key; `scripts/setup-claude-plan.sh` wires it interactively). |
+| `AGENT_SDK_MODEL` / `AGENT_SDK_EFFORT` | `claude-haiku-4-5` / `high` | Model + reasoning effort for the `claude-agent-sdk` route (the setup script recommends `claude-sonnet-4-6`). |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | — / `claude-opus-4-8` | Anthropic creds + model. |
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` | — / `…/v1` / `gpt-4o` | OpenAI-compatible creds; `BASE_URL` may point at a self-hosted vLLM/llm-d endpoint. |
 | `REPOS_DIR` | parent of the project | Where the `llm-d` / `llm-d-benchmark` repos are (or will be cloned). |

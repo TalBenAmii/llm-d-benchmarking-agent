@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.agent.ws_schemas import ValidationError
+from app.config import Settings
 from app.storage.provenance import BundleStore
 
 # ── inbound-frame validation-error formatting (WS protocol ``error`` event) ─────────────────
@@ -42,6 +43,23 @@ def first_validation_message(exc: ValidationError) -> str:
 
 
 # ── response-shaping for the HTTP routes ────────────────────────────────────────────────────
+
+
+def provider_view(settings: Settings, provider_error: str | None) -> dict[str, Any]:
+    """The active LLM provider + model as the header badge shows them (GET /api/provider).
+
+    Mirrors ``get_provider``'s alias sets (config dispatch, not judgment) but stays
+    settings-based so it still answers when the provider FAILED to build — exactly the state
+    the badge must surface (``configured: False`` → "LLM not configured"). Deliberately
+    minimal: never a key, account identity, or the error text (which can name env vars)."""
+    provider = (settings.llm_provider or "anthropic").lower()
+    if provider in ("claude-agent-sdk", "agent-sdk", "claude-max"):
+        model = settings.agent_sdk_model
+    elif provider in ("openai", "openai-compatible", "vllm"):
+        model = settings.openai_model
+    else:
+        model = settings.anthropic_model
+    return {"provider": provider, "model": model, "configured": provider_error is None}
 
 
 def history_record_view(rec) -> dict[str, Any]:

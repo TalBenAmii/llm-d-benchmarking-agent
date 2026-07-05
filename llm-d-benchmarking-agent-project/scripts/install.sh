@@ -23,6 +23,7 @@
 #   ./scripts/install.sh --no-client     # skip the llm-d client toolchain step
 #   ./scripts/install.sh --no-bench      # skip the llm-d-benchmark framework step
 #   ./scripts/install.sh --no-clone      # don't clone missing repos (fail if a needed repo is absent)
+#   ./scripts/install.sh --no-llm-setup  # skip the interactive Claude-plan (LLM provider) step at the end
 #   ./scripts/install.sh --uv | --no-uv  # force the venv backend (default: uv if present, else python3 -m venv)
 #   ./scripts/install.sh -h | --help
 #
@@ -42,18 +43,19 @@ BENCH_REPO="$REPOS_DIR/llm-d-benchmark"
 SKILLS_REPO="$REPOS_DIR/llm-d-skills"
 VENV="$PROJECT_DIR/.venv"
 
-DEV=0; PREREQS=0; APP_ONLY=0; NO_CLIENT=0; NO_BENCH=0; NO_CLONE=0; USE_UV="auto"
+DEV=0; PREREQS=0; APP_ONLY=0; NO_CLIENT=0; NO_BENCH=0; NO_CLONE=0; NO_LLM_SETUP=0; USE_UV="auto"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --dev)       DEV=1 ;;
-    --prereqs)   PREREQS=1 ;;
-    --app-only)  APP_ONLY=1 ;;
-    --no-client) NO_CLIENT=1 ;;
-    --no-bench)  NO_BENCH=1 ;;
-    --no-clone)  NO_CLONE=1 ;;
-    --uv)        USE_UV=1 ;;
-    --no-uv)     USE_UV=0 ;;
-    -h|--help)   sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --dev)          DEV=1 ;;
+    --prereqs)      PREREQS=1 ;;
+    --app-only)     APP_ONLY=1 ;;
+    --no-client)    NO_CLIENT=1 ;;
+    --no-bench)     NO_BENCH=1 ;;
+    --no-clone)     NO_CLONE=1 ;;
+    --no-llm-setup) NO_LLM_SETUP=1 ;;
+    --uv)           USE_UV=1 ;;
+    --no-uv)        USE_UV=0 ;;
+    -h|--help)      sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "install.sh: unknown option '$1' (try --help)" >&2; exit 2 ;;
   esac
   shift
@@ -184,6 +186,14 @@ else
   "$PY" -m pip install -e "$TARGET" >/dev/null
 fi
 "$PY" -c "import app.main" >/dev/null 2>&1 && log "Agent imports OK." || die "the agent failed to import after install."
+
+# Offer to wire the user's Claude subscription as the LLM provider (consent-first; skips itself
+# without a TTY). Best-effort: a declined/failed setup must never fail the install.
+if [[ "$NO_LLM_SETUP" != 1 ]]; then
+  step "LLM provider — wire your Claude plan (optional)"
+  bash "$PROJECT_DIR/scripts/setup-claude-plan.sh" \
+    || warn "Claude-plan setup didn't complete — run ./scripts/setup-claude-plan.sh anytime."
+fi
 
 have() { command -v "$1" >/dev/null 2>&1 && printf 'present' || printf 'MISSING'; }
 step "Summary"

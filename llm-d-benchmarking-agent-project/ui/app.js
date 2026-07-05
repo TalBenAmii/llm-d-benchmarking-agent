@@ -557,6 +557,24 @@ async function loadSessions() {
   } catch (e) { /* offline — keep whatever's shown */ }
 }
 
+// Header LLM badge: which provider · model powers the assistant. Red "LLM not configured"
+// when the provider failed to build at startup (otherwise that only surfaces at first chat).
+async function loadProviderBadge() {
+  const el = document.getElementById("llm-badge");
+  if (!el) return;
+  try {
+    const r = await fetch("/api/provider");
+    if (!r.ok) return;
+    const d = await r.json();
+    el.classList.toggle("err", !d.configured);
+    el.textContent = d.configured ? `${d.provider} · ${d.model}` : "LLM not configured";
+    el.title = d.configured
+      ? "The LLM powering this assistant (provider · model)"
+      : "The LLM provider failed to load — wire one (e.g. ./scripts/setup-claude-plan.sh) and restart.";
+    el.hidden = false;
+  } catch (e) { /* offline — leave the badge hidden */ }
+}
+
 // Chats are grouped into one folder per Kubernetes namespace; un-namespaced chats live in a
 // "no_namespace" folder until an approved plan assigns one. We persist the set of COLLAPSED
 // folders (not the expanded ones) so a brand-new folder defaults to expanded automatically —
@@ -3152,5 +3170,6 @@ if (window.__LLMD_SHARED__) {
 } else {
   loadSessions();
   loadHistory();
+  loadProviderBadge();
   bootChat();
 }

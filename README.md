@@ -62,13 +62,16 @@ cd llm-d-benchmarking-agent/llm-d-benchmarking-agent-project
 ./scripts/run.sh --open         # start the server and open http://127.0.0.1:8000
 ```
 
-Then give it an LLM to think with — set one of these in `.env`:
+Then give it an LLM to think with. The installer's last step offers to wire your **Claude
+subscription** (Pro/Max plan) for you — login, model pick, and a verified test call
+(`./scripts/setup-claude-plan.sh` re-runs it anytime; `--no-llm-setup` skips it). Or set one
+of these in `.env` by hand:
 
 | Provider | `.env` settings |
 |---|---|
-| **Anthropic** (default) | `ANTHROPIC_API_KEY=...` |
+| Your **Claude plan** — no API key | `LLM_PROVIDER=claude-agent-sdk` (or run `./scripts/setup-claude-plan.sh`) |
+| **Anthropic** API (default) | `ANTHROPIC_API_KEY=...` |
 | Any **OpenAI-compatible** endpoint | `LLM_PROVIDER=openai` + `OPENAI_API_KEY` (+ `OPENAI_BASE_URL`) |
-| Your local **Claude Code** login — no API key | `LLM_PROVIDER=claude-agent-sdk` |
 
 To try it without a cluster, set `SIMULATE=1` (see [Simulate Mode](#simulate-mode)).
 

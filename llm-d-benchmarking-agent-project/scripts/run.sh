@@ -11,8 +11,8 @@
 #   ./scripts/run.sh --no-reload      # disable autoreload
 #   ./scripts/run.sh --reinstall      # force-reinstall dependencies first
 #
-# The LLM API key lives only in .env (never committed). The UI serves without a
-# key; a live benchmarking session needs one (ANTHROPIC_API_KEY or OPENAI_API_KEY).
+# The LLM credential lives outside git: an API key in .env, or — with LLM_PROVIDER=
+# claude-agent-sdk — your local `claude` CLI login (wired by scripts/setup-claude-plan.sh).
 set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # project root (this script lives in scripts/)
@@ -38,7 +38,7 @@ done
 log() { printf '\033[35m▸\033[0m %s\n' "$*"; }
 # shellcheck source-path=SCRIPTDIR/..
 # shellcheck source=scripts/_env.sh
-source "scripts/_env.sh"   # cwd is the project root (cd above); provides ensure_env
+source "scripts/_env.sh"   # cwd is the project root (cd above); provides ensure_env + read_env
 
 ensure_env
 
@@ -64,17 +64,26 @@ if [[ "$REINSTALL" == 1 ]] || ! "$PY" -c "import uvicorn, app.main" >/dev/null 2
   fi
 fi
 
-# Strip only SURROUNDING whitespace/quotes (not every internal space/quote — `tr -d` mangled
-# values like HOST="my host" into "myhost"); enough for the HOST/PORT/PROVIDER/KEY reads below.
-read_env() { [[ -f .env ]] && grep -E "^\s*$1\s*=" .env | tail -1 | cut -d= -f2- | sed -E "s/^[[:space:]'\"]+//; s/[[:space:]'\"]+\$//" || true; }
 HOST="$(read_env HOST)"; HOST="${HOST:-127.0.0.1}"
 PORT="${PORT_OVERRIDE:-$(read_env PORT)}"; PORT="${PORT:-8000}"
 
+# Credential note per provider route — warn, never block: the UI must serve either way.
 PROVIDER="$(read_env LLM_PROVIDER)"; PROVIDER="${PROVIDER:-anthropic}"
-if [[ "$PROVIDER" == "openai" ]]; then KEY="$(read_env OPENAI_API_KEY)"; else KEY="$(read_env ANTHROPIC_API_KEY)"; fi
-if [[ -z "$KEY" ]]; then
-  log "Note: no ${PROVIDER^^} API key in .env — the UI loads, but a live session needs one."
-fi
+case "$PROVIDER" in
+  claude-agent-sdk|agent-sdk|claude-max)
+    # Plan route: the credential is the `claude` CLI's login, so a logged-out day-2 start
+    # would otherwise surface only as an error at the first chat message.
+    if ! command -v claude >/dev/null 2>&1; then
+      log "Note: LLM_PROVIDER=$PROVIDER but the 'claude' CLI is not on PATH — the UI loads, chat won't. Run ./scripts/setup-claude-plan.sh"
+    elif ! claude auth status --json 2>/dev/null | grep -qE '"loggedIn":[[:space:]]*true'; then
+      log "Note: the 'claude' CLI is not logged in — the UI loads, chat won't. Run ./scripts/setup-claude-plan.sh (or 'claude auth login')."
+    fi ;;
+  *)
+    if [[ "$PROVIDER" == openai* || "$PROVIDER" == vllm ]]; then KEY="$(read_env OPENAI_API_KEY)"; else KEY="$(read_env ANTHROPIC_API_KEY)"; fi
+    if [[ -z "$KEY" ]]; then
+      log "Note: no ${PROVIDER^^} API key in .env — the UI loads, but a live session needs one."
+    fi ;;
+esac
 
 URL="http://${HOST}:${PORT}"
 log "Starting on ${URL}  (provider: ${PROVIDER}, reload: $([[ $RELOAD == 1 ]] && echo on || echo off))"

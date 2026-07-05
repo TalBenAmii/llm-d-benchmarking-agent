@@ -51,7 +51,7 @@ llm-d-benchmarking-agent-project/
 ├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here
 ├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
 ├─ deploy/               Helm chart + observability manifests
-├─ scripts/              entry points (install.sh · run.sh · install-mcp.sh) + host bootstrap (install_prereqs.sh) + flow eval (validate_flows.py + run_eval_isolated.sh)
+├─ scripts/              entry points (install.sh · run.sh · install-mcp.sh · setup-claude-plan.sh) + host bootstrap (install_prereqs.sh) + flow eval (validate_flows.py + run_eval_isolated.sh)
 ├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ ui/                   static chat UI (index.html, app.js, styles.css)
