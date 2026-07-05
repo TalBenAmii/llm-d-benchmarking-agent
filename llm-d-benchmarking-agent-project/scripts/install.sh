@@ -2,7 +2,7 @@
 # install.sh — one-shot bootstrap for the llm-d Benchmarking Assistant Agent.
 #
 # Sets up EVERYTHING needed to run the project end-to-end, in order:
-#   1. (clone if missing) the two upstream sibling repos: llm-d/ and llm-d-benchmark/
+#   1. (clone if missing) the three upstream sibling repos: llm-d/, llm-d-benchmark/, llm-d-skills/
 #   2. llm-d client toolchain     → llm-d/helpers/client-setup/install-deps.sh
 #                                    (git, curl, tar, yq, kubectl, helm, helm-diff,
 #                                     helmfile, kustomize)
@@ -26,7 +26,7 @@
 #   ./scripts/install.sh --uv | --no-uv  # force the venv backend (default: uv if present, else python3 -m venv)
 #   ./scripts/install.sh -h | --help
 #
-# The two repos are expected as siblings of this project. Override their location with
+# The three repos are expected as siblings of this project. Override their location with
 # REPOS_DIR=/path (matches the agent's own REPOS_DIR setting).
 #
 # Notes:
@@ -40,6 +40,7 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # this script l
 REPOS_DIR="${REPOS_DIR:-$(dirname "$PROJECT_DIR")}"   # repos are siblings of the project
 GUIDE_REPO="$REPOS_DIR/llm-d"
 BENCH_REPO="$REPOS_DIR/llm-d-benchmark"
+SKILLS_REPO="$REPOS_DIR/llm-d-skills"
 VENV="$PROJECT_DIR/.venv"
 
 # ── Flags ─────────────────────────────────────────────────────────────────
@@ -141,9 +142,9 @@ if [[ "$PREREQS" == 1 && "$APP_ONLY" != 1 ]]; then
   bash "$PROJECT_DIR/scripts/install_prereqs.sh" --docker --kind --kubectl
 fi
 
-# ── Step 1: ensure the two upstream repos exist (clone if missing) ────────
+# ── Step 1: ensure the three upstream repos exist (clone if missing) ──────
 clone_if_missing() {
-  local name="$1" dest="$2"
+  local name="$1" dest="$2" owner="${3:-llm-d}"
   if [[ -d "$dest" && -n "$(ls -A "$dest" 2>/dev/null)" ]]; then
     log "$name present at $dest — skipping clone."
   elif [[ "$NO_CLONE" == 1 ]]; then
@@ -151,16 +152,18 @@ clone_if_missing() {
   else
     command -v git >/dev/null 2>&1 || die "git is required to clone $name — install git (e.g. 'apt install git') and re-run, or pre-clone the repos and pass --no-clone."
     log "Cloning $name → $dest"
-    git clone --depth 1 "https://github.com/llm-d/$name" "$dest"
+    git clone --depth 1 "https://github.com/$owner/$name" "$dest"
   fi
 }
 
 if [[ "$APP_ONLY" != 1 ]]; then
   step "Upstream repos (siblings under $REPOS_DIR)"
   ensure_base_tools   # git/curl/tar — clone + the client toolchain need these
-  # llm-d is needed for the client toolchain; llm-d-benchmark for the framework + CLI.
+  # llm-d is needed for the client toolchain; llm-d-benchmark for the framework + CLI;
+  # llm-d-skills (llm-d-incubation org) grounds the agent's procedures — required at runtime.
   [[ "$NO_CLIENT" == 1 ]] || clone_if_missing "llm-d" "$GUIDE_REPO"
   [[ "$NO_BENCH"  == 1 ]] || clone_if_missing "llm-d-benchmark" "$BENCH_REPO"
+  clone_if_missing "llm-d-skills" "$SKILLS_REPO" "llm-d-incubation"
 fi
 
 # ── Step 2: llm-d client toolchain (helm / helmfile / kustomize / yq / kubectl) ──

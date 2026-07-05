@@ -52,8 +52,8 @@ EOF
 
 **What is intentionally NOT exported** (device-specific or secret-by-policy — set up fresh on the
 new device): `~/.claude/.credentials.json` (Claude Code login — you re-login), `sessions/`,
-`daemon*`, caches, `history.jsonl`, `plugins/`, the `.venv`, and the two READ-ONLY upstream repos
-(`llm-d/`, `llm-d-benchmark/` — re-cloned from GitHub).
+`daemon*`, caches, `history.jsonl`, `plugins/`, the `.venv`, and the three READ-ONLY upstream repos
+(`llm-d/`, `llm-d-benchmark/`, `llm-d-skills/` — re-cloned from GitHub).
 
 ---
 
@@ -100,12 +100,13 @@ git config core.fileMode false     # cross-device copies strip exec bits; stops 
    ```bash
    cp -a ~/claude-import/project/.env ~/llm-d-benchmarking-agent/llm-d-benchmarking-agent-project/.env
    ```
-2. **The two READ-ONLY upstream repos** (untracked nested repos; required for catalog/report tests):
+2. **The three READ-ONLY upstream repos** (untracked nested repos; required for catalog/report tests):
    ```bash
-   git clone https://github.com/llm-d/llm-d.git           ~/llm-d-benchmarking-agent/llm-d
-   git clone https://github.com/llm-d/llm-d-benchmark.git ~/llm-d-benchmarking-agent/llm-d-benchmark
+   git clone https://github.com/llm-d/llm-d.git                    ~/llm-d-benchmarking-agent/llm-d
+   git clone https://github.com/llm-d/llm-d-benchmark.git          ~/llm-d-benchmarking-agent/llm-d-benchmark
+   git clone https://github.com/llm-d-incubation/llm-d-skills.git  ~/llm-d-benchmarking-agent/llm-d-skills
    ```
-3. **Python env** (uv builds `.venv` from `uv.lock`; never hand-build it):
+3. **Python env** (`uv run` builds/syncs `.venv` from `pyproject.toml` on first use; never hand-build it):
    ```bash
    cd ~/llm-d-benchmarking-agent/llm-d-benchmarking-agent-project
    uv run --extra dev python -m pytest        # ~14s green = environment OK
