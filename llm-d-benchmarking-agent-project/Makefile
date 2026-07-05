@@ -76,10 +76,10 @@ eval-shadow:
 	$(PY) -m pytest tests/eval/test_scorecard_shadow.py tests/eval/test_oracle_unit.py -v
 
 eval-judge:
-	LLM_EVAL_LIVE=1 $(PY) -m pytest tests/eval/test_judge_live.py -v --timeout=600
+	LLM_EVAL_LIVE=1 $(PY) -m pytest tests/eval/live/test_judge_live.py -v --timeout=600
 
 bughunt:
-	LLM_EVAL_LIVE=1 BUGHUNT=1 $(PY) -m pytest tests/eval/test_bughunt_live.py -v --timeout=600
+	LLM_EVAL_LIVE=1 BUGHUNT=1 $(PY) -m pytest tests/eval/live/test_bughunt_live.py -v --timeout=600
 
 flows:
 	$(PY) scripts/validate_flows.py --list

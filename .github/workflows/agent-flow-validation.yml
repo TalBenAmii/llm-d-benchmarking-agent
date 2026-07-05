@@ -123,7 +123,7 @@ jobs:
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_EVAL_LIVE: "1"
-        run: python -m pytest tests/flows/test_flows_live.py -v
+        run: python -m pytest tests/eval/live/test_flows_live.py -v
 
   sim-integration:
     # Phase 26: the proposal's explicit "integration tests with llm-d-inference-sim".

@@ -30,6 +30,7 @@ storage, packaging) can use it without risking a circular import.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 
@@ -75,6 +76,30 @@ def num_or_zero(value: Any) -> float:
     oldest). ``bool`` is excluded — an ``int`` subclass, never a valid timestamp/index.
     """
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+
+
+def scrub_strings(obj: Any, replacements: list[tuple[str, str]]) -> Any:
+    """Rewrite every string leaf of a nested dict/list/str structure by an ORDERED list of
+    ``(find, replace)`` substitutions, returning a NEW structure (the input is never mutated).
+
+    Both the ``/readyz`` self-check body and the public-share snapshot must mask host-internal
+    substrings (home dir, workspace root, owning session id) in EVERY string leaf of a nested
+    result before it crosses an unauthenticated boundary — this is the single mechanism for that
+    walk (each layer previously re-implemented it). Substitutions apply in order to each leaf, so a
+    caller can mask a workspace prefix before the ``home`` prefix it sits under. A ``find`` that is
+    empty OR ``os.sep`` (``"/"``) is SKIPPED: a degenerate root (``HOME="/"``, an empty workspace)
+    would otherwise rewrite the separator in every path leaf into garbage.
+    """
+    if isinstance(obj, str):
+        for find, replace in replacements:
+            if find and find != os.sep:
+                obj = obj.replace(find, replace)
+        return obj
+    if isinstance(obj, dict):
+        return {k: scrub_strings(v, replacements) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [scrub_strings(v, replacements) for v in obj]
+    return obj
 
 
 # ── tolerant JSON-tail parsing (merged from app/tools/json_tail.py) ───────────

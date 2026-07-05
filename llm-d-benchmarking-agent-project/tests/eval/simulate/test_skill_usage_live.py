@@ -18,7 +18,7 @@ is nondeterministic, each scenario runs ``SKILL_EVAL_RUNS`` times (default 3) an
 majority. Run it with::
 
     LLM_EVAL_LIVE=1 REPOS_DIR=/home/tal/llm-d-benchmarking-agent \
-        .venv/bin/python -m pytest tests/flows/test_skill_usage_live.py -v
+        .venv/bin/python -m pytest tests/eval/simulate/test_skill_usage_live.py -v
 
 ``REPOS_DIR`` must point at a checkout whose sibling repos are POPULATED (a git worktree gets them
 EMPTY). ``run_flow`` builds a hermetic sandbox (``repos_dir=tmp_path/"repos"``) and copies the real
@@ -37,9 +37,8 @@ import pytest
 from app.config import get_settings
 from app.llm.provider import get_provider
 from tests._auth import has_auth
-
-from .flows import Flow
-from .harness import run_flow
+from tests.flows.flows import Flow
+from tests.flows.harness import run_flow
 
 _LIVE = os.getenv("LLM_EVAL_LIVE") == "1"
 RUNS = int(os.getenv("SKILL_EVAL_RUNS", "3"))

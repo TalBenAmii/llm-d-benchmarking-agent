@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agent.ws_schemas import ValidationError
 from app.config import Settings
+from app.dig import scrub_strings
 from app.llm.provider import AGENT_SDK_PROVIDERS, OPENAI_PROVIDERS
 from app.storage.provenance import BundleStore
 
@@ -87,26 +88,43 @@ def history_record_view(rec) -> dict[str, Any]:
 # directories a not-found probe searched. They drive nothing in the read-only viewer (the client
 # renders ``summary``/``charts`` only; charts are already session-relative), yet a public share is
 # UNAUTHENTICATED, so shipping them would disclose the host path layout AND the owning session id —
-# the very id the snapshot deliberately withholds (see read_share / shared_chat._PUBLIC_FIELDS).
+# the very id the snapshot deliberately withholds (see read_share / shared_chat._PUBLIC_FIELDS). The
+# recursive scrub below neutralizes their VALUES too (incl. nested copies); this drops the top-level
+# keys outright as defense in depth — they should not ship at all.
 _SHARE_REDACT_RESULT_KEYS = ("report_path", "searched")
 
 
-def redact_share_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Strip server-internal absolute paths from a PUBLIC share snapshot's tool_result rows.
+def redact_share_items(
+    items: list[dict[str, Any]], *, workspace_root: Path, session_id: str, home: str,
+) -> list[dict[str, Any]]:
+    """Strip server-internal absolute paths + the owning session id from a PUBLIC share snapshot.
 
-    The transcript replayed to the owner on resume legitimately carries the located report's
-    absolute path; a public share must not. Returns NEW item dicts (the live session is never
-    mutated) with the path-bearing keys removed from any ``tool_result`` result, leaving every
-    render-relevant field (summary, charts, metrics) intact."""
-    out: list[dict[str, Any]] = []
+    The transcript replayed to the owner on resume legitimately carries absolute host paths: the
+    located report's path — top-level AND nested under ``runs[]``/``reports[]`` in analyze/compare
+    results — the command trail's ``--workspace <sessions_root>/<session_id>/…`` args, and tool-call
+    inputs like ``experiment_dir``/``kubeconfig``/``results_dir``/``path``. A public, UNAUTHENTICATED
+    share must not (they disclose the host path layout, OS username, and the very session id the
+    snapshot withholds). Returns NEW item dicts (the live session is never mutated): a SINGLE
+    recursive pass masks the workspace root / owning session id / home dir to placeholders across
+    EVERY string leaf of the whole snapshot, so no path — top-level or nested, in a command or a
+    result — can leak. The ordered map masks the workspace prefix (which itself sits under ``home``)
+    before ``home``. As defense in depth the top-level ``report_path``/``searched`` keys are also
+    dropped from any ``tool_result`` result (they should not ship at all), leaving every
+    render-relevant field (summary, charts, metrics) and the command names intact."""
+    stripped: list[dict[str, Any]] = []
     for it in items:
-        result = it.get("result") if it.get("role") == "tool_result" else None
-        if isinstance(result, dict) and any(k in result for k in _SHARE_REDACT_RESULT_KEYS):
-            scrubbed = {k: v for k, v in result.items() if k not in _SHARE_REDACT_RESULT_KEYS}
-            out.append({**it, "result": scrubbed})
+        result = it.get("result")
+        if (it.get("role") == "tool_result" and isinstance(result, dict)
+                and any(k in result for k in _SHARE_REDACT_RESULT_KEYS)):
+            stripped.append({**it, "result": {k: v for k, v in result.items()
+                                              if k not in _SHARE_REDACT_RESULT_KEYS}})
         else:
-            out.append(it)
-    return out
+            stripped.append(it)
+    return scrub_strings(stripped, [
+        (str(workspace_root), "<workspace>"),
+        (session_id, "<session>"),
+        (str(home), "~"),
+    ])
 
 
 # ── static-asset serving + CORS wiring ──────────────────────────────────────────────────────

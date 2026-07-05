@@ -26,21 +26,17 @@ log()  { printf '\033[35m▸\033[0m %s\n' "$*"; }            # llm-d purple bull
 warn() { printf '\033[1;33m[setup-claude-plan] %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31m[setup-claude-plan] ERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
-# Prompts read /dev/tty so they work even when stdin is a pipe (curl | bash, install.sh).
-# Without a usable TTY there is nobody to ask — skip cleanly, never hang a scripted install.
-# The probe must actually OPEN /dev/tty: `[[ -r ]]`/`[[ -w ]]` only check permission bits and
-# stay true in a session with no controlling terminal (CI/setsid), where the open fails — and
-# every later prompt would then silently take its default instead of asking.
-TTY=/dev/tty; { : <"$TTY" >"$TTY"; } 2>/dev/null || TTY=""
-# A BACKGROUND job that still has a controlling terminal (`./scripts/install.sh &`, nohup from
-# an interactive shell) passes the open-probe but would be SIGTTIN-STOPPED at the first actual
-# read from /dev/tty — the install would sit in job state T until someone runs `fg`. Treat
-# "not the terminal's foreground process group" as no TTY and take the clean-skip path.
-if [[ -n "$TTY" ]] && command -v ps >/dev/null 2>&1; then
-  PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"; TPGID="$(ps -o tpgid= -p $$ 2>/dev/null | tr -d ' ')"
-  [[ -n "$PGID" && -n "$TPGID" && "$PGID" != "$TPGID" ]] && TTY=""
-fi
-if [[ -z "$TTY" ]]; then
+# shellcheck source-path=SCRIPTDIR/..
+# shellcheck source=scripts/_env.sh
+source "scripts/_env.sh"   # provides _tty_interactive + ensure_env + read_env + set_env_var + confirm/menu_select + ensure_claude_cli
+
+# Prompts read /dev/tty so they work even when stdin is a pipe (curl | bash, install.sh). Without a
+# usable terminal there is nobody to ask — skip cleanly, never hang a scripted install. _tty_interactive
+# (shared with the menu helpers, one definition) is the single source of truth: it requires /dev/tty to
+# be openable AND our process to be its FOREGROUND process group, so a background/non-foreground job
+# (`./scripts/install.sh &`, nohup, WSL/ssh non-interactive exec) — which would SIGTTIN-stop or block
+# forever on the first read — takes the clean-skip path instead of prompting.
+if _tty_interactive; then TTY=/dev/tty; else
   log "No interactive terminal — skipping Claude-plan setup. Run ./scripts/setup-claude-plan.sh later."
   exit 0
 fi
@@ -49,10 +45,6 @@ ask() {  # $1 prompt, $2 default → echoes the answer (or default if blank)
   printf '\033[36m?\033[0m %s ' "$1" >"$TTY"; IFS= read -r ans <"$TTY" || ans=""
   printf '%s' "${ans:-$2}"
 }
-
-# shellcheck source-path=SCRIPTDIR/..
-# shellcheck source=scripts/_env.sh
-source "scripts/_env.sh"   # provides ensure_env + read_env + set_env_var
 ensure_env
 
 # ── Consent first — context-aware default ──────────────────────────────────
@@ -66,13 +58,14 @@ case "$CUR_PROVIDER" in
   claude-agent-sdk|agent-sdk|claude-max) ;;   # already the plan route — re-running just re-verifies
   *) CUR_KEY="$(read_env ANTHROPIC_API_KEY)" ;;
 esac
+WIRE=1
 if [[ -n "$CUR_KEY" ]]; then
   log "Current provider in .env: $CUR_PROVIDER (API key set)."
-  YN="$(ask "Switch the assistant from $CUR_PROVIDER to your Claude subscription (no API key)? [y/N]:" N)"
+  confirm "Switch the assistant from $CUR_PROVIDER to your Claude subscription (no API key)?" N || WIRE=0
 else
-  YN="$(ask "Use your Claude subscription (Pro/Max plan) as the assistant's LLM — no API key? [Y/n]:" Y)"
+  confirm "Use your Claude subscription (Pro/Max plan) as the assistant's LLM — no API key?" Y || WIRE=0
 fi
-case "$YN" in [Yy]*) ;; *) log "Keeping the current provider — nothing changed."; exit 0 ;; esac
+[[ "$WIRE" == 1 ]] || { log "Keeping the current provider — nothing changed."; exit 0; }
 
 # ── The `claude` CLI (the plan's credential holder) ────────────────────────
 CLI_RC=0; ensure_claude_cli || CLI_RC=$?
@@ -118,21 +111,20 @@ case "$PLAN" in
   *)
     warn "No Claude subscription is visible on this login (subscriptionType: '${PLAN:-none}')."
     warn "Without a Pro/Max-style plan the first chat may fail — or fall back to metered API billing."
-    YN="$(ask 'Wire it anyway? [y/N]:' N)"
-    case "$YN" in [Yy]*) ;; *) log "Stopped — nothing changed."; exit 0 ;; esac ;;
+    confirm 'Wire it anyway?' N || { log "Stopped — nothing changed."; exit 0; } ;;
 esac
 
 # ── Model choice (AGENT_SDK_MODEL; effort is set to high behind the scenes) ─
 echo
-log "Which Claude model should the assistant use?"
-echo "  1) claude-sonnet-4-6  — recommended · balanced speed & quality   (default)"
-echo "  2) claude-haiku-4-5   — fastest · lightest on plan limits · weaker agent"
-echo "  3) claude-opus-4-8    — strongest · slowest · heaviest on plan limits"
-echo "  4) another model id   — type your own"
-case "$(ask 'Choice [1/2/3/4]:' 1 | tr -d '[:space:]')" in
-  2) MODEL=claude-haiku-4-5 ;;
-  3) MODEL=claude-opus-4-8 ;;
-  4) MODEL="$(ask 'Model id:' claude-sonnet-4-6)" ;;
+MODEL_IDX="$(menu_select 'Which Claude model should the assistant use?' 0 \
+  'claude-sonnet-4-6  — recommended · balanced speed & quality' \
+  'claude-haiku-4-5   — fastest · lightest on plan limits · weaker agent' \
+  'claude-opus-4-8    — strongest · slowest · heaviest on plan limits' \
+  'another model id   — type your own')"
+case "$MODEL_IDX" in
+  1) MODEL=claude-haiku-4-5 ;;
+  2) MODEL=claude-opus-4-8 ;;
+  3) MODEL="$(ask 'Model id:' claude-sonnet-4-6)" ;;
   *) MODEL=claude-sonnet-4-6 ;;
 esac
 
@@ -156,7 +148,6 @@ PING_OUT="$(cd "$PING_DIR" && ${TIMEOUT[@]+"${TIMEOUT[@]}"} env ANTHROPIC_API_KE
 rm -rf "$PING_DIR"
 if [[ "$PING_RC" -eq 0 ]]; then
   log "✓ Claude plan wired — the assistant runs on $MODEL via your subscription."
-  log "Start it with:  ./scripts/run.sh   (then open http://127.0.0.1:8000)"
 else
   warn "The test call FAILED — output:"
   printf '%s\n' "$PING_OUT" >&2

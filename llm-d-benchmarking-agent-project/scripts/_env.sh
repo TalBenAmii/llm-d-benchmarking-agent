@@ -3,8 +3,9 @@
 # setup-claude-plan.sh (Claude-plan wiring) — and by the external llm-d-bench-mcp installer, which
 # sources this same file cross-repo — kept here so all source
 # one copy instead of duplicating it. The sourcing script must define `log` first (and `die`
-# too, if it calls clone_if_missing; `warn`+`ask` if it calls ensure_claude_cli). read_env/set_env_var
-# operate on ./.env — callers cd to the project root before sourcing.
+# too, if it calls clone_if_missing; `warn`+`log` if it calls ensure_claude_cli; `warn`+`log` if it
+# calls register_mcp_server). The menu helpers (menu_select/confirm) need no caller-defined helpers —
+# they render on /dev/tty. read_env/set_env_var operate on ./.env — callers cd to root before sourcing.
 #
 # The venv / editable-install steps are deliberately NOT shared: install.sh resolves the backend for a
 # bare box and honours --uv/--dev, while run.sh stays a minimal `command -v uv` launcher, so a single
@@ -61,19 +62,135 @@ add_local_bin_to_path() {
 
 # Ensure the `claude` CLI (the credential holder for the claude-agent-sdk provider) is installed and on
 # PATH: first surface an already-installed copy (add_local_bin_to_path), else offer the official no-sudo
-# installer (consent via the caller's `ask`) and re-add the dir. Uses the caller's log/warn/ask. Returns
+# installer (consent via the arrow-key `confirm`) and re-add the dir. Uses the caller's log/warn. Returns
 # 0 (available) · 2 (declined) · 1 (install failed) — the caller decides if non-zero is fatal
 # (setup-claude-plan dies; the MCP installer warns and continues).
 ensure_claude_cli() {
   add_local_bin_to_path
   command -v claude >/dev/null 2>&1 && return 0
   warn "The 'claude' CLI is not installed — your Claude login authenticates through it."
-  case "$(ask 'Install it now (official installer, no sudo → ~/.local/bin/claude)? [Y/n]:' Y)" in
-    [Nn]*) return 2 ;;
-  esac
+  confirm 'Install it now (official installer, no sudo → ~/.local/bin/claude)?' Y || return 2
   log "Installing the claude CLI…"
   curl -fsSL https://claude.ai/install.sh | bash || return 1
   add_local_bin_to_path
   command -v claude >/dev/null 2>&1 || return 1
   log "Installed the claude CLI → $(command -v claude)"
+}
+
+# _tty_interactive — succeed ONLY when a human is really driving the controlling terminal:
+# /dev/tty must be openable for read AND our process must be its FOREGROUND process group.
+# The bare open-probe is not enough — in a non-interactive `bash <(curl …)` / `ssh host cmd`
+# (no -t) / nohup / some-CI run the process can still own a controlling terminal it is NOT the
+# foreground of, where /dev/tty opens but a `read` BLOCKS FOREVER (or SIGTTIN-stops the job).
+# Compare the terminal's foreground pgid (tpgid) to our own pgid; $$ stays the parent shell PID
+# even inside a `$(menu_select …)` command substitution, so this holds called directly or nested.
+# ps carries the fields on Linux/macOS/WSL; fall back to /proc/<pid>/stat (pgrp=field5, tpgid=field8)
+# when it doesn't. If neither yields a pgid (no ps AND no /proc) we can't tell — assume interactive,
+# matching the historical "no ps → proceed" behaviour rather than skipping a real user's prompt.
+_tty_interactive() {
+  { : </dev/tty; } 2>/dev/null || return 1
+  local pgid tpgid statline
+  pgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' || true)"
+  tpgid="$(ps -o tpgid= -p $$ 2>/dev/null | tr -d ' ' || true)"
+  if [[ -z "$pgid" || -z "$tpgid" ]] && read -r statline </proc/$$/stat 2>/dev/null; then
+    statline="${statline##*) }"          # drop pid + parenthesised comm (comm may contain spaces)
+    set -- $statline                      # remaining: state ppid pgrp session tty_nr tpgid …
+    pgid="${3:-}"; tpgid="${6:-}"
+  fi
+  [[ -z "$pgid" || -z "$tpgid" ]] && return 0
+  [[ "$tpgid" != "-1" && "$tpgid" == "$pgid" ]]
+}
+
+# menu_select PROMPT DEFAULT_INDEX OPTION [OPTION...]
+#   Arrow-key menu rendered on /dev/tty. Up/Down arrows (and k/j) move; Enter selects.
+#   Prints the SELECTED 0-BASED INDEX to stdout (nothing else on stdout).
+#   Not a foreground terminal (_tty_interactive false) -> prints the options + a
+#   "(non-interactive: using default)" notice to stderr and returns DEFAULT_INDEX. Never hangs.
+menu_select() {
+  local prompt="$1" cur="$2"; shift 2
+  local opts=("$@") n=$# i key esc
+  local tty=""; _tty_interactive && tty=/dev/tty
+  if [[ -z "$tty" ]]; then
+    printf '%s\n' "$prompt" >&2
+    for i in "${!opts[@]}"; do printf '  %s) %s\n' "$i" "${opts[$i]}" >&2; done
+    printf '(non-interactive: using default)\n' >&2
+    printf '%s\n' "$cur"
+    return 0
+  fi
+  (( cur < 0 )) && cur=0
+  (( cur >= n )) && cur=$(( n - 1 ))
+  local saved; saved="$(stty -g <"$tty" 2>/dev/null || true)"
+  # Restore the cursor + terminal on Ctrl-C (this runs in the function's scope; $tty/$saved are live).
+  trap 'printf "\033[?25h" >"$tty" 2>/dev/null; [[ -n "$saved" ]] && stty "$saved" <"$tty" 2>/dev/null; trap - INT; return 130' INT
+  stty -echo -icanon min 1 time 0 <"$tty" 2>/dev/null || true
+  printf '\033[?25l%s\n' "$prompt" >"$tty"          # hide cursor + print the prompt line
+  local first=1
+  while true; do
+    (( first )) || printf '\033[%dA' "$n" >"$tty"   # after the first pass, redraw over the N option lines
+    first=0
+    for i in "${!opts[@]}"; do
+      if (( i == cur )); then printf '\033[36m❯ %s\033[0m\033[K\n' "${opts[$i]}" >"$tty"
+      else printf '  %s\033[K\n' "${opts[$i]}" >"$tty"; fi
+    done
+    IFS= read -rsn1 key <"$tty" || key=""
+    case "$key" in
+      $'\x1b') IFS= read -rsn2 -t 0.05 esc <"$tty" 2>/dev/null || esc=""   # arrow: ESC then '[' then A/B
+               case "$esc" in
+                 '[A') cur=$(( (cur - 1 + n) % n )) ;;
+                 '[B') cur=$(( (cur + 1) % n )) ;;
+               esac ;;
+      k|K) cur=$(( (cur - 1 + n) % n )) ;;
+      j|J) cur=$(( (cur + 1) % n )) ;;
+      ''|$'\n'|$'\r') break ;;   # Enter selects the current row
+    esac
+  done
+  printf '\033[%dA\r\033[J' "$(( n + 1 ))" >"$tty"  # erase the prompt + menu, then leave a one-line summary
+  printf '\033[36m%s ❯ %s\033[0m\n' "$prompt" "${opts[$cur]}" >"$tty"
+  printf '\033[?25h' >"$tty"
+  [[ -n "$saved" ]] && stty "$saved" <"$tty" 2>/dev/null || true   # || true: a set -e stty failure must not skip the index print below
+  trap - INT
+  printf '%s\n' "$cur"
+}
+
+# confirm PROMPT [DEFAULT]   DEFAULT is Y or N (default N)
+#   Arrow-key Yes/No built on menu_select. Returns 0 if Yes chosen, 1 if No.
+#   No TTY -> returns per DEFAULT.
+confirm() {
+  local prompt="$1" default="${2:-N}" di=1 sel
+  case "$default" in [Yy]*) di=0 ;; esac
+  sel="$(menu_select "$prompt" "$di" Yes No)"
+  [[ "$sel" == 0 ]]
+}
+
+# register_mcp_server LAUNCH_CMD [SCOPE] [INTERACTIVE]
+#   Registers the llm-d-bench MCP server with Claude Code: `claude mcp add llm-d-bench <LAUNCH_CMD>` at SCOPE.
+#   SCOPE default = user. If INTERACTIVE=1 and a human is at the terminal (_tty_interactive),
+#   first prompt for scope (local/user/project) via menu_select. If the `claude` CLI is missing, print a short
+#   note (warn) explaining how to register manually and return non-zero — never fail hard.
+register_mcp_server() {
+  local launch_cmd="$1" scope="${2:-user}" interactive="${3:-0}"
+  local server="llm-d-bench"
+  if [[ "$interactive" == 1 ]] && _tty_interactive; then
+    local scopes=(local user project) sel
+    sel="$(menu_select 'Registration scope?' 1 "${scopes[@]}")"
+    scope="${scopes[$sel]}"
+  fi
+  if ! command -v claude >/dev/null 2>&1; then
+    warn "The 'claude' CLI is not on PATH — register the server yourself once it's installed:"
+    warn "  claude mcp add $server -s $scope -- $launch_cmd"
+    return 1
+  fi
+  # Idempotent: re-running the installer must not report a scary "already exists" error.
+  if claude mcp list 2>/dev/null | grep -q "$server"; then
+    log "'$server' already registered with Claude Code — skipping."
+    return 0
+  fi
+  # $launch_cmd is a command line — leave it UNQUOTED so it word-splits into argv after `--`.
+  if claude mcp add "$server" -s "$scope" -- $launch_cmd; then
+    log "Registered '$server' with Claude Code (scope: $scope). Verify with 'claude mcp list' or '/mcp'."
+    return 0
+  fi
+  warn "'claude mcp add' failed — register it manually:"
+  warn "  claude mcp add $server -s $scope -- $launch_cmd"
+  return 1
 }
