@@ -245,7 +245,8 @@ Therefore:
 # deploy_path_playbook.md.
 #   * key_docs.yaml is a POINTER list whose content is already delivered live by the
 #     fetch_key_docs tool (it reads key_docs.yaml off disk) — inlining it duplicated what that
-#     tool returns. HARD_RULES still mandates fetch_key_docs of the operation's skill (deploy_skill,
+#     tool returns. HARD_RULES still mandates fetch_key_docs of the operation's skill (deploy_skill for
+#     GPU/guide deploys, or quickstart on the kind/CPU-sim path,
 #     …) before each operation, so the grounding behaviour is unchanged; the canonical
 #     workload-profile paths it carries come back with that fetch.
 #   * deploy_path_playbook.md is the deploy-path CHOICE guide — a post-interview concern, and the

@@ -28,3 +28,10 @@ reproducibility). It's still independently versioned, so `ensure_repos`' `ref` i
   **defer to the skill for the procedure and carry only the delta** — how each runs through OUR tooling
   (the SessionPlan gate + `llmdbenchmark` CLI + BR-v0.2 parsing + our tool names stay authoritative);
   the skill-step recaps were removed (dedup), so read the skill rather than expecting it restated here.
+- **Enforced, not just encouraged:** a mutating `llmdbenchmark` op is refused until its grounding doc
+  was fetched this session — the **skill-grounding gate** (`app/tools/skill_gate.py`), wired at the
+  command chokepoint + the plan gate. Spec-aware: the kind/CPU-sim path grounds in the `quickstart`
+  runbook (`knowledge/quickstart_playbook.md`, now served on demand via a new `kind: knowledge`
+  `key_docs.yaml` entry — a `knowledge/` file delivered through `fetch_key_docs` exactly like these
+  guides), every other op in its `*_skill`; WVA autoscaling is description-driven (no command
+  chokepoint, so no gate). Mechanism detail + how-to-verify → `docs/FEATURES.md` §8.
