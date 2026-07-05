@@ -8,7 +8,7 @@ evidence-backed feature inventory.
 
 | # | Spec | One-liner | Status |
 |---|------|-----------|--------|
-| 5 | [05-mcp-server.md](05-mcp-server.md) | Expose the agent's 38 tools to other people's agents over MCP, with the judgment shipped as resources/prompts; approval re-homed to the connecting client's own tool prompt. | **BUILT 2026-06-30** → `app/mcp/` (`python -m app.mcp`); spec → `app/mcp/DESIGN.md` |
+| 5 | [05-mcp-server.md](05-mcp-server.md) | Expose the agent's tools to other people's agents over MCP, with the judgment shipped as resources/prompts; approval re-homed to the connecting client's own tool prompt. | **BUILT 2026-06-30** as `app/mcp/`, then **SPLIT to its own repo 2026-07-05** → [llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp) (design of record now lives there) |
 | 4 | [04-reproducibility.md](04-reproducibility.md) | One-click provenance bundle + "Reproduce this run" (both repo SHAs, resolved config, self-contained HTML). | shipped: `export_run_bundle` + `reproduce_run` tools |
 | 2 | [02-chaos-resilience.md](02-chaos-resilience.md) | Opt-in fault-injection (KubeClient decorator) + orchestrator-restart durability proof + resilience report. | shipped, then **REMOVED 2026-07-02** (hermetic-only drill retired; spec kept as historical record) |
 | 1 | [01-autotuner.md](01-autotuner.md) | Closed-loop goal-seeking: agent adaptively searches the config space to hit an SLO at best goodput. | shipped, then **REMOVED 2026-07-02** (goal-seeking now rides DoE sweeps + Pareto analysis; strategy in `knowledge/sweep_playbook.md`) |

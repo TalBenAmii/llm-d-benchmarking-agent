@@ -1,5 +1,9 @@
 # SPEC: MCP server — expose the agent's tools to other people's agents
 
+> _Historical proposal. Built 2026-06-30 as `app/mcp/`, then **split to its own repo on 2026-07-05**
+> → [github.com/TalBenAmii/llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp), where the
+> design of record now lives. Kept here as the original decision record._
+
 > **Status (2026-06-30): decisions locked, not yet built.** The six forks this doc raised are now
 > decided (§9). What remains is to turn them into a file-level implementation spec in the style of the
 > four shipped siblings, then code. Headline: build the **full operator** (all 38 tools, including the
@@ -212,9 +216,11 @@ the user can still override.
 | 5 | **State model** | **MCP connection ↔ `Session` mapping** — operator flows (propose plan → run → analyze) share one workspace + run registry across calls, which the stateless models cannot give. | derived from scope |
 | 6 | **Distribution / trust** | **Local single-user, hardening deferred** (§8) — server acts with the user's own kubeconfig, trusted like any local agent; revisit before any non-stdio deployment. | derived + user "defer security" |
 
-**Built (2026-06-30):** the feature now lives in **`app/mcp/`** (`python -m app.mcp`), with the
-file-level design of record in **`app/mcp/DESIGN.md`**. It reuses `tool_definitions()` + `dispatch()`
-for the 37 exposed tools, re-homes approval onto the connecting client (command) with `elicit_form` +
-sentinel for the SessionPlan, ships `knowledge/` as `doc://knowledge/*` resources + 5 workflow prompts +
-the server `instructions`, and is covered by `tests/test_mcp_server.py` (17 hermetic tests). The merge
-gate (ruff + pytest) is the green check.
+**Built (2026-06-30), then split out (2026-07-05):** first shipped as `app/mcp/`, the server now
+lives in its own repo — **[llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)** — which
+consumes this project as its engine (the design of record moved there too). It reuses
+`tool_definitions()` + `dispatch()` for the exposed tools, re-homes approval onto the connecting
+client (command) with `elicit_form` + sentinel for the SessionPlan, ships `knowledge/` as
+`doc://knowledge/*` resources + 5 workflow prompts + the server `instructions`, and is covered by that
+repo's hermetic tests. This project keeps only an import-surface guard
+(`tests/test_mcp_import_surface.py`) so a refactor here can't silently break the external adapter.

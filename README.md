@@ -12,8 +12,9 @@ approval.
 Beyond single runs it is a full benchmarking workbench: a Kubernetes-native run orchestrator, a
 results analyzer (goodput / SLO / Pareto), multi-harness comparison, capacity pre-flight,
 cross-session history & trends, shareable HTML reports, Prometheus/Grafana observability, a
-one-command Helm deploy, and an MCP server that plugs the whole toolset into Claude Code. The
-evidence-backed feature inventory is
+one-command Helm deploy, and a companion **MCP server**
+([`llm-d-bench-mcp`](https://github.com/TalBenAmii/llm-d-bench-mcp)) that plugs the whole toolset
+into Claude Code. The evidence-backed feature inventory is
 [`FEATURES.md`](llm-d-benchmarking-agent-project/docs/FEATURES.md).
 
 All code lives in [`llm-d-benchmarking-agent-project/`](llm-d-benchmarking-agent-project/); the
@@ -53,6 +54,10 @@ The `llm-d-benchmark` expertise lives in the agent's editable brain
 ## Quick start
 
 ```bash
+# One-liner — clones into ~/llm-d-benchmarking-agent, then installs everything:
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install.sh)
+
+# …or clone first:
 git clone https://github.com/TalBenAmii/llm-d-benchmarking-agent.git
 cd llm-d-benchmarking-agent/llm-d-benchmarking-agent-project
 
@@ -79,17 +84,20 @@ To try it without a cluster, set `SIMULATE=1` (see [Simulate Mode](#simulate-mod
 
 ## Use it from Claude Code (MCP)
 
-Prefer Claude Code (the CLI) over the web UI? The project ships a standalone **MCP server**
-(`llm-d-bench`) exposing **35 tools**, **5 workflow prompts**, and the agent's full knowledge
-base. One command installs it and registers it with Claude Code:
+Prefer Claude Code (the CLI) over the web UI? A companion repo,
+**[`llm-d-bench-mcp`](https://github.com/TalBenAmii/llm-d-bench-mcp)**, re-exposes this agent's
+tools, workflow prompts, and full knowledge base as a standalone **MCP server** (`llm-d-bench`).
+One command installs it — cloning this repo as its engine, building a venv, and registering the
+server with Claude Code:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install-mcp.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-bench-mcp/main/scripts/install.sh)
 ```
 
-No API key needed — it authenticates through your `claude` CLI login. It runs over stdio on
-your machine; mutations are gated by Claude Code's own approval prompt. Full tool list, manual
-config, and the security model: [`docs/MCP.md`](llm-d-benchmarking-agent-project/docs/MCP.md).
+No API key needed — it authenticates through your `claude` CLI login. It runs over stdio on your
+machine; mutations are gated by Claude Code's own approval prompt. Full tool list, manual config,
+and security model live in that repo (quick pointer:
+[`docs/MCP.md`](llm-d-benchmarking-agent-project/docs/MCP.md)).
 
 ---
 
@@ -317,7 +325,7 @@ All paths under [`llm-d-benchmarking-agent-project/`](llm-d-benchmarking-agent-p
 | `security/allowlist.yaml` | The deny-by-default command policy (data) |
 | `knowledge/` | The agent's editable brain — playbooks & heuristics (no code) |
 | `ui/` | Static chat UI (HTML/JS/CSS) |
-| `scripts/` | Entry points (`install.sh`, `run.sh`, `install-mcp.sh`) + helpers |
+| `scripts/` | Entry points (`install.sh`, `run.sh`, `setup-claude-plan.sh`) + helpers |
 | `deploy/` | Dockerfile assets, Helm chart, observability |
 | `tests/` | pytest (unit + integration + flow validation) |
 
@@ -326,7 +334,7 @@ All paths under [`llm-d-benchmarking-agent-project/`](llm-d-benchmarking-agent-p
 | Doc | For |
 |---|---|
 | [docs/USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/USER_GUIDE.md) | Using the agent end-to-end |
-| [docs/MCP.md](llm-d-benchmarking-agent-project/docs/MCP.md) | The MCP server: tools, install, manual config, security |
+| [docs/MCP.md](llm-d-benchmarking-agent-project/docs/MCP.md) | Pointer to the standalone MCP server repo ([llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)) |
 | [docs/GPU_CLUSTER_RUNBOOK.md](llm-d-benchmarking-agent-project/docs/GPU_CLUSTER_RUNBOOK.md) | From CPU-sim to a real single-GPU cluster |
 | [docs/ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/ARCHITECTURE.md) | Layers, components, determinism gates, trust boundaries |
 | [docs/API.md](llm-d-benchmarking-agent-project/docs/API.md) | The HTTP/WebSocket API + tool surface + `SessionPlan` |
@@ -339,12 +347,13 @@ Full index: [`docs/README.md`](llm-d-benchmarking-agent-project/docs/README.md).
 ### Repository layout
 
 This repo is a monorepo: the project sits alongside **read-only** upstream repos it reads at
-runtime and never modifies:
+runtime, plus one **owned** sibling — the split-out MCP server:
 
 ```
 llm-d-benchmarking-agent/
 ├── llm-d/                            # deployment guides (read-only)
 ├── llm-d-benchmark/                  # the llmdbenchmark CLI (read-only)
 ├── llm-d-skills/                     # upstream skills library (read-only)
-└── llm-d-benchmarking-agent-project/ # this project — all code and docs
+├── llm-d-bench-mcp/                  # the standalone MCP server — owned sibling (its own git repo)
+└── llm-d-benchmarking-agent-project/ # this project — the app's code and docs
 ```

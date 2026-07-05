@@ -16,6 +16,8 @@
 # When it finishes:   ./scripts/run.sh   →   http://127.0.0.1:8000
 #
 # Usage:
+#   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install.sh)
+#                                        # curl-bootstrap: clone into INSTALL_DIR, then run on-disk
 #   ./scripts/install.sh                 # full bootstrap (repos + client deps + bench + app)
 #   ./scripts/install.sh --dev           # + dev extras (chart-testing; this project's .[dev])
 #   ./scripts/install.sh --prereqs       # + Docker & kind (host cluster prereqs; needs passwordless sudo)
@@ -28,7 +30,8 @@
 #   ./scripts/install.sh -h | --help
 #
 # The three repos are expected as siblings of this project. Override their location with
-# REPOS_DIR=/path (matches the agent's own REPOS_DIR setting).
+# REPOS_DIR=/path (matches the agent's own REPOS_DIR setting). In curl-bootstrap mode the repo is
+# cloned into INSTALL_DIR (default: ~/llm-d-benchmarking-agent).
 #
 # Notes:
 #   • Step 2 installs SYSTEM packages and uses sudo internally; step 4's Docker/kind install
@@ -36,7 +39,24 @@
 #   • For a real GPU cluster (beyond the CPU/kind quickstart) see docs/GPU_CLUSTER_RUNBOOK.md.
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # this script lives in scripts/
+# ── Curl-bootstrap (symmetry with the llm-d-bench-mcp installer) ──────────────
+# This script also runs via `bash <(curl … install.sh)`. Under the curl pipe BASH_SOURCE isn't a
+# real path, so use it to locate the project only when that yields a real checkout; otherwise clone
+# the repo into INSTALL_DIR and re-exec the on-disk copy so every path below resolves normally.
+INSTALL_DIR="${INSTALL_DIR:-$HOME/llm-d-benchmarking-agent}"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || true)"   # this script lives in scripts/
+if [[ -z "$PROJECT_DIR" || ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
+  [[ "${_AGENT_BOOTSTRAPPED:-0}" == 1 ]] && { echo "install.sh: project not found after cloning (bootstrap loop)." >&2; exit 1; }
+  command -v git >/dev/null 2>&1 || { echo "install.sh: git is required to fetch the repo — install git and re-run." >&2; exit 1; }
+  if [[ ! -d "$INSTALL_DIR/.git" ]]; then
+    printf '\033[1;35m━━ Fetching llm-d-benchmarking-agent → %s\033[0m\n' "$INSTALL_DIR"
+    git clone "https://github.com/TalBenAmii/llm-d-benchmarking-agent" "$INSTALL_DIR"
+  fi
+  PROJECT_DIR="$INSTALL_DIR/llm-d-benchmarking-agent-project"
+  [[ -f "$PROJECT_DIR/scripts/install.sh" ]] || { echo "install.sh: $PROJECT_DIR/scripts/install.sh missing after clone." >&2; exit 1; }
+  export _AGENT_BOOTSTRAPPED=1
+  exec bash "$PROJECT_DIR/scripts/install.sh" "$@"   # re-run on-disk so BASH_SOURCE paths resolve
+fi
 REPOS_DIR="${REPOS_DIR:-$(dirname "$PROJECT_DIR")}"   # repos are siblings of the project
 GUIDE_REPO="$REPOS_DIR/llm-d"
 BENCH_REPO="$REPOS_DIR/llm-d-benchmark"
@@ -55,7 +75,7 @@ while [[ $# -gt 0 ]]; do
     --no-llm-setup) NO_LLM_SETUP=1 ;;
     --uv)           USE_UV=1 ;;
     --no-uv)        USE_UV=0 ;;
-    -h|--help)      sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)      sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "install.sh: unknown option '$1' (try --help)" >&2; exit 2 ;;
   esac
   shift
