@@ -28,11 +28,10 @@ import pytest
 from app.config import get_settings
 from app.llm.provider import get_provider
 from tests._auth import has_auth
-from tests.flows.flows import ALL_FLOWS
-from tests.flows.harness import run_flow
-
 from tests.eval.judge import judge_session, load_rubric
 from tests.eval.scorecard import build_scorecard, write_scorecard
+from tests.flows.flows import ALL_FLOWS
+from tests.flows.harness import run_flow
 
 _LIVE = os.getenv("LLM_EVAL_LIVE") == "1"
 _SIMULATE = os.getenv("LLM_EVAL_SIMULATE") == "1"

@@ -25,7 +25,6 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.llm.provider import get_provider
 from tests._auth import has_auth
-
 from tests.eval.bug_report import build_bug_report, severity_ge, write_bug_report
 from tests.eval.explorer import max_selector_calls, run_bughunt
 

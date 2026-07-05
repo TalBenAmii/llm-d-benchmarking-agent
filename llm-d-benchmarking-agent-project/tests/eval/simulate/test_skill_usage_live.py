@@ -35,7 +35,6 @@ import pytest
 from app.config import get_settings
 from app.llm.provider import get_provider
 from tests._auth import has_auth
-
 from tests.flows.flows import Flow
 from tests.flows.harness import run_flow
 
