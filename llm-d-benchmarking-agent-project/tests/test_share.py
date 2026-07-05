@@ -12,7 +12,10 @@ Two layers, both hermetic (no cluster, no network):
 """
 from __future__ import annotations
 
+import base64
 import json
+import shutil
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +25,15 @@ from app.config import get_settings
 from app.storage.share import ShareStore, _is_valid_token
 
 TOKEN = "super-secret-token"
+
+# Distinctive bytes for a fake chart PNG (only the .png suffix matters to resolve_artifact); tests
+# assert these exact bytes come back base64-inlined in the share snapshot.
+_FAKE_PNG = b"\x89PNG\r\n\x1a\nFAKE-CHART-BYTES"
+
+
+def _png_data_uri(png_bytes=_FAKE_PNG):
+    """The exact ``data:`` URI the share mint inlines a chart PNG to."""
+    return "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +243,11 @@ def _seed_chat_with_report_card(client, *, session_id_marker):
          "tool_calls": [{"id": "tc1", "name": "locate_and_parse_report", "input": {}}]},
     ]
     report_path = f"/home/operator/ws/sessions/{session_id_marker}/runs/benchmark_report_v0.2.json"
+    # A real chart PNG under the per-session dir, referenced session-relative exactly as
+    # locate_and_parse_report emits it ({title, session_id, path}) — the share mint inlines it.
+    chart = s.ctx.workspace / "runs" / "latency.png"
+    chart.parent.mkdir(parents=True, exist_ok=True)
+    chart.write_bytes(_FAKE_PNG)
     s.card_results = [{
         "tool_call_id": "tc1", "name": "locate_and_parse_report",
         "result": {
@@ -238,7 +255,7 @@ def _seed_chat_with_report_card(client, *, session_id_marker):
             "report_path": report_path,                                  # absolute internal path
             "searched": [f"/home/operator/ws/sessions/{session_id_marker}"],
             "summary": {"model": "tiny", "requests_total": 120},         # render-relevant — keep
-            "charts": [{"path": "runs/latency.png", "title": "latency"}],
+            "charts": [{"title": "latency", "session_id": s.id, "path": "runs/latency.png"}],
         },
     }]
     s.title = "benchmark results"
@@ -268,11 +285,159 @@ def test_share_snapshot_redacts_internal_report_paths(client_with_share):
     # The render-relevant card data survives the scrub (the report still renders).
     tr = next(it for it in body["items"] if it.get("role") == "tool_result")
     assert tr["result"]["summary"]["requests_total"] == 120
-    assert tr["result"]["charts"]                      # session-relative charts kept
+    # The chart survives too — now inlined as a self-contained data: URI, with its session-relative
+    # {session_id, path} dropped so the real session id never leaks (see the inlining tests below).
+    chart = tr["result"]["charts"][0]
+    assert chart["src"].startswith("data:image/") and "session_id" not in chart
 
     # The offline single-file export inlines the SAME snapshot — it must be scrubbed too.
     page = client.get(f"/api/share/{token}/page.html").text
     assert "report_path" not in page and marker not in page
+
+
+def _seed_chat_with_chart_png(client, *, png_bytes=_FAKE_PNG):
+    """A chat whose report card references a REAL chart PNG under the per-session dir, shaped
+    exactly like locate_and_parse_report ({title, session_id, path}) so the share mint can read +
+    inline it. Returns the persisted session."""
+    s = client.app.state.sessions.create()
+    s.messages = [
+        {"role": "user", "content": "show me the benchmark results"},
+        {"role": "assistant", "content": "Here they are.",
+         "tool_calls": [{"id": "tc1", "name": "locate_and_parse_report", "input": {}}]},
+    ]
+    chart = s.ctx.workspace / "analysis" / "latency.png"
+    chart.parent.mkdir(parents=True, exist_ok=True)
+    chart.write_bytes(png_bytes)
+    s.card_results = [{
+        "tool_call_id": "tc1", "name": "locate_and_parse_report",
+        "result": {
+            "found": True,
+            "summary": {"model": "tiny", "requests_total": 120},
+            "charts": [{"title": "latency", "session_id": s.id, "path": "analysis/latency.png"}],
+        },
+    }]
+    s.title = "benchmark results"
+    s.persist()
+    return s
+
+
+def test_share_report_chart_is_inlined_and_session_id_free(client_with_share):
+    """BUG #4: a public share embedded chart images as ``/api/sessions/<REAL-SESSION-ID>/artifact``
+    — a session-id leak AND a dangling reference. Option B makes the share self-contained: each
+    report chart is inlined as a ``data:`` URI (its bytes frozen into the snapshot), and the
+    session-relative ``{session_id, path}`` is dropped, so NO real session id or session-scoped
+    artifact URL appears anywhere in the public JSON."""
+    client, _ = client_with_share
+    s = _seed_chat_with_chart_png(client)
+
+    token = client.post(f"/api/sessions/{s.id}/share").json()["token"]
+    body = client.get(f"/api/share/{token}").json()
+    raw = json.dumps(body)
+    assert s.id not in raw, "the real session id must never appear in the public snapshot"
+    assert "/api/sessions/" not in raw, "no session-scoped artifact URL in a public share"
+
+    tr = next(it for it in body["items"] if it.get("role") == "tool_result")
+    charts = tr["result"]["charts"]
+    assert len(charts) == 1
+    c = charts[0]
+    assert "session_id" not in c and "path" not in c   # session-relative reference dropped
+    assert c["title"] == "latency"                     # render-relevant field kept
+    assert c["src"] == _png_data_uri()                 # the PNG bytes are inlined verbatim
+
+
+def test_share_chart_survives_source_session_deletion(client_with_share):
+    """Because the chart bytes live in the snapshot, deleting the source session's whole on-disk dir
+    never breaks the shared chart — the share is truly self-contained (the original BUG #4 404)."""
+    client, _ = client_with_share
+    s = _seed_chat_with_chart_png(client)
+    token = client.post(f"/api/sessions/{s.id}/share").json()["token"]
+
+    shutil.rmtree(s.ctx.workspace)     # the source session's files (and the chart PNG) are gone
+
+    charts = next(it for it in client.get(f"/api/share/{token}").json()["items"]
+                  if it.get("role") == "tool_result")["result"]["charts"]
+    assert charts[0]["src"] == _png_data_uri()
+
+
+def test_share_drops_a_chart_whose_source_file_is_missing(client_with_share):
+    """A chart whose PNG can't be read (never written / already gone at mint) is dropped gracefully
+    — it must never crash the share or leave a session-id-bearing reference behind."""
+    client, _ = client_with_share
+    s = _seed_chat_with_chart_png(client)
+    (s.ctx.workspace / "analysis" / "latency.png").unlink()   # remove the file BEFORE minting
+
+    r = client.post(f"/api/sessions/{s.id}/share")
+    assert r.status_code == 200                                # mint still succeeds
+    body = client.get(f"/api/share/{r.json()['token']}").json()
+    assert s.id not in json.dumps(body)                        # no leftover session-id reference
+    charts = next(it for it in body["items"]
+                  if it.get("role") == "tool_result")["result"]["charts"]
+    assert charts == []                                        # the unreadable chart was dropped
+
+
+def test_page_html_export_inlines_charts_with_no_session_artifact_url(client_with_share):
+    """The offline page.html export shares the snapshot, so its charts are inlined too: the file
+    must contain the ``data:`` URI and NO ``/api/sessions/<id>/artifact`` reference (which would
+    break offline and leak the id) — this is what made offline export self-contained."""
+    client, _ = client_with_share
+    s = _seed_chat_with_chart_png(client)
+    token = client.post(f"/api/sessions/{s.id}/share").json()["token"]
+
+    page = client.get(f"/api/share/{token}/page.html").text
+    assert f"/api/sessions/{s.id}/artifact" not in page, "offline export must not reference this session's live artifact route"
+    assert s.id not in page
+    assert _png_data_uri() in page
+
+
+def _seed_chat_with_leaky_command_trail(client):
+    """A chat whose command trail embeds the absolute per-session workspace path + the owning
+    session id (as ``capacity_check.py`` / ``llmdbenchmark --workspace …`` commands really do)
+    across every command-bearing role, plus a host home-dir path — exactly the strings a public
+    share must not disclose."""
+    s = client.app.state.sessions.create()
+    ws = s.ctx.workspace                       # <workspace_root>/sessions/<session_id>
+    req = ws / "capacity_request.json"
+    home_cmd = f"{Path.home()}/llm-d-benchmark/setup.sh"
+    s.messages = [
+        {"role": "user", "content": "run a benchmark"},
+        {"role": "assistant", "content": "On it.",
+         "tool_calls": [{"id": "tc1", "name": "run_shell",
+                         "input": {"command": f"llmdbenchmark --workspace {ws} run && {home_cmd}"}}]},
+    ]
+    s.approvals = [{"tool_call_id": "tc1", "request_id": "r1", "kind": "command",
+                    "payload": {"command": f"llmdbenchmark --workspace {ws} run",
+                                "argv": ["capacity_check.py", str(req)]}, "approved": True}]
+    s.commands = [{"tool_call_id": "tc1", "text": f"capacity_check.py {req}",
+                   "argv": ["capacity_check.py", str(req)], "mode": "read_only", "auto_run": True}]
+    s.title = "run"
+    s.persist()
+    return s
+
+
+def test_share_snapshot_scrubs_host_paths_and_session_id_from_command_trail(client_with_share):
+    """BUG: the command trail (tool_call input command, executed ``command`` text+argv, decided
+    ``approval_decision`` payload) embeds the absolute per-session workspace path — ``--workspace
+    <root>/sessions/<session_id>/…`` — so a public, UNAUTHENTICATED share disclosed the host path
+    layout, OS username, and the owning session id. The share path must mask those while keeping
+    the command names readable."""
+    client, settings = client_with_share
+    s = _seed_chat_with_leaky_command_trail(client)
+
+    token = client.post(f"/api/sessions/{s.id}/share").json()["token"]
+
+    body = client.get(f"/api/share/{token}").json()
+    raw = json.dumps(body)
+    assert s.id not in raw, "owning session id leaked via a command path in the public share"
+    assert str(s.ctx.workspace) not in raw, "per-session absolute workspace path leaked"
+    assert str(settings.resolved_workspace_dir) not in raw, "workspace root leaked"
+    assert str(Path.home()) not in raw and "/home/" not in raw, "host home path / username leaked"
+    # Readability preserved: the command NAMES survive the scrub; masked with stable placeholders.
+    assert "llmdbenchmark" in raw and "capacity_check.py" in raw
+    assert "<workspace>" in raw and "<session>" in raw
+
+    # The offline single-file export inlines the SAME redacted snapshot — it must be scrubbed too.
+    page = client.get(f"/api/share/{token}/page.html").text
+    assert s.id not in page and str(settings.resolved_workspace_dir) not in page
 
 
 def test_create_404_for_unknown_session(client_with_share):

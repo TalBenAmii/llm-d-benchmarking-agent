@@ -501,14 +501,32 @@ def self_check(settings: Settings) -> SelfCheckResult:
     return SelfCheckResult(checks=[probe(settings) for probe in _CHECKS])
 
 
+def _relativize_home(obj: Any, home: str) -> Any:
+    """Rewrite the host home-dir prefix to ``~`` in every string leaf of a nested structure.
+
+    ``/readyz`` is UNAUTHENTICATED, so its body must not disclose the host's absolute paths or OS
+    username; the self-check's own ``detail``/``data`` legitimately carry them (they feed the
+    server-side ``selfcheck.failed`` log the operator reads). This masks them only at the public
+    boundary, relativizing e.g. ``/home/tal/…/workspace`` to ``~/…/workspace``."""
+    if isinstance(obj, str):
+        return obj.replace(home, "~") if home else obj
+    if isinstance(obj, dict):
+        return {k: _relativize_home(v, home) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_relativize_home(v, home) for v in obj]
+    return obj
+
+
 def readiness(settings: Settings) -> dict[str, Any]:
     """Minimal readiness contribution for the /readyz endpoint (Phase 16) to compose.
 
     Returns ``{"ready": bool, "self_check": {...}}``. Readiness honors the STARTUP_SELF_CHECK
     toggle: when disabled, the contribution reports ready with the self-check marked skipped (so
     an operator who deliberately turned it off isn't held un-ready). When enabled, ``ready``
-    mirrors the self-check's pass/fail and the structured reasons ride along for diagnosis."""
+    mirrors the self-check's pass/fail and the structured reasons ride along for diagnosis — with
+    host home paths relativized so the UNAUTHENTICATED /readyz body never leaks the OS username."""
     if not settings.startup_self_check:
         return {"ready": True, "self_check": {"skipped": True}}
     result = self_check(settings)
-    return {"ready": result.ok, "self_check": result.to_json()}
+    return {"ready": result.ok,
+            "self_check": _relativize_home(result.to_json(), str(Path.home()))}
