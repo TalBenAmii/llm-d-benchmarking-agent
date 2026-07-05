@@ -23,6 +23,14 @@ docs:
     why: >
       The cicd/kind scenario itself — model (facebook/opt-125m via inference-sim),
       CPU-only sizing, namespace expectations, and the inference-perf/sanity_random harness.
+  - path: quickstart_playbook.md
+    task: quickstart
+    kind: knowledge
+    why: >
+      Our project runbook for the kind/CPU-sim quickstart — the exact tool-call
+      sequence (propose_session_plan -> standup -> smoketest -> run -> report ->
+      teardown) in our tool vocabulary, with the MVP flags/gotchas the upstream
+      quickstart doc doesn't cover.
 
   # Real (GPU) deploys via guides — deferred, but read these when the user heads here so
   # expectations and prerequisites are grounded in the actual guide.

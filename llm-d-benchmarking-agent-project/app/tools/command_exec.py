@@ -26,7 +26,7 @@ from app.observability import metrics as instrument
 from app.security.allowlist import MUTATING, READ_ONLY, Decision
 from app.security.quota import QuotaExceeded
 from app.security.runner import RunResult, simulated_run_result
-from app.tools import gated_access
+from app.tools import gated_access, skill_gate
 from app.tools.context import ApprovalRejected, QuotaError, ToolError
 
 if TYPE_CHECKING:
@@ -179,6 +179,12 @@ class CommandExecutor:
             block = gated_access.gated_block(ctx, decision.argv)
             if block is not None:
                 raise ToolError(gated_access.gated_block_message(*block))
+            # Skill-grounding gate: refuse an llmdbenchmark standup/run/teardown/etc. until its
+            # grounding doc was fetched this session (app/tools/skill_gate.py). run_shell is NOT
+            # skill-gated (ad-hoc shell is intentionally exempt) — only this chokepoint applies it.
+            sblock = skill_gate.skill_gate_block(ctx, decision)
+            if sblock:
+                raise ToolError(sblock)
         # Quota refusal happens BEFORE the approval prompt and before any execution, so an
         # over-quota command never even asks the user. Cap = DATA; counter = mechanism.
         self._enforce_quota(decision)

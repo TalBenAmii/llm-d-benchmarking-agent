@@ -73,11 +73,21 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
     RIGHT tool group(s) for the grouped tools a flow requires; an EXTRA group is a NOTE (not a
     failure), never loading a needed one IS a failure. Hermetic guards in `tests/flows/test_eval_harness.py`.
   - **Skill-usage eval** (`tests/flows/test_skill_usage_live.py`, same `LLM_EVAL_LIVE=1` gate): asserts the
-    agent fetches the operation's canonical `llm-d-skills` SKILL.md (via `fetch_key_docs(task=<*_skill>)` or
-    `read_repo_doc` under `llm-d-skills/`) BEFORE it deploys/benchmarks/tears-down/compares/autoscales. 5
+    agent grounds each operation in the RIGHT doc BEFORE acting, matching the spec-aware `skill_gate`: a
+    kind/CPU-sim ask → `fetch_key_docs(task="quickstart")` (the runbook, NOT deploy_skill), a GPU/guide
+    deploy/benchmark/teardown → its own `*_skill`, compare → `compare_skill`, autoscaling/WVA →
+    `wva_skill` (via `fetch_key_docs(task=<key>)` or a `read_repo_doc` under the route's read prefix). 6
     scenarios × `SKILL_EVAL_RUNS` runs each (default 3, majority passes; `=1` = cheap smoke); ⚠️ worktree
     needs `REPOS_DIR=<primary>` (empty siblings, per the gotcha above). E.g. `LLM_EVAL_LIVE=1 REPOS_DIR=<primary>
     SKILL_EVAL_RUNS=1 .venv/bin/python -m pytest tests/flows/test_skill_usage_live.py -v`.
+  - **Skill-gate is INERT under pytest, LIVE under the non-pytest harness** — the autouse
+    `_ground_skills_by_default` fixture (`conftest.py`) pre-grounds every `ToolContext`, so the
+    skill-grounding gate (`app/tools/skill_gate.py`) never fires in `pytest`. But `scripts/validate_flows.py`
+    / `scripts/run_eval_isolated.sh` load NO conftest, so the gate runs LIVE there: a MUTATING flow must
+    ground ITSELF (fetch the skill) or its plan/standup/run is refused. The golden transcripts now do
+    (`fetch_key_docs(task="quickstart")` on `cicd/kind`; `deploy_skill`+`benchmark_skill` on a guide) and
+    the live eval's real model grounds itself. Do NOT narrow the fixture — deterministic flows that don't
+    script a fetch rely on it staying inert.
 - **Self-eval (`tests/eval/`)**: the LLM judge (`test_judge_live.py`) + bug-hunter
   (`test_bughunt_live.py`) share the SAME `LLM_EVAL_LIVE` switch (bughunt also needs `BUGHUNT=1`)
   and SPEND quota → never auto-run them. `make eval-shadow` is the always-safe hermetic entry

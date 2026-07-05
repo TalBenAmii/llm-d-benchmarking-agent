@@ -1,15 +1,17 @@
 """Opt-in LIVE eval — does the agent pull the relevant ``llm-d-skills`` SKILL.md into context?
 
-This targets a real, confirmed gap: in a live session the agent ran a benchmark and NEVER
-fetched any skill — it called ``fetch_key_docs(task="quickstart")`` (an llm-d-benchmark doc) but
-never a ``*_skill`` task, and never ``read_repo_doc`` on an ``llm-d-skills/...`` path. Each
-scenario points the REAL model at a natural ask that should trigger one operation, then asserts
-the agent pulled that operation's canonical skill into context BEFORE acting on it.
+This targets a real, confirmed gap: in a live session the agent ran an operation and NEVER
+grounded it in the RIGHT doc. Each scenario points the REAL model at a natural ask that should
+trigger one operation, then asserts the agent pulled that operation's grounding doc into context
+BEFORE acting on it — matching the FINALIZED, spec-aware routing the skill_gate enforces: a
+kind / CPU-sim ask grounds in the ``quickstart`` RUNBOOK (NOT deploy_skill), while a GPU/guide
+deploy/benchmark/teardown grounds in its own ``*_skill``, compare in ``compare_skill``, and
+autoscaling/WVA in ``wva_skill``.
 
-The signal is mechanism-agnostic: a call counts if it is ``fetch_key_docs(task=<skill>)`` OR a
-``read_repo_doc`` on a path under the skill's directory. It keys on the tool CALL (recorded in
-``run.tool_calls`` regardless of read outcome), so scoring is unaffected by whether the file read
-itself succeeds.
+The signal is mechanism-agnostic: a call counts if it is ``fetch_key_docs(task=<key>)`` OR a
+``read_repo_doc`` on a path under the route's ``read_prefix``. It keys on the tool CALL (recorded
+in ``run.tool_calls`` regardless of read outcome), so scoring is unaffected by whether the file
+read itself succeeds.
 
 NON-GATING: skipped unless ``LLM_EVAL_LIVE=1`` and a provider is configured. Because a live model
 is nondeterministic, each scenario runs ``SKILL_EVAL_RUNS`` times (default 3) and passes on a
@@ -58,34 +60,52 @@ _OPERATION_TOOLS = frozenset({"propose_session_plan", "execute_llmdbenchmark"})
 
 @dataclass(frozen=True)
 class SkillScenario:
-    key: str        # the key_docs `*_skill` task name + the parametrize id
-    ask: str        # a natural user request that should trigger this operation
-    skill_dir: str  # the skill's directory prefix under the read-only skills repo
+    key: str          # the key_docs `task` name that grounds this route + the parametrize id
+    ask: str          # a natural user request that should trigger this operation
+    read_prefix: str  # a read-path prefix under the read-only repos that ALSO counts as grounding
+                      # (usually the skill dir; the quickstart DOCS path for the kind route)
 
 
-# One scenario per skill. `key` is the exact `task` in knowledge/key_docs.yaml; `skill_dir` is the
-# real directory under llm-d-skills/skills/ that its SKILL.md lives in.
+# One scenario per grounding ROUTE, matching the FINALIZED spec-aware gate: a kind / CPU-sim deploy
+# grounds in the `quickstart` RUNBOOK — NOT deploy_skill (on the cicd/kind path the gate overrides
+# the subcommand with quickstart) — while GPU/guide deploy/benchmark/teardown ground in their own
+# *_skill, compare in compare_skill, and autoscaling/WVA in wva_skill (fetched dynamically,
+# description-driven — not code-gated). `key` is the exact `task` in knowledge/key_docs.yaml; the
+# primary pass signal is a fetch_key_docs(task=key) call, with a read under `read_prefix` as the
+# mechanism-agnostic fallback. Asks are worded to pin the ROUTE: "local kind quickstart" → the
+# quickstart runbook; "guide … on my GPU cluster" → the operation's *_skill.
 SCENARIOS = [
+    # kind / CPU-sim deploy → the quickstart runbook (spec-aware: quickstart, NOT deploy_skill).
+    SkillScenario(
+        "quickstart",
+        "Set up a fresh llm-d stack on my local kind quickstart cluster — no GPU.",
+        "llm-d-benchmark/docs/quickstart",
+    ),
+    # GPU / guide deploy → deploy_skill.
     SkillScenario(
         "deploy_skill",
-        "Set up a fresh llm-d stack on my local quickstart cluster.",
+        "Deploy the llm-d optimized-baseline guide on my GPU cluster.",
         "llm-d-skills/skills/deploy-llm-d/",
     ),
+    # GPU / guide teardown → teardown_skill.
     SkillScenario(
         "teardown_skill",
-        "Tear down the llm-d stack I have running.",
+        "Tear down my llm-d optimized-baseline guide deployment on the GPU cluster.",
         "llm-d-skills/skills/teardown-llm-d/",
     ),
+    # Benchmark an existing GPU / guide stack → benchmark_skill.
     SkillScenario(
         "benchmark_skill",
-        "I want to benchmark a small chat model on the local quickstart.",
+        "Benchmark a small chat model on my already-running GPU llm-d guide stack.",
         "llm-d-skills/skills/run-llm-d-benchmark/",
     ),
+    # Compare two configurations → compare_skill.
     SkillScenario(
         "compare_skill",
         "Compare two llm-d configurations to see which one serves better.",
         "llm-d-skills/skills/compare-llm-d-configurations/",
     ),
+    # Autoscaling / WVA → wva_skill (fetched dynamically, description-driven — not code-gated).
     SkillScenario(
         "wva_skill",
         "Configure WVA autoscaling for my llm-d deployment.",
@@ -95,12 +115,12 @@ SCENARIOS = [
 
 
 def _skill_index(tool_calls: list[dict], scenario: SkillScenario) -> int | None:
-    """Index of the FIRST call that pulled this scenario's skill into context, else None."""
+    """Index of the FIRST call that pulled this scenario's grounding doc into context, else None."""
     for i, call in enumerate(tool_calls):
         inp = call["input"]
         if call["name"] == "fetch_key_docs" and inp.get("task") == scenario.key:
             return i
-        if call["name"] == "read_repo_doc" and scenario.skill_dir in inp.get("path", ""):
+        if call["name"] == "read_repo_doc" and scenario.read_prefix in inp.get("path", ""):
             return i
     return None
 
@@ -135,7 +155,8 @@ async def test_agent_pulls_skill_into_context(scenario, tmp_path):
     flow = Flow(
         name=f"skill-{scenario.key}",
         title=f"skill usage — {scenario.key}",
-        description=f"Does the agent fetch {scenario.skill_dir}SKILL.md before acting?",
+        description=f"Does the agent ground task {scenario.key!r} (fetch_key_docs, or a read under "
+                    f"{scenario.read_prefix}) before acting?",
         mock_user_input=scenario.ask,
         turns=[],
     )
@@ -154,8 +175,8 @@ async def test_agent_pulls_skill_into_context(scenario, tmp_path):
 
     detail = "\n".join(diagnostics)
     assert passes > RUNS // 2, (
-        f"[{scenario.key}] agent pulled {scenario.skill_dir}SKILL.md into context in only "
+        f"[{scenario.key}] agent grounded task {scenario.key!r} in only "
         f"{passes}/{RUNS} runs (need a majority). Expected fetch_key_docs(task='{scenario.key}') "
-        f"or read_repo_doc under {scenario.skill_dir}, BEFORE "
+        f"or read_repo_doc under {scenario.read_prefix}, BEFORE "
         f"propose_session_plan/execute_llmdbenchmark.\n{detail}"
     )

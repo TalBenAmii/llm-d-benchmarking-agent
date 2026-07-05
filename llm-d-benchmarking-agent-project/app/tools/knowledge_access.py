@@ -139,18 +139,30 @@ def fetch_key_docs(
     entries = spec.get("docs", []) if isinstance(spec, dict) else []
     if task:
         entries = [e for e in entries if e.get("task") == task]
+        # Record the task as CONSULTED the instant it is requested — keyed on the task ARG,
+        # independent of whether the docs actually resolve (an absent skills repo must not defeat
+        # the skill-grounding gate; see app/tools/skill_gate.py). Mechanism only.
+        ctx.consulted_skills.add(task)
 
     fetched: list[dict[str, Any]] = []
     for entry in entries:
         rel = entry.get("path", "")
         item: dict[str, Any] = {"path": rel, "task": entry.get("task"), "why": entry.get("why")}
+        is_knowledge = entry.get("kind") == "knowledge"
         try:
             # Use the UNDEDUPED core so this tool controls dedup per-doc itself (the dedup wrapper
-            # would return a content-less back-reference that breaks the item shape below).
-            doc = _read_repo_doc_raw(ctx, path=rel, max_bytes=max_bytes_each)
+            # would return a content-less back-reference that breaks the item shape below). A
+            # `kind: knowledge` entry (e.g. our quickstart runbook) reads from knowledge/ instead of
+            # the read-only repos — same {path, content, truncated} shape, so the logic is shared.
+            doc = (_read_knowledge_doc(ctx, rel, max_bytes=max_bytes_each) if is_knowledge
+                   else _read_repo_doc_raw(ctx, path=rel, max_bytes=max_bytes_each))
             resolved = doc["path"]
+            # De-dup key: knowledge:<basename> matches read_knowledge's key (cross-tool de-dup);
+            # repo_doc:<resolved> matches read_repo_doc's.
+            dedup_key = (f"knowledge:{Path(resolved).name}" if is_knowledge
+                         else f"repo_doc:{resolved}")
             dedup_eligible = len(doc["content"]) >= _DEDUP_OVER_CHARS and not doc["truncated"]
-            if dedup_eligible and _doc_seen(ctx, f"repo_doc:{resolved}"):
+            if dedup_eligible and _doc_seen(ctx, dedup_key):
                 # Already sent this doc's full text earlier this session — keep the metadata but
                 # omit the body so the same doc isn't re-injected every later turn.
                 item.update(found=True, resolved=resolved, already_provided=True,
@@ -194,6 +206,28 @@ def _knowledge_files(ctx: ToolContext) -> list[Path]:
     files = list(kdir.glob("*.md")) + list(kdir.glob("*.yaml")) + list(kdir.glob("*.yml"))
     files = [f for f in files if f.name not in EXCLUDED_KNOWLEDGE_FILES]
     return sorted(files, key=lambda p: p.name)
+
+
+def _match_knowledge_basename(name: str, files: list[Path]) -> Path | None:
+    """The file in ``files`` whose basename OR stem equals ``name``, after rejecting any path /
+    traversal / absolute input; None otherwise. The single basename-safety check shared by
+    read_knowledge and fetch_key_docs' ``kind: knowledge`` branch (no path traversal, ever)."""
+    requested = (name or "").strip()
+    if "/" in requested or "\\" in requested or ".." in requested or Path(requested).is_absolute():
+        return None
+    return next((f for f in files if f.name == requested or f.stem == requested), None)
+
+
+def _read_knowledge_doc(ctx: ToolContext, path: str, *, max_bytes: int) -> dict[str, Any]:
+    """Read a knowledge/ guide by BASENAME for fetch_key_docs' ``kind: knowledge`` entries,
+    returning the SAME {path, content, truncated} shape as _read_repo_doc_raw so the caller's
+    dedup / item-building logic is shared. Raises ToolError on an unsafe name or missing file,
+    which the caller catches into found=False (fail-open, like a missing repo doc)."""
+    match = _match_knowledge_basename(path, _knowledge_files(ctx))
+    if match is None:
+        raise ToolError(f"knowledge file {path!r} not found (must be a bare basename)")
+    data = match.read_text(errors="replace")
+    return {"path": str(match), "content": data[:max_bytes], "truncated": len(data.encode()) > max_bytes}
 
 
 # --- markdown section addressing (truncation UX) -------------------------------------------
@@ -326,19 +360,12 @@ def read_knowledge(
     if not requested:
         return {"error": "missing 'name'", "valid_topics": valid}
 
-    # Reject any path-bearing or traversal input outright — only a bare basename is allowed.
-    if "/" in requested or "\\" in requested or ".." in requested or Path(requested).is_absolute():
-        return {"error": f"invalid knowledge name {name!r}: pass a bare topic basename, "
-                         f"not a path", "valid_topics": valid}
-
-    # Match on exact basename, or on the stem (so 'capacity' -> 'capacity.md').
-    match: Path | None = None
-    for f in files:
-        if f.name == requested or f.stem == requested:
-            match = f
-            break
+    # Basename-safety + match (shared with fetch_key_docs): rejects any path/traversal/absolute
+    # input, then matches on exact basename or stem ('capacity' -> 'capacity.md').
+    match = _match_knowledge_basename(requested, files)
     if match is None:
-        return {"error": f"unknown knowledge topic {name!r}", "valid_topics": valid}
+        return {"error": f"unknown knowledge topic {name!r} (pass a bare basename, not a path)",
+                "valid_topics": valid}
 
     content = match.read_text()
 

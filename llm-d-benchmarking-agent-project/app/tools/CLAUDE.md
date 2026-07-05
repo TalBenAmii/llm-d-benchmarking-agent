@@ -37,6 +37,7 @@ the authoritative list. Judgment about *what to do with* results lives in `knowl
 - `schemas/` — package of Pydantic input models, one module per tool family (`execute.py`, `orchestrate.py`, `probe.py`, `analysis.py`, `config.py`, `command.py`, `provenance.py`, `doe.py`, `docs.py`).
 - `probe_parse.py` — pure parser for `probe.py` output. (The tolerant tail-of-JSON helper `find_last_json`/`parse_bridge_dict` now lives in `app/dig.py`.)
 - `gated_access.py` — gated-model deploy refusal (`gated_block`) at the command chokepoint; wired into `command_exec.py`/`shell.py`, verdicts recorded by the capacity bridge.
+- `skill_gate.py` — skill-grounding gate (`skill_gate_block`/`plan_skill_gate_block`): refuses a mutating llmdbenchmark op (in `command_exec.py`, NOT `shell.py`) + the plan proposing it (in `plan.py`) until its grounding doc was fetched (`ctx.consulted_skills`, written by `fetch_key_docs`). Spec-aware: cicd/kind → `quickstart`, else the op's `*_skill`.
 - `catalog.py` — `build_catalog()`: live spec/harness/workload listing from the bench repo (+ `catalog_for_allowlist`); used by `context.py`/`workload_profile.py`.
 
 ## Tool index (grouped by workflow phase)

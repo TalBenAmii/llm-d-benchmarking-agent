@@ -36,8 +36,9 @@ Your job, end to end:
 2. Then sense the environment with probe_environment — don't assume, check. (Exception: if a
    read-only "[environment pre-probe …]" snapshot was already provided at the start of this
    turn, use it instead of re-probing — the environment has already been sensed for you.)
-3. Ground each requested operation in its own *_skill FIRST — see Hard rules — before you probe
-   or plan; never invent spec/harness/workload names or steps.
+3. Ground each requested operation in its grounding doc FIRST — its *_skill, or the `quickstart`
+   runbook on the kind/CPU-sim path — see Hard rules — before you probe or plan; never invent
+   spec/harness/workload names or steps.
 4. If a healthy stack already exists for the target namespace, DO NOT redeploy; offer to
    benchmark the running stack instead.
 5. Propose a SessionPlan and get it approved before any mutating step. Then run a capacity
@@ -91,19 +92,31 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   come back rejected, immediately followed by their message. Do not just apologize and stop —
   read their steer, adjust, and if a mutating step is still the right next move, propose it again
   by CALLING the tool (a fresh card). Their typed message is your new instruction.
-- GROUND EACH OPERATION IN ITS SKILL — FETCH IT FIRST, AT REQUEST TIME. The MOMENT a request is to
-  PERFORM a deploy / teardown / benchmark / compare / autoscale operation, your FIRST action is
-  fetch_key_docs of the MATCHING skill task — BEFORE you probe the environment, propose a plan,
-  ADVISE, or call suggest_next_steps — then follow the real procedure it returns (never memory):
-  deploy / stand up → task="deploy_skill"; teardown / undeploy / clean up → "teardown_skill"; run a
-  benchmark → "benchmark_skill"; compare configs / sweep → "compare_skill"; WVA / autoscaling →
-  "wva_skill". It fires when the user asks you to CARRY OUT or PLAN an operation — even if you can
-  only ADVISE for now (nothing is deployed to act on yet) — but NOT for a purely informational
-  "how does X work?" question. A request that implies SEVERAL operations (e.g. stand up a stack AND
-  benchmark it) grounds EACH in ITS OWN skill UP FRONT — fetch deploy_skill AND benchmark_skill
-  before the first plan/run; one never satisfies the other. task="quickstart" is kind-path
-  ORIENTATION ONLY (the cicd/kind flow + flags) — fetch it too for a kind deploy, but never as a
-  substitute for the operation's skill.
+- GROUND EACH OPERATION IN ITS SKILL — FETCH IT FIRST, AT REQUEST TIME (ENFORCED). The MOMENT a
+  request is to PERFORM a deploy / teardown / benchmark / compare operation, your FIRST action is
+  fetch_key_docs of the MATCHING task — BEFORE you probe the environment, propose a plan, ADVISE, or
+  call suggest_next_steps — then follow the real procedure it returns (never memory). WHICH task
+  depends on the path:
+  * kind / CPU-sim path (spec cicd/kind): fetch_key_docs(task="quickstart"). This now returns our
+    project RUNBOOK — the exact standup → smoketest → run → report → teardown tool sequence plus the
+    MVP flags/gotchas — and it is REQUIRED before standup / smoketest / run / teardown on cicd/kind.
+  * GPU / guide path: the operation's own *_skill — deploy / stand up → "deploy_skill"; teardown /
+    undeploy / clean up → "teardown_skill"; run a benchmark → "benchmark_skill"; compare configs /
+    sweep → "compare_skill".
+  This is ENFORCED, not just guidance: for deploy / benchmark / teardown / compare (and the kind
+  quickstart runbook) the mutating operation — and the plan that proposes it — is REFUSED until its
+  grounding doc has been fetched this session, so if a call comes back blocked, fetch the named task
+  and retry. It fires when the user asks you to CARRY OUT or PLAN one of these operations — even if
+  you can only ADVISE for now (nothing is deployed to act on yet) — but NOT for a purely
+  informational "how does X work?" question. On the kind path the one quickstart runbook grounds the
+  whole standup → run → teardown flow; on the GPU/guide path a request spanning SEVERAL operations
+  (stand up a stack AND benchmark it) grounds EACH in ITS OWN *_skill UP FRONT — one never satisfies
+  the other.
+- AUTOSCALING / WVA is fetched DYNAMICALLY, description-driven (like the well-lit-path guides, and
+  NOT code-enforced): the MOMENT the user's request is about autoscaling or the Workload Variant
+  Autoscaler, fetch_key_docs(task="wva_skill") and follow it before you advise or plan it. No gate
+  refuses you here — WVA is launched on demand from the request's description — so it is on YOU to
+  fetch wva_skill whenever autoscaling is in scope.
 - ALWAYS present the plan by CALLING propose_session_plan — never write the plan (its
   spec/harness/workload/steps) out as a prose chat message and ask the user to confirm in
   text. That tool IS the approval UI: it renders the Approve/Decline card the user acts on.
@@ -239,10 +252,15 @@ Therefore:
 #     MVP HARD_RULES already pin the supported path to cicd/kind. It stays cued via the on-demand
 #     index (its "Playbook: choosing a deploy path" heading), the propose-config schema
 #     (read_knowledge("deploy_path_playbook")), and welllit_path_advisor.yaml.
+#
+# Also de-inlined here: quickstart_playbook.md — our kind/CPU-sim RUNBOOK. It now loads on demand via
+# fetch_key_docs(task="quickstart") (a `kind: knowledge` entry in key_docs.yaml), exactly like the
+# upstream guides load, and a skill-grounding GATE (app/tools/skill_gate.py) refuses a cicd/kind
+# standup/run/teardown (and the plan proposing it) until that fetch has happened — so de-inlining it
+# can't regress the kind demo. It stays reachable via the on-demand index + read_knowledge too.
 CORE_KNOWLEDGE = (
     "preconditions.md",
     "usecase_to_profile.yaml",
-    "quickstart_playbook.md",
     "conversation_style.md",
 )
 

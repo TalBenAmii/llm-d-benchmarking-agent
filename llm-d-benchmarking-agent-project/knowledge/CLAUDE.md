@@ -8,10 +8,12 @@ for *you* editing these files; it is deliberately excluded from the runtime know
 ## CORE vs on-demand — the cost rule
 - **CORE** files are inlined **verbatim into every system prompt** (the `CORE_KNOWLEDGE` tuple in
   `app/agent/prompt.py` is the source of truth — currently `preconditions.md`,
-  `usecase_to_profile.yaml`, `quickstart_playbook.md`, `conversation_style.md`). They cover the
+  `usecase_to_profile.yaml`, `conversation_style.md`). They cover the
   phases reached BEFORE the agent would know to ask for a specific guide. NOTE: `key_docs.yaml`
-  (its content is delivered live by the `fetch_key_docs` tool) and `deploy_path_playbook.md` (a
-  post-interview deploy-path-choice guide) are deliberately ON-DEMAND, not CORE.
+  (its content is delivered live by the `fetch_key_docs` tool), `deploy_path_playbook.md` (a
+  post-interview deploy-path-choice guide), and `quickstart_playbook.md` (our kind RUNBOOK, now
+  served by `fetch_key_docs(task="quickstart")` and enforced by the `app/tools/skill_gate.py`
+  skill-grounding gate) are deliberately ON-DEMAND, not CORE.
 - **On-demand** files (everything else) are auto-discovered by a `*.md`/`*.yaml`/`*.yml` glob and
   listed in a one-line **index**; the model pulls one with `read_knowledge("<topic>")` when a tool's
   description cues it. **There is no manual index file** — discovery is the glob + each file's first heading.
