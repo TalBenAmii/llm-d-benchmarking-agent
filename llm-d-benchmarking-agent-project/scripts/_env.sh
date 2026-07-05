@@ -77,15 +77,39 @@ ensure_claude_cli() {
   log "Installed the claude CLI → $(command -v claude)"
 }
 
+# _tty_interactive — succeed ONLY when a human is really driving the controlling terminal:
+# /dev/tty must be openable for read AND our process must be its FOREGROUND process group.
+# The bare open-probe is not enough — in a non-interactive `bash <(curl …)` / `ssh host cmd`
+# (no -t) / nohup / some-CI run the process can still own a controlling terminal it is NOT the
+# foreground of, where /dev/tty opens but a `read` BLOCKS FOREVER (or SIGTTIN-stops the job).
+# Compare the terminal's foreground pgid (tpgid) to our own pgid; $$ stays the parent shell PID
+# even inside a `$(menu_select …)` command substitution, so this holds called directly or nested.
+# ps carries the fields on Linux/macOS/WSL; fall back to /proc/<pid>/stat (pgrp=field5, tpgid=field8)
+# when it doesn't. If neither yields a pgid (no ps AND no /proc) we can't tell — assume interactive,
+# matching the historical "no ps → proceed" behaviour rather than skipping a real user's prompt.
+_tty_interactive() {
+  { : </dev/tty; } 2>/dev/null || return 1
+  local pgid tpgid statline
+  pgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' || true)"
+  tpgid="$(ps -o tpgid= -p $$ 2>/dev/null | tr -d ' ' || true)"
+  if [[ -z "$pgid" || -z "$tpgid" ]] && read -r statline </proc/$$/stat 2>/dev/null; then
+    statline="${statline##*) }"          # drop pid + parenthesised comm (comm may contain spaces)
+    set -- $statline                      # remaining: state ppid pgrp session tty_nr tpgid …
+    pgid="${3:-}"; tpgid="${6:-}"
+  fi
+  [[ -z "$pgid" || -z "$tpgid" ]] && return 0
+  [[ "$tpgid" != "-1" && "$tpgid" == "$pgid" ]]
+}
+
 # menu_select PROMPT DEFAULT_INDEX OPTION [OPTION...]
 #   Arrow-key menu rendered on /dev/tty. Up/Down arrows (and k/j) move; Enter selects.
 #   Prints the SELECTED 0-BASED INDEX to stdout (nothing else on stdout).
-#   No TTY available -> prints the options + a "(non-interactive: using default)" notice
-#   to stderr and returns DEFAULT_INDEX. Never hangs without a terminal.
+#   Not a foreground terminal (_tty_interactive false) -> prints the options + a
+#   "(non-interactive: using default)" notice to stderr and returns DEFAULT_INDEX. Never hangs.
 menu_select() {
   local prompt="$1" cur="$2"; shift 2
   local opts=("$@") n=$# i key esc
-  local tty=/dev/tty; { : <"$tty"; } 2>/dev/null || tty=""
+  local tty=""; _tty_interactive && tty=/dev/tty
   if [[ -z "$tty" ]]; then
     printf '%s\n' "$prompt" >&2
     for i in "${!opts[@]}"; do printf '  %s) %s\n' "$i" "${opts[$i]}" >&2; done
@@ -140,19 +164,16 @@ confirm() {
 
 # register_mcp_server LAUNCH_CMD [SCOPE] [INTERACTIVE]
 #   Registers the llm-d-bench MCP server with Claude Code: `claude mcp add llm-d-bench <LAUNCH_CMD>` at SCOPE.
-#   SCOPE default = user. If INTERACTIVE=1 and a TTY exists, first prompt for scope
-#   (local/user/project) via menu_select. If the `claude` CLI is missing, print a short
+#   SCOPE default = user. If INTERACTIVE=1 and a human is at the terminal (_tty_interactive),
+#   first prompt for scope (local/user/project) via menu_select. If the `claude` CLI is missing, print a short
 #   note (warn) explaining how to register manually and return non-zero — never fail hard.
 register_mcp_server() {
   local launch_cmd="$1" scope="${2:-user}" interactive="${3:-0}"
   local server="llm-d-bench"
-  if [[ "$interactive" == 1 ]]; then
-    local tty=/dev/tty; { : <"$tty"; } 2>/dev/null || tty=""
-    if [[ -n "$tty" ]]; then
-      local scopes=(local user project) sel
-      sel="$(menu_select 'Registration scope?' 1 "${scopes[@]}")"
-      scope="${scopes[$sel]}"
-    fi
+  if [[ "$interactive" == 1 ]] && _tty_interactive; then
+    local scopes=(local user project) sel
+    sel="$(menu_select 'Registration scope?' 1 "${scopes[@]}")"
+    scope="${scopes[$sel]}"
   fi
   if ! command -v claude >/dev/null 2>&1; then
     warn "The 'claude' CLI is not on PATH — register the server yourself once it's installed:"
