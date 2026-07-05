@@ -75,24 +75,13 @@ fi
 case "$YN" in [Yy]*) ;; *) log "Keeping the current provider — nothing changed."; exit 0 ;; esac
 
 # ── The `claude` CLI (the plan's credential holder) ────────────────────────
-if ! command -v claude >/dev/null 2>&1; then
-  warn "The 'claude' CLI is not installed — the plan route authenticates through it."
-  YN="$(ask 'Install it now (official installer, no sudo, → ~/.local/bin/claude)? [Y/n]:' Y)"
-  case "$YN" in
-    [Yy]*)
-      log "Installing the claude CLI…"
-      curl -fsSL https://claude.ai/install.sh | bash \
-        || die "the claude CLI installer failed (see above) — install it manually and re-run this script."
-      export PATH="$HOME/.local/bin:$PATH"
-      command -v claude >/dev/null 2>&1 \
-        || die "installed, but 'claude' is not on PATH — open a new shell (or add ~/.local/bin to PATH) and re-run this script."
-      ;;
-    *)
-      log "Skipping — nothing changed. Install it later with:  curl -fsSL https://claude.ai/install.sh | bash"
-      log "…then re-run ./scripts/setup-claude-plan.sh"
-      exit 0 ;;
-  esac
-fi
+CLI_RC=0; ensure_claude_cli || CLI_RC=$?
+case "$CLI_RC" in
+  0) ;;
+  2) log "Skipping — nothing changed. Install it later with:  curl -fsSL https://claude.ai/install.sh | bash"
+     log "…then re-run ./scripts/setup-claude-plan.sh"; exit 0 ;;
+  *) die "the claude CLI could not be installed (see above) — install it manually and re-run this script." ;;
+esac
 
 # ── Login state (claude auth status --json) ────────────────────────────────
 # One status call cached in AUTH_JSON; python parses it. Validated UP FRONT: a silently missing

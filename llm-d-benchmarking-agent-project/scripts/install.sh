@@ -92,6 +92,7 @@ trap 'rc=$?; [[ $rc -ne 0 ]] && printf "\n\033[1;31m[install] aborted (exit %s).
 # shellcheck source-path=SCRIPTDIR/..
 # shellcheck source=scripts/_env.sh
 source "$PROJECT_DIR/scripts/_env.sh"
+add_local_bin_to_path   # ~/.local/bin holds claude + uv; put it on PATH so every step below sees them
 
 SUDO=""
 if [[ "$(id -u)" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
