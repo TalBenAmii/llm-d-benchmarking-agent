@@ -15,7 +15,6 @@ dependencies = [
     "anthropic>=0.40",
     "openai>=1.40",
     "claude-agent-sdk>=0.2",
-    "mcp>=1.28,<2",
 ]
 
 [project.optional-dependencies]
@@ -30,18 +29,12 @@ dev = [
     "mypy>=1.11",
 ]
 
-[project.scripts]
-# Console entry point for the stdio MCP server, so external clients launch it with a clean
-# command (`<venv>/bin/llm-d-bench-mcp`) instead of the long `python -m app.mcp` path.
-# Same target as `app/mcp/__main__.py`. See docs/MCP.md.
-llm-d-bench-mcp = "app.mcp.server:main"
-
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["app", "app.llm", "app.agent", "app.tools", "app.tools.schemas", "app.security", "app.validation", "app.orchestrator", "app.capacity", "app.readiness", "app.observability", "app.storage", "app.packaging", "app.mcp"]
+packages = ["app", "app.llm", "app.agent", "app.tools", "app.tools.schemas", "app.security", "app.validation", "app.orchestrator", "app.capacity", "app.readiness", "app.observability", "app.storage", "app.packaging"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

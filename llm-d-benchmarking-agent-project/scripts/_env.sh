@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Bootstrap helpers shared by install.sh (full setup), install-mcp.sh (MCP setup), run.sh
-# (standalone launcher), and setup-claude-plan.sh (Claude-plan wiring), kept here so all source
+# Bootstrap helpers shared by install.sh (full setup), run.sh (standalone launcher), and
+# setup-claude-plan.sh (Claude-plan wiring) — and by the external llm-d-bench-mcp installer, which
+# sources this same file cross-repo — kept here so all source
 # one copy instead of duplicating it. The sourcing script must define `log` first (and `die`
 # too, if it calls clone_if_missing). read_env/set_env_var operate on ./.env — callers cd to
 # the project root before sourcing.

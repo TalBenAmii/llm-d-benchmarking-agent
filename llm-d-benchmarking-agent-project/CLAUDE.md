@@ -14,7 +14,9 @@ user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, 
 1. **`llm-d/` + `llm-d-benchmark/` + `llm-d-skills/` are READ-ONLY** upstream repos — read their
    docs/specs/schemas/skills and shell out to their CLI; never edit (clone if missing). Hard-enforced
    by `permissions.deny`. (How the skills library is wired into the agent → `docs/UPSTREAM_REUSE_PATHS.md`.)
-2. **All new code lives under `llm-d-benchmarking-agent-project/` only.**
+2. **All new code lives under `llm-d-benchmarking-agent-project/` only** — except the split-out
+   **`llm-d-bench-mcp/`** repo (the standalone MCP server; an OWNED sibling of this project, its own
+   git repo — see the monorepo-root `CLAUDE.md` map).
 3. **Thin code, thick agent** — code is mechanism; all judgment lives in the LLM + `knowledge/`. No
    decision logic in Python `if/elif` branches.
 4. **Determinism at the boundaries** — schema-validated tool args; a `SessionPlan` approved before any
@@ -46,12 +48,11 @@ llm-d-benchmarking-agent-project/
 │  ├─ observability/ 📁   dependency-free metrics + Prometheus exposition + structured logging / CoT trace
 │  ├─ llm/           📁   provider-agnostic LLM integration (anthropic / openai-compat / claude-agent-sdk)
 │  ├─ storage/       📁   persistence: history · provenance · share · retention/GC
-│  ├─ web.py             pure, decorator-free HTTP/SSE helpers extracted from main (path-traversal 404s, CORS guard, share redaction)
-│  └─ mcp/           📁   standalone MCP server (stdio) re-exposing tools/knowledge to external agents (python -m app.mcp)
+│  └─ web.py             pure, decorator-free HTTP/SSE helpers extracted from main (path-traversal 404s, CORS guard, share redaction)
 ├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here
 ├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
 ├─ deploy/               Helm chart + observability manifests
-├─ scripts/              entry points (install.sh · run.sh · install-mcp.sh · setup-claude-plan.sh) + host bootstrap (install_prereqs.sh) + flow eval (validate_flows.py + run_eval_isolated.sh)
+├─ scripts/              entry points (install.sh · run.sh · setup-claude-plan.sh) + host bootstrap (install_prereqs.sh) + flow eval (validate_flows.py + run_eval_isolated.sh)
 ├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ ui/                   static chat UI (index.html, app.js, styles.css)
