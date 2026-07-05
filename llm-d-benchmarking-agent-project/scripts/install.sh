@@ -39,12 +39,15 @@
 #   • For a real GPU cluster (beyond the CPU/kind quickstart) see docs/GPU_CLUSTER_RUNBOOK.md.
 set -euo pipefail
 
+usage() { sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'; }
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac   # before the bootstrap, so curl-mode --help doesn't clone
+
 # ── Curl-bootstrap (symmetry with the llm-d-bench-mcp installer) ──────────────
 # This script also runs via `bash <(curl … install.sh)`. Under the curl pipe BASH_SOURCE isn't a
 # real path, so use it to locate the project only when that yields a real checkout; otherwise clone
 # the repo into INSTALL_DIR and re-exec the on-disk copy so every path below resolves normally.
 INSTALL_DIR="${INSTALL_DIR:-$HOME/llm-d-benchmarking-agent}"
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || true)"   # this script lives in scripts/
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/.." 2>/dev/null && pwd || true)"   # this script lives in scripts/
 if [[ -z "$PROJECT_DIR" || ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
   [[ "${_AGENT_BOOTSTRAPPED:-0}" == 1 ]] && { echo "install.sh: project not found after cloning (bootstrap loop)." >&2; exit 1; }
   command -v git >/dev/null 2>&1 || { echo "install.sh: git is required to fetch the repo — install git and re-run." >&2; exit 1; }
@@ -75,7 +78,7 @@ while [[ $# -gt 0 ]]; do
     --no-llm-setup) NO_LLM_SETUP=1 ;;
     --uv)           USE_UV=1 ;;
     --no-uv)        USE_UV=0 ;;
-    -h|--help)      sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)      usage; exit 0 ;;
     *) echo "install.sh: unknown option '$1' (try --help)" >&2; exit 2 ;;
   esac
   shift
