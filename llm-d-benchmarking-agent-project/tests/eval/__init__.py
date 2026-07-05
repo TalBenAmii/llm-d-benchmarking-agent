@@ -18,6 +18,11 @@ See ``docs/VALIDATION.md`` for the full picture. In brief:
 
 CARDINAL COST RULE: plain ``pytest`` spends ZERO quota — only the deterministic shadow/oracle
 layer is always-on. The LLM layers share the ``LLM_EVAL_LIVE`` switch (the SAME one
-``tests/flows/test_flows_live.py`` uses) and never run in plain ``pytest`` or gating CI.
+``tests/eval/live/test_flows_live.py`` uses) and never run in plain ``pytest`` or gating CI.
 ``make eval-shadow`` is the always-safe hermetic entry.
+
+Layout: the opt-in live-LLM agent evals live in ``tests/eval/live/`` (default-live / real-app)
+and ``tests/eval/simulate/`` (the SIMULATE-only skill-usage eval); the hermetic shadow/oracle
+guards (``test_scorecard_shadow.py`` / ``test_oracle_unit.py``) and their support modules stay
+directly under ``tests/eval/``.
 """

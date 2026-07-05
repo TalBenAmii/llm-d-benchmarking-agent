@@ -7,10 +7,10 @@ deterministic flow-eval cannot (the flow-eval asserts the *right commands*; the 
 ``workspace/eval/`` and asserts the rubric gate passes.
 
 COST: one judge call per scored flow (plus the real agent loop running each flow). Gated by the
-SAME ``LLM_EVAL_LIVE=1`` switch ``tests/flows/test_flows_live.py`` uses — it NEVER runs in plain
+SAME ``LLM_EVAL_LIVE=1`` switch ``tests/eval/live/test_flows_live.py`` uses — it NEVER runs in plain
 ``pytest`` or gating CI. Run it with::
 
-    LLM_EVAL_LIVE=1 .venv/bin/python -m pytest tests/eval/test_judge_live.py -v --timeout=600
+    LLM_EVAL_LIVE=1 .venv/bin/python -m pytest tests/eval/live/test_judge_live.py -v --timeout=600
     # or: make eval-judge
 
 Set ``LLM_EVAL_SIMULATE=1`` to drive every flow in the app's SIMULATE mode (so multi-step
@@ -28,11 +28,10 @@ import pytest
 from app.config import get_settings
 from app.llm.provider import get_provider
 from tests._auth import has_auth
+from tests.eval.judge import judge_session, load_rubric
+from tests.eval.scorecard import build_scorecard, write_scorecard
 from tests.flows.flows import ALL_FLOWS
 from tests.flows.harness import run_flow
-
-from .judge import judge_session, load_rubric
-from .scorecard import build_scorecard, write_scorecard
 
 _LIVE = os.getenv("LLM_EVAL_LIVE") == "1"
 _SIMULATE = os.getenv("LLM_EVAL_SIMULATE") == "1"
