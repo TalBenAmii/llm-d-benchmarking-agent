@@ -61,10 +61,12 @@ bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarkin
 git clone https://github.com/TalBenAmii/llm-d-benchmarking-agent.git
 cd llm-d-benchmarking-agent/llm-d-benchmarking-agent-project
 
-./scripts/install.sh            # upstream repos + llm-d toolchain + benchmark CLI + this app
+./scripts/install.sh            # upstream repos + llm-d toolchain + benchmark CLI + app + MCP server
 ./scripts/install.sh --prereqs  # …also Docker + kind for the local quickstart (needs passwordless sudo)
+./scripts/install.sh --no-mcp   # …skip the MCP-server setup (web UI only)
 
-./scripts/run.sh --open         # start the server and open http://127.0.0.1:8000
+# then start the agent — the installer prints this exact line; --open opens http://127.0.0.1:8000:
+cd ~/llm-d-benchmarking-agent/llm-d-benchmarking-agent-project && ./scripts/run.sh --open
 ```
 
 Then give it an LLM to think with. The installer's last step offers to wire your **Claude
@@ -93,6 +95,10 @@ server with Claude Code:
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-bench-mcp/main/scripts/install.sh)
 ```
+
+> **Already set up by the main installer.** `./scripts/install.sh` above registers this server by
+> default (opt out with `--no-mcp`); the one-liner here is the MCP-first path — it *also* installs
+> the web UI into the same venv, so either installer leaves you with **both** front-ends.
 
 No API key needed — it authenticates through your `claude` CLI login. It runs over stdio on your
 machine; mutations are gated by Claude Code's own approval prompt. Full tool list, manual config,

@@ -26,6 +26,7 @@
 #   ./scripts/install.sh --no-bench      # skip the llm-d-benchmark framework step
 #   ./scripts/install.sh --no-clone      # don't clone missing repos (fail if a needed repo is absent)
 #   ./scripts/install.sh --no-llm-setup  # skip the interactive Claude-plan (LLM provider) step at the end
+#   ./scripts/install.sh --no-mcp        # skip installing + registering the llm-d-bench MCP server
 #   ./scripts/install.sh --uv | --no-uv  # force the venv backend (default: uv if present, else python3 -m venv)
 #   ./scripts/install.sh -h | --help
 #
@@ -39,7 +40,7 @@
 #   • For a real GPU cluster (beyond the CPU/kind quickstart) see docs/GPU_CLUSTER_RUNBOOK.md.
 set -euo pipefail
 
-usage() { sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; }
 case "${1:-}" in -h|--help) usage; exit 0 ;; esac   # before the bootstrap, so curl-mode --help doesn't clone
 
 # ── Curl-bootstrap (symmetry with the llm-d-bench-mcp installer) ──────────────
@@ -66,7 +67,7 @@ BENCH_REPO="$REPOS_DIR/llm-d-benchmark"
 SKILLS_REPO="$REPOS_DIR/llm-d-skills"
 VENV="$PROJECT_DIR/.venv"
 
-DEV=0; PREREQS=0; APP_ONLY=0; NO_CLIENT=0; NO_BENCH=0; NO_CLONE=0; NO_LLM_SETUP=0; USE_UV="auto"
+DEV=0; PREREQS=0; APP_ONLY=0; NO_CLIENT=0; NO_BENCH=0; NO_CLONE=0; NO_LLM_SETUP=0; NO_MCP=0; USE_UV="auto"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dev)          DEV=1 ;;
@@ -76,6 +77,7 @@ while [[ $# -gt 0 ]]; do
     --no-bench)     NO_BENCH=1 ;;
     --no-clone)     NO_CLONE=1 ;;
     --no-llm-setup) NO_LLM_SETUP=1 ;;
+    --no-mcp)       NO_MCP=1 ;;
     --uv)           USE_UV=1 ;;
     --no-uv)        USE_UV=0 ;;
     -h|--help)      usage; exit 0 ;;
@@ -219,6 +221,39 @@ if [[ "$NO_LLM_SETUP" != 1 ]]; then
     || warn "Claude-plan setup didn't complete — run ./scripts/setup-claude-plan.sh anytime."
 fi
 
+# ── MCP server — editable-install into the shared venv + register with Claude Code ─
+# Auto-complete, no prompts. NON-FATAL: any failure (clone/pip/register) warns and continues —
+# a broken MCP add must never abort a working app install. Skipped by --no-mcp / --app-only, and
+# (like the upstream repos) by --no-clone when the repo isn't already on disk.
+MCP_SUMMARY="skipped (--no-mcp)"
+if [[ "$NO_MCP" != 1 && "$APP_ONLY" != 1 ]]; then
+  step "MCP server (llm-d-bench → Claude Code)"
+  MCP_DIR="$(dirname "$PROJECT_DIR")/llm-d-bench-mcp"   # sibling of the project, under the monorepo clone
+  MCP_RC=0
+  (
+    if [[ ! -d "$MCP_DIR" || -z "$(ls -A "$MCP_DIR" 2>/dev/null)" ]]; then
+      if [[ "$NO_CLONE" == 1 ]]; then
+        warn "llm-d-bench-mcp absent at $MCP_DIR and --no-clone was given — skipping MCP setup."; exit 2
+      fi
+      log "Cloning llm-d-bench-mcp → $MCP_DIR"
+      git clone --depth 1 "https://github.com/TalBenAmii/llm-d-bench-mcp" "$MCP_DIR" || exit 1
+    fi
+    log "Installing the MCP server (editable) into the agent venv…"
+    # set -e is disabled inside a subshell on the left of ||, so guard each fallible command
+    # explicitly — a failed clone/pip must exit the subshell non-zero (→ MCP_RC=1 → "setup failed").
+    # >/dev/null suppresses only stdout; pip/git errors on stderr stay visible for diagnosis.
+    if [[ "$USE_UV" == 1 ]]; then uv pip install --python "$PY" -e "$MCP_DIR" >/dev/null || exit 1
+    else "$PY" -m pip install -e "$MCP_DIR" >/dev/null || exit 1; fi
+    register_mcp_server "$VENV/bin/llm-d-bench-mcp" user 0 || exit 3   # installed but not registered (claude CLI absent)
+  ) || MCP_RC=$?
+  case "$MCP_RC" in
+    0) MCP_SUMMARY="registered with Claude Code  (llm-d-bench)" ;;
+    2) MCP_SUMMARY="skipped (repo absent, --no-clone)" ;;
+    3) MCP_SUMMARY="installed; run 'claude mcp add' — see above" ;;
+    *) MCP_SUMMARY="setup failed — see above"; warn "MCP setup didn't complete — the app is fine; finish it later." ;;
+  esac
+fi
+
 have() { command -v "$1" >/dev/null 2>&1 && printf 'present' || printf 'MISSING'; }
 step "Summary"
 if [[ "$APP_ONLY" != 1 ]]; then
@@ -227,10 +262,11 @@ if [[ "$APP_ONLY" != 1 ]]; then
   printf '  benchmark CLI    : %s  (%s/.venv)\n' \
     "$([[ -x "$BENCH_REPO/.venv/bin/llmdbenchmark" ]] && echo present || echo 'in repo .venv — activate to use')" "$BENCH_REPO"
   [[ "$PREREQS" == 1 ]] && printf '  host prereqs     : docker=%s kind=%s\n' "$(have docker)" "$(have kind)"
+  printf '  MCP server       : %s\n' "$MCP_SUMMARY"
 fi
 printf '  agent venv       : %s\n' "$VENV"
 printf '\n'
-log "Done. Start the agent with:  ./scripts/run.sh   (then open http://127.0.0.1:8000)"
+log "Done. Start the agent with:  cd $PROJECT_DIR && ./scripts/run.sh --open   (--open auto-opens your browser; otherwise visit http://127.0.0.1:8000)"
 [[ "$PREREQS" != 1 && "$APP_ONLY" != 1 ]] && \
   log "To benchmark on a local kind cluster you'll also need Docker + kind — re-run with --prereqs (needs passwordless sudo), or let the agent install them on demand."
 trap - EXIT
