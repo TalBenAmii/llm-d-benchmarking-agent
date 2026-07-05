@@ -138,6 +138,8 @@ def test_loadtools_literal_groups_in_sync_with_registry():
 def test_fat_guides_de_inlined_from_core():
     assert "key_docs.yaml" not in CORE_KNOWLEDGE
     assert "deploy_path_playbook.md" not in CORE_KNOWLEDGE
+    # The kind runbook is now on-demand too (served by fetch_key_docs(task="quickstart") + gated).
+    assert "quickstart_playbook.md" not in CORE_KNOWLEDGE
 
 
 def test_de_inlined_guides_not_inlined_but_reachable(tool_ctx):
@@ -146,7 +148,9 @@ def test_de_inlined_guides_not_inlined_but_reachable(tool_ctx):
     ctx = tool_ctx
     prompt = build_system_prompt(ctx)
     kdir = ctx.settings.knowledge_dir
-    for name, topic in [("key_docs.yaml", "key_docs"), ("deploy_path_playbook.md", "deploy_path_playbook")]:
+    for name, topic in [("key_docs.yaml", "key_docs"),
+                        ("deploy_path_playbook.md", "deploy_path_playbook"),
+                        ("quickstart_playbook.md", "quickstart_playbook")]:
         body = (kdir / name).read_text()
         assert body[300:480] not in prompt, f"{name} should no longer be inlined"
         assert name in prompt, f"{name} must still appear in the on-demand index"

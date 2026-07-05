@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.tools import skill_gate
 from app.tools.context import ToolContext, ToolError
 from app.validation.session_plan import SessionPlan, validate_plan
 
@@ -19,6 +20,14 @@ async def propose_session_plan(ctx: ToolContext, **fields: Any) -> dict[str, Any
     if errors:
         return {"approved": False, "valid": False, "errors": errors,
                 "note": "fix these against the live catalog and propose again"}
+
+    # Skill-grounding gate (app/tools/skill_gate.py): a SessionPlan proposes a DEPLOY, so refuse to
+    # surface the approval card until its grounding doc was fetched this session — kind path ->
+    # fetch_key_docs(task="quickstart") (the runbook), else deploy_skill. Self-heals: the agent
+    # fetches the named task and re-proposes.
+    sblock = skill_gate.plan_skill_gate_block(ctx, spec=plan.spec)
+    if sblock:
+        raise ToolError(sblock)
 
     if ctx.request_approval is None:
         raise ToolError("approval channel not wired")

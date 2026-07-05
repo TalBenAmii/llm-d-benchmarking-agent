@@ -65,6 +65,28 @@ def tool_ctx(tmp_path):
     return ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
 
 
+@pytest.fixture(autouse=True)
+def _ground_skills_by_default(monkeypatch):
+    """Pre-ground every ToolContext built during a test so the skill-grounding gate
+    (app/tools/skill_gate.py) is INERT by default. That gate refuses a mutating operation (and the
+    plan proposing it) until its grounding task is in ``ctx.consulted_skills`` — a per-session ledger
+    the real agent fills by calling ``fetch_key_docs``. Tests that aren't ABOUT the gate assume the
+    agent already grounded (exactly as they assume no gated-model block by default), so seed every
+    context here; the gate's own tests (``tests/test_skill_gate.py``) clear ``consulted_skills`` to
+    exercise it. Auto-reverts after each test."""
+    from app.tools import skill_gate
+    from app.tools.context import ToolContext
+
+    all_tasks = {"quickstart"} | set(skill_gate._TASK_BY_SUBCOMMAND.values())
+    orig_init = ToolContext.__init__
+
+    def _init(self, *args, **kwargs):
+        orig_init(self, *args, **kwargs)
+        self.consulted_skills.update(all_tasks)
+
+    monkeypatch.setattr(ToolContext, "__init__", _init)
+
+
 @pytest.fixture()
 def catalog() -> dict[str, list[str]]:
     """A small stand-in for the live on-disk catalog."""
