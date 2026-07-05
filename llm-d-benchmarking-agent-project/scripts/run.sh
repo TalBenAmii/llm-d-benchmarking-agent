@@ -3,7 +3,7 @@
 #
 # Sets up a virtualenv (uv if available, else python3 -m venv), installs the app,
 # ensures a .env exists, then launches the FastAPI/uvicorn server. HOST/PORT are
-# read from .env (defaults 127.0.0.1:8000) and can be overridden via flags.
+# read from .env (defaults 127.0.0.1:8000); PORT can be overridden with --port.
 #
 #   ./scripts/run.sh                  # start with autoreload on http://127.0.0.1:8000
 #   ./scripts/run.sh --open           # ...and open it in a browser

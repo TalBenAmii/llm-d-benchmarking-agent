@@ -54,31 +54,20 @@ def _real_repo_ctx(tmp_path, *, canned=None):
 
 
 def _ctx(tmp_path, *, nodes_json: str, emit=None):
-    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    runner = CaptureRunner(settings.repo_paths, canned={"kubectl get nodes": nodes_json})
-    ctx = ToolContext(
-        settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
-        runner=runner,
-        workspace=tmp_path / "ws",
-        emit=emit,
-        request_approval=_approve_all,
-    )
-    frozen = frozen_catalog()
-    ctx._catalog = frozen
-    ctx.catalog = lambda *, refresh=False: frozen
-    return ctx, runner
+    return _capture_ctx(tmp_path, emit=emit, approve=_approve_all,
+                        canned={"kubectl get nodes": nodes_json})
 
 
-def _capture_ctx(tmp_path, *, emit=None, approve=None):
+def _capture_ctx(tmp_path, *, emit=None, approve=None, canned=None):
     """A ToolContext on a CaptureRunner + frozen catalog over an isolated temp workspace.
 
     The verbatim builder several tool tests copy-pasted: a fake-repo Settings, a CaptureRunner
     (fakes the bridge subprocess so no real venv/tool is needed), and the catalog pinned to the
     frozen snapshot so validate()'s ref checks never scan the empty fake repo. ``approve`` becomes
-    ``request_approval`` (default None → no approval channel, for read-only-only callers)."""
+    ``request_approval`` (default None → no approval channel, for read-only-only callers).
+    ``canned`` forwards canned command outputs to the CaptureRunner (default None → none)."""
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    runner = CaptureRunner(settings.repo_paths)
+    runner = CaptureRunner(settings.repo_paths, canned=canned or {})
     ctx = ToolContext(
         settings=settings,
         allowlist=Allowlist.from_file(settings.allowlist_path),

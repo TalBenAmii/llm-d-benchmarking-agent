@@ -256,10 +256,6 @@ def test_allowlist_rejects_injection_in_store_value(allowlist, catalog):
 # ---------------------------------------------------------------------------
 
 
-def _ctx(tmp_path, *, approver):
-    return _capture_ctx(tmp_path, approve=approver)
-
-
 def _last_call(runner: CaptureRunner):
     return next(c for c in reversed(runner.calls) if c["argv"][:1] == ["llmdbenchmark"])
 
@@ -271,7 +267,7 @@ async def test_execute_init_auto_runs_without_approval(tmp_path):
         approvals.append(kind)
         return True
 
-    ctx, runner = _ctx(tmp_path, approver=approver)
+    ctx, runner = _capture_ctx(tmp_path, approve=approver)
     res = await execute_llmdbenchmark(ctx, subcommand="results", spec="cicd/kind", store={"command": "init"})
     assert res["mode"] == READ_ONLY
     assert _last_call(runner)["argv"][3:] == ["results", "init"]
@@ -285,7 +281,7 @@ async def test_execute_push_is_approval_gated(tmp_path):
         approvals.append(kind)
         return False  # user clicks "deny"
 
-    ctx, runner = _ctx(tmp_path, approver=deny)
+    ctx, runner = _capture_ctx(tmp_path, approve=deny)
     with pytest.raises(ApprovalRejected):
         await execute_llmdbenchmark(
             ctx, subcommand="results", spec="cicd/kind",
@@ -300,7 +296,7 @@ async def test_execute_pull_runs_when_approved(tmp_path):
     async def approve(kind, payload):
         return True
 
-    ctx, runner = _ctx(tmp_path, approver=approve)
+    ctx, runner = _capture_ctx(tmp_path, approve=approve)
     res = await execute_llmdbenchmark(
         ctx, subcommand="results", spec="cicd/kind",
         store={"command": "pull", "remote": "prod", "run_uid": "c6bc210e"},
