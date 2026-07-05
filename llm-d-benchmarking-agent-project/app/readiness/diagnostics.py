@@ -91,18 +91,13 @@ def analyze_endpoints(
     endpoints_json: str,
     *,
     namespace: str,
-    cli_endpoints_seen: int | None = None,
 ) -> EndpointReadiness:
     """Turn ``kubectl get endpoints -n <ns> -o json`` output into a readiness verdict.
 
     ``endpoints_json`` is the raw stdout (a v1 ``List`` of ``Endpoints``); a single object or
     empty/garbage input degrades gracefully to "not ready" (never raises). The default
     ``kubernetes`` Service endpoint (the API server) is ignored — it is always present and
-    never an inference endpoint, so counting it would mask an unready stack.
-
-    ``cli_endpoints_seen`` (optional) is how many inference endpoints the benchmark CLI's own
-    ``run --list-endpoints`` reported; it is carried through for the agent but the gate is
-    driven by the authoritative Kubernetes endpoint-address readiness."""
+    never an inference endpoint, so counting it would mask an unready stack."""
     items = _parse_items(endpoints_json)
     ready_eps: list[dict[str, Any]] = []
     not_ready_eps: list[dict[str, Any]] = []
@@ -124,7 +119,6 @@ def analyze_endpoints(
             namespace=namespace, ready=True, reason="endpoints_ready",
             detail=f"{len(ready_eps)} service(s) have ready backing endpoints ({names}).",
             ready_endpoints=ready_eps, not_ready_endpoints=not_ready_eps,
-            cli_endpoints_seen=cli_endpoints_seen,
         )
 
     if not_ready_eps:
@@ -136,7 +130,6 @@ def analyze_endpoints(
             detail=f"service(s) exist but have NO ready backing endpoints yet ({names}) — "
                    f"the inference stack is not serving (pods present but not ready).",
             ready_endpoints=ready_eps, not_ready_endpoints=not_ready_eps,
-            cli_endpoints_seen=cli_endpoints_seen,
         )
 
     return EndpointReadiness(
@@ -144,7 +137,6 @@ def analyze_endpoints(
         detail=f"no inference service endpoints found in namespace {namespace!r} — "
                f"there is no stack to benchmark here.",
         ready_endpoints=ready_eps, not_ready_endpoints=not_ready_eps,
-        cli_endpoints_seen=cli_endpoints_seen,
     )
 
 

@@ -28,7 +28,6 @@ from app.tools.registry import dispatch, tool_definitions
 log = logging.getLogger("app.agent.loop")
 
 MAX_STEPS = 24
-_TOOL_RESULT_BUDGET = DEFAULT_TOOL_RESULT_BUDGET  # chars of a tool result fed back to the model
 
 # Tools whose FULL result the UI re-renders as a rich card (report summary + clickable charts,
 # Pareto/comparison/env/capacity/etc.). Their un-clamped result is persisted to
@@ -393,7 +392,7 @@ class AgentLoop:
                 card = build_results_card(tc.name, result)
                 if card is not None:
                     await emit(events.RESULTS_CARD, {"id": tc.id, "card": card})
-            clamped = clamp_tool_result_content(result, _TOOL_RESULT_BUDGET)
+            clamped = clamp_tool_result_content(result, DEFAULT_TOOL_RESULT_BUDGET)
             tool_result_msgs.append({
                 "tool_call_id": tc.id,
                 "name": tc.name,

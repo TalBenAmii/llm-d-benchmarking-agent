@@ -285,7 +285,6 @@ class BenchmarkOrchestrator:
         retryable=DEFAULT_RETRYABLE,
         poll_interval: float = 2.0,
         max_wait: float = 7200.0,
-        on_status: OnStatus | None = None,
         on_log_line: OnLogLine | None = None,
     ) -> RunOutcome:
         """Submit a benchmark run, watching it to terminal; on a *transient* failure
@@ -312,8 +311,7 @@ class BenchmarkOrchestrator:
                 async with self._log_tail(spec_i.run_id, namespace=spec_i.namespace,
                                           on_log_line=on_log_line):
                     st = await self.watch(spec_i.run_id, namespace=spec_i.namespace,
-                                          poll_interval=poll_interval, max_wait=max_wait,
-                                          on_status=on_status)
+                                          poll_interval=poll_interval, max_wait=max_wait)
                 _safe_metric(instrument.record_attempt, st.phase)
                 if st.phase == SUCCEEDED:
                     attempts.append(AttemptResult(spec_i.run_id, st, None))

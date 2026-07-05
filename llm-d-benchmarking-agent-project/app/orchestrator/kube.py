@@ -69,7 +69,7 @@ class KubeClient(Protocol):
                    follow: bool = False) -> str: ...
     def stream_log_lines(self, *, namespace: str, selector: str,
                          tail: int | None = None) -> AsyncIterator[str]: ...
-    async def delete_job(self, name: str, *, namespace: str, ignore_not_found: bool = True) -> RunResult: ...
+    async def delete_job(self, name: str, *, namespace: str) -> RunResult: ...
 
 
 class RealKubeClient:
@@ -176,8 +176,6 @@ class RealKubeClient:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await producer
 
-    async def delete_job(self, name: str, *, namespace: str, ignore_not_found: bool = True) -> RunResult:
-        argv = ["kubectl", "delete", "job", name, "-n", namespace]
-        if ignore_not_found:
-            argv += ["--ignore-not-found"]
+    async def delete_job(self, name: str, *, namespace: str) -> RunResult:
+        argv = ["kubectl", "delete", "job", name, "-n", namespace, "--ignore-not-found"]
         return await self._ctx.run_command(argv)

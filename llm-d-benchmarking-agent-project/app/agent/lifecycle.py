@@ -46,7 +46,6 @@ class RunHandle:
     """Bookkeeping for one in-flight turn: its task plus the metadata the UI/agent surfaces."""
     session_id: str
     task: asyncio.Task
-    cancelled: bool = False
 
     @property
     def active(self) -> bool:
@@ -82,15 +81,9 @@ class RunRegistry:
             del self._runs[session_id]
 
     # ---- queries -----------------------------------------------------------
-    def get(self, session_id: str) -> RunHandle | None:
-        return self._runs.get(session_id)
-
     def is_running(self, session_id: str) -> bool:
         handle = self._runs.get(session_id)
         return handle is not None and handle.active
-
-    def active_session_ids(self) -> set[str]:
-        return {sid for sid, h in self._runs.items() if h.active}
 
     def active_handles(self) -> list[RunHandle]:
         return [h for h in self._runs.values() if h.active]
@@ -110,7 +103,6 @@ class RunRegistry:
         handle = self._runs.get(session_id)
         if handle is None or handle.task.done():
             return False
-        handle.cancelled = True
         log.info("run.cancel", extra={"session_id": session_id})
         return await self._cancel_handle(handle, timeout=timeout)
 
@@ -176,7 +168,6 @@ class RunRegistry:
             log.info("run.shutdown.begin", extra={"in_flight": len(handles), "pass": passes})
             for handle in handles:
                 seen.add(id(handle))
-                handle.cancelled = True
                 await self._cancel_handle(handle, timeout=timeout)
                 cancelled.append(handle.session_id)
         # Anything that completed (cancelled or on its own) during the sweep is forgotten now so a

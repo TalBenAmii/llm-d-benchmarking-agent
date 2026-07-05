@@ -8,7 +8,6 @@ user is the agent's job (see knowledge/sweep_playbook.md).
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from app.tools.context import ToolContext
@@ -16,7 +15,6 @@ from app.validation.report import (
     ReportError,
     compare_across_harnesses,
     compare_summaries,
-    find_reports,
     load_report,
     resolve_report_inputs,
     summarize_report,
@@ -114,31 +112,13 @@ async def compare_reports(
 # agent's judgment — see ``knowledge/multi_harness.md``.
 
 
-def _resolve(sources: list[str], labels: list[str] | None) -> list[tuple[str, Path | None]]:
-    """Resolve each source (a report file or a run dir) to (label, report_path|None)."""
-    resolved: list[tuple[str, Path | None]] = []
-    for i, src in enumerate(sources):
-        p = Path(src)
-        report: Path | None
-        if p.is_file():
-            report = p
-        else:
-            found = find_reports([p], newest_only=True)
-            report = found[0] if found else None
-        label = (labels[i] if labels and i < len(labels) else None) or (
-            report.parent.name if report else src
-        )
-        resolved.append((label, report))
-    return resolved
-
-
 async def compare_harness_runs(
     ctx: ToolContext,
     *,
     sources: list[str],
     labels: list[str] | None = None,
 ) -> dict[str, Any]:
-    entries_in = _resolve(sources, labels)
+    entries_in = resolve_report_inputs(sources, None, labels)
     schema_path = ctx.settings.benchmark_report_schema_path
 
     valid_entries: list[dict[str, Any]] = []   # {label, summary}
