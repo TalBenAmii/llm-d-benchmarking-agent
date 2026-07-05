@@ -20,6 +20,10 @@ agent + Kubernetes-native benchmark orchestrator + results analyzer for
 | [INTERACTIVE_TEST_GUIDE.md](INTERACTIVE_TEST_GUIDE.md) | contributors / testers | Follow-along runbook to drive every feature by hand with a real LLM. |
 | [BENCHMARK_FEATURE_COVERAGE.md](BENCHMARK_FEATURE_COVERAGE.md) | contributors / reviewers | Benchmark-CLI feature-coverage catalog (✅/🟡/⬜) — what's wired vs deferred. |
 | [USEFUL_REPO_DOCS.md](USEFUL_REPO_DOCS.md) | contributors | Curated index of which upstream `llm-d` / `llm-d-benchmark` docs matter and why. |
+| [CONTEXT.md](CONTEXT.md) | contributors / reviewers | Ubiquitous-language / domain glossary — the project's shared vocabulary (spec, harness, workload, SessionPlan, goodput, …) with "avoid" synonyms. |
+| [CONFIG_AUDIT_LOG.md](CONFIG_AUDIT_LOG.md) | maintainers | Dated config/model-drift audit entries — the running log of configuration and model-version reconciliations. |
+| [PROJECT_BRAIN_REFERENCE.md](PROJECT_BRAIN_REFERENCE.md) | engineers / maintainers | Orientation hub for reference/historical material — status and pointers into the rest of the suite. |
+| [UPSTREAM_REUSE_PATHS.md](UPSTREAM_REUSE_PATHS.md) | contributors | Where to look in the READ-ONLY `llm-d-benchmark/` — the CLI entry point, specs, harnesses, and the Benchmark Report schema. |
 
 Ops assets live under [`deploy/observability/`](../deploy/observability/): a Prometheus scrape
 config, alert rules (`alerts.rules.yaml`), and a Grafana dashboard.
