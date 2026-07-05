@@ -20,16 +20,18 @@ ensure_env() {
   fi
 }
 
-# Read one KEY's value from ./.env (last assignment wins). Strips only SURROUNDING
-# whitespace/quotes (not every internal space/quote — `tr -d` mangled values like
+# Read one KEY's value from ./.env (last assignment wins; `export KEY=…` lines count too —
+# python-dotenv honors them, so ignoring them would misread a configured env). Strips only
+# SURROUNDING whitespace/quotes (not every internal space/quote — `tr -d` mangled values like
 # HOST="my host" into "myhost"); enough for the HOST/PORT/PROVIDER/KEY reads the callers do.
-read_env() { [[ -f .env ]] && grep -E "^\s*$1\s*=" .env | tail -1 | cut -d= -f2- | sed -E "s/^[[:space:]'\"]+//; s/[[:space:]'\"]+\$//" || true; }
+read_env() { [[ -f .env ]] && grep -E "^\s*(export\s+)?$1\s*=" .env | tail -1 | cut -d= -f2- | sed -E "s/^[[:space:]'\"]+//; s/[[:space:]'\"]+\$//" || true; }
 
-# Replace-or-append KEY=VALUE in ./.env (pure bash; values printf'd verbatim).
+# Replace-or-append KEY=VALUE in ./.env (pure bash; values printf'd verbatim). Also replaces
+# an `export KEY=…` spelling of the same key so the file never ends up with two assignments.
 set_env_var() {  # $1 KEY  $2 VALUE
   local key="$1" val="$2" f=".env" tmp
   touch "$f"; tmp="$(mktemp)"
-  grep -vE "^${key}=" "$f" >"$tmp" 2>/dev/null || true
+  grep -vE "^\s*(export\s+)?${key}=" "$f" >"$tmp" 2>/dev/null || true
   printf '%s=%s\n' "$key" "$val" >>"$tmp"
   mv "$tmp" "$f"
 }

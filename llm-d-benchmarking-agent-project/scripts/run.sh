@@ -15,7 +15,6 @@
 # claude-agent-sdk — your local `claude` CLI login (wired by scripts/setup-claude-plan.sh).
 set -euo pipefail
 
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # project root (this script lives in scripts/)
 VENV=".venv"
 PY="$VENV/bin/python"
 
@@ -24,6 +23,8 @@ OPEN=0
 REINSTALL=0
 PORT_OVERRIDE=""
 
+# Args are parsed BEFORE the cd so --help's `sed "$0"` still resolves a relative $0
+# (e.g. `cd scripts && ./run.sh --help`); nothing here needs the project root yet.
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-reload)  RELOAD=0; shift ;;
@@ -34,6 +35,8 @@ while [[ $# -gt 0 ]]; do
     *) echo "run.sh: unknown option '$1' (try --help)" >&2; exit 2 ;;
   esac
 done
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # project root (this script lives in scripts/)
 
 log() { printf '\033[35m▸\033[0m %s\n' "$*"; }
 # shellcheck source-path=SCRIPTDIR/..
@@ -68,7 +71,8 @@ HOST="$(read_env HOST)"; HOST="${HOST:-127.0.0.1}"
 PORT="${PORT_OVERRIDE:-$(read_env PORT)}"; PORT="${PORT:-8000}"
 
 # Credential note per provider route — warn, never block: the UI must serve either way.
-PROVIDER="$(read_env LLM_PROVIDER)"; PROVIDER="${PROVIDER:-anthropic}"
+# Lower-cased to match the app's own dispatch (get_provider lower-cases LLM_PROVIDER too).
+PROVIDER="$(read_env LLM_PROVIDER | tr '[:upper:]' '[:lower:]')"; PROVIDER="${PROVIDER:-anthropic}"
 case "$PROVIDER" in
   claude-agent-sdk|agent-sdk|claude-max)
     # Plan route: the credential is the `claude` CLI's login, so a logged-out day-2 start
@@ -79,7 +83,12 @@ case "$PROVIDER" in
       log "Note: the 'claude' CLI is not logged in — the UI loads, chat won't. Run ./scripts/setup-claude-plan.sh (or 'claude auth login')."
     fi ;;
   *)
-    if [[ "$PROVIDER" == openai* || "$PROVIDER" == vllm ]]; then KEY="$(read_env OPENAI_API_KEY)"; else KEY="$(read_env ANTHROPIC_API_KEY)"; fi
+    # Same explicit alias list as get_provider (app/llm/provider.py) — no open globs, so a
+    # typo'd provider gets the anthropic-default note rather than misleading openai advice.
+    case "$PROVIDER" in
+      openai|openai-compatible|vllm) KEY="$(read_env OPENAI_API_KEY)" ;;
+      *)                             KEY="$(read_env ANTHROPIC_API_KEY)" ;;
+    esac
     if [[ -z "$KEY" ]]; then
       log "Note: no ${PROVIDER^^} API key in .env — the UI loads, but a live session needs one."
     fi ;;

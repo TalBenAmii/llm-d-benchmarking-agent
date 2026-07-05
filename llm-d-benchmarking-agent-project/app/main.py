@@ -267,8 +267,11 @@ async def list_sessions() -> JSONResponse:
 async def provider_info() -> JSONResponse:
     """The active LLM provider + model for the header badge — plus whether the provider
     actually built at startup, so the UI can show "LLM not configured" instead of leaving
-    the failure to surface at the first chat message. No secrets, no account identity."""
-    return JSONResponse(provider_view(get_settings(), app.state.provider_error))
+    the failure to surface at the first chat message. No secrets, no account identity.
+    ``getattr``: same no-lifespan defense as graceful_shutdown (a bare read would 500)."""
+    return JSONResponse(
+        provider_view(get_settings(), getattr(app.state, "provider_error", None))
+    )
 
 
 def _teardown_session_runtime(sid: str) -> None:

@@ -18,13 +18,13 @@
 #   ./scripts/setup-claude-plan.sh -h | --help
 set -euo pipefail
 
+case "${1:-}" in -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac   # before the cd — $0 may be relative
+
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # project root (this script lives in scripts/)
 
 log()  { printf '\033[35m▸\033[0m %s\n' "$*"; }            # llm-d purple bullet
 warn() { printf '\033[1;33m[setup-claude-plan] %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31m[setup-claude-plan] ERROR: %s\033[0m\n' "$*" >&2; exit 1; }
-
-case "${1:-}" in -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
 
 # Prompts read /dev/tty so they work even when stdin is a pipe (curl | bash, install.sh).
 # Without a usable TTY there is nobody to ask — skip cleanly, never hang a scripted install.
@@ -32,6 +32,14 @@ case "${1:-}" in -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;
 # stay true in a session with no controlling terminal (CI/setsid), where the open fails — and
 # every later prompt would then silently take its default instead of asking.
 TTY=/dev/tty; { : <"$TTY" >"$TTY"; } 2>/dev/null || TTY=""
+# A BACKGROUND job that still has a controlling terminal (`./scripts/install.sh &`, nohup from
+# an interactive shell) passes the open-probe but would be SIGTTIN-STOPPED at the first actual
+# read from /dev/tty — the install would sit in job state T until someone runs `fg`. Treat
+# "not the terminal's foreground process group" as no TTY and take the clean-skip path.
+if [[ -n "$TTY" ]] && command -v ps >/dev/null 2>&1; then
+  PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"; TPGID="$(ps -o tpgid= -p $$ 2>/dev/null | tr -d ' ')"
+  [[ -n "$PGID" && -n "$TPGID" && "$PGID" != "$TPGID" ]] && TTY=""
+fi
 if [[ -z "$TTY" ]]; then
   log "No interactive terminal — skipping Claude-plan setup. Run ./scripts/setup-claude-plan.sh later."
   exit 0
@@ -50,7 +58,8 @@ ensure_env
 # ── Consent first — context-aware default ──────────────────────────────────
 # A fresh .env (example default + no key) defaults to Yes; a deliberately configured provider
 # (a key actually set, or already on the plan) is shown so a re-run can't silently clobber it.
-CUR_PROVIDER="$(read_env LLM_PROVIDER)"; CUR_PROVIDER="${CUR_PROVIDER:-anthropic}"
+# Lower-cased to match the app's own dispatch (get_provider lower-cases LLM_PROVIDER too).
+CUR_PROVIDER="$(read_env LLM_PROVIDER | tr '[:upper:]' '[:lower:]')"; CUR_PROVIDER="${CUR_PROVIDER:-anthropic}"
 CUR_KEY=""
 case "$CUR_PROVIDER" in
   openai|openai-compatible|vllm) CUR_KEY="$(read_env OPENAI_API_KEY)" ;;
@@ -86,9 +95,14 @@ if ! command -v claude >/dev/null 2>&1; then
 fi
 
 # ── Login state (claude auth status --json) ────────────────────────────────
-# One status call cached in AUTH_JSON; python3 parses it (guaranteed by install; the project
-# venv is the fallback). Fields: loggedIn → "true"/"", email/subscriptionType → value/"".
-PYJSON="python3"; command -v python3 >/dev/null 2>&1 || PYJSON=".venv/bin/python"
+# One status call cached in AUTH_JSON; python parses it. Validated UP FRONT: a silently missing
+# interpreter would make every auth_field read "" — indistinguishable from "not logged in" —
+# and walk a logged-in user into a re-login that then "fails" for the wrong reason.
+if command -v python3 >/dev/null 2>&1; then PYJSON="python3"
+elif [[ -x .venv/bin/python ]]; then PYJSON=".venv/bin/python"
+else die "python3 is required (to read 'claude auth status') — install it, or run ./scripts/install.sh first, then re-run this script."
+fi
+# Fields: loggedIn → "true"/"", email/subscriptionType → value/"".
 refresh_auth() { AUTH_JSON="$(claude auth status --json 2>/dev/null || true)"; }
 auth_field() {
   printf '%s' "$AUTH_JSON" | "$PYJSON" -c '
@@ -141,10 +155,14 @@ log "Wrote .env: LLM_PROVIDER=claude-agent-sdk · AGENT_SDK_MODEL=$MODEL · AGEN
 # ── Verify end-to-end: one tiny inference on the plan ──────────────────────
 # Mirrors the runtime provider: any stray API key is blanked so the call runs on the
 # subscription, and it runs from an empty dir so no project context pads the test prompt.
+# `timeout` guards a hung CLI but is optional — stock macOS ships without coreutils, and a
+# missing guard must not turn a working plan into a reported failure.
 log "Verifying with one tiny test call on your plan ($MODEL)…"
+TIMEOUT=(); command -v timeout >/dev/null 2>&1 && TIMEOUT=(timeout 120)
 PING_DIR="$(mktemp -d)"
 PING_RC=0
-PING_OUT="$(cd "$PING_DIR" && timeout 120 env ANTHROPIC_API_KEY= ANTHROPIC_AUTH_TOKEN= \
+# ${TIMEOUT[@]+…}: empty-array expansion trips `set -u` on bash <4.4 (stock macOS is 3.2).
+PING_OUT="$(cd "$PING_DIR" && ${TIMEOUT[@]+"${TIMEOUT[@]}"} env ANTHROPIC_API_KEY= ANTHROPIC_AUTH_TOKEN= \
   claude -p --model "$MODEL" --no-session-persistence 'Reply with exactly: ok' 2>&1)" || PING_RC=$?
 rm -rf "$PING_DIR"
 if [[ "$PING_RC" -eq 0 ]]; then

@@ -155,15 +155,22 @@ class ProviderError(RuntimeError):
     pass
 
 
+# LLM_PROVIDER alias sets — the single source of truth for provider dispatch, shared by
+# ``app.web.provider_view`` (the header badge) and the retention self-check's keyless set so
+# a new alias added here can't silently drift out of sync with them.
+OPENAI_PROVIDERS: frozenset[str] = frozenset({"openai", "openai-compatible", "vllm"})
+AGENT_SDK_PROVIDERS: frozenset[str] = frozenset({"claude-agent-sdk", "agent-sdk", "claude-max"})
+
+
 def get_provider(settings: Settings) -> LLMProvider:
     provider = (settings.llm_provider or "anthropic").lower()
     if provider == "anthropic":
         from app.llm.anthropic_provider import AnthropicProvider
         return AnthropicProvider(settings)
-    if provider in ("openai", "openai-compatible", "vllm"):
+    if provider in OPENAI_PROVIDERS:
         from app.llm.openai_provider import OpenAIProvider
         return OpenAIProvider(settings)
-    if provider in ("claude-agent-sdk", "agent-sdk", "claude-max"):
+    if provider in AGENT_SDK_PROVIDERS:
         from app.llm.agent_sdk_provider import AgentSdkProvider
         return AgentSdkProvider(settings)
     raise ProviderError(f"unknown LLM_PROVIDER {settings.llm_provider!r}")

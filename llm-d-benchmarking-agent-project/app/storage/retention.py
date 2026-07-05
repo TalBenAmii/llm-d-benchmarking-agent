@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import Settings
+from app.llm.provider import AGENT_SDK_PROVIDERS
 
 
 # ---------------------------------------------------------------------------
@@ -411,8 +412,9 @@ _PROVIDER_KEY_ATTR: dict[str, str] = {
 
 # Keyless providers: they authenticate via the local ``claude`` CLI subscription login, not an
 # API key in config. Coherent as long as the name is known; a missing CLI login surfaces as a
-# clear error on the first chat (we stay hermetic here and do not probe the CLI).
-_KEYLESS_PROVIDERS: frozenset[str] = frozenset({"claude-agent-sdk", "agent-sdk", "claude-max"})
+# clear error on the first chat (we stay hermetic here and do not probe the CLI). The alias
+# set itself lives with the dispatcher (app.llm.provider) so the two can't drift.
+_KEYLESS_PROVIDERS: frozenset[str] = AGENT_SDK_PROVIDERS
 
 
 def _check_provider_coherent(settings: Settings) -> CheckOutcome:

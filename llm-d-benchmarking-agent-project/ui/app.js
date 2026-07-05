@@ -387,7 +387,9 @@ function connect(sid, afterSeq) {
   const sock = new WebSocket(`${proto}://${location.host}/ws${qs}`);
   ws = sock;
 
-  sock.onopen = () => { if (sock === ws) setStatus("connected", "ok"); };
+  // Re-fetch the LLM badge on every (re)connect: a server restarted with a fixed — or newly
+  // broken — provider must not keep showing the stale boot-time badge next to a live status.
+  sock.onopen = () => { if (sock === ws) { setStatus("connected", "ok"); loadProviderBadge(); } };
   sock.onclose = () => {
     if (sock !== ws) return;                         // superseded socket (a switch/reconnect took over)
     setStatus("disconnected — retrying…", "down");

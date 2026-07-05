@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agent.ws_schemas import ValidationError
 from app.config import Settings
+from app.llm.provider import AGENT_SDK_PROVIDERS, OPENAI_PROVIDERS
 from app.storage.provenance import BundleStore
 
 # ── inbound-frame validation-error formatting (WS protocol ``error`` event) ─────────────────
@@ -48,17 +49,21 @@ def first_validation_message(exc: ValidationError) -> str:
 def provider_view(settings: Settings, provider_error: str | None) -> dict[str, Any]:
     """The active LLM provider + model as the header badge shows them (GET /api/provider).
 
-    Mirrors ``get_provider``'s alias sets (config dispatch, not judgment) but stays
+    Shares ``get_provider``'s alias constants (config dispatch, not judgment) but stays
     settings-based so it still answers when the provider FAILED to build — exactly the state
-    the badge must surface (``configured: False`` → "LLM not configured"). Deliberately
-    minimal: never a key, account identity, or the error text (which can name env vars)."""
+    the badge must surface (``configured: False`` → "LLM not configured"). An unknown provider
+    name (which makes ``get_provider`` raise) gets ``model: None`` rather than a model it never
+    resolved to. Deliberately minimal: never a key, account identity, or the error text (which
+    can name env vars)."""
     provider = (settings.llm_provider or "anthropic").lower()
-    if provider in ("claude-agent-sdk", "agent-sdk", "claude-max"):
+    if provider in AGENT_SDK_PROVIDERS:
         model = settings.agent_sdk_model
-    elif provider in ("openai", "openai-compatible", "vllm"):
+    elif provider in OPENAI_PROVIDERS:
         model = settings.openai_model
-    else:
+    elif provider == "anthropic":
         model = settings.anthropic_model
+    else:
+        model = None
     return {"provider": provider, "model": model, "configured": provider_error is None}
 
 
