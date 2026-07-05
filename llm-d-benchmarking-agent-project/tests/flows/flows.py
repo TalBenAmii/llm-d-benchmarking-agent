@@ -1698,7 +1698,10 @@ COMPARE_CONFIGURATIONS = Flow(
                          "llm-d-pd-disaggregation"], MUTATING),
     ],
     required_subcommands=["standup", "run", "teardown"],
-    live_eval=True,
+    # Hermetic deterministic exemplar: the live flow-eval can't fairly reproduce a 2×-config
+    # deploy→bench→teardown walk in one turn; live compare grounding is covered by the skill-usage
+    # SCENARIOS. Scored via the hermetic golden gate + the flow skill-grounding tests instead.
+    live_eval=False,
 )
 
 
@@ -1773,7 +1776,10 @@ WVA_AUTOSCALING_CONFIG = Flow(
     required_tools=["run_shell"],
     forbidden_subcommands=["standup", "teardown"],
     expect_stack_detected=True,
-    live_eval=True,
+    # Hermetic deterministic exemplar: the ~9-step run_shell WVA walk can't fairly replay in one
+    # live turn, and its existing-stack shape conflicts with SIMULATE's redeploy note; live wva
+    # grounding is covered by the skill-usage SCENARIOS. Scored via the hermetic gate instead.
+    live_eval=False,
 )
 
 

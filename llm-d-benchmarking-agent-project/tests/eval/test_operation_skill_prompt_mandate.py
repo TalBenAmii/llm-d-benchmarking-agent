@@ -2,7 +2,7 @@
 
 Guards the prompt wiring behind the live skill-usage eval (commit 0769b5c): the agent
 is told to fetch each operation's *_skill via fetch_key_docs FIRST, at request time.
-Hermetic; needs the read-only repos resolved (set REPOS_DIR to a populated checkout).
+Hermetic — builds the system prompt in-process; no siblings needed.
 """
 from __future__ import annotations
 

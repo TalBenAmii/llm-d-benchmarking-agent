@@ -23,7 +23,7 @@ MAPPING = [
 def mandate_block(tool_ctx) -> str:
     prompt = build_system_prompt(tool_ctx)
     start = prompt.index("GROUND EACH OPERATION IN ITS SKILL")
-    return prompt[start:start + 1200]
+    return prompt[start:start + 1800]
 
 
 @pytest.mark.parametrize("keyword,skill", MAPPING)

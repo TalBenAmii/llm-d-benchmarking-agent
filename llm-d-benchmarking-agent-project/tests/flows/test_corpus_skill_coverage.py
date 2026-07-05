@@ -34,9 +34,3 @@ def test_skill_has_a_golden_flow(skill):
     """At least one golden flow grounds in this skill."""
     flows = _FLOWS_BY_SKILL[skill]
     assert flows, f"no golden flow grounds in {skill} — add an exemplar transcript"
-
-
-def test_all_five_skills_covered():
-    """Sanity: the corpus grounds in every one of the five skills (none orphaned)."""
-    uncovered = [s for s, fs in _FLOWS_BY_SKILL.items() if not fs]
-    assert not uncovered, f"skills with no golden flow: {uncovered}"

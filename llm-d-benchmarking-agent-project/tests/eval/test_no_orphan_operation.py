@@ -27,18 +27,37 @@ _OPERATION_SUBCOMMANDS = {
 # Mutating but NOT a standalone grounded operation: a readiness/verification probe that only
 # runs inside a deploy/benchmark flow (already grounded) and has no skill of its own.
 _EXEMPT_SUBSTEPS = {"smoketest"}
+# Mutating result-store plumbing (git-like add/rm/push/pull to a results store) — not a
+# skill-grounded llm-d lifecycle operation, so no skill applies.
+_EXEMPT_STORE = {
+    "results.add", "results.rm", "results.push", "results.pull",
+    "results.remote.add", "results.remote.rm",
+}
 
 
 def _mutating_subcommands() -> set[str]:
+    """Every mutating llmdbenchmark subcommand, top-level AND nested, as dotted paths."""
     node = yaml.safe_load((PROJECT_ROOT / "security" / "allowlist.yaml").read_text())
-    subs = node["executables"]["llmdbenchmark"]["subcommands"]
-    return {name for name, sub in subs.items() if sub.get("mode") == "mutating"}
+    root = node["executables"]["llmdbenchmark"]
+    out: set[str] = set()
+
+    def _walk(subs: dict, prefix: str) -> None:
+        for name, sub in subs.items():
+            path = f"{prefix}{name}"
+            if sub.get("mode") == "mutating":
+                out.add(path)
+            nested = sub.get("subcommands")
+            if nested:
+                _walk(nested, f"{path}.")
+
+    _walk(root.get("subcommands", {}), "")
+    return out
 
 
 def test_every_mutating_subcommand_is_classified():
     """Each mutating llmdbenchmark subcommand is either a grounded operation or an exempt sub-step."""
     mutating = _mutating_subcommands()
-    classified = set(_OPERATION_SUBCOMMANDS) | _EXEMPT_SUBSTEPS
+    classified = set(_OPERATION_SUBCOMMANDS) | _EXEMPT_SUBSTEPS | _EXEMPT_STORE
     orphan = mutating - classified  # a mutating op with neither a skill nor an exemption
     stale = classified - mutating  # a classification for a subcommand that no longer mutates/exists
     assert not orphan, f"mutating subcommands lack a skill mapping: {sorted(orphan)}"
