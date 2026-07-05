@@ -9,33 +9,24 @@ from pathlib import Path
 
 import pytest
 
-from app.tools import probe
+from app.tools.knowledge_access import fetch_key_docs, read_knowledge, search_knowledge
 from app.tools.registry import dispatch
 
 # ---- allowlist + runner resolution for the vetted install scripts ----------
 
-def test_install_prereqs_resolves_to_executable_project_script(tool_ctx):
-    # The `project-script` runner invoke type must resolve install_prereqs.sh to the real
-    # file shipped with the agent project — present and executable.
-    entry = tool_ctx.allowlist.executable("install_prereqs.sh")
-    real, cwd = tool_ctx.runner.resolve(["install_prereqs.sh", "--all"], entry)
+@pytest.mark.parametrize("script_name,flag", [
+    ("install_prereqs.sh", "--all"),
+    ("install_metrics_server.sh", "--kubelet-insecure-tls"),
+])
+def test_vetted_installer_resolves_to_executable_project_script(tool_ctx, script_name, flag):
+    # The `project-script` runner invoke type must resolve each vetted installer to the real,
+    # executable file shipped with the agent project, with flags passed through verbatim.
+    entry = tool_ctx.allowlist.executable(script_name)
+    real, cwd = tool_ctx.runner.resolve([script_name, flag], entry)
     script = Path(real[0])
-    assert script.name == "install_prereqs.sh"
+    assert script.name == script_name
     assert script.is_file() and os.access(script, os.X_OK)
-    assert real[1:] == ["--all"]
-
-
-def test_install_metrics_server_resolves_to_executable_project_script(tool_ctx):
-    # The metrics-server installer is also a vetted `project-script`: it must resolve to the
-    # real, executable file shipped with the agent project, flags passed through verbatim.
-    entry = tool_ctx.allowlist.executable("install_metrics_server.sh")
-    real, cwd = tool_ctx.runner.resolve(
-        ["install_metrics_server.sh", "--kubelet-insecure-tls"], entry
-    )
-    script = Path(real[0])
-    assert script.name == "install_metrics_server.sh"
-    assert script.is_file() and os.access(script, os.X_OK)
-    assert real[1:] == ["--kubelet-insecure-tls"]
+    assert real[1:] == [flag]
 
 
 def test_install_deps_resolves_to_upstream_guide_script(tool_ctx):
@@ -56,7 +47,7 @@ def test_install_deps_resolves_to_upstream_guide_script(tool_ctx):
 # ---- fetch_key_docs (hard-coded pointers, live content) -------------------
 
 def test_fetch_key_docs_lists_available_tasks(tool_ctx):
-    out = probe.fetch_key_docs(tool_ctx, task="__none__")
+    out = fetch_key_docs(tool_ctx, task="__none__")
     assert "quickstart" in out["available_tasks"]
     assert out["docs"] == []  # no doc has that task
 
@@ -64,7 +55,7 @@ def test_fetch_key_docs_lists_available_tasks(tool_ctx):
 def test_fetch_key_docs_quickstart(tool_ctx):
     if not tool_ctx.settings.bench_repo.is_dir():
         pytest.skip("bench repo not present")
-    out = probe.fetch_key_docs(tool_ctx, task="quickstart")
+    out = fetch_key_docs(tool_ctx, task="quickstart")
     assert out["task"] == "quickstart"
     assert all(d["task"] == "quickstart" for d in out["docs"])
     # The quickstart doc must resolve and carry real content.
@@ -75,7 +66,7 @@ def test_fetch_key_docs_quickstart(tool_ctx):
 # ---- read_knowledge (hybrid: core inline + rest on-demand) ----------------
 
 def test_read_knowledge_returns_content_for_valid_topic(tool_ctx):
-    out = probe.read_knowledge(tool_ctx, name="capacity")
+    out = read_knowledge(tool_ctx, name="capacity")
     assert out["name"] == "capacity.md"
     assert out["topic"] == "capacity"
     # The on-demand guide must come back with its real, full content.
@@ -85,13 +76,13 @@ def test_read_knowledge_returns_content_for_valid_topic(tool_ctx):
 
 
 def test_read_knowledge_accepts_full_basename(tool_ctx):
-    out = probe.read_knowledge(tool_ctx, name="analysis.md")
+    out = read_knowledge(tool_ctx, name="analysis.md")
     assert out["name"] == "analysis.md"
     assert out["content"]
 
 
 def test_read_knowledge_rejects_unknown_name(tool_ctx):
-    out = probe.read_knowledge(tool_ctx, name="does_not_exist")
+    out = read_knowledge(tool_ctx, name="does_not_exist")
     assert "error" in out
     # The error must list valid topics so the model can self-correct.
     assert "capacity.md" in out["valid_topics"]
@@ -105,7 +96,7 @@ def test_read_knowledge_rejects_unknown_name(tool_ctx):
     "..",
 ])
 def test_read_knowledge_rejects_path_traversal(tool_ctx, evil):
-    out = probe.read_knowledge(tool_ctx, name=evil)
+    out = read_knowledge(tool_ctx, name=evil)
     assert "error" in out and "content" not in out
     assert "valid_topics" in out
 
@@ -124,7 +115,7 @@ async def test_read_knowledge_in_tool_definitions_and_dispatch(tool_ctx):
 
 def test_search_knowledge_ranks_relevant_guide_first(tool_ctx):
     # A capacity/fit query should rank the capacity guide at the top via name + heading hits.
-    out = probe.search_knowledge(tool_ctx, query="will the model fit in gpu memory capacity")
+    out = search_knowledge(tool_ctx, query="will the model fit in gpu memory capacity")
     assert out["match_count"] >= 1
     top = out["results"][0]
     assert top["kind"] == "knowledge"
@@ -138,13 +129,13 @@ def test_search_knowledge_ranks_relevant_guide_first(tool_ctx):
 def test_search_knowledge_finds_doc_without_exact_basename(tool_ctx):
     # The user describes a symptom in their own words (not a basename); the gateway readiness
     # guide should still surface.
-    out = probe.search_knowledge(tool_ctx, query="gateway programmed false traffic cannot reach pods")
+    out = search_knowledge(tool_ctx, query="gateway programmed false traffic cannot reach pods")
     topics = [r["topic"] for r in out["results"] if r["kind"] == "knowledge"]
     assert "gateway_readiness" in topics
 
 
 def test_search_knowledge_includes_repo_doc_pointers(tool_ctx):
-    out = probe.search_knowledge(tool_ctx, query="quickstart kind cpu only deploy")
+    out = search_knowledge(tool_ctx, query="quickstart kind cpu only deploy")
     repo_hits = [r for r in out["results"] if r["kind"] == "repo_doc"]
     assert repo_hits, "expected at least one curated repo-doc pointer"
     ptr = repo_hits[0]
@@ -153,28 +144,28 @@ def test_search_knowledge_includes_repo_doc_pointers(tool_ctx):
 
 
 def test_search_knowledge_can_exclude_repo_docs(tool_ctx):
-    out = probe.search_knowledge(
+    out = search_knowledge(
         tool_ctx, query="quickstart kind cpu only deploy", include_repo_docs=False
     )
     assert all(r["kind"] == "knowledge" for r in out["results"])
 
 
 def test_search_knowledge_respects_limit_and_is_deterministic(tool_ctx):
-    out1 = probe.search_knowledge(tool_ctx, query="benchmark results report metrics", limit=3)
+    out1 = search_knowledge(tool_ctx, query="benchmark results report metrics", limit=3)
     assert len(out1["results"]) <= 3
     # Same query → byte-identical ranking (no model call, stable tie-break).
-    out2 = probe.search_knowledge(tool_ctx, query="benchmark results report metrics", limit=3)
+    out2 = search_knowledge(tool_ctx, query="benchmark results report metrics", limit=3)
     assert out1["results"] == out2["results"]
 
 
 def test_search_knowledge_empty_and_stopword_only_query(tool_ctx):
-    assert "error" in probe.search_knowledge(tool_ctx, query="   ")
+    assert "error" in search_knowledge(tool_ctx, query="   ")
     # A query of only filler words has no searchable terms.
-    assert "error" in probe.search_knowledge(tool_ctx, query="how do i the a an")
+    assert "error" in search_knowledge(tool_ctx, query="how do i the a an")
 
 
 def test_search_knowledge_no_match_returns_empty_results(tool_ctx):
-    out = probe.search_knowledge(tool_ctx, query="zzzznevernevermatchqqqq")
+    out = search_knowledge(tool_ctx, query="zzzznevernevermatchqqqq")
     assert out["match_count"] == 0
     assert out["results"] == []
     # Still hands back the valid topic list so the model can fall back to browsing.
@@ -186,11 +177,11 @@ def test_search_knowledge_limit_one_keeps_top_hit(tool_ctx):
     # limit=1 and a query that matches both a strong knowledge guide AND a (lower-scoring) repo
     # pointer, the one result returned must be that top-scoring hit — not the reserved repo_doc.
     # Regression for the repo_quota=max(1, limit//3) crowd-out at limit=1.
-    out = probe.search_knowledge(tool_ctx, query="quickstart kind cpu only deploy", limit=1)
+    out = search_knowledge(tool_ctx, query="quickstart kind cpu only deploy", limit=1)
     assert len(out["results"]) == 1
     top = out["results"][0]
     # Without the quota cap this came back as the score-24 repo_doc, dropping the score-67 guide.
-    full = probe.search_knowledge(tool_ctx, query="quickstart kind cpu only deploy", limit=5)
+    full = search_knowledge(tool_ctx, query="quickstart kind cpu only deploy", limit=5)
     best_score = full["results"][0]["score"]
     assert top["score"] == best_score, "limit=1 dropped the highest-scoring result"
     assert top["kind"] == "knowledge"

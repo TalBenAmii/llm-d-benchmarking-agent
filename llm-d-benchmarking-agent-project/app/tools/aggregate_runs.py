@@ -99,7 +99,7 @@ async def aggregate_runs(
     except ToolError as exc:
         raise ToolError(f"cross-run aggregation could not run: {exc}") from exc
 
-    bridge = _parse_bridge_output(res.output)
+    bridge = parse_bridge_dict(res.output, "aggregation")
     if not bridge.get("ok"):
         return {
             "ran": False,
@@ -129,10 +129,3 @@ async def aggregate_runs(
             "SLO/goodput/Pareto verdicts. See knowledge/analysis.md."
         ),
     }
-
-
-def _parse_bridge_output(output: str) -> dict[str, Any]:
-    """Parse the aggregation wrapper's single stdout JSON object (tolerant of leading noise).
-
-    Thin wrapper over the shared ``dig.parse_bridge_dict`` (shared with capacity)."""
-    return parse_bridge_dict(output, "aggregation")

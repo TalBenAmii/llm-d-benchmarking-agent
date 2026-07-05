@@ -28,6 +28,7 @@ from app.tools.gated_access import (
     record_capacity_verdict,
 )
 from app.tools.shell import run_shell
+from tests._helpers import _approve_all
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.flows import _CAPACITY_GATED_NO_TOKEN
 from tests.flows.harness import CaptureRunner
@@ -37,10 +38,6 @@ _GATED_UNAUTH = {"gated": True, "authorized": False, "gated_reason": "no token c
 _GATED_AUTH = {"gated": True, "authorized": True, "gated_reason": ""}
 _PUBLIC = {"gated": False, "authorized": None, "gated_reason": ""}
 ALLOWLIST_PATH = Path(__file__).resolve().parents[1] / "security" / "allowlist.yaml"
-
-
-async def _approve_all(kind, payload):
-    return True
 
 
 def _stub_ctx(**verdicts):

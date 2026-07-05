@@ -358,7 +358,7 @@ async def test_dispatch_converts_end_to_end(tool_ctx):
 def test_convert_guide_knowledge_is_reachable(tool_ctx):
     """The mapping JUDGMENT lives in knowledge/convert_guide.md and is loadable via the same
     read_knowledge mechanism the tool description points at."""
-    from app.tools.probe import read_knowledge
+    from app.tools.knowledge_access import read_knowledge
 
     res = read_knowledge(tool_ctx, name="convert_guide")
     assert res.get("topic") == "convert_guide"

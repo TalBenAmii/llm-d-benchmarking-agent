@@ -216,7 +216,7 @@ class FakeKubeClient:
                 await asyncio.sleep(self.stream_line_delay)
             yield line
 
-    async def delete_job(self, name: str, *, namespace: str, ignore_not_found: bool = True) -> RunResult:
+    async def delete_job(self, name: str, *, namespace: str) -> RunResult:
         self.deleted.append((namespace, name))
         for key in list(self._runs):
             if key[0] == namespace and job_name(key[1]) == name:

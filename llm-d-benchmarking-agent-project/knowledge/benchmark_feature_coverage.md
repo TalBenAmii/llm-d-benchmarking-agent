@@ -39,7 +39,7 @@ merged DONE (57 & 58 deferred).
 - **`--monitoring`** — lights up `results.observability` (KV-cache hit rate, schedule delay,
   GPU util) the report parses. Default ON is the AGENT's policy (upstream `run` defaults it OFF,
   and only standup accepts `--no-monitoring` — `build_argv` omits the flag elsewhere); opt out on
-  Kind / clusters lacking Prometheus-operator CRDs. Decision lives in `knowledge/observability.md`.
+  Kind / clusters lacking Prometheus-operator CRDs. Decision lives in `knowledge/observability_monitoring.md`.
 
 ## Optional to surface to users (offer when their context calls for it)
 - Model override (`-m/--model`, singular, on `run`; `-m/--models` on plan/standup/teardown/experiment) · cluster access `-k`/URL/token · HuggingFace gated-model

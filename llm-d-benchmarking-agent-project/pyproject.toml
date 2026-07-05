@@ -12,7 +12,6 @@ dependencies = [
     "pydantic-settings>=2.3",
     "jsonschema>=4.22",
     "pyyaml>=6.0",
-    "httpx>=0.27",
     "anthropic>=0.40",
     "openai>=1.40",
     "claude-agent-sdk>=0.2",
@@ -26,6 +25,7 @@ dev = [
     "pytest-cov>=5.0",
     "pytest-timeout>=2.3",
     "pytest-xdist>=3.0",   # parallel test execution (`-n auto`) — full suite ~6.5x faster
+    "httpx>=0.27",         # Starlette TestClient transport (tests only; runtime gets it via anthropic/openai)
     "ruff>=0.6",
     "mypy>=1.11",
 ]
@@ -41,7 +41,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["app", "app.llm", "app.agent", "app.tools", "app.security", "app.validation", "app.orchestrator", "app.capacity", "app.observability", "app.storage", "app.packaging", "app.mcp"]
+packages = ["app", "app.llm", "app.agent", "app.tools", "app.tools.schemas", "app.security", "app.validation", "app.orchestrator", "app.capacity", "app.readiness", "app.observability", "app.storage", "app.packaging", "app.mcp"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

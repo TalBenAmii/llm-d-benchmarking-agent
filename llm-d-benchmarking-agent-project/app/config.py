@@ -80,7 +80,6 @@ class Settings(BaseSettings):
         return v
 
     # Server
-    host: str = "127.0.0.1"
     port: int = 8000
 
     # Simulate (dry run): drive the whole workflow without deploying/benchmarking. READ-ONLY

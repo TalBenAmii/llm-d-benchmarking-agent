@@ -20,7 +20,6 @@ from app.config import Settings, get_settings
 from app.llm.provider import AssistantTurn, ToolCall
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
-from app.tools.context import ToolContext
 from app.tools.registry import (
     _GROUPED_TOOLS,
     _TOOL_GROUPS,
@@ -35,12 +34,6 @@ ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
 
 # Representative tools that must ALWAYS be present (starter kit), incl. the loader tool itself.
 _CORE_ALWAYS = {"probe_environment", "list_catalog", "propose_session_plan", "load_tools"}
-
-
-def _ctx(tmp_path) -> ToolContext:
-    s = get_settings()
-    al = Allowlist.from_file(ALLOWLIST_PATH)
-    return ToolContext(settings=s, allowlist=al, runner=CommandRunner(s.repo_paths), workspace=tmp_path / "ws")
 
 
 # ---- registry: groups partition the non-starter tools; the loader tool is never grouped ---------
@@ -92,8 +85,8 @@ def test_withholding_groups_actually_saves_meaningful_schema_bytes():
 
 # ---- prompt note is byte-stable and EXACTLY in sync with the groups (both directions) -----------
 
-def test_group_catalog_note_in_prompt(tmp_path):
-    assert GROUP_CATALOG_NOTE in build_system_prompt(_ctx(tmp_path))
+def test_group_catalog_note_in_prompt(tool_ctx):
+    assert GROUP_CATALOG_NOTE in build_system_prompt(tool_ctx)
 
 
 def test_note_names_every_grouped_tool_and_no_starter_tool_as_grouped():
@@ -147,10 +140,10 @@ def test_fat_guides_de_inlined_from_core():
     assert "deploy_path_playbook.md" not in CORE_KNOWLEDGE
 
 
-def test_de_inlined_guides_not_inlined_but_reachable(tmp_path):
+def test_de_inlined_guides_not_inlined_but_reachable(tool_ctx):
     from app.tools import knowledge_access
 
-    ctx = _ctx(tmp_path)
+    ctx = tool_ctx
     prompt = build_system_prompt(ctx)
     kdir = ctx.settings.knowledge_dir
     for name, topic in [("key_docs.yaml", "key_docs"), ("deploy_path_playbook.md", "deploy_path_playbook")]:
@@ -225,7 +218,7 @@ class _CapturingProvider:
         return turn
 
 
-async def test_loop_reveals_group_same_turn_after_load_tools(tmp_path):
+async def test_loop_reveals_group_same_turn_after_load_tools(tool_ctx):
     from app.agent.loop import AgentLoop
 
     async def emit(t, p):
@@ -234,7 +227,7 @@ async def test_loop_reveals_group_same_turn_after_load_tools(tmp_path):
     async def request_approval(kind, payload):
         return True
 
-    session = Session(id="modeldriven", ctx=_ctx(tmp_path))
+    session = Session(id="modeldriven", ctx=tool_ctx)
     # Step 1: model calls load_tools(['advanced']). Step 2 (after the re-open): a text-only finish.
     prov = _CapturingProvider([
         AssistantTurn(text="", tool_calls=[ToolCall("c1", "load_tools", {"groups": ["advanced"]})]),

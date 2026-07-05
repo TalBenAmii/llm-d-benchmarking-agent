@@ -96,7 +96,7 @@ _DESCRIPTIONS = {
         "(the group's tools appear in your tool list THIS same turn). Most tools are grouped and "
         "hidden by default to keep your list lean; the groups are: 'setup' (deploy & pre-flight), "
         "'run' (execute & monitor a benchmark), 'analyze' (results), and 'advanced' (power features "
-        "— sweeps, autotuning, DoE, run export/reproduce, cross-run/-harness "
+        "— sweeps, DoE, run export/reproduce, cross-run/-harness "
         "comparison, scenario authoring). Pass `groups` (e.g. ['run'] or ['setup','run']). Call "
         "this the MOMENT the user's request needs a grouped tool — whether their stack is already "
         "up, they have prior results to analyze, or they want to reproduce a run. Read-only, no "

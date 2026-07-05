@@ -3,7 +3,7 @@
 #
 # Sets up a virtualenv (uv if available, else python3 -m venv), installs the app,
 # ensures a .env exists, then launches the FastAPI/uvicorn server. HOST/PORT are
-# read from .env (defaults 127.0.0.1:8000) and can be overridden via flags.
+# read from .env (defaults 127.0.0.1:8000); PORT can be overridden with --port.
 #
 #   ./scripts/run.sh                  # start with autoreload on http://127.0.0.1:8000
 #   ./scripts/run.sh --open           # ...and open it in a browser
@@ -22,7 +22,6 @@ PY="$VENV/bin/python"
 RELOAD=1
 OPEN=0
 REINSTALL=0
-HOST_OVERRIDE=""
 PORT_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
@@ -30,22 +29,19 @@ while [[ $# -gt 0 ]]; do
     --no-reload)  RELOAD=0; shift ;;
     --open)       OPEN=1; shift ;;
     --reinstall)  REINSTALL=1; shift ;;
-    --host)       HOST_OVERRIDE="${2:?--host needs a value}"; shift 2 ;;
     --port)       PORT_OVERRIDE="${2:?--port needs a value}"; shift 2 ;;
     -h|--help)    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "run.sh: unknown option '$1' (try --help)" >&2; exit 2 ;;
   esac
 done
 
-log() { printf '\033[35m▸\033[0m %s\n' "$*"; }   # llm-d purple bullet
+log() { printf '\033[35m▸\033[0m %s\n' "$*"; }
 # shellcheck source-path=SCRIPTDIR/..
 # shellcheck source=scripts/_env.sh
 source "scripts/_env.sh"   # cwd is the project root (cd above); provides ensure_env
 
-# ── 1. Ensure .env ────────────────────────────────────────────────────────
 ensure_env
 
-# ── 2. Ensure venv + dependencies ─────────────────────────────────────────
 if [[ ! -x "$PY" ]]; then
   if command -v uv >/dev/null 2>&1; then
     log "Creating virtualenv with uv…"
@@ -68,14 +64,12 @@ if [[ "$REINSTALL" == 1 ]] || ! "$PY" -c "import uvicorn, app.main" >/dev/null 2
   fi
 fi
 
-# ── 3. Resolve HOST/PORT (CLI overrides > .env > defaults) ────────────────
 # Strip only SURROUNDING whitespace/quotes (not every internal space/quote — `tr -d` mangled
 # values like HOST="my host" into "myhost"); enough for the HOST/PORT/PROVIDER/KEY reads below.
 read_env() { [[ -f .env ]] && grep -E "^\s*$1\s*=" .env | tail -1 | cut -d= -f2- | sed -E "s/^[[:space:]'\"]+//; s/[[:space:]'\"]+\$//" || true; }
-HOST="${HOST_OVERRIDE:-$(read_env HOST)}"; HOST="${HOST:-127.0.0.1}"
+HOST="$(read_env HOST)"; HOST="${HOST:-127.0.0.1}"
 PORT="${PORT_OVERRIDE:-$(read_env PORT)}"; PORT="${PORT:-8000}"
 
-# ── 4. Friendly key check (warn only; UI still serves without one) ────────
 PROVIDER="$(read_env LLM_PROVIDER)"; PROVIDER="${PROVIDER:-anthropic}"
 if [[ "$PROVIDER" == "openai" ]]; then KEY="$(read_env OPENAI_API_KEY)"; else KEY="$(read_env ANTHROPIC_API_KEY)"; fi
 if [[ -z "$KEY" ]]; then
@@ -85,7 +79,6 @@ fi
 URL="http://${HOST}:${PORT}"
 log "Starting on ${URL}  (provider: ${PROVIDER}, reload: $([[ $RELOAD == 1 ]] && echo on || echo off))"
 
-# ── 5. Optionally open a browser once the server is up ────────────────────
 if [[ "$OPEN" == 1 ]]; then
   ( for _ in $(seq 1 40); do
       if "$PY" -c "import socket,sys; s=socket.socket(); s.settimeout(.3); sys.exit(0 if s.connect_ex(('${HOST}',${PORT}))==0 else 1)" 2>/dev/null; then break; fi

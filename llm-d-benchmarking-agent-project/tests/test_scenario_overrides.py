@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 from app.tools.config_artifact import (
@@ -227,46 +228,19 @@ async def test_author_scenario_rejects_unknown_knob_against_real_repo(tool_ctx):
     assert not (tool_ctx.workspace / "bad-knob.yaml").exists()
 
 
-async def test_author_scenario_requires_name(tool_ctx):
-    raised = False
-    try:
+@pytest.mark.parametrize("filename,content,match", [
+    ("noname.yaml", {"schedulerName": "x"}, "name"),                        # missing name
+    ("bare.yaml", {"name": "x"}, "override knob"),                          # no override knob
+    ("../escape.yaml", {"name": "x", "schedulerName": "y"}, None),          # path traversal
+])
+async def test_author_scenario_rejects_bad_input(tool_ctx, filename, content, match):
+    with pytest.raises(ToolError, match=match):
         await write_and_validate_config(
             tool_ctx,
             artifact_type="scenario",
-            target_filename="noname.yaml",
-            content={"schedulerName": "x"},
+            target_filename=filename,
+            content=content,
         )
-    except ToolError as exc:
-        raised = "name" in str(exc)
-    assert raised
-
-
-async def test_author_scenario_requires_at_least_one_knob(tool_ctx):
-    raised = False
-    try:
-        await write_and_validate_config(
-            tool_ctx,
-            artifact_type="scenario",
-            target_filename="bare.yaml",
-            content={"name": "x"},
-        )
-    except ToolError as exc:
-        raised = "override knob" in str(exc)
-    assert raised
-
-
-async def test_author_scenario_rejects_path_traversal_filename(tool_ctx):
-    raised = False
-    try:
-        await write_and_validate_config(
-            tool_ctx,
-            artifact_type="scenario",
-            target_filename="../escape.yaml",
-            content={"name": "x", "schedulerName": "y"},
-        )
-    except ToolError:
-        raised = True
-    assert raised
 
 
 # ---------------------------------------------------------------------------

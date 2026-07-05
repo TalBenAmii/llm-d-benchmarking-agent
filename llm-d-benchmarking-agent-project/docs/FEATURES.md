@@ -35,12 +35,8 @@ auth/rate-limit/CORS**, **run lifecycle** (cancel/reattach/readiness), **workspa
 
 ## 1. How to launch it and see everything yourself
 
-```bash
-cd llm-d-benchmarking-agent-project
-cp .env.example .env            # set ANTHROPIC_API_KEY or an OpenAI-compatible key (already configured here)
-pip install -e .                # or: uv pip install -e .
-uvicorn app.main:app --reload   # then open http://127.0.0.1:8000
-```
+Launch it with `./scripts/run.sh` (then open http://127.0.0.1:8000) — full quickstart in the
+[root README](../../README.md#quick-start) / [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 The browser chat is where the **user-facing** features live. The HTTP endpoints
 (`/healthz`, `/readyz`, `/metrics`, `/api/sessions`, `/api/history`) are where the
@@ -68,7 +64,7 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 | llm-d brand theme (the official llm-d mark, Red Hat fonts), light/dark toggle | `ui/index.html`, `ui/styles.css` | 🔵 Open the app; click the theme toggle (top-right). Persists in `localStorage`. |
 | **Recent chats sidebar + resume** (Claude-web style) | `ui/app.js`, `GET /api/sessions`, WS `?session=<id>` | 🟢 `GET /api/sessions` returns the stored chats (observed: 100+ sessions). Click one to replay its transcript. |
 | **Stored Results sidebar + metric trend sparkline** | `ui/index.html` (`#history`, `#trend-view`), `GET /api/history`, `/api/history/trend` | 🟢 Endpoints live. The sparkline appears once a result is stored via `result_history`; the agent proactively stores the first real run of a session as a baseline (directed by `knowledge/history.md`), so a fresh `/api/history` populates after your first benchmark. |
-| **Per-run charts shown inline under the report summary** | `GET /api/sessions/{sid}/artifact`, `app/tools/probe.py` (`charts`), `ui/app.js` (`renderReportCharts`) | 🟢 After `locate_and_parse_report`, the harness's latency/throughput PNGs render as captioned images in the results card (read-only, image-only, path-traversal-hardened route). |
+| **Per-run charts shown inline under the report summary** | `GET /api/sessions/{sid}/artifact`, `app/tools/report_locate.py` (`_discover_charts`), `ui/app.js` (`renderReportCharts`) | 🟢 After `locate_and_parse_report`, the harness's latency/throughput PNGs render as captioned images in the results card (read-only, image-only, path-traversal-hardened route). |
 | **Token-usage counter** (real provider counts) — **context-window chip** `⛶ N ctx` (under the chat input, right-aligned on the hint row) shows the current prompt size sent to the model on the latest call; raw count, no model-limit denominator since the active model can change; persists across reloads) + live per-turn `↑up ↓down · N this turn (X calls · Y cached)` | `app/agent/events.py` (`usage` event → `context_window`), `ui/app.js` (`onUsage`/`appendTurnTokens`/`setContextWindow`) | 🔵 Visible during/after any chat turn. |
 | **Deterministic welcome card** — a consistent, code-emitted greeting (capability bullets + nudge) on a FRESH chat, NO LLM turn spent; never shown on resume | `knowledge/welcome.md` (judgment text), `app/agent/cards.py` (parser), `app/main.py` (`welcome` event on `not resumed`), `ui/app.js` (`renderWelcome`) | 🔵 Open a new chat: the welcome card + suggestion chips appear before you type. ⚪ `tests/test_deterministic_msgs.py`. |
 | **Structured post-run results card** — a deterministic summary (model/harness/requests + latency/throughput table + exact SLO verdicts + Pareto frontier for a sweep) built from the validated BR v0.2 summary, not LLM prose | `app/agent/cards.py`, `app/agent/loop.py` (`results_card` event after the report/analysis tool), `ui/app.js` (`renderResultsCard`) | 🔵 After `locate_and_parse_report` / `analyze_results` the card renders identically every run. ⚪ `tests/test_deterministic_msgs.py`. |
@@ -151,7 +147,7 @@ result.
 | **Real-time pod log streaming** → live `output` events during a run (P21) | `controller.run_attempt` + `kube.stream_logs(follow=True)` | 🔵 Run `orchestrate_benchmark_run` on a cluster; logs stream into the console panel live, not just at the end. |
 | **Checkpoint / resume** of long DOE sweeps via a per-sweep ConfigMap (P22) | `app/orchestrator/checkpoint.py` | ⚪ `tests/test_orchestrator*`; resume a sweep with the same `sweep_id` → completed treatments are skipped. |
 | **Resource management** — nodeSelector / tolerations / affinity / GPU type + pod anti-affinity (P23) | `JobSpec`/`build_job_manifest` + `knowledge/resource_management.md` | ⚪ Pass `scheduling` to `orchestrate_benchmark_run`; inspect the rendered manifest in tests. |
-| **Endpoint readiness gate** before submit (+ approval-gated standup suggestion) (P24) | `app/orchestrator/readiness.py`, `check_endpoint_readiness` tool | ⚪ `tests/test_readyz.py` + tool tests; reads `kubectl get endpoints`, refuses to submit against an unready endpoint. |
+| **Endpoint readiness gate** before submit (+ approval-gated standup suggestion) (P24) | `app/readiness/probes.py` + `diagnostics.py`, `check_endpoint_readiness` tool | ⚪ `tests/test_endpoint_readiness.py` + tool tests; reads `kubectl get endpoints`, refuses to submit against an unready endpoint. |
 | Cleanup of terminal Jobs/ConfigMaps; results PVC preserved | `controller.py:cleanup` | ⚪ orchestrator tests. |
 
 ---

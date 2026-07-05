@@ -20,7 +20,7 @@ import yaml
 
 from app.config import Settings
 from app.security.allowlist import Allowlist
-from app.tools import probe
+from app.tools.knowledge_access import read_knowledge
 from app.tools.probe import (
     _ACCELERATOR_RESOURCE_KEYS,
     _node_accelerator_summaries,
@@ -222,7 +222,7 @@ def test_no_allowlist_widening_reuses_existing_get_nodes(tmp_path):
 # ---- (3) the judgment is DATA in knowledge/accelerators.yaml, not Python ----
 
 def test_accelerators_knowledge_loads_via_read_knowledge(tool_ctx):
-    out = probe.read_knowledge(tool_ctx, name="accelerators")
+    out = read_knowledge(tool_ctx, name="accelerators")
     assert out["name"] == "accelerators.yaml"
     data = yaml.safe_load(out["content"])
     assert isinstance(data, dict)

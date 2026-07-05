@@ -50,11 +50,8 @@ from app.config import get_settings
 
 # The reusable real-app driver (factored out of this module — see tests/eval/app_driver.py).
 # Imported under the names this module historically used so its references are unchanged.
-from tests.eval.app_driver import FuzzProvider
 from tests.eval.app_driver import Player as _Player
 from tests.eval.app_driver import install_isolated_state as _install_isolated_state
-
-__all__ = ["FuzzProvider", "_Player", "_install_isolated_state"]
 
 # The bench repo must be present (the agent loop reads the live catalog for plan validation).
 # In a worktree this is satisfied via REPOS_DIR (see tests/CLAUDE.md); skip cleanly otherwise.

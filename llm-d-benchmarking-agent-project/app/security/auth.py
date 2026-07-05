@@ -157,13 +157,13 @@ class TokenBucket:
             self._tokens = min(self._capacity, self._tokens + elapsed * self._rps)
             self._last = now
 
-    def allow(self, cost: float = 1.0) -> bool:
-        """Try to spend ``cost`` tokens. Refills based on elapsed time first, then either
+    def allow(self) -> bool:
+        """Try to spend one token. Refills based on elapsed time first, then either
         deducts and returns True, or leaves the bucket untouched and returns False."""
         with self._lock:
             self._refill_locked()
-            if self._tokens >= cost:
-                self._tokens -= cost
+            if self._tokens >= 1.0:
+                self._tokens -= 1.0
                 return True
             return False
 
@@ -196,14 +196,11 @@ class RateLimiter:
         )
 
     @classmethod
-    def from_settings(
-        cls, settings: Settings, *, clock: Callable[[], float] = time.monotonic
-    ) -> RateLimiter:
+    def from_settings(cls, settings: Settings) -> RateLimiter:
         return cls(
             enabled=settings.rate_limit_enabled,
             rps=settings.rate_limit_rps,
             burst=settings.rate_limit_burst,
-            clock=clock,
         )
 
     def check(self) -> None:

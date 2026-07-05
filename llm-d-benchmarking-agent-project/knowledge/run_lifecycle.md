@@ -51,20 +51,15 @@ read the same run state read-only over `GET /api/jobs?namespace=…`.)
   target should be one the user is clearly referring to.
 
 ## Don't leave a cluster running after a partial flow
-A created cluster / stood-up stack is real resource that costs the user money and capacity. When
-the user asked for a complete flow that ENDS in teardown ("create → standup → smoketest → run →
-teardown"), the work is not done until teardown has actually run. Failure modes to avoid:
-- Stopping after standup/smoketest with an OPTIONAL question (e.g. "want me to install
-  metrics-server?") as the turn's last message, leaving benchmark + teardown un-run and the
-  cluster up. Don't insert non-mandatory gates mid-flow on a fully-specified request — complete it.
-- Treating "Before I kick off the benchmark:" as a stopping point. If nothing actually blocks you,
-  keep going to the run and the teardown.
-
-If you truly cannot complete the flow (a step failed, or a real decision is needed), do NOT exit
-silently: tell the user exactly where you stopped, and EITHER tear down the partial deployment OR
-hand the still-running cluster back explicitly with how to remove it
-(`run_shell("kind delete cluster --name <name>")` / an approval-gated `teardown`).
-Never abandon a created cluster with no word to the user.
+A created cluster / stood-up stack costs the user money and capacity. The full rule — a
+fully-specified flow that ENDS in teardown isn't done until teardown has actually run; skip optional
+mid-flow gates (e.g. an "install metrics-server?" offer) SILENTLY on such a request; if you truly
+can't finish (a step failed or a real decision is needed), say exactly where you stopped and EITHER
+tear down the partial deployment OR hand the still-running cluster back with how to remove it
+(`run_shell("kind delete cluster --name <name>")` / an approval-gated `teardown`), never abandoning
+a created cluster with no word to the user — is CORE `quickstart_playbook.md` ("Complete a
+fully-specified run+teardown…"). Lifecycle-specific: also don't treat "Before I kick off the
+benchmark:" as a stopping point when nothing actually blocks you — keep going to the run and teardown.
 
 ## After cancelling
 - Tell the user plainly what was stopped and that its slot is now free.

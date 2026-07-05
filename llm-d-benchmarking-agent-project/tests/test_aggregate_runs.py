@@ -27,9 +27,10 @@ import pytest
 import yaml
 
 from app.config import get_settings
+from app.dig import parse_bridge_dict
 from app.security.allowlist import READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunnerError
-from app.tools.aggregate_runs import _parse_bridge_output, aggregate_runs
+from app.tools.aggregate_runs import aggregate_runs
 from app.tools.context import ToolError
 from app.tools.registry import dispatch, tool_definitions
 from app.validation.report import load_report
@@ -46,7 +47,7 @@ WRAPPER = PROJECT_ROOT / "scripts" / "aggregate_runs.py"
 
 def test_read_repo_doc_reaches_the_analysis_notebook_readme(tool_ctx):
     """The agent surfaces the notebook setup guide straight from the read-only repo."""
-    from app.tools.probe import read_repo_doc
+    from app.tools.knowledge_access import read_repo_doc
 
     doc = read_repo_doc(tool_ctx, path="llm-d-benchmark/docs/analysis/README.md")
     assert doc["path"].endswith("docs/analysis/README.md")
@@ -55,7 +56,7 @@ def test_read_repo_doc_reaches_the_analysis_notebook_readme(tool_ctx):
 
 
 def test_read_repo_doc_reaches_the_analysis_pipeline_overview(tool_ctx):
-    from app.tools.probe import read_repo_doc
+    from app.tools.knowledge_access import read_repo_doc
 
     doc = read_repo_doc(tool_ctx, path="llm-d-benchmark/docs/analysis.md")
     assert doc["path"].endswith("docs/analysis.md")
@@ -278,8 +279,8 @@ def test_aggregate_runs_is_registered_as_a_tool():
 
 
 def test_parse_bridge_empty_is_not_ok():
-    assert _parse_bridge_output("")["ok"] is False
-    assert _parse_bridge_output("not json at all")["ok"] is False
+    assert parse_bridge_dict("", "aggregation")["ok"] is False
+    assert parse_bridge_dict("not json at all", "aggregation")["ok"] is False
 
 
 # ============================================================================

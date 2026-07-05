@@ -23,11 +23,9 @@ from app.validation.analysis import (
     recommend_next_steps,
 )
 from app.validation.report import (
-    ReportError,
-    load_report,
+    iter_loaded_reports,
     resolve_report_inputs,
     summarize_report,
-    validate_report,
 )
 
 
@@ -84,18 +82,7 @@ async def analyze_results(
     runs: list[dict[str, Any]] = []            # per-run report status + SLO verdict
     skipped: list[dict[str, Any]] = []
 
-    for label, path in entries:
-        if path is None:
-            skipped.append({"label": label, "reason": "no benchmark report found"})
-            continue
-        try:
-            report = load_report(path)
-        except ReportError as exc:
-            # Present but corrupt/unreadable (e.g. truncated by an OOM-killed run) → skip this one
-            # report and keep analyzing the rest, instead of failing the whole analysis.
-            skipped.append({"label": label, "reason": "report unreadable", "errors": [str(exc)]})
-            continue
-        validation = validate_report(report, schema_path)
+    for _orig_i, label, path, report, validation in iter_loaded_reports(entries, schema_path, skipped):
         if not validation.valid:
             skipped.append({"label": label, "reason": "report failed schema validation",
                             "errors": validation.errors[:5]})

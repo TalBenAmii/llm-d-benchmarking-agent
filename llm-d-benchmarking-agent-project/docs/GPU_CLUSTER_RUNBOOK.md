@@ -168,10 +168,9 @@ Notes:
 1. **`.env`:** set `SIMULATE=0` (real execution). Leave `KUBECONFIG` unset — the default
    `~/.kube/config` already points at minikube. (Set `HF_TOKEN` only for a gated model.)
 
-2. **Start the app** and open it:
-   ```bash
-   uvicorn app.main:app    # http://127.0.0.1:8000
-   ```
+2. **Start the app** — `./scripts/run.sh` (or any launch path from the
+   [root README quickstart](../../README.md#quick-start) / [`DEPLOYMENT.md`](DEPLOYMENT.md)); it
+   comes up at http://127.0.0.1:8000.
 
 3. **Drive the real GPU run.** The agent defaults to the `cicd/kind` quickstart, so be explicit
    that you have a real GPU cluster. A working sequence (the agent does each step; mutating ones

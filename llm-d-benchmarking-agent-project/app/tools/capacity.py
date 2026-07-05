@@ -86,7 +86,7 @@ async def check_capacity(
             "up yet, run run_setup (install.sh) first."
         ) from exc
 
-    bridge = _parse_bridge_output(res.output)
+    bridge = parse_bridge_dict(res.output, "capacity")
     if not bridge.get("ok"):
         return {
             "spec": spec,
@@ -172,10 +172,3 @@ _GATED_NOTE = (
     "true, just continue to the sizing verdict — say nothing about tokens. Full wording: the "
     "'Gated-model access pre-flight' section of knowledge/capacity.md."
 )
-
-
-def _parse_bridge_output(output: str) -> dict[str, Any]:
-    """Parse the capacity bridge's single stdout JSON object (tolerant of leading log noise).
-
-    Thin wrapper over the shared ``dig.parse_bridge_dict`` (shared with aggregate_runs)."""
-    return parse_bridge_dict(output, "capacity")

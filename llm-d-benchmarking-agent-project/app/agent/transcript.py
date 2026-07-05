@@ -5,7 +5,7 @@ flattens the stored LLM wire-format messages — plus the side-trail lists the s
 (decided/pending approval gates, executed commands, persisted card results) — into the same
 flat item shape the live WebSocket event stream produces, so the client can reuse its renderers.
 
-It lives beside ``results_card.py`` (the other deterministic, knowledge-sourced render
+It lives beside ``cards.py`` (the other deterministic, knowledge-sourced render
 mechanism) rather than inside ``app.main`` so it is testable through its own seam: the HTTP
 routes (history replay on reconnect, public-share snapshotting) call ``history_items`` and stay
 thin. ``app.main`` re-exports these under their original private names for the existing tests.

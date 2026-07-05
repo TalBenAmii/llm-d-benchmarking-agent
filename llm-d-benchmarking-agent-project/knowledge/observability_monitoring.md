@@ -1,16 +1,14 @@
 # Benchmark monitoring — activating `results.observability` (DEFAULT ON)
 
-Split out of `observability.md` §3 (that file is the hub; this is the on-demand detail). Load this
+Split out of `observability.md` (that file is the hub; this is the on-demand detail). Load this
 when deciding whether to drive a benchmark with monitoring enabled, or when a report's
 `results.observability` block came back empty.
 
 The Benchmark Report v0.2 carries a `results.observability` block (KV-cache hit rate, schedule
-delay / queue depth, GPU utilization, replica/startup/EPP-log snapshots). The analyzer already
-parses + surfaces these (see `knowledge/results_interpretation.md` and
-`knowledge/standard_metrics.yaml`). But that block is **only populated when the metrics PRODUCER
-ran** — i.e. when the benchmark was driven with monitoring enabled. Without it, the report ships
-with an EMPTY observability block and every standard metric reads as `None`. So: **default to
-turning monitoring ON.** This is your judgment, expressed as a flag the tools merely emit.
+delay / queue depth, GPU utilization, replica/startup/EPP-log snapshots). But that block is
+**only populated when the metrics PRODUCER ran** — i.e. when the benchmark was driven with
+monitoring enabled. Without it, the report ships with an EMPTY observability block and every
+standard metric reads as `None`. So: **default to turning monitoring ON.**
 
 ## The mechanism (what the flag does)
 
@@ -73,24 +71,20 @@ probe reports facts; this file is where "default ON, opt out on a truly CRD-less
 
 Once monitoring ran, the parsed metrics surface through `analyze_results` (per-run
 `standard_metrics`) and `locate_and_parse_report` (`summary.standard_metrics`): **KV-cache hit
-rate** (higher = more prefix reuse → lower TTFT), **schedule delay** (a labelled queue-depth
-proxy; lower = less admission queueing), and **GPU utilization**. Interpret them per
-`knowledge/results_interpretation.md`. If they are `None` after a run, the usual cause is that
-monitoring was off / the CRDs were missing — say so; never fabricate a value the report lacks.
+rate**, **schedule delay**, and **GPU utilization** — interpretation, the `None` diagnosis
+(monitoring off / CRDs missing) and the never-fabricate rule are all in
+`knowledge/results_interpretation.md`.
 
 Upstream-grounded saturation thresholds to flag (Source:
-`llm-d/docs/operations/observability/metrics.md`; keep the field names consistent with
-`knowledge/standard_metrics.yaml`):
+`llm-d/docs/operations/observability/metrics.md`):
 
-- **KV-cache utilization > 0.9 (~90%)** (`vllm:kv_cache_usage_perc`, 0.0–1.0) = near-full — GPU
-  memory is nearly full and requests may be **preempted or rejected**. (This is cache
-  *occupancy*, not the *hit rate* above.)
-- **Non-zero waiting/queued requests** (`vllm:num_requests_waiting`) = pods are **saturated** —
-  the primary autoscaling signal; a rising value means admission queueing.
+- **KV-cache utilization > 0.9** (`vllm:kv_cache_usage_perc`) = near-full → preemption/rejection
+  risk, and **non-zero `vllm:num_requests_waiting`** = **saturated** pods — the primary
+  autoscaling signal. Full wording, field names + the occupancy-vs-hit-rate distinction:
+  `knowledge/standard_metrics.yaml` comments.
 - *(optional)* **error rate > 5%** (`llm_d_epp_request_error_total`, per flow-id/priority) =
   backend failures worth alerting on.
 
-This monitoring is about **metrics** (Prometheus time-series). It is *separate* from
-**distributed tracing** (per-request OpenTelemetry spans), covered in
-read_knowledge('observability_tracing') — and which the benchmark can only **configure**, never
-collect.
+This monitoring is about **metrics** (Prometheus time-series), *separate* from **distributed
+tracing** (per-request OpenTelemetry spans; the benchmark only CONFIGURES it, never collects):
+read_knowledge('observability_tracing').

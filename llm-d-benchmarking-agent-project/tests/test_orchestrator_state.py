@@ -342,11 +342,6 @@ def _spec_logstream(run_id="r1", **kw):
     return JobSpec(**base)
 
 
-async def _collect(coro_fn, *, lines_sink):
-    """Run an orchestrator coroutine and return (result, captured_lines)."""
-    return await coro_fn
-
-
 # ---- run_with_retries surfaces pod logs as live events, in order ----------
 
 async def test_run_with_retries_streams_pod_logs_in_order(tmp_path):

@@ -1,11 +1,6 @@
 """Read-only environment & catalog probes: sense the host/cluster preconditions in one
 structured snapshot and enumerate the on-disk catalog. None of these mutate anything, so the
 agent loop runs them automatically (no approval).
-
-The knowledge / repo-doc access tools and the Benchmark-Report locating tools used to live in
-this module too; they now have their own cohesive homes (app/tools/knowledge_access.py and
-app/tools/report_locate.py). This module re-exports them below so existing
-``from app.tools.probe import <tool>`` imports keep working.
 """
 from __future__ import annotations
 
@@ -16,15 +11,6 @@ import yaml
 
 from app.security.runner import RunResult
 from app.tools.context import ToolContext, ToolError
-
-# Re-exports for backwards compat: these tools moved to sibling modules (this file had grown to
-# ~1,100 lines spanning three unrelated tool families); keep the old import paths working.
-from app.tools.knowledge_access import (  # noqa: F401
-    fetch_key_docs,
-    read_knowledge,
-    read_repo_doc,
-    search_knowledge,
-)
 
 # Pure JSON/text parsers + the constants they own live in the sibling module; import them back so
 # the `_probe_*` orchestration functions below are unchanged in behavior, and so existing
@@ -49,7 +35,6 @@ from app.tools.probe_parse import (  # noqa: F401
     _pod_summaries,
     _server_version,
 )
-from app.tools.report_locate import _discover_charts, locate_and_parse_report  # noqa: F401
 
 # Tools the quickstart depends on; presence is checked via PATH (no command run).
 _TOOLCHAIN = ["docker", "podman", "kubectl", "kind", "helm", "helmfile", "jq", "yq", "git", "uv", "python3"]

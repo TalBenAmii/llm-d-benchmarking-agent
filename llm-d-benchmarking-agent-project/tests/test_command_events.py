@@ -13,30 +13,12 @@ import json
 from app.agent.session import _COMMANDS_MAX, Session
 from app.config import Settings
 from app.security.allowlist import Allowlist
+from app.security.runner import CommandRunner
 from app.tools.context import ApprovalRejected, ToolContext
-from tests.flows.catalog_snapshot import frozen_catalog
-from tests.flows.harness import CaptureRunner
+from tests._helpers import _capture_ctx
 
 RO = ["kind", "get", "clusters"]                                  # read-only, no catalog needed
 MUT = ["kind", "create", "cluster", "--name", "test-cluster"]     # mutating, approval-gated
-
-
-def _ctx(tmp_path, *, emit=None, approve=None):
-    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    runner = CaptureRunner(settings.repo_paths)
-    ctx = ToolContext(
-        settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
-        runner=runner,
-        workspace=tmp_path / "ws",
-        emit=emit,
-        request_approval=approve,
-    )
-    # Pin the catalog so validate()'s ref checks don't scan the empty fake repo.
-    frozen = frozen_catalog()
-    ctx._catalog = frozen
-    ctx.catalog = lambda *, refresh=False: frozen
-    return ctx, runner
 
 
 def _collector():
@@ -54,7 +36,7 @@ def _commands(events):
 
 async def test_run_readonly_emits_command_auto_run(tmp_path):
     events, emit = _collector()
-    ctx, runner = _ctx(tmp_path, emit=emit)
+    ctx, runner = _capture_ctx(tmp_path, emit=emit)
 
     await ctx.run_readonly(RO)
 
@@ -69,7 +51,7 @@ async def test_run_readonly_emits_command_auto_run(tmp_path):
 
 async def test_run_command_readonly_emits_command_auto_run(tmp_path):
     events, emit = _collector()
-    ctx, runner = _ctx(tmp_path, emit=emit)
+    ctx, runner = _capture_ctx(tmp_path, emit=emit)
 
     await ctx.run_command(RO)
 
@@ -88,7 +70,7 @@ async def test_run_command_mutating_emits_after_approval(tmp_path):
         seen.append("approval")
         return True
 
-    ctx, runner = _ctx(tmp_path, emit=emit, approve=approve)
+    ctx, runner = _capture_ctx(tmp_path, emit=emit, approve=approve)
     await ctx.run_command(MUT)
 
     cmds = _commands(events)
@@ -106,7 +88,7 @@ async def test_rejected_mutating_emits_no_command(tmp_path):
     async def reject(kind, payload):
         return False
 
-    ctx, runner = _ctx(tmp_path, emit=emit, approve=reject)
+    ctx, runner = _capture_ctx(tmp_path, emit=emit, approve=reject)
     try:
         await ctx.run_command(MUT)
         assert False, "expected ApprovalRejected"
@@ -119,7 +101,7 @@ async def test_rejected_mutating_emits_no_command(tmp_path):
 
 async def test_no_emit_wired_is_safe(tmp_path):
     # With no emit callback, execution still works (no crash).
-    ctx, runner = _ctx(tmp_path, emit=None)
+    ctx, runner = _capture_ctx(tmp_path, emit=None)
     await ctx.run_readonly(RO)
     assert len(runner.calls) == 1
 
@@ -140,7 +122,7 @@ async def test_probe_environment_emits_command_per_probe(tmp_path):
     from app.tools.probe import probe_environment
 
     events, emit = _collector()
-    ctx, runner = _ctx(tmp_path, emit=emit)
+    ctx, runner = _capture_ctx(tmp_path, emit=emit)
 
     with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         await probe_environment(ctx, namespace="llmd-quickstart")
@@ -200,17 +182,20 @@ def test_session_records_and_caps_commands():
     assert s.commands[-1]["text"] == f"cmd {_COMMANDS_MAX + 24}"
 
 
-def test_session_persists_and_reloads_commands(tmp_path):
-    from app.security.runner import CommandRunner
-    from app.tools.context import ToolContext
-
+def _persist_ctx(tmp_path):
+    """A CommandRunner-backed ToolContext rooted at a per-session workspace — the shared setup for
+    the persist-and-reload tests below (they differ only in what they record before persist())."""
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    ctx = ToolContext(
+    return ToolContext(
         settings=settings,
         allowlist=Allowlist.from_file(settings.allowlist_path),
         runner=CommandRunner(settings.repo_paths),
         workspace=tmp_path / "ws" / "sessions" / "s1",
     )
+
+
+def test_session_persists_and_reloads_commands(tmp_path):
+    ctx = _persist_ctx(tmp_path)
     s = Session(id="s1", ctx=ctx)
     s.messages.append({"role": "user", "content": "hi"})
     s.record_command({"text": "kind get clusters", "argv": RO, "mode": "read_only", "auto_run": True})
@@ -218,7 +203,7 @@ def test_session_persists_and_reloads_commands(tmp_path):
 
     from app.agent.session import SessionManager
 
-    mgr = SessionManager(settings, ctx.allowlist, ctx.runner)
+    mgr = SessionManager(ctx.settings, ctx.allowlist, ctx.runner)
     reloaded = mgr.load("s1")
     assert reloaded is not None
     assert reloaded.commands and reloaded.commands[0]["argv"] == RO
@@ -228,7 +213,7 @@ async def test_emitted_command_carries_tool_call_id(tmp_path):
     """The command event ties back to the issuing tool call (None for the pre-turn probe), so a
     resumed chat can replay each command inline in its original transcript position."""
     events, emit = _collector()
-    ctx, _ = _ctx(tmp_path, emit=emit)
+    ctx, _ = _capture_ctx(tmp_path, emit=emit)
     ctx.current_tool_call_id = "tc-123"
     await ctx.run_readonly(RO)
     cmds = _commands(events)
@@ -284,16 +269,7 @@ def test_session_records_and_caps_card_results():
 
 
 def test_session_persists_and_reloads_card_results(tmp_path):
-    from app.security.runner import CommandRunner
-    from app.tools.context import ToolContext
-
-    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    ctx = ToolContext(
-        settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
-        runner=CommandRunner(settings.repo_paths),
-        workspace=tmp_path / "ws" / "sessions" / "s1",
-    )
+    ctx = _persist_ctx(tmp_path)
     s = Session(id="s1", ctx=ctx)
     s.messages.append({"role": "user", "content": "hi"})
     s.record_card_result({"tool_call_id": "tc1", "name": "locate_and_parse_report",
@@ -302,7 +278,7 @@ def test_session_persists_and_reloads_card_results(tmp_path):
 
     from app.agent.session import SessionManager
 
-    mgr = SessionManager(settings, ctx.allowlist, ctx.runner)
+    mgr = SessionManager(ctx.settings, ctx.allowlist, ctx.runner)
     reloaded = mgr.load("s1")
     assert reloaded is not None
     assert reloaded.card_results and reloaded.card_results[0]["name"] == "locate_and_parse_report"
@@ -312,16 +288,7 @@ def test_session_persists_and_reloads_card_results(tmp_path):
 def test_session_persists_and_reloads_tool_durations(tmp_path):
     """A tool call's wall-clock run time is persisted (keyed by tool_call_id) and reloaded, so a
     resumed/reloaded chat can show the SAME duration badge on its action rows a live run does."""
-    from app.security.runner import CommandRunner
-    from app.tools.context import ToolContext
-
-    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    ctx = ToolContext(
-        settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
-        runner=CommandRunner(settings.repo_paths),
-        workspace=tmp_path / "ws" / "sessions" / "s1",
-    )
+    ctx = _persist_ctx(tmp_path)
     s = Session(id="s1", ctx=ctx)
     s.messages.append({"role": "user", "content": "hi"})
     s.record_tool_duration("tc1", 42.137)
@@ -330,7 +297,7 @@ def test_session_persists_and_reloads_tool_durations(tmp_path):
 
     from app.agent.session import SessionManager
 
-    mgr = SessionManager(settings, ctx.allowlist, ctx.runner)
+    mgr = SessionManager(ctx.settings, ctx.allowlist, ctx.runner)
     reloaded = mgr.load("s1")
     assert reloaded is not None
     assert reloaded.tool_durations.get("tc1") == 42.14   # rounded to 2dp on record

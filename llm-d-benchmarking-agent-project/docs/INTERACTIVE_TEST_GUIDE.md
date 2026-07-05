@@ -57,12 +57,9 @@ PORT=8000
 > The LLM model here is the *agent's brain*. It is **separate** from the model being
 > benchmarked (the quickstart benchmarks a CPU-sim engine). The key never leaves the backend.
 
-Install + launch:
-
-```bash
-./scripts/run.sh                  # sets up venv, installs, starts uvicorn (reads HOST/PORT from .env)
-# or manually:  pip install -e .  &&  uvicorn app.main:app --reload
-```
+Install + launch with `./scripts/run.sh` (sets up the venv, installs, starts uvicorn reading
+`HOST`/`PORT` from `.env`) — full quickstart in the [root README](../../README.md#quick-start) /
+[`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 - [ ] **[A/B]** Server is up — open **http://127.0.0.1:8000** and the chat UI loads.
 - [ ] **[A/B]** Startup log on stdout is **JSON** (e.g. `{"timestamp":...,"message":"startup","provider":"anthropic"}`) and includes a `retention.gc` line. *(§9 structured logging + GC)*

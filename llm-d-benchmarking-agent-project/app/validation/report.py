@@ -8,6 +8,7 @@ which is determinism gate (d).
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -285,6 +286,35 @@ def resolve_report_inputs(
         )
         resolved.append((label, report))
     return resolved
+
+
+def iter_loaded_reports(
+    entries: list[tuple[str, Path | None]],
+    schema_path: str | Path,
+    skipped: list[dict[str, Any]],
+) -> Iterator[tuple[int, str, Path, dict[str, Any], ReportValidation]]:
+    """Shared load→validate prefix for the multi-report tools (analyze / compare / cross-harness).
+
+    Walks resolved ``(label, path)`` entries; for each present+readable report, yields
+    ``(orig_index, label, path, report, validation)`` after schema validation. Entries with no
+    report, or an unreadable one, are appended to ``skipped`` (skip dicts byte-identical across all
+    three callers) and NOT yielded. ``orig_index`` is the enumerate position over ``entries`` —
+    compare needs it to map ``baseline_index`` onto the surviving valid set. Each caller keeps its
+    own divergent tail (summarize / valid-invalid handling).
+    """
+    for orig_i, (label, path) in enumerate(entries):
+        if path is None:
+            skipped.append({"label": label, "reason": "no benchmark report found"})
+            continue
+        try:
+            report = load_report(path)
+        except ReportError as exc:
+            # Present but corrupt/unreadable (e.g. truncated by an OOM-killed run) → skip this one
+            # report and keep going, instead of aborting the whole multi-report operation (BUG-031).
+            skipped.append({"label": label, "reason": "report unreadable", "errors": [str(exc)]})
+            continue
+        validation = validate_report(report, schema_path)
+        yield orig_i, label, path, report, validation
 
 
 # Comparable metrics: (dotted path into a summary, human name, direction, canonical unit).

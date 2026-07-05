@@ -169,7 +169,7 @@ creates the PodMonitor/ServiceMonitor and scrapes vLLM `/metrics`, which is what
 coming back empty, the fix is almost always **re-run with monitoring on** (and on a CRD-less
 cluster, ensure the Prometheus-operator CRDs are installed or use the opt-out). The full decision
 procedure — default ON, the `prometheus_crds` probe, and the `--no-monitoring` /
-`monitoring.installPrometheusCrds` knobs — lives in `knowledge/observability.md` (§3). Never
+`monitoring.installPrometheusCrds` knobs — lives in `knowledge/observability_monitoring.md`. Never
 fabricate these numbers when the block is empty; instead explain that monitoring needs to be
 enabled.
 

@@ -812,7 +812,6 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 .diag-list li { font: 12px/1.5 var(--mono); margin: 2px 0; word-break: break-word; }
 .diag-list.diag-bad li { color: color-mix(in srgb, var(--red) 45%, var(--text)); }
 .diag-list.diag-warn li { color: color-mix(in srgb, var(--amber) 50%, var(--text)); }
-.diag-list.diag-info li { color: var(--muted); }
 
 /* Actionable "next steps" chips under an analysis (clickable; sends the step as a message). */
 .next-steps {
