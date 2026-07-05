@@ -3,8 +3,8 @@
 # setup-claude-plan.sh (Claude-plan wiring) — and by the external llm-d-bench-mcp installer, which
 # sources this same file cross-repo — kept here so all source
 # one copy instead of duplicating it. The sourcing script must define `log` first (and `die`
-# too, if it calls clone_if_missing). read_env/set_env_var operate on ./.env — callers cd to
-# the project root before sourcing.
+# too, if it calls clone_if_missing; `warn`+`ask` if it calls ensure_claude_cli). read_env/set_env_var
+# operate on ./.env — callers cd to the project root before sourcing.
 #
 # The venv / editable-install steps are deliberately NOT shared: install.sh resolves the backend for a
 # bare box and honours --uv/--dev, while run.sh stays a minimal `command -v uv` launcher, so a single
@@ -50,4 +50,30 @@ clone_if_missing() {
     log "Cloning $name → $dest"
     git clone --depth 1 "https://github.com/$owner/$name" "$dest"
   fi
+}
+
+# Put ~/.local/bin on PATH (idempotent). The official `claude`/`uv` installers drop binaries there,
+# and a non-login `curl | bash` shell usually doesn't have it on PATH — so an already-installed tool
+# looks "missing" until this runs. Callers that only need to SURFACE an installed CLI stop here.
+add_local_bin_to_path() {
+  case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+}
+
+# Ensure the `claude` CLI (the credential holder for the claude-agent-sdk provider) is installed and on
+# PATH: first surface an already-installed copy (add_local_bin_to_path), else offer the official no-sudo
+# installer (consent via the caller's `ask`) and re-add the dir. Uses the caller's log/warn/ask. Returns
+# 0 (available) · 2 (declined) · 1 (install failed) — the caller decides if non-zero is fatal
+# (setup-claude-plan dies; the MCP installer warns and continues).
+ensure_claude_cli() {
+  add_local_bin_to_path
+  command -v claude >/dev/null 2>&1 && return 0
+  warn "The 'claude' CLI is not installed — your Claude login authenticates through it."
+  case "$(ask 'Install it now (official installer, no sudo → ~/.local/bin/claude)? [Y/n]:' Y)" in
+    [Nn]*) return 2 ;;
+  esac
+  log "Installing the claude CLI…"
+  curl -fsSL https://claude.ai/install.sh | bash || return 1
+  add_local_bin_to_path
+  command -v claude >/dev/null 2>&1 || return 1
+  log "Installed the claude CLI → $(command -v claude)"
 }
