@@ -31,7 +31,6 @@ from app.observability.logging import (
 from app.observability.logging import bind as log_bind
 from tests._helpers import _session
 
-
 # --------------------------------------------------------------------------- helpers
 
 

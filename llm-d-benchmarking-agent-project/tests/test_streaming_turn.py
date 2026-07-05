@@ -27,7 +27,6 @@ from app.llm.provider import (
 )
 from tests._helpers import _session as _base_session
 
-
 # ---- StatelessTurn / open_provider_turn ----------------------------------------------------
 
 class _RecordingProvider:
