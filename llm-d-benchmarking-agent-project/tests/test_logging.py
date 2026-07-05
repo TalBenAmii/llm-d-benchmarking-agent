@@ -19,7 +19,6 @@ from pathlib import Path
 import pytest
 
 from app.agent.loop import AgentLoop
-from app.agent.session import Session
 from app.config import get_settings
 from app.llm.provider import AssistantTurn, ToolCall
 from app.observability.logging import (
@@ -30,12 +29,7 @@ from app.observability.logging import (
     setup_logging,
 )
 from app.observability.logging import bind as log_bind
-from app.security.allowlist import Allowlist
-from app.security.runner import CommandRunner
-from app.tools.context import ToolContext
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+from tests._helpers import _session
 
 
 # --------------------------------------------------------------------------- helpers
@@ -66,14 +60,6 @@ def _attach(handler: logging.Handler):
     root.addHandler(handler)
     root.setLevel(logging.DEBUG)
     return root, prev_level
-
-
-def _session(tmp_path) -> Session:
-    s = get_settings()
-    al = Allowlist.from_file(ALLOWLIST_PATH)
-    runner = CommandRunner(s.repo_paths)
-    ctx = ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
-    return Session(id="sess-xyz", ctx=ctx)
 
 
 class _FakeProvider:
@@ -179,7 +165,7 @@ async def test_corr_id_propagates_loop_tool_and_runner_within_one_turn(tmp_path)
     async def request_approval(_kind, _payload):  # nothing mutating should reach here
         raise AssertionError("no approval expected for a read-only command")
 
-    session = _session(tmp_path)
+    session = _session(tmp_path, sid="sess-xyz")
     loop = AgentLoop(_FakeProvider(turns))
 
     the_corr = new_corr_id()

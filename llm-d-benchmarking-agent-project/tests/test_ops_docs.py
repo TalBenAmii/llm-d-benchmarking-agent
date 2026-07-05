@@ -72,9 +72,8 @@ def _normalize_metric_token(tok: str) -> str:
 # The four operability docs exist and are accurate to THIS codebase
 # ===========================================================================
 
-def test_security_doc_has_threat_model_sections():
-    text = _read(DOCS / "SECURITY.md")
-    for needle in (
+@pytest.mark.parametrize("doc_path,needles", [
+    (DOCS / "SECURITY.md", (
         "Trust boundaries",
         "allowlist",            # the allowlist/approval model
         "approval",
@@ -85,13 +84,8 @@ def test_security_doc_has_threat_model_sections():
         "Network exposure",     # pairs with Phase 12
         "AUTH_ENABLED",
         "requires isolation",
-    ):
-        assert needle in text, f"SECURITY.md missing expected content: {needle!r}"
-
-
-def test_troubleshooting_doc_references_real_diagnostics():
-    text = _read(DOCS / "TROUBLESHOOTING.md")
-    for needle in (
+    )),
+    (DOCS / "TROUBLESHOOTING.md", (
         "/healthz",
         "/readyz",
         "Debug",                # debug mode (Phase 1 command trail)
@@ -100,21 +94,20 @@ def test_troubleshooting_doc_references_real_diagnostics():
         "LOG_LEVEL",
         # references real metric families for the run-failure path
         "llmdbench_orchestrator_run_faults_total",
-    ):
-        assert needle in text, f"TROUBLESHOOTING.md missing expected content: {needle!r}"
-
-
-def test_contributing_doc_states_the_laws_and_hermetic_rule():
-    text = _read(DOCS / "CONTRIBUTING.md")
-    for needle in (
+    )),
+    (DOCS / "CONTRIBUTING.md", (
         "Thin code, thick agent",
         "security/allowlist.yaml",   # allowlist-as-data
         "hermetic",
         "FakeKubeClient",
         "add a tool",
         "knowledge/",
-    ):
-        assert needle in text, f"CONTRIBUTING.md missing expected content: {needle!r}"
+    )),
+])
+def test_operability_doc_has_expected_sections(doc_path, needles):
+    text = _read(doc_path)
+    for needle in needles:
+        assert needle in text, f"{doc_path.name} missing expected content: {needle!r}"
 
 
 def test_changelog_is_keep_a_changelog_with_both_eras():

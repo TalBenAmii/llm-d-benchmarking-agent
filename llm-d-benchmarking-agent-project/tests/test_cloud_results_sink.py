@@ -16,13 +16,10 @@ from __future__ import annotations
 
 import pytest
 
-from app.config import Settings
-from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
-from app.tools.context import ToolContext
+from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.execute import build_argv, execute_llmdbenchmark
 from app.tools.schemas import ExecuteInput
-from tests._helpers import _approve_all
-from tests.flows.catalog_snapshot import frozen_catalog
+from tests._helpers import _approve_all, _capture_ctx
 from tests.flows.harness import CaptureRunner
 
 GS_URI = "gs://my-bucket/benchmarks/run1"
@@ -70,19 +67,7 @@ def test_cloud_sink_does_not_disturb_other_flags():
 
 
 def _ctx(tmp_path):
-    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    runner = CaptureRunner(settings.repo_paths)
-    ctx = ToolContext(
-        settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
-        runner=runner,
-        workspace=tmp_path / "ws",
-        request_approval=_approve_all,
-    )
-    frozen = frozen_catalog()
-    ctx._catalog = frozen
-    ctx.catalog = lambda *, refresh=False: frozen
-    return ctx, runner
+    return _capture_ctx(tmp_path, approve=_approve_all)
 
 
 def _last_run_call(runner: CaptureRunner):

@@ -12,14 +12,11 @@ Hermetic — no CLI subprocess, no network. We exercise:
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import claude_agent_sdk as sdk
 
 from app.agent import events
 from app.agent.loop import AgentLoop
 from app.agent.session import Session
-from app.config import get_settings
 from app.llm.agent_sdk_provider import _AgentSdkTurn, _consume
 from app.llm.provider import (
     AssistantTurn,
@@ -28,11 +25,7 @@ from app.llm.provider import (
     Usage,
     open_provider_turn,
 )
-from app.security.allowlist import Allowlist
-from app.security.runner import CommandRunner
-from app.tools.context import ToolContext
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+from tests._helpers import _session as _base_session
 
 
 # ---- StatelessTurn / open_provider_turn ----------------------------------------------------
@@ -277,11 +270,7 @@ class _StreamingProvider:
 
 
 def _session(tmp_path) -> Session:
-    s = get_settings()
-    al = Allowlist.from_file(PROJECT_ROOT / "security" / "allowlist.yaml")
-    runner = CommandRunner(s.repo_paths)
-    ctx = ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
-    sess = Session(id="t", ctx=ctx)
+    sess = _base_session(tmp_path)
     sess.catalog_injected = True   # skip the repo-dependent live-catalog injection
     return sess
 

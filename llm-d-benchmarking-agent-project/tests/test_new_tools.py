@@ -14,28 +14,19 @@ from app.tools.registry import dispatch
 
 # ---- allowlist + runner resolution for the vetted install scripts ----------
 
-def test_install_prereqs_resolves_to_executable_project_script(tool_ctx):
-    # The `project-script` runner invoke type must resolve install_prereqs.sh to the real
-    # file shipped with the agent project — present and executable.
-    entry = tool_ctx.allowlist.executable("install_prereqs.sh")
-    real, cwd = tool_ctx.runner.resolve(["install_prereqs.sh", "--all"], entry)
+@pytest.mark.parametrize("script_name,flag", [
+    ("install_prereqs.sh", "--all"),
+    ("install_metrics_server.sh", "--kubelet-insecure-tls"),
+])
+def test_vetted_installer_resolves_to_executable_project_script(tool_ctx, script_name, flag):
+    # The `project-script` runner invoke type must resolve each vetted installer to the real,
+    # executable file shipped with the agent project, with flags passed through verbatim.
+    entry = tool_ctx.allowlist.executable(script_name)
+    real, cwd = tool_ctx.runner.resolve([script_name, flag], entry)
     script = Path(real[0])
-    assert script.name == "install_prereqs.sh"
+    assert script.name == script_name
     assert script.is_file() and os.access(script, os.X_OK)
-    assert real[1:] == ["--all"]
-
-
-def test_install_metrics_server_resolves_to_executable_project_script(tool_ctx):
-    # The metrics-server installer is also a vetted `project-script`: it must resolve to the
-    # real, executable file shipped with the agent project, flags passed through verbatim.
-    entry = tool_ctx.allowlist.executable("install_metrics_server.sh")
-    real, cwd = tool_ctx.runner.resolve(
-        ["install_metrics_server.sh", "--kubelet-insecure-tls"], entry
-    )
-    script = Path(real[0])
-    assert script.name == "install_metrics_server.sh"
-    assert script.is_file() and os.access(script, os.X_OK)
-    assert real[1:] == ["--kubelet-insecure-tls"]
+    assert real[1:] == [flag]
 
 
 def test_install_deps_resolves_to_upstream_guide_script(tool_ctx):

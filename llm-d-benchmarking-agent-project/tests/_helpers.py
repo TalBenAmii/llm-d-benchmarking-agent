@@ -70,12 +70,35 @@ def _ctx(tmp_path, *, nodes_json: str, emit=None):
     return ctx, runner
 
 
-def _session(tmp_path) -> Session:
+def _capture_ctx(tmp_path, *, emit=None, approve=None):
+    """A ToolContext on a CaptureRunner + frozen catalog over an isolated temp workspace.
+
+    The verbatim builder several tool tests copy-pasted: a fake-repo Settings, a CaptureRunner
+    (fakes the bridge subprocess so no real venv/tool is needed), and the catalog pinned to the
+    frozen snapshot so validate()'s ref checks never scan the empty fake repo. ``approve`` becomes
+    ``request_approval`` (default None → no approval channel, for read-only-only callers)."""
+    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
+    runner = CaptureRunner(settings.repo_paths)
+    ctx = ToolContext(
+        settings=settings,
+        allowlist=Allowlist.from_file(settings.allowlist_path),
+        runner=runner,
+        workspace=tmp_path / "ws",
+        emit=emit,
+        request_approval=approve,
+    )
+    frozen = frozen_catalog()
+    ctx._catalog = frozen
+    ctx.catalog = lambda *, refresh=False: frozen
+    return ctx, runner
+
+
+def _session(tmp_path, *, sid="t") -> Session:
     s = get_settings()
     al = Allowlist.from_file(PROJECT_ROOT / "security" / "allowlist.yaml")
     runner = CommandRunner(s.repo_paths)
     ctx = ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
-    return Session(id="t", ctx=ctx)
+    return Session(id=sid, ctx=ctx)
 
 
 def write_br_report(dirpath, base: dict, *, ttft_s, out_rate, p99=None, uid=None,

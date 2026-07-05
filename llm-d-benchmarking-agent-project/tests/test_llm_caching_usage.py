@@ -17,14 +17,14 @@ import pytest
 
 from app.agent import events
 from app.agent.loop import AgentLoop
-from app.agent.session import Session, SessionManager
+from app.agent.session import SessionManager
 from app.config import Settings, get_settings
 from app.llm.anthropic_provider import AnthropicProvider, _mark_last_cacheable
 from app.llm.openai_provider import OpenAIProvider, _usage_from
 from app.llm.provider import AssistantTurn, Usage
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
-from app.tools.context import ToolContext
+from tests._helpers import _session
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
@@ -236,18 +236,10 @@ class _UsageProvider:
         return AssistantTurn(text="step", tool_calls=[], usage=u)
 
 
-def _session(tmp_path) -> Session:
-    s = get_settings()
-    al = Allowlist.from_file(ALLOWLIST_PATH)
-    runner = CommandRunner(s.repo_paths)
-    ctx = ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
-    return Session(id="tok", ctx=ctx)
-
-
 async def test_loop_emits_usage_and_accumulates_session_totals(tmp_path):
     # A text-only turn ends after one LLM call, so each run_turn = one step. Run two turns and
     # assert the session tally accumulates across both and a `usage` event is emitted each step.
-    session = _session(tmp_path)
+    session = _session(tmp_path, sid="tok")
     captured: list[tuple[str, dict]] = []
 
     async def emit(t, p):

@@ -9,13 +9,11 @@ from __future__ import annotations
 
 import pytest
 
-from app.config import Settings
-from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
-from app.tools.context import ApprovalRejected, ToolContext
+from app.security.allowlist import MUTATING, READ_ONLY
+from app.tools.context import ApprovalRejected
 from app.tools.registry import build_registry, dispatch, tool_definitions
 from app.tools.shell import classify_shell_command, run_shell
-from tests.flows.catalog_snapshot import frozen_catalog
-from tests.flows.harness import CaptureRunner
+from tests._helpers import _capture_ctx
 
 # ---- the read/write classifier -------------------------------------------
 
@@ -69,26 +67,6 @@ def test_run_shell_registered_by_default():
 
 # ---- the preserved approval flow -----------------------------------------
 
-def _ctx(tmp_path, *, emit=None, approve=None):
-    settings = Settings(
-        _env_file=None,
-        repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws",
-    )
-    runner = CaptureRunner(settings.repo_paths)
-    ctx = ToolContext(
-        settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
-        runner=runner,
-        workspace=tmp_path / "ws",
-        emit=emit,
-        request_approval=approve,
-    )
-    frozen = frozen_catalog()
-    ctx._catalog = frozen
-    ctx.catalog = lambda *, refresh=False: frozen
-    return ctx, runner
-
-
 async def test_read_only_command_auto_runs_without_approval(tmp_path):
     seen: list[str] = []
 
@@ -96,7 +74,7 @@ async def test_read_only_command_auto_runs_without_approval(tmp_path):
         seen.append("approval")
         return True
 
-    ctx, runner = _ctx(tmp_path, approve=approve)
+    ctx, runner = _capture_ctx(tmp_path, approve=approve)
     res = await run_shell(ctx, command="ls -la")
 
     assert seen == []                       # read-only → no approval prompt
@@ -112,7 +90,7 @@ async def test_mutating_command_requires_approval(tmp_path):
         seen.append((kind, payload["command"]))
         return True
 
-    ctx, runner = _ctx(tmp_path, approve=approve)
+    ctx, runner = _capture_ctx(tmp_path, approve=approve)
     res = await run_shell(ctx, command="rm -rf build")
 
     assert seen == [("command", "rm -rf build")]   # mutating → prompted
@@ -124,7 +102,7 @@ async def test_rejected_mutating_command_raises_and_does_not_run(tmp_path):
     async def reject(kind, payload):
         return False
 
-    ctx, runner = _ctx(tmp_path, approve=reject)
+    ctx, runner = _capture_ctx(tmp_path, approve=reject)
     with pytest.raises(ApprovalRejected):
         await run_shell(ctx, command="kubectl apply -f x.yaml")
     assert runner.calls == []               # declined → never executed
@@ -136,7 +114,7 @@ async def test_emits_command_event_with_mode_and_auto_run(tmp_path):
     async def emit(t, p):
         events.append((t, p))
 
-    ctx, _ = _ctx(tmp_path, emit=emit)
+    ctx, _ = _capture_ctx(tmp_path, emit=emit)
     await run_shell(ctx, command="ls -la")
 
     cmds = [p for (t, p) in events if t == "command"]
@@ -146,7 +124,7 @@ async def test_emits_command_event_with_mode_and_auto_run(tmp_path):
 
 
 async def test_dispatch_routes_to_run_shell_by_default(tmp_path):
-    ctx, runner = _ctx(tmp_path)
+    ctx, runner = _capture_ctx(tmp_path)
     out = await dispatch(ctx, "run_shell", {"command": "echo hi"})
     # `echo` is read-only, so it auto-runs (no approver wired) and returns a result dict.
     assert out["mode"] == READ_ONLY and out["exit_code"] == 0
