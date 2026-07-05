@@ -252,7 +252,7 @@ def test_allowlist_discover_rejects_metacharacters(allowlist):
 # ---- knowledge discoverability --------------------------------------------------
 
 def test_stack_discovery_knowledge_is_loadable(tmp_path):
-    from app.tools.probe import read_knowledge
+    from app.tools.knowledge_access import read_knowledge
 
     ctx, _, _ = _real_repo_ctx(tmp_path)
     out = read_knowledge(ctx, name="stack_discovery")

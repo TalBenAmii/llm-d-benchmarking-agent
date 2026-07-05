@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 import app.main as main_mod
 from app.config import get_settings
-from app.tools.probe import _discover_charts
+from app.tools.report_locate import _discover_charts
 
 # A 1x1 PNG (smallest valid image) so FileResponse serves real bytes.
 _PNG_BYTES = bytes.fromhex(

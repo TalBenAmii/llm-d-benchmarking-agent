@@ -23,7 +23,8 @@ from pathlib import Path
 
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.execute import build_argv
-from app.tools.probe import _discover_charts, read_knowledge
+from app.tools.knowledge_access import read_knowledge
+from app.tools.report_locate import _discover_charts
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 

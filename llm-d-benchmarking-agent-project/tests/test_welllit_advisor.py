@@ -20,7 +20,7 @@ import yaml
 
 from app.agent.prompt import CORE_KNOWLEDGE, build_system_prompt
 from app.config import get_settings
-from app.tools import probe
+from app.tools.knowledge_access import read_knowledge
 from tests.flows.catalog_snapshot import frozen_catalog
 
 ADVISOR_NAME = "welllit_path_advisor.yaml"
@@ -184,7 +184,7 @@ def test_gpu_only_entries_are_marked_as_deploy_path_guidance():
 
 
 def test_loader_serves_the_advisor_via_read_knowledge(tool_ctx):
-    out = probe.read_knowledge(tool_ctx, name="welllit_path_advisor")
+    out = read_knowledge(tool_ctx, name="welllit_path_advisor")
     assert "error" not in out
     assert out["name"] == ADVISOR_NAME
     assert "well_lit_paths" in out["content"]

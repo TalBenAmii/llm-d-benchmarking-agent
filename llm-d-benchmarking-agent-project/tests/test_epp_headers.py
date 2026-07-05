@@ -18,7 +18,7 @@ from pathlib import Path
 import yaml
 
 from app.agent.prompt import CORE_KNOWLEDGE, build_system_prompt
-from app.tools import probe
+from app.tools.knowledge_access import read_knowledge
 
 # The four header names the spec/HERMETIC-TEST require to be decoded, plus the two enum values.
 REQUIRED_HEADER_NAMES = (
@@ -52,7 +52,7 @@ def test_epp_headers_loads_and_is_valid_yaml():
 
 
 def test_epp_headers_reachable_via_read_knowledge(tool_ctx):
-    out = probe.read_knowledge(tool_ctx, name="epp_headers")
+    out = read_knowledge(tool_ctx, name="epp_headers")
     assert out["name"] == "epp_headers.yaml"
     assert out["topic"] == "epp_headers"
     data = yaml.safe_load(out["content"])
@@ -62,7 +62,7 @@ def test_epp_headers_reachable_via_read_knowledge(tool_ctx):
     # the same guide read twice in one session is otherwise collapsed to a back-reference, which
     # is covered by test_context_mgmt's dedup tests.)
     tool_ctx.fetched_docs.clear()
-    out2 = probe.read_knowledge(tool_ctx, name="epp_headers.yaml")
+    out2 = read_knowledge(tool_ctx, name="epp_headers.yaml")
     assert out2["name"] == "epp_headers.yaml"
 
 

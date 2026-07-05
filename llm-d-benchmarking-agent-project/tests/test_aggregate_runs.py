@@ -46,7 +46,7 @@ WRAPPER = PROJECT_ROOT / "scripts" / "aggregate_runs.py"
 
 def test_read_repo_doc_reaches_the_analysis_notebook_readme(tool_ctx):
     """The agent surfaces the notebook setup guide straight from the read-only repo."""
-    from app.tools.probe import read_repo_doc
+    from app.tools.knowledge_access import read_repo_doc
 
     doc = read_repo_doc(tool_ctx, path="llm-d-benchmark/docs/analysis/README.md")
     assert doc["path"].endswith("docs/analysis/README.md")
@@ -55,7 +55,7 @@ def test_read_repo_doc_reaches_the_analysis_notebook_readme(tool_ctx):
 
 
 def test_read_repo_doc_reaches_the_analysis_pipeline_overview(tool_ctx):
-    from app.tools.probe import read_repo_doc
+    from app.tools.knowledge_access import read_repo_doc
 
     doc = read_repo_doc(tool_ctx, path="llm-d-benchmark/docs/analysis.md")
     assert doc["path"].endswith("docs/analysis.md")

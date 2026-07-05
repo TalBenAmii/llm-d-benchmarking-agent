@@ -16,6 +16,7 @@ from unittest.mock import patch
 import yaml
 
 from app.tools import probe
+from app.tools.knowledge_access import read_knowledge
 from app.tools.probe import (
     _PROVIDER_DEFAULT,
     _PROVIDER_LABEL_HINTS,
@@ -240,7 +241,7 @@ def test_detect_provider_longest_prefix_wins():
 # ---- (3) the judgment is DATA in knowledge/infra_providers.yaml, not Python -
 
 def test_infra_providers_knowledge_loads_via_read_knowledge(tool_ctx):
-    out = probe.read_knowledge(tool_ctx, name="infra_providers")
+    out = read_knowledge(tool_ctx, name="infra_providers")
     assert out["name"] == "infra_providers.yaml"
     data = yaml.safe_load(out["content"])
     assert isinstance(data, dict)

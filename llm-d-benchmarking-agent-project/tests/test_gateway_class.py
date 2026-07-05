@@ -174,7 +174,7 @@ def test_gateway_class_knowledge_is_discoverable():
 
 
 def test_gateway_class_knowledge_reachable_via_read_knowledge(tool_ctx):
-    from app.tools.probe import read_knowledge
+    from app.tools.knowledge_access import read_knowledge
 
     res = read_knowledge(tool_ctx, name="gateway_class")
     assert "error" not in res, res

@@ -16,7 +16,7 @@ from app.config import Settings
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunResult, SimRunner
 from app.tools.context import ApprovalRejected, ToolContext
-from app.tools.probe import locate_and_parse_report
+from app.tools.report_locate import locate_and_parse_report
 from app.tools.shell import run_shell
 from tests.flows.catalog_snapshot import frozen_catalog
 
