@@ -26,21 +26,17 @@ log()  { printf '\033[35m▸\033[0m %s\n' "$*"; }            # llm-d purple bull
 warn() { printf '\033[1;33m[setup-claude-plan] %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31m[setup-claude-plan] ERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
-# Prompts read /dev/tty so they work even when stdin is a pipe (curl | bash, install.sh).
-# Without a usable TTY there is nobody to ask — skip cleanly, never hang a scripted install.
-# The probe must actually OPEN /dev/tty: `[[ -r ]]`/`[[ -w ]]` only check permission bits and
-# stay true in a session with no controlling terminal (CI/setsid), where the open fails — and
-# every later prompt would then silently take its default instead of asking.
-TTY=/dev/tty; { : <"$TTY" >"$TTY"; } 2>/dev/null || TTY=""
-# A BACKGROUND job that still has a controlling terminal (`./scripts/install.sh &`, nohup from
-# an interactive shell) passes the open-probe but would be SIGTTIN-STOPPED at the first actual
-# read from /dev/tty — the install would sit in job state T until someone runs `fg`. Treat
-# "not the terminal's foreground process group" as no TTY and take the clean-skip path.
-if [[ -n "$TTY" ]] && command -v ps >/dev/null 2>&1; then
-  PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"; TPGID="$(ps -o tpgid= -p $$ 2>/dev/null | tr -d ' ')"
-  [[ -n "$PGID" && -n "$TPGID" && "$PGID" != "$TPGID" ]] && TTY=""
-fi
-if [[ -z "$TTY" ]]; then
+# shellcheck source-path=SCRIPTDIR/..
+# shellcheck source=scripts/_env.sh
+source "scripts/_env.sh"   # provides _tty_interactive + ensure_env + read_env + set_env_var + confirm/menu_select + ensure_claude_cli
+
+# Prompts read /dev/tty so they work even when stdin is a pipe (curl | bash, install.sh). Without a
+# usable terminal there is nobody to ask — skip cleanly, never hang a scripted install. _tty_interactive
+# (shared with the menu helpers, one definition) is the single source of truth: it requires /dev/tty to
+# be openable AND our process to be its FOREGROUND process group, so a background/non-foreground job
+# (`./scripts/install.sh &`, nohup, WSL/ssh non-interactive exec) — which would SIGTTIN-stop or block
+# forever on the first read — takes the clean-skip path instead of prompting.
+if _tty_interactive; then TTY=/dev/tty; else
   log "No interactive terminal — skipping Claude-plan setup. Run ./scripts/setup-claude-plan.sh later."
   exit 0
 fi
@@ -49,10 +45,6 @@ ask() {  # $1 prompt, $2 default → echoes the answer (or default if blank)
   printf '\033[36m?\033[0m %s ' "$1" >"$TTY"; IFS= read -r ans <"$TTY" || ans=""
   printf '%s' "${ans:-$2}"
 }
-
-# shellcheck source-path=SCRIPTDIR/..
-# shellcheck source=scripts/_env.sh
-source "scripts/_env.sh"   # provides ensure_env + read_env + set_env_var + confirm/menu_select + ensure_claude_cli
 ensure_env
 
 # ── Consent first — context-aware default ──────────────────────────────────

@@ -105,3 +105,31 @@ def test_non_interactive_fallback_returns_default():
     )
     assert result.stdout.strip() == "1"
     assert result.returncode == 0
+
+
+def test_tty_interactive_true_under_pty():
+    # Under a real pty the child is the terminal's FOREGROUND process group, so _tty_interactive
+    # succeeds -> the arrow-key path is taken. This is what keeps the interactive menu working for
+    # a human running `bash <(curl …)` / `curl | bash` at a real terminal.
+    out, code = _drive_pty('_tty_interactive; echo "rc=$?"', b"")
+    assert out == "rc=0"
+    assert code == 0
+
+
+def test_tty_interactive_false_without_controlling_terminal():
+    # start_new_session detaches the controlling tty, so /dev/tty cannot be opened and
+    # _tty_interactive reports non-interactive (rc=1) without blocking.
+    # The other false case — /dev/tty OPENABLE but the process is not the terminal's foreground
+    # process group (the real `bash <(curl …)` WSL-non-interactive-exec hang) — is not cleanly
+    # reproducible under pytest; it's covered by the fresh-env curl validation + scripts probe.
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c",
+         f'source "{ENV_SH}"; _tty_interactive; echo "rc=$?"'],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        start_new_session=True,
+    )
+    assert result.stdout.strip() == "rc=1"
+    assert result.returncode == 0
