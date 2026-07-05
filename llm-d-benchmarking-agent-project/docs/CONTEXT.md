@@ -27,7 +27,7 @@ One of four validation boundaries that constrain the free-form LLM so the system
 _Avoid_: "guardrail", "check", "assertion" (these are the *named, enumerated* gates, not ad-hoc checks).
 
 **knowledge/**:
-The agent's editable brain — ~50 Markdown/YAML files holding all judgment, loaded into the system prompt at runtime. Contains no Python. Split into CORE (inlined verbatim every prompt) and on-demand (pulled via `read_knowledge`).
+The agent's editable brain — ~62 Markdown/YAML files holding all judgment, loaded into the system prompt at runtime. Contains no Python. Split into CORE (inlined verbatim every prompt) and on-demand (pulled via `read_knowledge`).
 _Avoid_: "docs", "prompts", "config" (it is the thick-agent decision layer, not documentation or a config file).
 
 **CORE knowledge**:

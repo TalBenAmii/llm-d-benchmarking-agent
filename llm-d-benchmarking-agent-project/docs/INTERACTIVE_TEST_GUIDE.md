@@ -87,9 +87,9 @@ curl -s 'localhost:8000/api/history/trend?metric=ttft' | jq .
   `runner_ok` (N allowlisted executables), `auth_coherent`. *(§9)*
 - [ ] **[A/B]** `/metrics` exposes `llmdbench_agent_commands_total`, `_command_duration_seconds`,
   `llmdbench_orchestrator_run_attempts_total`, `_run_faults_total`, `_runs_in_flight`,
-  `_runs_submitted_total`. *(§7)*
-- [ ] **[A/B]** `/api/history` returns `records` + the 8 trendable `metrics`
-  (`ttft, tpot, itl, request_latency, output_token_rate, total_token_rate, request_rate, success_rate_pct`). *(§6)*
+  `_runs_submitted_total`, `_runs_terminal_total`. *(§7)*
+- [ ] **[A/B]** `/api/history` returns `records` + the 11 trendable `metrics`
+  (`ttft, tpot, itl, request_latency, output_token_rate, total_token_rate, request_rate, success_rate_pct, kv_cache_hit_rate, gpu_utilization, schedule_delay`). *(§6)*
 - [ ] **[A/B]** `trend?metric=throughput` → graceful `200` error naming the valid metrics (the
   real name is `total_token_rate`) — confirms input validation, not a crash. *(§6)*
 

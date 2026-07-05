@@ -20,6 +20,10 @@ REPOS_DIR=<repo-root> \
 hook's own output — don't trust numbers written here). No need to establish a green baseline when
 you branch — feature branches aren't gated; the `main`-only hook verifies green at merge.
 
+**Fresh clone / new machine: run `scripts/install-git-hooks.sh` first.** `.git/hooks` is not
+version-controlled, so a clone starts with NO merge gate — run the installer to (re)write the
+`main`-only ruff + mypy + pytest + dangling-skill-ref hooks (`pre-commit` + `pre-merge-commit`).
+
 ## Run a scoped subset
 - One area: `pytest tests/test_orchestrator*.py` · one file: `pytest tests/test_allowlist.py` · one test: `pytest tests/test_foo.py::test_bar`.
 - Flow replays (deterministic golden transcripts): `pytest tests/flows/`.
