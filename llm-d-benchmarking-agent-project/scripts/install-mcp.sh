@@ -26,7 +26,6 @@
 # there is no network/remote mode. See docs/MCP.md for the security model and manual config.
 set -euo pipefail
 
-# ── Logging (matches install.sh house style) ──────────────────────────────
 log()  { printf '\033[35m▸\033[0m %s\n' "$*"; }            # llm-d purple bullet
 step() { printf '\n\033[1;35m━━ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[install-mcp] %s\033[0m\n' "$*" >&2; }
@@ -35,7 +34,6 @@ trap 'rc=$?; [[ $rc -ne 0 ]] && printf "\n\033[1;31m[install-mcp] aborted (exit 
 
 case "${1:-}" in -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; trap - EXIT; exit 0 ;; esac
 
-# ── Interactive reads, robust to both `curl | bash` and `bash <(curl …)` ───
 # Prefer /dev/tty so prompts work even when stdin is the curl pipe; fall back to stdin.
 TTY=/dev/tty; { [[ -r $TTY && -w $TTY ]]; } 2>/dev/null || TTY=""
 ask() {  # $1 prompt, $2 default → echoes the answer (or default if blank / non-interactive)
@@ -45,7 +43,6 @@ ask() {  # $1 prompt, $2 default → echoes the answer (or default if blank / no
   printf '%s' "${ans:-$2}"
 }
 
-# ── Locate the project; bootstrap-clone if we were piped in from outside one ─
 find_project_root() {
   local d="$PWD"
   while [[ "$d" != "/" && -n "$d" ]]; do
@@ -81,10 +78,8 @@ VENV="$PROJECT_DIR/.venv"
 SERVER_NAME="llm-d-bench"
 log "Project: $PROJECT_DIR"
 
-# ── Privilege helper (root → no sudo; else sudo if present) ───────────────
 SUDO=""; if [[ "$(id -u)" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
 
-# ── Step 1: base tools (git, curl) ────────────────────────────────────────
 step "Prerequisites"
 ensure_tool() {  # $1 = command name
   command -v "$1" >/dev/null 2>&1 && return 0
@@ -121,22 +116,15 @@ else
 fi
 log "venv backend: $([[ "$USE_UV" == 1 ]] && echo uv || echo 'python3 -m venv')"
 
-# ── Step 2: clone the read-only sibling repos (the server reads them at runtime) ──
+# shellcheck source-path=SCRIPTDIR/..
+# shellcheck source=scripts/_env.sh
+source "$PROJECT_DIR/scripts/_env.sh"   # provides ensure_env + clone_if_missing
 step "Sibling repos (read-only, under $REPOS_DIR)"
-clone_if_missing() {  # $1 = repo name, $2 = github owner (org)
-  local name="$1" owner="$2" dest="$REPOS_DIR/$1"
-  if [[ -d "$dest" && -n "$(ls -A "$dest" 2>/dev/null)" ]]; then
-    log "$name present — skipping clone."
-  else
-    log "Cloning $name → $dest"; git clone --depth 1 "https://github.com/$owner/$name" "$dest"
-  fi
-}
 # llm-d + llm-d-benchmark live under the llm-d org; the skills library is in llm-d-incubation.
-clone_if_missing llm-d           llm-d
-clone_if_missing llm-d-benchmark llm-d
-clone_if_missing llm-d-skills    llm-d-incubation
+clone_if_missing llm-d           "$REPOS_DIR/llm-d"
+clone_if_missing llm-d-benchmark "$REPOS_DIR/llm-d-benchmark"
+clone_if_missing llm-d-skills    "$REPOS_DIR/llm-d-skills" llm-d-incubation
 
-# ── Step 3: venv + editable install (gives us the `llm-d-bench-mcp` command) ──
 step "Install the agent (.venv + pip install -e .)"
 if [[ ! -x "$VENV/bin/python" ]]; then
   if [[ "$USE_UV" == 1 ]]; then log "Creating venv with uv…"; uv venv --python "$PYBIN" "$VENV" >/dev/null
@@ -152,10 +140,6 @@ fi
 "$PY" -c "import app.mcp" >/dev/null 2>&1 || die "the MCP server failed to import after install."
 log "Installed. The agent imports OK."
 
-# ── Step 4: configure the LLM provider (claude-agent-sdk) and write .env ──
-# shellcheck source-path=SCRIPTDIR/..
-# shellcheck source=scripts/_env.sh
-source "$PROJECT_DIR/scripts/_env.sh"
 ensure_env   # create .env from .env.example if missing
 
 set_env_var() {  # $1 KEY  $2 VALUE — replace-or-append in .env (pure bash; values printf'd verbatim)
@@ -174,14 +158,12 @@ log "(Other providers — anthropic, openai — are planned for a future release
 HF_TOKEN_VAL="$(ask 'Optional HF_TOKEN for gated model deploys (blank to skip):' '')"
 [[ -n "$HF_TOKEN_VAL" ]] && set_env_var HF_TOKEN "$HF_TOKEN_VAL"
 
-# ── Resolve the launch command Claude Code will spawn ─────────────────────
 if [[ -x "$VENV/bin/llm-d-bench-mcp" ]]; then
   CMD_ARGV=("$VENV/bin/llm-d-bench-mcp"); CMD_DISPLAY="$VENV/bin/llm-d-bench-mcp"
 else
   CMD_ARGV=("$PY" -m app.mcp); CMD_DISPLAY="$PY -m app.mcp"
 fi
 
-# ── Claude Code (CLI) registration + the manual snippet (for 'print only') ──
 print_claude_code_snippet() {
   echo; echo "── Claude Code (CLI) ───────────────────────────────"
   if [[ -n "$HF_TOKEN_VAL" ]]; then
@@ -201,7 +183,6 @@ register_claude_code() {
   else warn "'claude mcp add' failed — register manually:"; print_claude_code_snippet; fi
 }
 
-# ── Step 5: register with Claude Code ─────────────────────────────────────
 step "Register with Claude Code"
 echo "  1) Claude Code (CLI) — register it for you"
 echo "  2) Just print the config — make no changes  (default)"
@@ -213,7 +194,6 @@ case "$(ask 'Choice [1/2/0]:' 2 | tr -d '[:space:]')" in
   *) print_claude_code_snippet ;;
 esac
 
-# ── Summary ───────────────────────────────────────────────────────────────
 step "Done"
 log "Launch command : $CMD_DISPLAY"
 log "Smoke-test it  : npx @modelcontextprotocol/inspector $CMD_DISPLAY   (lists 35 tools, 5 prompts, knowledge resources)"

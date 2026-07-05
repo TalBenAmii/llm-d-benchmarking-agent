@@ -35,7 +35,6 @@
 #   • For a real GPU cluster (beyond the CPU/kind quickstart) see docs/GPU_CLUSTER_RUNBOOK.md.
 set -euo pipefail
 
-# ── Resolve locations ─────────────────────────────────────────────────────
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # this script lives in scripts/
 REPOS_DIR="${REPOS_DIR:-$(dirname "$PROJECT_DIR")}"   # repos are siblings of the project
 GUIDE_REPO="$REPOS_DIR/llm-d"
@@ -43,7 +42,6 @@ BENCH_REPO="$REPOS_DIR/llm-d-benchmark"
 SKILLS_REPO="$REPOS_DIR/llm-d-skills"
 VENV="$PROJECT_DIR/.venv"
 
-# ── Flags ─────────────────────────────────────────────────────────────────
 DEV=0; PREREQS=0; APP_ONLY=0; NO_CLIENT=0; NO_BENCH=0; NO_CLONE=0; USE_UV="auto"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -61,7 +59,6 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-# ── Logging ───────────────────────────────────────────────────────────────
 log()  { printf '\033[35m▸\033[0m %s\n' "$*"; }            # llm-d purple bullet
 step() { printf '\n\033[1;35m━━ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[install] %s\033[0m\n' "$*" >&2; }
@@ -71,7 +68,6 @@ trap 'rc=$?; [[ $rc -ne 0 ]] && printf "\n\033[1;31m[install] aborted (exit %s).
 # shellcheck source=scripts/_env.sh
 source "$PROJECT_DIR/scripts/_env.sh"
 
-# ── Privilege helper (root → no sudo; else sudo if present) ───────────────
 SUDO=""
 if [[ "$(id -u)" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
 
@@ -136,25 +132,10 @@ resolve_backend() {
   log "venv backend: $([[ "$USE_UV" == 1 ]] && echo uv || echo 'python3 -m venv')"
 }
 
-# ── Step 0 (optional): host cluster prereqs — Docker + kind ───────────────
 if [[ "$PREREQS" == 1 && "$APP_ONLY" != 1 ]]; then
   step "Host prereqs: Docker + kind (scripts/install_prereqs.sh)"
   bash "$PROJECT_DIR/scripts/install_prereqs.sh" --docker --kind --kubectl
 fi
-
-# ── Step 1: ensure the three upstream repos exist (clone if missing) ──────
-clone_if_missing() {
-  local name="$1" dest="$2" owner="${3:-llm-d}"
-  if [[ -d "$dest" && -n "$(ls -A "$dest" 2>/dev/null)" ]]; then
-    log "$name present at $dest — skipping clone."
-  elif [[ "$NO_CLONE" == 1 ]]; then
-    die "$name not found at $dest and --no-clone was given. Clone it there or set REPOS_DIR."
-  else
-    command -v git >/dev/null 2>&1 || die "git is required to clone $name — install git (e.g. 'apt install git') and re-run, or pre-clone the repos and pass --no-clone."
-    log "Cloning $name → $dest"
-    git clone --depth 1 "https://github.com/$owner/$name" "$dest"
-  fi
-}
 
 if [[ "$APP_ONLY" != 1 ]]; then
   step "Upstream repos (siblings under $REPOS_DIR)"
@@ -166,7 +147,6 @@ if [[ "$APP_ONLY" != 1 ]]; then
   clone_if_missing "llm-d-skills" "$SKILLS_REPO" "llm-d-incubation"
 fi
 
-# ── Step 2: llm-d client toolchain (helm / helmfile / kustomize / yq / kubectl) ──
 if [[ "$APP_ONLY" != 1 && "$NO_CLIENT" != 1 ]]; then
   step "llm-d client toolchain (llm-d/helpers/client-setup/install-deps.sh)"
   CLIENT_SH="$GUIDE_REPO/helpers/client-setup/install-deps.sh"
@@ -175,7 +155,6 @@ if [[ "$APP_ONLY" != 1 && "$NO_CLIENT" != 1 ]]; then
   ( cd "$GUIDE_REPO" && bash "helpers/client-setup/install-deps.sh" "${dev_args[@]}" )
 fi
 
-# ── Step 3: benchmark framework + the `llmdbenchmark` CLI ─────────────────
 if [[ "$APP_ONLY" != 1 && "$NO_BENCH" != 1 ]]; then
   resolve_backend
   step "Benchmark framework + CLI (llm-d-benchmark/install.sh $BENCH_UV)"
@@ -184,7 +163,6 @@ if [[ "$APP_ONLY" != 1 && "$NO_BENCH" != 1 ]]; then
   ( cd "$BENCH_REPO" && bash "install.sh" "$BENCH_UV" )
 fi
 
-# ── Step 4: this project — .env + venv + editable install ─────────────────
 step "This project (.env + venv + app)"
 cd "$PROJECT_DIR"
 resolve_backend   # no-op if step 3 already resolved it; matters for --app-only/--no-bench
@@ -207,7 +185,6 @@ else
 fi
 "$PY" -c "import app.main" >/dev/null 2>&1 && log "Agent imports OK." || die "the agent failed to import after install."
 
-# ── Summary ───────────────────────────────────────────────────────────────
 have() { command -v "$1" >/dev/null 2>&1 && printf 'present' || printf 'MISSING'; }
 step "Summary"
 if [[ "$APP_ONLY" != 1 ]]; then

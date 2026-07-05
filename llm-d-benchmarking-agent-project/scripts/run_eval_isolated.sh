@@ -29,7 +29,6 @@
 #   REPOS_DIR             monorepo root holding llm-d/ + llm-d-benchmark/ (default: parent of project;
 #                         in a WORKTREE the siblings are empty → point this at the PRIMARY checkout)
 #   EVAL_LOG_DIR          per-flow logs + summary land here (default: <proj>/workspace/eval-logs, gitignored)
-#   RUN_TAG               suffix for the summary/combined-log filenames (default: empty)
 #   LLM_PROVIDER          default: claude-agent-sdk
 #   AGENT_SDK_MODEL       default: claude-sonnet-4-6
 #   LLM_EVAL_CALL_TIMEOUT in-process per-call cap, s (default: 120) — first-line defense
@@ -77,8 +76,8 @@ export LLM_EVAL_CALL_TIMEOUT="${LLM_EVAL_CALL_TIMEOUT:-120}"
 export LLM_EVAL_FLOW_TIMEOUT="${LLM_EVAL_FLOW_TIMEOUT:-360}"
 export PYTHONUNBUFFERED=1                   # stream each flow's log live (else block-buffered = invisible)
 
-SUMMARY="$LOG/iso_${MODE}${RUN_TAG:-}_summary.txt"
-COMBINED="$LOG/iso_${MODE}${RUN_TAG:-}.log"
+SUMMARY="$LOG/iso_${MODE}_summary.txt"
+COMBINED="$LOG/iso_${MODE}.log"
 : > "$SUMMARY"; : > "$COMBINED"
 
 # Reap ONLY orphaned (ppid==1) SDK subprocesses — never a live app's (those stay parented to the app,
@@ -103,12 +102,6 @@ for f in ALL_FLOWS:
 PYEOF
 }
 
-run_one() {
-  local flow="$1" flog="$2"
-  timeout -k "$GRACE" -s TERM "$HARD" \
-    "$PY" -u scripts/validate_flows.py --flow "$flow" --"$MODE" >"$flog" 2>&1
-}
-
 # Capture selection separately so a CRASH in flow_names (e.g. a broken `tests.flows.flows` import)
 # surfaces as an error — process substitution into mapfile would discard its exit code and the empty
 # output would look like a legitimate "no flows selected".
@@ -126,7 +119,9 @@ for flow in "${FLOWS[@]}"; do
   i=$((i+1))
   flog="$LOG/iso_${MODE}_${flow}.log"
   t0=$(date +%s)
-  run_one "$flow" "$flog"; rc=$?
+  timeout -k "$GRACE" -s TERM "$HARD" \
+    "$PY" -u scripts/validate_flows.py --flow "$flow" --"$MODE" >"$flog" 2>&1
+  rc=$?
   dt=$(( $(date +%s) - t0 ))
   reap_orphans
   if [ "$rc" -eq 0 ]; then

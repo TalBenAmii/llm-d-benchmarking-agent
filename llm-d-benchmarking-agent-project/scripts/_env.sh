@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Bootstrap helpers shared by install.sh (full setup) and run.sh (standalone launcher), kept here so
-# both source one copy instead of duplicating it. The sourcing script must define `log` first.
+# Bootstrap helpers shared by install.sh (full setup), install-mcp.sh (MCP setup), and run.sh
+# (standalone launcher), kept here so all source one copy instead of duplicating it. The sourcing
+# script must define `log` first (and `die` too, if it calls clone_if_missing).
 #
-# Only the .env bootstrap is shared: the venv / editable-install steps are deliberately NOT here —
-# install.sh resolves the backend for a bare box and honours --uv/--dev, while run.sh stays a minimal
-# `command -v uv` launcher, so a single shared shape would either lose behavior or over-parameterize.
+# The venv / editable-install steps are deliberately NOT shared: install.sh resolves the backend for a
+# bare box and honours --uv/--dev, while run.sh stays a minimal `command -v uv` launcher, so a single
+# shared shape would either lose behavior or over-parameterize.
 
 # Create .env from .env.example on first run; no-op once .env exists.
 ensure_env() {
@@ -14,5 +15,20 @@ ensure_env() {
     log "Created .env from .env.example — set your LLM provider/key (LLM_PROVIDER=claude-agent-sdk needs no key)."
   else
     log "No .env and no .env.example — continuing on built-in defaults."
+  fi
+}
+
+# Clone an upstream sibling repo into $dest if it's absent/empty; no-op if present. With NO_CLONE=1
+# (install.sh's --no-clone) a missing repo is a hard error instead. Needs `git`; uses `log`/`die`.
+clone_if_missing() {
+  local name="$1" dest="$2" owner="${3:-llm-d}"
+  if [[ -d "$dest" && -n "$(ls -A "$dest" 2>/dev/null)" ]]; then
+    log "$name present at $dest — skipping clone."
+  elif [[ "${NO_CLONE:-0}" == 1 ]]; then
+    die "$name not found at $dest and --no-clone was given. Clone it there or set REPOS_DIR."
+  else
+    command -v git >/dev/null 2>&1 || die "git is required to clone $name — install git (e.g. 'apt install git') and re-run, or pre-clone the repos and pass --no-clone."
+    log "Cloning $name → $dest"
+    git clone --depth 1 "https://github.com/$owner/$name" "$dest"
   fi
 }

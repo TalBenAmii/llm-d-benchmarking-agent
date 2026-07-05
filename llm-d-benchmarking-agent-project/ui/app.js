@@ -781,23 +781,14 @@ function sparkline(points, better) {
   const n = points.length;
   const x = (i) => pad + (i * (W - 2 * pad)) / (n - 1);
   const y = (v) => H - pad - ((v - min) / span) * (H - 2 * pad);
-  const svgNS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(svgNS, "svg");
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  svg.setAttribute("class", "spark");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `${n} points trend`);
-  const path = document.createElementNS(svgNS, "polyline");
-  path.setAttribute("points", points.map((p, i) => `${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" "));
-  path.setAttribute("class", "spark-line");
-  svg.appendChild(path);
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "spark", role: "img",
+    "aria-label": `${n} points trend` });
+  svg.appendChild(svgEl("polyline", {
+    points: points.map((p, i) => `${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" "),
+    class: "spark-line" }));
   // Mark the latest point.
-  const last = document.createElementNS(svgNS, "circle");
-  last.setAttribute("cx", x(n - 1).toFixed(1));
-  last.setAttribute("cy", y(points[n - 1].value).toFixed(1));
-  last.setAttribute("r", "2.6");
-  last.setAttribute("class", "spark-dot");
-  svg.appendChild(last);
+  svg.appendChild(svgEl("circle", {
+    cx: x(n - 1).toFixed(1), cy: y(points[n - 1].value).toFixed(1), r: "2.6", class: "spark-dot" }));
   return svg;
 }
 
@@ -950,14 +941,9 @@ function renderMarkdown(text) {
 // inline SVG into the .who box so it auto-themes (the .logo CSS fills the paths). The user role
 // keeps a plain (hidden) label; everything else gets the mark.
 function meshAvatarSvg() {
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", "0 0 69.37 78.7");
-  svg.setAttribute("width", "20");
-  svg.setAttribute("height", "23");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", "llm-d");
-  const g = document.createElementNS(SVG_NS, "g");
-  g.setAttribute("stroke-width", "1.74");
+  const svg = svgEl("svg", { viewBox: "0 0 69.37 78.7", width: "20", height: "23",
+    role: "img", "aria-label": "llm-d" });
+  const g = svgEl("g", { "stroke-width": "1.74" });
   const paths = [
     ["hx-g", "", "m52.97,43.51c-0.83,0-1.65,0.21-2.39,0.64l-10.73,6.19c-1.48,0.85-2.39,2.43-2.39,4.14v12.38c0,1.7,0.91,3.29,2.39,4.14l10.73,6.19c1.47,0.85,3.3,0.85,4.78,0l10.73-6.19c1.48-0.85,2.39-2.43,2.39-4.14v-12.38c0-1.7-0.91-3.28-2.39-4.14v0l-10.73-6.19c-0.74-0.43-1.56-0.64-2.39-0.64zm0,3.74c0.18,0,0.35,0.05,0.52,0.14l10.73,6.19v0c0.32,0.18,0.51,0.52,0.51,0.89v12.38c0,0.37-0.19,0.71-0.52,0.89l-10.73,6.19c-0.32,0.19-0.71,0.19-1.03,0l-10.73-6.19v0c-0.32-0.18-0.51-0.52-0.51-0.89v-12.38c0-0.37,0.19-0.71,0.52-0.89l10.73-6.19c0.16-0.09,0.34-0.14,0.52-0.14z"],
     ["hx-g", "round", "m64.73,35.25v22.34a1.87,1.87,0,0,0,1.87,1.87,1.87,1.87,0,0,0,1.87-1.87v-24.51z"],
@@ -967,11 +953,10 @@ function meshAvatarSvg() {
     ["hx-p", "round", "m32.46,62.14-19.32-11.22a1.87,1.87,0,0,0-2.56,0.68,1.87,1.87,0,0,0,0.68,2.56l21.19,12.31z"],
   ];
   for (const [cls, cap, d] of paths) {
-    const p = document.createElementNS(SVG_NS, "path");
-    p.setAttribute("class", cls);
-    if (cap) p.setAttribute("stroke-linecap", cap);
-    p.setAttribute("d", d);
-    g.appendChild(p);
+    const attrs = { class: cls };
+    if (cap) attrs["stroke-linecap"] = cap;
+    attrs.d = d;
+    g.appendChild(svgEl("path", attrs));
   }
   svg.appendChild(g);
   return svg;
