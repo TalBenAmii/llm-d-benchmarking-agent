@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agent.ws_schemas import ValidationError
 from app.config import Settings
+from app.dig import scrub_strings
 from app.llm.provider import AGENT_SDK_PROVIDERS, OPENAI_PROVIDERS
 from app.storage.provenance import BundleStore
 
@@ -87,67 +88,43 @@ def history_record_view(rec) -> dict[str, Any]:
 # directories a not-found probe searched. They drive nothing in the read-only viewer (the client
 # renders ``summary``/``charts`` only; charts are already session-relative), yet a public share is
 # UNAUTHENTICATED, so shipping them would disclose the host path layout AND the owning session id —
-# the very id the snapshot deliberately withholds (see read_share / shared_chat._PUBLIC_FIELDS).
+# the very id the snapshot deliberately withholds (see read_share / shared_chat._PUBLIC_FIELDS). The
+# recursive scrub below neutralizes their VALUES too (incl. nested copies); this drops the top-level
+# keys outright as defense in depth — they should not ship at all.
 _SHARE_REDACT_RESULT_KEYS = ("report_path", "searched")
 
 
-def _scrub_share_path(s: Any, ws: str, sid: str, home: str) -> Any:
-    """Mask the workspace root, the owning session id, and the home dir in ONE string (a
-    non-string passes through). The command name/flags around them stay intact so the shared
-    command is still readable — only the leaking absolute path + id become placeholders. Order
-    matters: the workspace prefix (which itself sits under ``home``) is masked before ``home``."""
-    if not isinstance(s, str):
-        return s
-    s = s.replace(ws, "<workspace>").replace(sid, "<session>")
-    return s.replace(home, "~") if home else s
-
-
-def _scrub_share_command(v: Any, ws: str, sid: str, home: str) -> Any:
-    """Scrub a command/argv field that is either a shell-string command or an argv list."""
-    if isinstance(v, list):
-        return [_scrub_share_path(x, ws, sid, home) for x in v]
-    return _scrub_share_path(v, ws, sid, home)
-
-
 def redact_share_items(
-    items: list[dict[str, Any]], *, workspace_root: Path, session_id: str,
+    items: list[dict[str, Any]], *, workspace_root: Path, session_id: str, home: str,
 ) -> list[dict[str, Any]]:
     """Strip server-internal absolute paths + the owning session id from a PUBLIC share snapshot.
 
-    The transcript replayed to the owner on resume legitimately carries the located report's
-    absolute path and the command trail's ``--workspace <sessions_root>/<session_id>/…`` paths;
-    a public, UNAUTHENTICATED share must not (they disclose the host path layout, OS username, and
-    the very session id the snapshot withholds). Returns NEW item dicts (the live session is never
-    mutated): the path-bearing keys are removed from any ``tool_result`` result, and the workspace
-    root / session id / home dir are masked to placeholders across every command-trail field
-    (``tool_call`` input command, ``command`` text+argv, ``approval_decision`` payload command+argv),
-    leaving every render-relevant field (summary, charts, metrics) and the command names intact."""
-    ws, sid, home = str(workspace_root), session_id, str(Path.home())
-    out: list[dict[str, Any]] = []
+    The transcript replayed to the owner on resume legitimately carries absolute host paths: the
+    located report's path — top-level AND nested under ``runs[]``/``reports[]`` in analyze/compare
+    results — the command trail's ``--workspace <sessions_root>/<session_id>/…`` args, and tool-call
+    inputs like ``experiment_dir``/``kubeconfig``/``results_dir``/``path``. A public, UNAUTHENTICATED
+    share must not (they disclose the host path layout, OS username, and the very session id the
+    snapshot withholds). Returns NEW item dicts (the live session is never mutated): a SINGLE
+    recursive pass masks the workspace root / owning session id / home dir to placeholders across
+    EVERY string leaf of the whole snapshot, so no path — top-level or nested, in a command or a
+    result — can leak. The ordered map masks the workspace prefix (which itself sits under ``home``)
+    before ``home``. As defense in depth the top-level ``report_path``/``searched`` keys are also
+    dropped from any ``tool_result`` result (they should not ship at all), leaving every
+    render-relevant field (summary, charts, metrics) and the command names intact."""
+    stripped: list[dict[str, Any]] = []
     for it in items:
-        role = it.get("role")
-        if role == "tool_result":
-            result = it.get("result")
-            if isinstance(result, dict) and any(k in result for k in _SHARE_REDACT_RESULT_KEYS):
-                out.append({**it, "result": {k: v for k, v in result.items()
-                                             if k not in _SHARE_REDACT_RESULT_KEYS}})
-            else:
-                out.append(it)
-        elif role == "tool_call" and isinstance(it.get("input"), dict) and "command" in it["input"]:
-            command = _scrub_share_command(it["input"]["command"], ws, sid, home)
-            out.append({**it, "input": {**it["input"], "command": command}})
-        elif role == "command":
-            out.append({**it, "text": _scrub_share_path(it.get("text"), ws, sid, home),
-                        "argv": _scrub_share_command(it.get("argv"), ws, sid, home)})
-        elif role == "approval_decision" and isinstance(it.get("payload"), dict):
-            payload = {**it["payload"]}
-            for k in ("command", "argv"):
-                if k in payload:
-                    payload[k] = _scrub_share_command(payload[k], ws, sid, home)
-            out.append({**it, "payload": payload})
+        result = it.get("result")
+        if (it.get("role") == "tool_result" and isinstance(result, dict)
+                and any(k in result for k in _SHARE_REDACT_RESULT_KEYS)):
+            stripped.append({**it, "result": {k: v for k, v in result.items()
+                                              if k not in _SHARE_REDACT_RESULT_KEYS}})
         else:
-            out.append(it)
-    return out
+            stripped.append(it)
+    return scrub_strings(stripped, [
+        (str(workspace_root), "<workspace>"),
+        (session_id, "<session>"),
+        (str(home), "~"),
+    ])
 
 
 # ── static-asset serving + CORS wiring ──────────────────────────────────────────────────────

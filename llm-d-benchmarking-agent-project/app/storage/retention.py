@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import Settings
+from app.dig import scrub_strings
 from app.llm.provider import AGENT_SDK_PROVIDERS
 
 
@@ -507,14 +508,9 @@ def _relativize_home(obj: Any, home: str) -> Any:
     ``/readyz`` is UNAUTHENTICATED, so its body must not disclose the host's absolute paths or OS
     username; the self-check's own ``detail``/``data`` legitimately carry them (they feed the
     server-side ``selfcheck.failed`` log the operator reads). This masks them only at the public
-    boundary, relativizing e.g. ``/home/tal/…/workspace`` to ``~/…/workspace``."""
-    if isinstance(obj, str):
-        return obj.replace(home, "~") if home else obj
-    if isinstance(obj, dict):
-        return {k: _relativize_home(v, home) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_relativize_home(v, home) for v in obj]
-    return obj
+    boundary, relativizing e.g. ``/home/tal/…/workspace`` to ``~/…/workspace`` via the shared
+    ``scrub_strings`` walk (the same one the public-share redaction uses)."""
+    return scrub_strings(obj, [(home, "~")])
 
 
 def readiness(settings: Settings) -> dict[str, Any]:

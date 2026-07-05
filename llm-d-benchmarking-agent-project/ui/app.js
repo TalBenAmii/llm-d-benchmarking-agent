@@ -2828,6 +2828,11 @@ function sendUserMessage(text) {
   }
   addBubble("user", text);
   ws.send(JSON.stringify({ type: "user_message", text }));
+  // Persist a COLD-started chat the moment it has real content: a chat booted param-less (or a fresh
+  // newChat) doesn't mirror its minted id to the URL until the user actually sends — so a brand-new
+  // untouched chat keeps a clean param-less URL, while any chat you've used survives a browser
+  // refresh. currentSession is the server-minted id by now (the composer is disabled until `ready`).
+  if (currentSession) setSessionUrl(currentSession);
   if (steering) {
     // The turn is already running and will pick this up at its next step — the server queued it.
     // Don't re-lock the composer or restart the "working" indicator (it's already spinning); just

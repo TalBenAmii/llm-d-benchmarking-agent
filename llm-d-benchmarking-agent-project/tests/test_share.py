@@ -440,6 +440,108 @@ def test_share_snapshot_scrubs_host_paths_and_session_id_from_command_trail(clie
     assert s.id not in page and str(settings.resolved_workspace_dir) not in page
 
 
+def _seed_chat_with_leaky_tool_call_input(client):
+    """A chat whose tool_call INPUT carries absolute host paths under keys OTHER than ``command``
+    — ``experiment_dir`` (analyze_results) and ``kubeconfig`` (probe_environment), both under the
+    per-session workspace dir so they embed the workspace root + owning session id. A non-path
+    field (``labels``) rides along to prove render-relevant content survives."""
+    s = client.app.state.sessions.create()
+    ws = s.ctx.workspace                       # <workspace_root>/sessions/<session_id>
+    s.messages = [
+        {"role": "user", "content": "analyze the results"},
+        {"role": "assistant", "content": "On it.",
+         "tool_calls": [{"id": "tc1", "name": "analyze_results",
+                         "input": {"experiment_dir": f"{ws}/runs",
+                                   "kubeconfig": f"{ws}/kubeconfig.yaml",
+                                   "labels": ["baseline"]}}]},
+    ]
+    s.title = "analyze"
+    s.persist()
+    return s
+
+
+def test_share_scrubs_host_paths_from_non_command_tool_call_input_keys(client_with_share):
+    """BUG: ``tool_call`` input carries absolute host paths under keys OTHER than ``command``
+    (``experiment_dir``, ``kubeconfig``, ``results_dir``, ``path``, ``target_filename``, …). The
+    old per-field scrub masked only ``input["command"]``, so these leaked the host layout + owning
+    session id into a public share. The whole-snapshot recursive scrub must mask them all."""
+    client, settings = client_with_share
+    s = _seed_chat_with_leaky_tool_call_input(client)
+
+    token = client.post(f"/api/sessions/{s.id}/share").json()["token"]
+    body = client.get(f"/api/share/{token}").json()
+    raw = json.dumps(body)
+    assert s.id not in raw, "owning session id leaked via a non-command tool_call input path"
+    assert str(s.ctx.workspace) not in raw, "per-session absolute workspace path leaked"
+    assert str(settings.resolved_workspace_dir) not in raw, "workspace root leaked"
+    assert str(Path.home()) not in raw and "/home/" not in raw, "host home path / username leaked"
+    # Non-path input content survives; the paths are masked to stable placeholders.
+    tc = next(it for it in body["items"] if it.get("role") == "tool_call")
+    assert tc["input"]["labels"] == ["baseline"]
+    assert "<workspace>" in tc["input"]["experiment_dir"] and "<session>" in tc["input"]["experiment_dir"]
+
+    # The offline single-file export inlines the SAME redacted snapshot.
+    page = client.get(f"/api/share/{token}/page.html").text
+    assert s.id not in page and str(settings.resolved_workspace_dir) not in page
+
+
+def _seed_chat_with_nested_report_path(client):
+    """A chat whose analyze_results / compare_reports card results carry the located report's
+    absolute path NESTED under ``runs[]`` / ``reports[]`` (exactly as analyze.py / compare.py emit
+    it). The old top-level-only key check missed these nested copies, so the whole result leaked."""
+    s = client.app.state.sessions.create()
+    report = f"{s.ctx.workspace}/runs/benchmark_report_v0.2.json"   # embeds workspace root + sid
+    s.messages = [
+        {"role": "user", "content": "analyze and compare the runs"},
+        {"role": "assistant", "content": "Here you go.",
+         "tool_calls": [{"id": "tc1", "name": "analyze_results", "input": {}},
+                        {"id": "tc2", "name": "compare_reports", "input": {}}]},
+    ]
+    s.card_results = [
+        {"tool_call_id": "tc1", "name": "analyze_results",
+         "result": {"analyzed": True,
+                    "runs": [{"label": "baseline", "report_path": report, "model": "tiny"}]}},
+        {"tool_call_id": "tc2", "name": "compare_reports",
+         "result": {"compared": True,
+                    "reports": [{"label": "baseline", "report_path": report, "valid": True}]}},
+    ]
+    s.title = "analyze + compare"
+    s.persist()
+    return s
+
+
+def test_share_scrubs_nested_report_path_in_analyze_and_compare_results(client_with_share):
+    """BUG: analyze_results returns ``{"runs":[{"report_path": …}]}`` and compare_reports returns
+    ``{"reports":[{"report_path": …}]}`` — the located report's absolute host path NESTED, not
+    top-level. These card results are frozen verbatim, and the old top-level-only key check missed
+    the nested path, so the whole result (host layout + owning session id) leaked into the public
+    share. The recursive scrub must mask every nested path leaf."""
+    client, settings = client_with_share
+    s = _seed_chat_with_nested_report_path(client)
+
+    token = client.post(f"/api/sessions/{s.id}/share").json()["token"]
+    body = client.get(f"/api/share/{token}").json()
+    raw = json.dumps(body)
+    assert s.id not in raw, "owning session id leaked via a nested report_path"
+    assert str(s.ctx.workspace) not in raw, "per-session absolute workspace path leaked"
+    assert str(settings.resolved_workspace_dir) not in raw, "workspace root leaked"
+    assert str(Path.home()) not in raw and "/home/" not in raw, "host home path / username leaked"
+
+    trs = [it for it in body["items"] if it.get("role") == "tool_result"]
+    run = next(r for r in trs if r["result"].get("runs"))["result"]["runs"][0]
+    rep = next(r for r in trs if r["result"].get("reports"))["result"]["reports"][0]
+    # Non-path content survives; the nested report_path key survives with only its VALUE masked
+    # (the top-level key removal deliberately doesn't reach nested copies — the scrub does).
+    assert run["label"] == "baseline" and run["model"] == "tiny"
+    for path in (run["report_path"], rep["report_path"]):
+        assert "<workspace>" in path and "<session>" in path
+        assert "/home/" not in path and str(s.ctx.workspace) not in path
+
+    # The offline single-file export inlines the SAME redacted snapshot.
+    page = client.get(f"/api/share/{token}/page.html").text
+    assert s.id not in page and str(settings.resolved_workspace_dir) not in page
+
+
 def test_create_404_for_unknown_session(client_with_share):
     client, _ = client_with_share
     assert client.post("/api/sessions/does-not-exist/share").status_code == 404
