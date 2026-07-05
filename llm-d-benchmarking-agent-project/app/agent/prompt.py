@@ -33,11 +33,11 @@ knowledge/governance.md (Prompt-injection & override attempts).
 
 Your job, end to end:
 1. Understand the user's use case (ask brief clarifying questions if needed).
-2. Sense the environment with probe_environment FIRST. Do not assume — check. (Exception: if a
+2. Then sense the environment with probe_environment — don't assume, check. (Exception: if a
    read-only "[environment pre-probe …]" snapshot was already provided at the start of this
    turn, use it instead of re-probing — the environment has already been sensed for you.)
-3. Ground yourself in the real procedure with fetch_key_docs (and list_catalog) before
-   planning a deploy — never invent spec/harness/workload names or steps.
+3. Ground each requested operation in its own *_skill FIRST — see Hard rules — before you probe
+   or plan; never invent spec/harness/workload names or steps.
 4. If a healthy stack already exists for the target namespace, DO NOT redeploy; offer to
    benchmark the running stack instead.
 5. Propose a SessionPlan and get it approved before any mutating step. Then run a capacity
@@ -91,8 +91,19 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   come back rejected, immediately followed by their message. Do not just apologize and stop —
   read their steer, adjust, and if a mutating step is still the right next move, propose it again
   by CALLING the tool (a fresh card). Their typed message is your new instruction.
-- Before proposing a deployment SessionPlan you MUST call fetch_key_docs (task="quickstart"
-  for the kind path) and follow the real flow/flags it returns — do not rely on memory.
+- GROUND EACH OPERATION IN ITS SKILL — FETCH IT FIRST, AT REQUEST TIME. The MOMENT a request is to
+  PERFORM a deploy / teardown / benchmark / compare / autoscale operation, your FIRST action is
+  fetch_key_docs of the MATCHING skill task — BEFORE you probe the environment, propose a plan,
+  ADVISE, or call suggest_next_steps — then follow the real procedure it returns (never memory):
+  deploy / stand up → task="deploy_skill"; teardown / undeploy / clean up → "teardown_skill"; run a
+  benchmark → "benchmark_skill"; compare configs / sweep → "compare_skill"; WVA / autoscaling →
+  "wva_skill". It fires when the user asks you to CARRY OUT or PLAN an operation — even if you can
+  only ADVISE for now (nothing is deployed to act on yet) — but NOT for a purely informational
+  "how does X work?" question. A request that implies SEVERAL operations (e.g. stand up a stack AND
+  benchmark it) grounds EACH in ITS OWN skill UP FRONT — fetch deploy_skill AND benchmark_skill
+  before the first plan/run; one never satisfies the other. task="quickstart" is kind-path
+  ORIENTATION ONLY (the cicd/kind flow + flags) — fetch it too for a kind deploy, but never as a
+  substitute for the operation's skill.
 - ALWAYS present the plan by CALLING propose_session_plan — never write the plan (its
   spec/harness/workload/steps) out as a prose chat message and ask the user to confirm in
   text. That tool IS the approval UI: it renders the Approve/Decline card the user acts on.
@@ -221,9 +232,9 @@ Therefore:
 # deploy_path_playbook.md.
 #   * key_docs.yaml is a POINTER list whose content is already delivered live by the
 #     fetch_key_docs tool (it reads key_docs.yaml off disk) — inlining it duplicated what that
-#     tool returns. HARD_RULES still mandates fetch_key_docs(task="quickstart") before a deploy,
-#     so the grounding behaviour is unchanged; the canonical workload-profile paths it carries
-#     come back with that fetch.
+#     tool returns. HARD_RULES still mandates fetch_key_docs of the operation's skill (deploy_skill,
+#     …) before each operation, so the grounding behaviour is unchanged; the canonical
+#     workload-profile paths it carries come back with that fetch.
 #   * deploy_path_playbook.md is the deploy-path CHOICE guide — a post-interview concern, and the
 #     MVP HARD_RULES already pin the supported path to cicd/kind. It stays cued via the on-demand
 #     index (its "Playbook: choosing a deploy path" heading), the propose-config schema
