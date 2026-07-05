@@ -320,17 +320,15 @@ header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin:
 }
 .status.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
 .status.down { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
-/* LLM badge (provider · model, from /api/provider) — same chip family as .status; mono face
-   because the content is identifiers. Red when the provider failed to build. Capped +
-   ellipsized (provider·model is ~35 mono chars) and dropped entirely on narrow screens so a
-   nowrap chip can never shove the header buttons past the viewport edge. */
+/* LLM model (from /api/provider) — a slim muted line pinned to the bottom-left of the composer,
+   mono face because the content is an identifier. Red when the provider failed to build. */
 .llm-badge {
-  font: 11.5px/1 var(--mono); color: var(--muted); padding: 5px 11px;
-  border: 1px solid var(--border); border-radius: 999px; white-space: nowrap;
-  max-width: 240px; overflow: hidden; text-overflow: ellipsis;
+  align-self: flex-start;
+  font: 11px/1 var(--mono); color: var(--muted);
+  padding: 3px 6px 3px 12px; margin-top: 1px;
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.llm-badge.err { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
-@media (max-width: 760px) { .llm-badge { display: none; } }
+.llm-badge.err { color: var(--red); }
 
 .icon-btn {
   width: 34px; height: 34px; padding: 0; border-radius: 9px; cursor: pointer;

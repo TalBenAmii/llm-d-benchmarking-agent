@@ -569,9 +569,9 @@ async function loadProviderBadge() {
     if (!r.ok) return;
     const d = await r.json();
     el.classList.toggle("err", !d.configured);
-    el.textContent = d.configured ? `${d.provider} · ${d.model}` : "LLM not configured";
+    el.textContent = d.configured ? d.model : "LLM not configured";
     el.title = d.configured
-      ? "The LLM powering this assistant (provider · model)"
+      ? "The LLM model powering this assistant"
       : "The LLM provider failed to load — wire one (e.g. ./scripts/setup-claude-plan.sh) and restart.";
     el.hidden = false;
   } catch (e) { /* offline — leave the badge hidden */ }
