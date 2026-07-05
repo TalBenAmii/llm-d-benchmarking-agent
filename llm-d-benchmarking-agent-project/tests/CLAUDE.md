@@ -44,7 +44,7 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
 - **observability** — `test_metrics.py`, `test_cot_trace.py`, `test_logging.py`, `test_tracing_config.py`, `test_resource_*.py`, `test_monitoring_activate.py`, `test_ops_docs.py`.
 - **llm providers** — `test_agent_sdk_provider.py`, `test_provider_pack.py`, `test_llm_caching_usage.py`.
 - **UI / HTTP e2e** — `test_ui.py`, `test_readyz.py`, `test_static_cache.py`, `test_streaming_turn.py`.
-- **subdirs** — `tests/flows/` (golden-transcript replays + shared harness/flows) · `tests/eval/` (live-LLM agent evals split into `live/` = default-live/real-app + `simulate/` = the SIMULATE-only skill-usage eval, plus hermetic shadow/oracle guards directly under `eval/` — gated, never auto-run) · `tests/integration/` (opt-in).
+- **subdirs** — `tests/flows/` (golden-transcript replays + shared harness/flows + hermetic skill-grounding guards — each golden operation-flow must fetch its `llm-d` SKILL.md) · `tests/eval/` (live-LLM agent evals split into `live/` = default-live/real-app + `simulate/` = the SIMULATE-only skill-usage eval, plus hermetic shadow/oracle guards directly under `eval/` — gated, never auto-run) · `tests/integration/` (opt-in).
 
 ## Gotchas (the time-wasters)
 - **Empty sibling repos in worktrees** (`conftest.py`): `llm-d/` + `llm-d-benchmark/` are untracked
