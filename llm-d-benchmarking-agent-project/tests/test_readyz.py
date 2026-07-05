@@ -3,6 +3,8 @@ the retention GC + self-check (Phase 18). Uses the real FastAPI wiring via TestC
 network, no cluster (the self-check only OBSERVES config and the workspace)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -30,3 +32,16 @@ def test_readyz_endpoint_and_lifespan_wiring():
         assert "provider_coherent" in names
         # Liveness is separate and unconditionally ok.
         assert client.get("/healthz").json()["ok"] is True
+
+
+def test_readyz_body_does_not_leak_host_paths_or_username():
+    """BUG: /readyz is UNAUTHENTICATED but the self-check's detail/data carried absolute host
+    paths (``writable at /home/<user>/…/workspace``, repo/allowlist paths), disclosing the host
+    layout + OS username. The public body must relativize the home dir to ``~`` (server-side logs
+    still keep the full paths)."""
+    from app.main import app
+
+    with TestClient(app) as client:
+        raw = client.get("/readyz").text
+        assert str(Path.home()) not in raw, "readyz body leaked the host home path / OS username"
+        assert "/home/" not in raw, "readyz body leaked an absolute /home/ path"

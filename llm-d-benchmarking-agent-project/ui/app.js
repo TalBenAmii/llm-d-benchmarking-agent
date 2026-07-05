@@ -373,6 +373,20 @@ function appendTurnTokens() {
 
 // ---- connection ---------------------------------------------------------
 
+// The active session id is mirrored into the URL (?session=<id> — the same param connect()/the
+// server already understand) so a browser reload resumes the same chat instead of minting a fresh
+// one. replaceState, never pushState: reloads/switches must not pile onto the history stack. A
+// param-less URL means a brand-new chat.
+function sessionFromUrl() {
+  return new URLSearchParams(location.search).get("session") || null;
+}
+function setSessionUrl(sid) {
+  const url = new URL(location.href);
+  if (sid) url.searchParams.set("session", sid);
+  else url.searchParams.delete("session");
+  history.replaceState(null, "", url);
+}
+
 function connect(sid, afterSeq) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let qs = sid ? `?session=${encodeURIComponent(sid)}` : "";
@@ -414,6 +428,7 @@ function switchTo(sid) {
   rec.order = ++viewClock;
   activate(rec);                                      // attach its pane + restore its working-set
   currentSession = sid || null;
+  setSessionUrl(currentSession);                      // mirror into the URL (cleared for a new chat) so a reload lands back here
   setActiveConvRow(currentSession);                   // move the sidebar highlight NOW — no list rebuild
   updateDebugSession();
   setHeaderTitle(sid ? convTitles[sid] : "New chat"); // optimistic; renderConvRow confirms it
@@ -426,10 +441,17 @@ function newChat() { switchTo(null); }
 function openSession(sid) { if (sid !== currentSession) switchTo(sid); }
 
 // Boot the first chat without going through switchTo (no prior socket to close). The socket
-// connect() opens becomes the current `ws`, so a later real disconnect auto-reconnects.
+// connect() opens becomes the current `ws`, so a later real disconnect auto-reconnects. If the URL
+// carries ?session=<id> (a reload / shared link of an in-progress chat), resume THAT session with a
+// FULL replay — the local pane is empty on a cold load, so we omit after_seq and take the whole
+// history (the incremental after_seq path is only correct for an in-app switch with a cached pane).
+// A stale/unknown id is rejected server-side (a fresh session is minted); the `ready` handler then
+// rewrites the URL to that new id.
 function bootChat() {
+  const sid = sessionFromUrl();
+  currentSession = sid;                               // treated as a resume by the `ready` handler
   activate(makeRecord(null));
-  connect(null, null);
+  connect(sid, null);
 }
 
 function setStatus(text, cls) {
@@ -458,7 +480,13 @@ function handle(msg) {
   stickBottom = (transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight) < 120;
   switch (type) {
     case "ready": {
+      // Whether this connection targeted a KNOWN session (boot-from-URL, an in-app switch, or a
+      // reconnect) vs. minting a brand-new chat — captured before we overwrite currentSession. Only
+      // a resume mirrors the id into the URL: a fresh "New chat" stays param-less (switchTo cleared
+      // it). On a stale-id boot the server minted a REPLACEMENT id, so this rewrites the URL to it.
+      const resuming = !!currentSession;
       currentSession = data.session_id;
+      if (resuming) setSessionUrl(currentSession);
       updateDebugSession();
       // A brand-new chat learns its id here — register the active record under it.
       const wasNewChat = !!(cur && !cur.id);
@@ -2194,6 +2222,16 @@ function statUnit(stat) {
     return { unit: "s", scale: 1 };
   }
   if (u === "ms") return { unit: "ms", scale: 1 };
+  // Time-per-token (TPOT/NTPOT): "s/token" etc. is a TIME, not a token rate — handle it BEFORE the
+  // token-rate catch-all below (which would otherwise mislabel "s/token" as "tok/s"). Scale by
+  // magnitude to a readable time-per-token unit, mirroring the s→ms switch above.
+  if (u === "s/token" || u === "sec/token") {
+    if (typeof stat.mean === "number" && Math.abs(stat.mean) < 0.001) return { unit: "µs/token", scale: 1e6 };
+    if (typeof stat.mean === "number" && Math.abs(stat.mean) < 1) return { unit: "ms/token", scale: 1000 };
+    return { unit: "s/token", scale: 1 };
+  }
+  if (u === "ms/token") return { unit: "ms/token", scale: 1 };
+  if (u === "us/token" || u === "µs/token") return { unit: "µs/token", scale: 1 };
   if (u.indexOf("token") !== -1) return { unit: "tok/s", scale: 1 };
   if (u.indexOf("quer") !== -1 || u.indexOf("req") !== -1) return { unit: "req/s", scale: 1 };
   if (u === "percent" || u === "%") return { unit: "%", scale: 1 };
@@ -2385,13 +2423,19 @@ function renderReportCharts(bubble, charts) {
   if (!Array.isArray(charts) || charts.length === 0) return;
   const wrap = el("div", "charts");
   charts.forEach((c) => {
+    // A PUBLIC share inlines each chart as a self-contained data: URI (c.src) so it renders from the
+    // snapshot itself — no live session dir, no session id in the URL. A live chat has no c.src and
+    // falls back to the session-scoped artifact route, exactly as before.
     const sid = c.session_id || currentSession;
-    if (!sid || !c.path) return;
+    const src = c.src || (sid && c.path
+      ? `/api/sessions/${encodeURIComponent(sid)}/artifact?path=${encodeURIComponent(c.path)}`
+      : null);
+    if (!src) return;
     const fig = el("figure", "chart");
     const img = document.createElement("img");
     img.loading = "lazy";
     img.alt = c.title || "benchmark chart";
-    img.src = `/api/sessions/${encodeURIComponent(sid)}/artifact?path=${encodeURIComponent(c.path)}`;
+    img.src = src;
     img.tabIndex = 0;
     img.setAttribute("role", "button");
     img.setAttribute("aria-label", `Expand ${c.title || "chart"}`);

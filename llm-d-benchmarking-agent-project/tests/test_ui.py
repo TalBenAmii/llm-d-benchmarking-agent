@@ -27,6 +27,20 @@ def test_app_js_is_brace_balanced():
     assert js.count("{") == js.count("}"), "app.js brace mismatch — likely a broken edit"
 
 
+def test_tpot_time_per_token_is_not_labeled_as_a_rate():
+    """BUG: TPOT has units ``s/token`` (a TIME), not a ``tok/s`` rate. ``statUnit`` used to fall
+    through to the ``u.indexOf("token")`` token-rate catch-all and render TPOT as ``tok/s`` —
+    physically wrong. The time-per-token units must be mapped BEFORE that catch-all. (No JS runtime
+    in CI, so this asserts the source ordering + mapping structurally.)"""
+    js = _ui("app.js")
+    per_token = js.find('"s/token"')
+    token_rate = js.find('u.indexOf("token")')
+    assert per_token != -1, "statUnit no longer handles the s/token time-per-token units"
+    assert token_rate != -1, "statUnit no longer has the token-rate branch"
+    assert per_token < token_rate, "s/token must be handled BEFORE the token-rate catch-all"
+    assert 'unit: "ms/token"' in js, "TPOT must render as a time-per-token unit, not a rate"
+
+
 def test_every_new_element_id_is_wired_in_js():
     """Each new element the JS controls must exist in the HTML AND be looked up in the JS."""
     html = _ui("index.html")
@@ -549,6 +563,37 @@ def test_approval_resolve_guards_socket_before_send():
     seg = js[i:i + 600]
     assert "ws.readyState !== WebSocket.OPEN" in seg          # the guard exists in resolve
     assert seg.index("readyState") < seg.index('type: "approval"')  # …and BEFORE the send
+
+
+def test_browser_reload_restores_active_session_via_url():
+    """BUG-#2: a browser refresh used to abandon the in-flight chat — boot always called
+    connect(null), so the server minted a fresh session and the transcript reset to a blank "New
+    chat". The fix mirrors the active session id into the URL (?session=<id>, via replaceState — NOT
+    pushState, no history spam) and rehydrates from it on boot with a FULL replay. Structural — no
+    JS runtime in CI; the read/write/clear logic itself was also verified under node."""
+    js = _ui("app.js")
+    # (a) Boot READS the session id from the URL and connects to THAT session (not connect(null)).
+    assert "function sessionFromUrl" in js
+    assert 'URLSearchParams(location.search).get("session")' in js
+    boot = js.split("function bootChat()")[1].split("\nfunction ")[0]
+    assert "sessionFromUrl()" in boot, "bootChat must read the active session id from the URL"
+    # Full replay on a cold reload: resume with NO after_seq (the incremental tail path is only for
+    # an in-app switch with a cached pane) so the server sends the whole history.
+    assert "connect(sid, null)" in boot, "boot resume must omit after_seq for a full history replay"
+    # (b) The id is WRITTEN to the URL via history.replaceState (never pushState).
+    assert "function setSessionUrl" in js
+    assert "history.replaceState(" in js
+    assert "history.pushState(" not in js, "must use replaceState, not pushState (no history spam)"
+    # …set on a resume in the `ready` handler, and on an in-app switch in switchTo.
+    ready = js.split('case "ready":')[1].split('case "history":')[0]
+    assert "setSessionUrl(currentSession)" in ready, "the ready frame must mirror the assigned id into the URL"
+    switch = js.split("function switchTo(sid)")[1].split("\nfunction ")[0]
+    assert "setSessionUrl(currentSession)" in switch, "switchTo must mirror the active id into the URL"
+    # (c) New chat / switch-to-null clears it back to a param-less URL: newChat() -> switchTo(null),
+    # and setSessionUrl(null) strips the ?session param.
+    assert "function newChat() { switchTo(null); }" in js
+    assert 'url.searchParams.delete("session")' in js, \
+        "setSessionUrl must strip ?session when the id is null (new chat = param-less URL)"
 
 
 # ── test_ui_streaming.py ──

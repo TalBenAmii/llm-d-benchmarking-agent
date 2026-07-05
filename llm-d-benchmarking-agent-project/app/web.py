@@ -91,19 +91,60 @@ def history_record_view(rec) -> dict[str, Any]:
 _SHARE_REDACT_RESULT_KEYS = ("report_path", "searched")
 
 
-def redact_share_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Strip server-internal absolute paths from a PUBLIC share snapshot's tool_result rows.
+def _scrub_share_path(s: Any, ws: str, sid: str, home: str) -> Any:
+    """Mask the workspace root, the owning session id, and the home dir in ONE string (a
+    non-string passes through). The command name/flags around them stay intact so the shared
+    command is still readable — only the leaking absolute path + id become placeholders. Order
+    matters: the workspace prefix (which itself sits under ``home``) is masked before ``home``."""
+    if not isinstance(s, str):
+        return s
+    s = s.replace(ws, "<workspace>").replace(sid, "<session>")
+    return s.replace(home, "~") if home else s
+
+
+def _scrub_share_command(v: Any, ws: str, sid: str, home: str) -> Any:
+    """Scrub a command/argv field that is either a shell-string command or an argv list."""
+    if isinstance(v, list):
+        return [_scrub_share_path(x, ws, sid, home) for x in v]
+    return _scrub_share_path(v, ws, sid, home)
+
+
+def redact_share_items(
+    items: list[dict[str, Any]], *, workspace_root: Path, session_id: str,
+) -> list[dict[str, Any]]:
+    """Strip server-internal absolute paths + the owning session id from a PUBLIC share snapshot.
 
     The transcript replayed to the owner on resume legitimately carries the located report's
-    absolute path; a public share must not. Returns NEW item dicts (the live session is never
-    mutated) with the path-bearing keys removed from any ``tool_result`` result, leaving every
-    render-relevant field (summary, charts, metrics) intact."""
+    absolute path and the command trail's ``--workspace <sessions_root>/<session_id>/…`` paths;
+    a public, UNAUTHENTICATED share must not (they disclose the host path layout, OS username, and
+    the very session id the snapshot withholds). Returns NEW item dicts (the live session is never
+    mutated): the path-bearing keys are removed from any ``tool_result`` result, and the workspace
+    root / session id / home dir are masked to placeholders across every command-trail field
+    (``tool_call`` input command, ``command`` text+argv, ``approval_decision`` payload command+argv),
+    leaving every render-relevant field (summary, charts, metrics) and the command names intact."""
+    ws, sid, home = str(workspace_root), session_id, str(Path.home())
     out: list[dict[str, Any]] = []
     for it in items:
-        result = it.get("result") if it.get("role") == "tool_result" else None
-        if isinstance(result, dict) and any(k in result for k in _SHARE_REDACT_RESULT_KEYS):
-            scrubbed = {k: v for k, v in result.items() if k not in _SHARE_REDACT_RESULT_KEYS}
-            out.append({**it, "result": scrubbed})
+        role = it.get("role")
+        if role == "tool_result":
+            result = it.get("result")
+            if isinstance(result, dict) and any(k in result for k in _SHARE_REDACT_RESULT_KEYS):
+                out.append({**it, "result": {k: v for k, v in result.items()
+                                             if k not in _SHARE_REDACT_RESULT_KEYS}})
+            else:
+                out.append(it)
+        elif role == "tool_call" and isinstance(it.get("input"), dict) and "command" in it["input"]:
+            command = _scrub_share_command(it["input"]["command"], ws, sid, home)
+            out.append({**it, "input": {**it["input"], "command": command}})
+        elif role == "command":
+            out.append({**it, "text": _scrub_share_path(it.get("text"), ws, sid, home),
+                        "argv": _scrub_share_command(it.get("argv"), ws, sid, home)})
+        elif role == "approval_decision" and isinstance(it.get("payload"), dict):
+            payload = {**it["payload"]}
+            for k in ("command", "argv"):
+                if k in payload:
+                    payload[k] = _scrub_share_command(payload[k], ws, sid, home)
+            out.append({**it, "payload": payload})
         else:
             out.append(it)
     return out
