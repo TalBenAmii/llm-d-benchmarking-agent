@@ -314,7 +314,7 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
 - [ ] **[A/B] Live agent eval (real LLM, no cluster):** does the model *choose* the right
   commands from natural language, across the canonical flows?
   ```bash
-  LLM_EVAL_LIVE=1 .venv/bin/python -m pytest tests/flows/test_flows_live.py -v
+  LLM_EVAL_LIVE=1 .venv/bin/python -m pytest tests/eval/live/test_flows_live.py -v
   # or: make validate-live
   ```
   Treat failures as **signal** (a prompt/knowledge gap or a genuinely wrong choice), not a hard

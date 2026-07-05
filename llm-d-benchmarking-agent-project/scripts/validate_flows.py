@@ -105,7 +105,7 @@ async def main_async(args) -> int:
     # --live drives the real LLM in NON-simulate mode (tool-choice / error-recovery / safety flows);
     # --simulate drives it in SIMULATE mode (the multi-step deploy walks that can only REACH
     # standup/run when the SIMULATE_NOTE waves the agent past missing hardware). Each scores only the
-    # flows whose live_modes contain the active mode — exactly like tests/flows/test_flows_live.py.
+    # flows whose live_modes contain the active mode — exactly like tests/eval/live/test_flows_live.py.
     live_run = args.live or args.simulate
     if live_run:
         mode_key = "simulate" if args.simulate else "live"

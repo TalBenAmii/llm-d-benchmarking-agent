@@ -40,7 +40,7 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
 - **observability** — `test_metrics.py`, `test_cot_trace.py`, `test_logging.py`, `test_tracing_config.py`, `test_resource_*.py`, `test_monitoring_activate.py`, `test_ops_docs.py`.
 - **llm providers** — `test_agent_sdk_provider.py`, `test_provider_pack.py`, `test_llm_caching_usage.py`.
 - **UI / HTTP e2e** — `test_ui.py`, `test_readyz.py`, `test_static_cache.py`, `test_streaming_turn.py`.
-- **subdirs** — `tests/flows/` (golden-transcript replays) · `tests/eval/` (LLM-judge/bughunt — gated, never auto-run) · `tests/integration/` (opt-in).
+- **subdirs** — `tests/flows/` (golden-transcript replays + shared harness/flows) · `tests/eval/` (live-LLM agent evals split into `live/` = default-live/real-app + `simulate/` = the SIMULATE-only skill-usage eval, plus hermetic shadow/oracle guards directly under `eval/` — gated, never auto-run) · `tests/integration/` (opt-in).
 
 ## Gotchas (the time-wasters)
 - **Empty sibling repos in worktrees** (`conftest.py`): `llm-d/` + `llm-d-benchmark/` are untracked
@@ -48,9 +48,9 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
 - **`SIMULATE=0` is forced in `conftest.py`** — a dev `.env` with `SIMULATE=1` (or a live kind cluster)
   can deadlock the approval-gate tests. Don't override it in tests.
 - **Per-test timeout** is set in `pyproject.toml` as a deadlock backstop; a single test should never approach it.
-- **Never auto-run the live-LLM eval**: `LLM_EVAL_LIVE=1`, `tests/flows/test_flows_live.py`,
+- **Never auto-run the live-LLM eval**: `LLM_EVAL_LIVE=1`, `tests/eval/live/test_flows_live.py`,
   `make validate-live` spend Max-plan quota → only on explicit user request. Plain `pytest` is safe and hermetic.
-  Two modes (both gated on explicit request): `LLM_EVAL_LIVE=1 pytest tests/flows/test_flows_live.py` (live set)
+  Two modes (both gated on explicit request): `LLM_EVAL_LIVE=1 pytest tests/eval/live/test_flows_live.py` (live set)
   and `LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 pytest …` (simulate set) — error/safety flows are honest only live,
   multi-step DEPLOY walks only in simulate. ⚠️ In a worktree the gitignored `.env` is absent → the provider raises
   → every live test SKIPS silently; `cp <primary>/.env <worktree>/.env` first.
@@ -68,13 +68,13 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
   - **`load_tools` group scoring** (`score_flow`): the live eval verifies the model loaded the
     RIGHT tool group(s) for the grouped tools a flow requires; an EXTRA group is a NOTE (not a
     failure), never loading a needed one IS a failure. Hermetic guards in `tests/flows/test_eval_harness.py`.
-  - **Skill-usage eval** (`tests/flows/test_skill_usage_live.py`, same `LLM_EVAL_LIVE=1` gate): asserts the
+  - **Skill-usage eval** (`tests/eval/simulate/test_skill_usage_live.py`, same `LLM_EVAL_LIVE=1` gate): asserts the
     agent fetches the operation's canonical `llm-d-skills` SKILL.md (via `fetch_key_docs(task=<*_skill>)` or
     `read_repo_doc` under `llm-d-skills/`) BEFORE it deploys/benchmarks/tears-down/compares/autoscales. 5
     scenarios × `SKILL_EVAL_RUNS` runs each (default 3, majority passes; `=1` = cheap smoke); ⚠️ worktree
     needs `REPOS_DIR=<primary>` (empty siblings, per the gotcha above). E.g. `LLM_EVAL_LIVE=1 REPOS_DIR=<primary>
-    SKILL_EVAL_RUNS=1 .venv/bin/python -m pytest tests/flows/test_skill_usage_live.py -v`.
-- **Self-eval (`tests/eval/`)**: the LLM judge (`test_judge_live.py`) + bug-hunter
+    SKILL_EVAL_RUNS=1 .venv/bin/python -m pytest tests/eval/simulate/test_skill_usage_live.py -v`.
+- **Self-eval (`tests/eval/live/`)**: the LLM judge (`test_judge_live.py`) + bug-hunter
   (`test_bughunt_live.py`) share the SAME `LLM_EVAL_LIVE` switch (bughunt also needs `BUGHUNT=1`)
   and SPEND quota → never auto-run them. `make eval-shadow` is the always-safe hermetic entry
   (the deterministic shadow/oracle tests run in plain `pytest` for free).

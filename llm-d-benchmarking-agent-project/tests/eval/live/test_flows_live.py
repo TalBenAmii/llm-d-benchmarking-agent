@@ -8,7 +8,7 @@ scores the commands the model actually chooses. It runs in the SAME hermetic san
 
 NON-GATING: skipped unless ``LLM_EVAL_LIVE=1`` and a key is configured. Run it with::
 
-    LLM_EVAL_LIVE=1 .venv/bin/python -m pytest tests/flows/test_flows_live.py -v
+    LLM_EVAL_LIVE=1 .venv/bin/python -m pytest tests/eval/live/test_flows_live.py -v
     # or: make validate-live
 
 Set ``LLM_EVAL_SIMULATE=1`` as well to drive every flow in the app's SIMULATE mode — the
@@ -17,7 +17,7 @@ without pausing for confirmations or missing hardware (no GPU/Docker/kind needed
 already executes nothing). This lets the multi-step deploy/teardown flows be scored on the
 subcommands/specs they choose, which they otherwise can't reach in a single eval turn::
 
-    LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 .venv/bin/python -m pytest tests/flows/test_flows_live.py -v --timeout=300
+    LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 .venv/bin/python -m pytest tests/eval/live/test_flows_live.py -v --timeout=300
 
 Because a live model is nondeterministic, treat failures as signal to investigate (a
 prompt/knowledge gap, or a genuinely wrong choice), not as a hard build break.
@@ -32,8 +32,8 @@ from app.config import get_settings
 from app.llm.provider import get_provider
 from tests._auth import has_auth
 
-from .flows import ALL_FLOWS
-from .harness import run_flow, score_flow
+from tests.flows.flows import ALL_FLOWS
+from tests.flows.harness import run_flow, score_flow
 
 _LIVE = os.getenv("LLM_EVAL_LIVE") == "1"
 _SIMULATE = os.getenv("LLM_EVAL_SIMULATE") == "1"
@@ -44,8 +44,8 @@ _MODE = "simulate" if _SIMULATE else "live"
 # failure/refusal they test), and multi-step GPU-guide deploys are scored only in "simulate" (they
 # can't reach standup/run in real "live" mode — a careful agent refuses a GPU guide on a GPU-less host).
 # Read-only / single-decision tool-choice flows declare both. Run BOTH modes to exercise everything:
-#   LLM_EVAL_LIVE=1 pytest tests/flows/test_flows_live.py                    # the "live" set
-#   LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 pytest tests/flows/test_flows_live.py # the "simulate" set
+#   LLM_EVAL_LIVE=1 pytest tests/eval/live/test_flows_live.py                    # the "live" set
+#   LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 pytest tests/eval/live/test_flows_live.py # the "simulate" set
 _LIVE_FLOWS = [f for f in ALL_FLOWS if f.live_eval and _MODE in f.live_modes]
 
 pytestmark = [

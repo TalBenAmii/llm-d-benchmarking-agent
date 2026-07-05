@@ -12,7 +12,7 @@ Gated by the SAME ``LLM_EVAL_LIVE=1`` switch the live flow eval uses, AND a seco
 flag (extra conservatism, per the spec) — so it NEVER runs in plain ``pytest`` or gating CI.
 Run it with::
 
-    LLM_EVAL_LIVE=1 BUGHUNT=1 .venv/bin/python -m pytest tests/eval/test_bughunt_live.py -v --timeout=600
+    LLM_EVAL_LIVE=1 BUGHUNT=1 .venv/bin/python -m pytest tests/eval/live/test_bughunt_live.py -v --timeout=600
     # or: make bughunt
 """
 from __future__ import annotations
@@ -26,8 +26,8 @@ from app.config import get_settings
 from app.llm.provider import get_provider
 from tests._auth import has_auth
 
-from .bug_report import build_bug_report, severity_ge, write_bug_report
-from .explorer import max_selector_calls, run_bughunt
+from tests.eval.bug_report import build_bug_report, severity_ge, write_bug_report
+from tests.eval.explorer import max_selector_calls, run_bughunt
 
 _LIVE = os.getenv("LLM_EVAL_LIVE") == "1"
 _BUGHUNT = os.getenv("BUGHUNT") == "1"
