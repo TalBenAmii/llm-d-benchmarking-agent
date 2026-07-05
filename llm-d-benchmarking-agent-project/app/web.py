@@ -25,6 +25,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.agent.ws_schemas import ValidationError
+from app.config import Settings
+from app.llm.provider import AGENT_SDK_PROVIDERS, OPENAI_PROVIDERS
 from app.storage.provenance import BundleStore
 
 # ── inbound-frame validation-error formatting (WS protocol ``error`` event) ─────────────────
@@ -42,6 +44,27 @@ def first_validation_message(exc: ValidationError) -> str:
 
 
 # ── response-shaping for the HTTP routes ────────────────────────────────────────────────────
+
+
+def provider_view(settings: Settings, provider_error: str | None) -> dict[str, Any]:
+    """The active LLM provider + model as the header badge shows them (GET /api/provider).
+
+    Shares ``get_provider``'s alias constants (config dispatch, not judgment) but stays
+    settings-based so it still answers when the provider FAILED to build — exactly the state
+    the badge must surface (``configured: False`` → "LLM not configured"). An unknown provider
+    name (which makes ``get_provider`` raise) gets ``model: None`` rather than a model it never
+    resolved to. Deliberately minimal: never a key, account identity, or the error text (which
+    can name env vars)."""
+    provider = (settings.llm_provider or "anthropic").lower()
+    if provider in AGENT_SDK_PROVIDERS:
+        model = settings.agent_sdk_model
+    elif provider in OPENAI_PROVIDERS:
+        model = settings.openai_model
+    elif provider == "anthropic":
+        model = settings.anthropic_model
+    else:
+        model = None
+    return {"provider": provider, "model": model, "configured": provider_error is None}
 
 
 def history_record_view(rec) -> dict[str, Any]:

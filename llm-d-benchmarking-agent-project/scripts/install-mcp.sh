@@ -118,7 +118,7 @@ log "venv backend: $([[ "$USE_UV" == 1 ]] && echo uv || echo 'python3 -m venv')"
 
 # shellcheck source-path=SCRIPTDIR/..
 # shellcheck source=scripts/_env.sh
-source "$PROJECT_DIR/scripts/_env.sh"   # provides ensure_env + clone_if_missing
+source "$PROJECT_DIR/scripts/_env.sh"   # provides ensure_env + clone_if_missing + set_env_var
 step "Sibling repos (read-only, under $REPOS_DIR)"
 # llm-d + llm-d-benchmark live under the llm-d org; the skills library is in llm-d-incubation.
 clone_if_missing llm-d           "$REPOS_DIR/llm-d"
@@ -141,14 +141,6 @@ fi
 log "Installed. The agent imports OK."
 
 ensure_env   # create .env from .env.example if missing
-
-set_env_var() {  # $1 KEY  $2 VALUE — replace-or-append in .env (pure bash; values printf'd verbatim)
-  local key="$1" val="$2" f="$PROJECT_DIR/.env" tmp
-  touch "$f"; tmp="$(mktemp)"
-  grep -vE "^${key}=" "$f" >"$tmp" 2>/dev/null || true
-  printf '%s=%s\n' "$key" "$val" >>"$tmp"
-  mv "$tmp" "$f"
-}
 
 step "LLM provider"
 set_env_var LLM_PROVIDER claude-agent-sdk

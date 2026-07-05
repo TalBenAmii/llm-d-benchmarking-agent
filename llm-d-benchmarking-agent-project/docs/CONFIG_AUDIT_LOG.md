@@ -78,3 +78,9 @@ the next such review).
   each replaced with a "read the skill, don't restate it" pointer; the delta (SessionPlan gate, CLI, BR-v0.2, tool names,
   CPU-sim caveats, welllit map) is untouched. `sweep_playbook.md` + `author_spec_workload.md` were ~95% delta already → left as-is.
   **Docs:** `UPSTREAM_REUSE_PATHS.md` + `FEATURES.md` skills sections relabel it the 3rd REQUIRED repo and note the defer-not-restate adapters. Full suite green (2147 passed).
+- **2026-07-05 — model ids gained a 4th home: `scripts/setup-claude-plan.sh`'s interactive menu.** The new
+  Claude-plan wiring script hardcodes its model picker (`claude-sonnet-4-6` recommended · `claude-haiku-4-5` ·
+  `claude-opus-4-8` + custom), alongside `app/config.py`'s `AGENT_SDK_MODEL` default, `.env.example`, and
+  `docs/DEPLOYMENT.md`'s "the setup script recommends sonnet-4-6" note. On the next model-generation bump,
+  update all four together — `git grep -l 'claude-sonnet-4-6\|claude-haiku-4-5\|claude-opus-4-8' -- scripts
+  docs .env.example app/config.py` finds them.

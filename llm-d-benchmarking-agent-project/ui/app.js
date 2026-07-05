@@ -387,7 +387,9 @@ function connect(sid, afterSeq) {
   const sock = new WebSocket(`${proto}://${location.host}/ws${qs}`);
   ws = sock;
 
-  sock.onopen = () => { if (sock === ws) setStatus("connected", "ok"); };
+  // Re-fetch the LLM badge on every (re)connect: a server restarted with a fixed — or newly
+  // broken — provider must not keep showing the stale boot-time badge next to a live status.
+  sock.onopen = () => { if (sock === ws) { setStatus("connected", "ok"); loadProviderBadge(); } };
   sock.onclose = () => {
     if (sock !== ws) return;                         // superseded socket (a switch/reconnect took over)
     setStatus("disconnected — retrying…", "down");
@@ -555,6 +557,24 @@ async function loadSessions() {
     const j = await r.json();
     renderSidebar(j.sessions || []);
   } catch (e) { /* offline — keep whatever's shown */ }
+}
+
+// Header LLM badge: which provider · model powers the assistant. Red "LLM not configured"
+// when the provider failed to build at startup (otherwise that only surfaces at first chat).
+async function loadProviderBadge() {
+  const el = document.getElementById("llm-badge");
+  if (!el) return;
+  try {
+    const r = await fetch("/api/provider");
+    if (!r.ok) return;
+    const d = await r.json();
+    el.classList.toggle("err", !d.configured);
+    el.textContent = d.configured ? `${d.provider} · ${d.model}` : "LLM not configured";
+    el.title = d.configured
+      ? "The LLM powering this assistant (provider · model)"
+      : "The LLM provider failed to load — wire one (e.g. ./scripts/setup-claude-plan.sh) and restart.";
+    el.hidden = false;
+  } catch (e) { /* offline — leave the badge hidden */ }
 }
 
 // Chats are grouped into one folder per Kubernetes namespace; un-namespaced chats live in a
@@ -3152,5 +3172,6 @@ if (window.__LLMD_SHARED__) {
 } else {
   loadSessions();
   loadHistory();
+  loadProviderBadge();
   bootChat();
 }
