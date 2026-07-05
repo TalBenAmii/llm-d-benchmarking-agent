@@ -594,6 +594,14 @@ def test_browser_reload_restores_active_session_via_url():
     assert "function newChat() { switchTo(null); }" in js
     assert 'url.searchParams.delete("session")' in js, \
         "setSessionUrl must strip ?session when the id is null (new chat = param-less URL)"
+    # (d) A COLD-started chat (booted param-less, or a fresh newChat) persists its id the moment the
+    # user SENDS a message — so a chat you've actually used survives a refresh, while a brand-new
+    # untouched chat stays param-less. The mirror lives in the user_message send path, guarded by
+    # currentSession (already the server-minted id by send time — the composer waits for `ready`).
+    send = js.split("function sendUserMessage(text)")[1].split("form.addEventListener")[0]
+    assert 'type: "user_message"' in send, "the send path must emit the user_message frame"
+    assert "if (currentSession) setSessionUrl(currentSession)" in send, \
+        "sending a message in a cold-started chat must mirror the session id into the URL"
 
 
 # ── test_ui_streaming.py ──
