@@ -10,7 +10,7 @@ it out loud.
   the **metrics-server** (§2, live CPU/mem sparklines) are each installable BY the agent; never refuse
   to stand up Grafana. The Grafana-vs-metrics-server choice + embedding a user's own Grafana →
   read_knowledge('observability_grafana').
-- **Default benchmark monitoring ON** (§3) so the report's `results.observability` block is populated
+- **Default benchmark monitoring ON** so the report's `results.observability` block is populated
   (KV-cache/GPU/queue). Opt out (`monitoring: false`) only on a truly Prometheus-CRD-less cluster.
   Full detail (the flag mechanism, the CRD-probe decision, reading the metrics) →
   read_knowledge('observability_monitoring').
@@ -123,18 +123,6 @@ offer the install when it is genuinely absent and the user actually wants the li
 > throughput/history) and metrics-server (`install_metrics_server.sh`, §2 above) is the zero-setup
 > CPU/mem fallback. Never refuse to stand up Grafana.
 
-## 3. Benchmark monitoring — activating `results.observability` (DEFAULT ON)
-
-> Full detail moved → read_knowledge('observability_monitoring'). Short version: the Benchmark
-> Report's `results.observability` block (KV-cache/GPU/queue) is populated ONLY when the run was
-> driven with monitoring on, so **default monitoring ON** — set `flags.monitoring: true` on
-> `execute_llmdbenchmark` to emit `--monitoring`. The ONE precondition is the Prometheus-operator
-> CRDs; probe `probe_environment(checks=["prometheus_crds"])` before standup and opt out
-> (`monitoring: false` → `--no-monitoring` on standup) ONLY on a cluster that has no CRDs and won't
-> install them. The `cicd/kind` quickstart installs the CRDs itself, so keep monitoring ON there
-> even when the probe shows them absent. That guide also covers reading the activated metrics
-> (KV-cache hit rate, schedule delay, GPU util) + the upstream saturation thresholds.
-
 ## 4. Distributed tracing — the `tracing:` config block (CONFIG-ONLY)
 
 > Full detail moved → read_knowledge('observability_tracing'). Short version: the benchmark
@@ -148,5 +136,6 @@ offer the install when it is genuinely absent and the user actually wants the li
 > itself CANNOT stream live metrics nor run user-defined Prometheus queries (both upstream
 > "Not Yet Implemented"). Be honest about the gap, then offer the real substitutes: live
 > CPU/mem via `observe_run_metrics` (§2) + live pod-log streaming via
-> `orchestrate_benchmark_run`; arbitrary PromQL runs in the USER'S own Prometheus/Grafana (§3),
-> not the benchmark CLI. Grafana embedding → read_knowledge('observability_grafana').
+> `orchestrate_benchmark_run`; arbitrary PromQL runs in the USER'S own Prometheus/Grafana
+> (observability_monitoring.md), not the benchmark CLI. Grafana embedding →
+> read_knowledge('observability_grafana').

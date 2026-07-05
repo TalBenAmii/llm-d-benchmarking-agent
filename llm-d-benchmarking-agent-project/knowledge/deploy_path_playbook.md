@@ -20,15 +20,14 @@ namespace-scoped (`-n ${NAMESPACE}`), never cluster-level. Write only into the s
 never edit the read-only repos.
 
 ## Completing a deploy flow — no optional mid-flow gates, always finish teardown
-When the user gives a complete end-to-end instruction (e.g. "create cluster → standup → smoketest
-→ run → teardown"), run it to completion: do NOT pause mid-execution on a NON-mandatory offer
-(the metrics-server install is optional — skip it silently if it wasn't requested rather than
-ending the turn on that question), and if the instruction included a teardown, the flow is not
-done until teardown has run. Never leave a created cluster up after a partial flow without
-explicitly telling the user and either tearing down or handing it back. Full rule: quickstart_playbook.md
-("Complete a fully-specified run+teardown…") + run_lifecycle.md ("Don't leave a cluster running…").
-Garbled / low-confidence intent must be CLARIFIED before any irreversible action (cluster create) —
-see quickstart_playbook.md and governance.md; do not deploy off a keyword wall.
+A fully-specified deploy flow ("create cluster → standup → smoketest → run → teardown") runs to
+completion — skip optional mid-flow offers (e.g. the metrics-server install) SILENTLY rather than
+ending the turn on them, and finish through any requested teardown, never leaving a created cluster
+up after a partial flow without telling the user and tearing down or handing it back. Full rule →
+CORE `quickstart_playbook.md` ("Complete a fully-specified run+teardown…") + `run_lifecycle.md`
+("Don't leave a cluster running…"). Garbled / low-confidence intent must be CLARIFIED before any
+irreversible action (cluster create) — see `quickstart_playbook.md` + `governance.md`; do not deploy
+off a keyword wall.
 
 ## 1. kind + simulated engine (MVP — supported)
 `spec=cicd/kind`. Local kind cluster, CPU-only, `llm-d-inference-sim`. No GPU, no model
@@ -52,17 +51,12 @@ drive it (BOTH go through `execute_llmdbenchmark` / `run_shell` — code is mech
 - **As the guide's own manifests** — the `-t kustomize` path with `kustomize.guideName: optimized-baseline`
   (see "Kustomize deploy method" below); applies the guide verbatim via helm+kustomize.
 
-**Client prerequisites — offer `install-deps.sh` when they're MISSING.** A guide deploy needs the
-deployment client toolchain (`helm` + helm-diff plugin, `helmfile`, `kustomize`, `yq`, `kubectl`),
-reported by `probe_environment` in `tools.*`. When the user wants a guide-based deploy and those
-client tools are absent (and `run_setup`/`install.sh` hasn't already supplied them), OFFER the
-UPSTREAM guide installer `run_shell("install-deps.sh")` (add `--dev` for chart-testing);
-mutating → user Approves. NOTE: it installs git/curl/tar/yq/kubectl/helm/kustomize but NOT
-`helmfile` or the `helm-diff` plugin — those two must be installed separately (per the upstream
-`helpers/client-setup/README.md`). This is the llm-d guide repo's OWN `helpers/client-setup/install-deps.sh`
-— DISTINCT from `install_prereqs.sh` (Docker daemon + kind binary) and the benchmark repo's
-`install.sh` (framework venv). See `preconditions.md` ("Guide-based deploy: the UPSTREAM client
-prerequisites") for which install step to run when, and never re-offer one whose tools are present.
+**Client prerequisites — offer `install-deps.sh` when MISSING.** A guide-based deploy needs the
+deployment client toolchain (`helm`+helm-diff, `helmfile`, `kustomize`, `yq`, `kubectl`); when it's
+absent (and `run_setup`/`install.sh` hasn't already supplied it) OFFER `run_shell("install-deps.sh")`
+(mutating → user Approves; `--dev` adds chart-testing). Which of the THREE install scripts to run
+when (vs `install_prereqs.sh` / `install.sh`, and never re-offer one whose tools are present) → CORE
+`preconditions.md` ("Guide-based deploy: the UPSTREAM client prerequisites").
 
 ## 3. Hand-run llm-d guides + run_only.sh (not automated here)
 The `llm-d` repo `guides/*` deploy via helm+kustomize and then benchmark an EXISTING stack with

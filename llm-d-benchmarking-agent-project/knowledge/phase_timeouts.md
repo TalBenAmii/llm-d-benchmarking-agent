@@ -110,7 +110,7 @@ deliberately, e.g. when you will poll results yourself.
 - **Do not use these to "make a deploy reliable."** A timeout buys *patience*, not *capacity*.
   If a deploy is failing because the cluster can't fit the model, raising the timeout just makes
   the failure slower — run `check_capacity` / `advise_accelerators` and fix the real constraint
-  (`knowledge/capacity.md`, `knowledge/accelerators.md`).
+  (`knowledge/capacity.md`, `knowledge/accelerators.yaml`).
 
 ## Mechanism vs. judgment
 

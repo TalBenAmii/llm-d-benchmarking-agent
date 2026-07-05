@@ -12,7 +12,7 @@ imply the benchmark can do something it cannot.
 >    renders time-series PNGs once the run is done). There is **no live/streaming metric feed**
 >    during a run.
 > 2. **Custom Metric Queries** — *"User-defined Prometheus queries."* The benchmark collects a
->    **fixed, predefined metric set** (the vLLM/EPP/DCGM/cAdvisor list in observability.md §1 /
+>    **fixed, predefined metric set** (the vLLM/EPP/DCGM/cAdvisor list in observability_monitoring.md /
 >    the report's `results.observability`); you **cannot hand it an arbitrary PromQL query** to
 >    collect.
 > (Source: `llm-d-benchmark/docs/metrics_collection.md` → "Not Yet Implemented"; mirrored in
@@ -62,9 +62,9 @@ streaming as the real, available equivalent.
 
 The benchmark collects only its fixed metric set, so arbitrary PromQL is **the user's own
 Prometheus/Grafana**, not the benchmark. If the user has the upstream monitoring stack running
-(see observability.md §3 — `--monitoring` creates the PodMonitors that feed their Prometheus),
+(see observability_monitoring.md, "The mechanism" — `--monitoring` creates the PodMonitors that feed their Prometheus),
 point them at their own Prometheus/Grafana to run **any PromQL they like** against the scraped
 vLLM/EPP series. The ready-to-use query catalog and dashboards are already linked from
-observability.md §3 and from `knowledge/useful_repo_docs.md` (the upstream **Example PromQL
+observability_monitoring.md and from `knowledge/useful_repo_docs.md` (the upstream **Example PromQL
 Queries** and **Grafana Dashboards**). So: custom queries are possible — just in the user's
 Prometheus, not via the benchmark CLI.
