@@ -31,7 +31,7 @@ The agent's editable brain — ~62 Markdown/YAML files holding all judgment, loa
 _Avoid_: "docs", "prompts", "config" (it is the thick-agent decision layer, not documentation or a config file).
 
 **CORE knowledge**:
-The small set of `knowledge/` files inlined verbatim into *every* system prompt (preconditions, deploy-path playbook, usecase mapping, quickstart playbook, key docs, conversation style). Promoting a file to CORE is expensive because it inflates the always-on prompt prefix.
+The small set of `knowledge/` files inlined verbatim into *every* system prompt (the `CORE_KNOWLEDGE` tuple in `app/agent/prompt.py` is the source of truth — currently `preconditions.md`, `usecase_to_profile.yaml`, `conversation_style.md`). Promoting a file to CORE is expensive because it inflates the always-on prompt prefix, so guides reached only after the interview — the deploy-path playbook, the quickstart runbook, `key_docs.yaml` — are deliberately ON-DEMAND (pulled via `read_knowledge` / `fetch_key_docs`), not CORE.
 _Avoid_: "default knowledge", "base prompt".
 
 **catalog**:
@@ -145,6 +145,10 @@ _Avoid_: "whitelist" (use allowlist), "permissions" loosely, "config" — it is 
 **approval gate / per-action approval**:
 The rule that read-only probes auto-run but every **mutating** command blocks until the user clicks Approve on a card showing the exact `argv`. A flag like `--dry-run` (a `read_only_trigger`) downgrades a mutating command to an auto-running preview.
 _Avoid_: "confirmation", "prompt", "permission check" — "approval gate" is the canonical term.
+
+**skill-grounding gate**:
+The deterministic rule that a **mutating** `llmdbenchmark` operation is refused until its grounding doc was fetched **this session** — the kind/CPU-sim path grounds in the `quickstart` runbook, every other op in its llm-d-skills `*_skill`. A MECHANISM backstop (like the gated-model guardrail), not judgment: it acts only on *which* docs were fetched, never on *what* to benchmark. WVA autoscaling is description-driven, not gated.
+_Avoid_: "skill check", "doc gate" — and don't confuse it with the approval gate (which gates on user approval, this on grounding).
 
 **read-only vs mutating**:
 The two execution modes the allowlist computes for a command. Read-only commands auto-run and are never concurrency-capped; mutating commands require approval and count against the run semaphore.

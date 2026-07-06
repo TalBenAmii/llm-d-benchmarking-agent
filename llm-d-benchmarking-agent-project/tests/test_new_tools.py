@@ -63,6 +63,21 @@ def test_fetch_key_docs_quickstart(tool_ctx):
     assert qs is not None and qs["found"] and "kind" in qs["content"].lower()
 
 
+def test_fetch_key_docs_quickstart_includes_project_playbook(tool_ctx):
+    # The kind runbook is no longer inlined into CORE — it now loads via fetch_key_docs(task=
+    # "quickstart") as a `kind: knowledge` entry, ALONGSIDE the upstream quickstart docs. It reads
+    # from knowledge/ (always present), so this is hermetic even without the bench repo.
+    out = fetch_key_docs(tool_ctx, task="quickstart")
+    paths = [d["path"] for d in out["docs"]]
+    pb = next((d for d in out["docs"] if d["path"] == "quickstart_playbook.md"), None)
+    assert pb is not None and pb["found"], "the project runbook must be served under task=quickstart"
+    body = pb["content"].lower()
+    assert "standup" in body and "run" in body, "runbook must carry the standup/run flow"
+    # ...and the upstream quickstart docs are still listed together with it.
+    assert "llm-d-benchmark/docs/quickstart.md" in paths
+    assert "llm-d-benchmark/config/scenarios/cicd/kind.yaml" in paths
+
+
 # ---- read_knowledge (hybrid: core inline + rest on-demand) ----------------
 
 def test_read_knowledge_returns_content_for_valid_topic(tool_ctx):

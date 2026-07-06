@@ -167,10 +167,7 @@ KIND_QUICKSTART = Flow(
     mock_user_input="I want to try llm-d on my laptop — no GPU. Stand up the kind quickstart "
                     "and run a small chat benchmark, then tell me how it did.",
     turns=[
-        _turn("Grounding this kind deploy in its llm-d skills first (deploy + benchmark), plus "
-              "cicd/kind quickstart orientation.",
-              _tc("fetch_key_docs", task="deploy_skill"),
-              _tc("fetch_key_docs", task="benchmark_skill"),
+        _turn("Grounding the kind quickstart in its runbook first (skill-gate: cicd/kind → quickstart).",
               _tc("fetch_key_docs", task="quickstart")),
         _turn("Let me sense the environment first.",
               _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
@@ -239,7 +236,8 @@ def _guide_deploy_flow(*, name, title, spec, namespace, harness, workload, summa
         repo_state="present_with_venv",
         mock_user_input=user_input,
         turns=[
-            _turn("Grounding each operation in its llm-d skill first — deploy and benchmark.",
+            _turn("Grounding this guide's deploy + benchmark in their skills first "
+                  "(skill-gate: guide path → deploy_skill for standup, benchmark_skill for run).",
                   _tc("fetch_key_docs", task="deploy_skill"),
                   _tc("fetch_key_docs", task="benchmark_skill")),
             _turn("Sensing the environment.",
@@ -373,8 +371,8 @@ TEARDOWN = Flow(
     canned={"get pods": _PODS_RUNNING},
     mock_user_input="I'm done. Please tear down the llmd-quickstart deployment and tell me how to fully clean up.",
     turns=[
-        _turn("Grounding this teardown in its llm-d skill first.",
-              _tc("fetch_key_docs", task="teardown_skill")),
+        _turn("Grounding the teardown first (skill-gate: cicd/kind → quickstart runbook).",
+              _tc("fetch_key_docs", task="quickstart")),
         _turn("Checking what's running.",
               _tc("probe_environment", checks=["stack", "kind_clusters", "namespaces"], namespace="llmd-quickstart")),
         _turn("Tearing down the stack.",
@@ -415,8 +413,8 @@ EXISTING_STACK = Flow(
     mock_user_input="There's already an llm-d stack running in llmd-quickstart. Don't redeploy — "
                     "just benchmark what's there.",
     turns=[
-        _turn("Grounding this benchmark in its llm-d skill first.",
-              _tc("fetch_key_docs", task="benchmark_skill")),
+        _turn("Grounding the quickstart run first (skill-gate: cicd/kind → quickstart runbook).",
+              _tc("fetch_key_docs", task="quickstart")),
         _turn("Sensing the environment and the target namespace.",
               _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
         _turn("A stack is already running in llmd-quickstart — I'll benchmark it directly instead of redeploying. "
@@ -461,8 +459,8 @@ DRY_RUN_PREVIEW = Flow(
     mock_user_input="Before you change anything on my cluster, show me exactly what deploying "
                     "the kind quickstart would do.",
     turns=[
-        _turn("Grounding this deploy preview in the deploy skill first.",
-              _tc("fetch_key_docs", task="deploy_skill")),
+        _turn("Grounding this kind deploy preview in the quickstart runbook first.",
+              _tc("fetch_key_docs", task="quickstart")),
         _turn("Sensing the environment.",
               _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
         _turn("Previewing the deployment plan (read-only).",
@@ -1255,9 +1253,8 @@ STANDUP_POD_FAILURE = Flow(
     },
     mock_user_input="Stand up the kind quickstart and benchmark it.",
     turns=[
-        _turn("Grounding each operation in its llm-d skill first — deploy and benchmark.",
-              _tc("fetch_key_docs", task="deploy_skill"),
-              _tc("fetch_key_docs", task="benchmark_skill")),
+        _turn("Grounding the kind quickstart in its runbook first (skill-gate: cicd/kind → quickstart).",
+              _tc("fetch_key_docs", task="quickstart")),
         _turn("Sensing the environment first.",
               _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
         _turn("Here's the plan — please approve.",
@@ -1329,9 +1326,8 @@ GATED_MODEL_ACCESS = Flow(
     },
     mock_user_input="Benchmark meta-llama/Llama-3.1-8B on the kind quickstart.",
     turns=[
-        _turn("Grounding each operation in its llm-d skill first — deploy and benchmark.",
-              _tc("fetch_key_docs", task="deploy_skill"),
-              _tc("fetch_key_docs", task="benchmark_skill")),
+        _turn("Grounding the kind quickstart in its runbook first (skill-gate: cicd/kind → quickstart).",
+              _tc("fetch_key_docs", task="quickstart")),
         _turn("Sensing the environment.",
               _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
         _turn("Plan for benchmarking the gated 8B model — please approve.",
@@ -1469,8 +1465,8 @@ RUN_NONZERO_EXIT = Flow(
     mock_user_input="The stack in llmd-quickstart is up — run the sanity benchmark and show me "
                     "the results.",
     turns=[
-        _turn("Grounding this benchmark in its llm-d skill first.",
-              _tc("fetch_key_docs", task="benchmark_skill")),
+        _turn("Grounding the quickstart run first (skill-gate: cicd/kind → quickstart runbook).",
+              _tc("fetch_key_docs", task="quickstart")),
         _turn("Sensing the environment and the target namespace.",
               _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
         _turn("A stack is already running — benchmarking it directly. Here's the plan.",

@@ -22,6 +22,10 @@ from tests.eval.simulate.test_skill_usage_live import (
 from tests.flows.flows import Flow, _tc, _turn
 from tests.flows.harness import run_flow
 
+# The read_repo_doc-on-SKILL.md alternative grounding path only applies to the five *_skill
+# scenarios; the quickstart route grounds in a DOCS runbook (its read_prefix has no SKILL.md).
+_SKILL_MD_SCENARIOS = [s for s in SCENARIOS if s.key.endswith("_skill")]
+
 
 async def _tool_calls_for(turns, ask, tmp_path):
     """Run a scripted golden transcript through the real AgentLoop, return run.tool_calls."""
@@ -49,12 +53,12 @@ async def test_scripted_fetch_key_docs_before_op_passes(scenario, tmp_path):
     assert _run_passes(calls, scenario)
 
 
-@pytest.mark.parametrize("scenario", SCENARIOS, ids=[s.key for s in SCENARIOS])
+@pytest.mark.parametrize("scenario", _SKILL_MD_SCENARIOS, ids=[s.key for s in _SKILL_MD_SCENARIOS])
 async def test_scripted_read_repo_doc_alt_path_passes(scenario, tmp_path):
     """read_repo_doc on the skill's SKILL.md is the accepted alternative grounding path."""
     turns = [
         _turn("Reading the skill doc directly.",
-              _tc("read_repo_doc", path=scenario.skill_dir + "SKILL.md")),
+              _tc("read_repo_doc", path=scenario.read_prefix + "SKILL.md")),
         _turn("Now proposing the plan.", _tc("propose_session_plan")),
     ]
     calls = await _tool_calls_for(turns, scenario.ask, tmp_path)

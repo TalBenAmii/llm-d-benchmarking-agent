@@ -30,8 +30,8 @@ def test_prompt_names_the_fetch_tool(system_prompt):
 
 
 def test_prompt_role_step_grounds_operations_first(system_prompt):
-    """The ROLE section tells the agent to ground each operation in its *_skill first."""
-    assert "*_skill FIRST" in system_prompt
+    """The ROLE section tells the agent to ground each operation in its grounding doc first."""
+    assert "grounding doc FIRST" in system_prompt
 
 
 @pytest.mark.parametrize("task", sorted(SKILL_TASKS))

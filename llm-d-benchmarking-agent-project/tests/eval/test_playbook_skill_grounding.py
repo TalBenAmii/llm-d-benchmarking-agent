@@ -3,7 +3,7 @@
 The agent reaches skills through the playbooks; a playbook that names a nonexistent
 `*_skill` task would silently break grounding. Assert every `task="…_skill"` reference
 across knowledge/*.md points at a real key_docs.yaml skill task, and that the quickstart
-playbook grounds in deploy_skill first. Hermetic (reads only local knowledge/).
+playbook grounds in the quickstart runbook first. Hermetic (reads only local knowledge/).
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def test_playbook_skill_task_references_are_real():
     assert not bad, f"playbooks reference unknown skill tasks: {bad}"
 
 
-def test_quickstart_playbook_grounds_in_deploy_skill_first():
-    """quickstart_playbook.md tells the agent to fetch deploy_skill before planning."""
+def test_quickstart_playbook_grounds_in_quickstart_first():
+    """quickstart_playbook.md tells the agent to fetch the quickstart runbook before planning."""
     text = (get_settings().knowledge_dir / "quickstart_playbook.md").read_text()
-    assert 'fetch_key_docs task="deploy_skill"' in text
+    assert 'fetch_key_docs task="quickstart"' in text

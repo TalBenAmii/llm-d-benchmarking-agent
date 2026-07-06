@@ -39,7 +39,7 @@ def test_read_repo_doc_outside_skill_dir_not_detected():
 def test_read_repo_doc_subfile_under_skill_dir_is_detected():
     """Any file under the skill dir (not just SKILL.md) counts as grounding."""
     s = _BY_KEY["deploy_skill"]
-    calls = [_call("read_repo_doc", path=s.skill_dir + "references/troubleshooting.md")]
+    calls = [_call("read_repo_doc", path=s.read_prefix + "references/troubleshooting.md")]
     assert _skill_index(calls, s) == 0
 
 

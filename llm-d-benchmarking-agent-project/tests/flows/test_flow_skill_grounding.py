@@ -13,7 +13,7 @@ from tests.eval.simulate.test_skill_usage_live import SCENARIOS
 from tests.flows.flows import ALL_FLOWS
 
 _OPERATION_TOOLS = {"propose_session_plan", "execute_llmdbenchmark"}
-_SKILL_DIRS = [s.skill_dir for s in SCENARIOS]
+_SKILL_DIRS = [s.read_prefix for s in SCENARIOS]
 
 # Deliberately NOT grounded (documented): a refusal transcript that models a confused/over-eager
 # model doing the wrong thing to be refused, and a deterministic (live_eval=False) catalog-denial
@@ -26,8 +26,9 @@ def _calls(flow):
 
 
 def _is_skill_fetch(tc) -> bool:
-    if tc.name == "fetch_key_docs" and str(tc.input.get("task", "")).endswith("_skill"):
-        return True
+    if tc.name == "fetch_key_docs":
+        task = str(tc.input.get("task", ""))
+        return task.endswith("_skill") or task == "quickstart"
     return tc.name == "read_repo_doc" and any(d in str(tc.input.get("path", "")) for d in _SKILL_DIRS)
 
 
