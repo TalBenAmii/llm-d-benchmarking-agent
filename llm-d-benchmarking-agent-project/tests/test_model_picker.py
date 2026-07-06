@@ -239,3 +239,30 @@ def test_ws_set_model_validates_stores_and_rejects(monkeypatch):
             ws.send_json({"type": "ping"})
             assert _drain_for(ws, "pong")
             assert (sess.model_override, sess.effort_override) == ("claude-haiku-4-5", None)
+
+
+def test_ws_ready_echoes_session_model_override(monkeypatch):
+    """The `ready` frame echoes the warm session's per-chat override so a reconnecting client
+    (cleared/divergent localStorage) shows what THIS chat will run, not its own default."""
+    import app.main as main_mod
+
+    with TestClient(main_mod.app) as client:
+        main_mod.app.state.provider = None
+        monkeypatch.setattr(
+            main_mod, "get_settings",
+            lambda: Settings(llm_provider="claude-agent-sdk", agent_sdk_model="claude-haiku-4-5"))
+        with client.websocket_connect("/ws") as ws:
+            ready = _drain_for(ws, "ready")
+            sid = ready["data"]["session_id"]
+            # A fresh chat has no override: the fields are present and explicitly null.
+            assert ready["data"]["model_override"] is None
+            assert ready["data"]["effort_override"] is None
+            ws.send_json({"type": "set_model", "model": "claude-opus-4-8", "effort": "xhigh"})
+            ws.send_json({"type": "ping"})
+            assert _drain_for(ws, "pong")
+        # Reconnect to the SAME warm session (the override is ephemeral in-memory): its `ready`
+        # frame now carries the prior set_model, so the badge can reflect it without a localStorage hint.
+        with client.websocket_connect(f"/ws?session={sid}") as ws2:
+            ready2 = _drain_for(ws2, "ready")
+            assert ready2["data"]["model_override"] == "claude-opus-4-8"
+            assert ready2["data"]["effort_override"] == "xhigh"

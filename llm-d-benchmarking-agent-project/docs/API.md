@@ -58,7 +58,7 @@ order — and then continues live, rather than waiting blind for only the final 
 
 | Event | Payload | Meaning |
 |---|---|---|
-| `ready` | `{session_id, resumed, running}` | Connection established; `running` flags a still-in-flight background turn. |
+| `ready` | `{session_id, resumed, running, running_elapsed_ms, resume:{incremental,cur_seq}, usage, context_window, auto_approve, model_override, effort_override}` | Connection established; seeds THIS chat's per-session state on connect/reload/switch. `running`+`running_elapsed_ms` flag & time a still-in-flight background turn; `resume.incremental` says the client's cached view was patched (vs. a full `history` rebuild); `usage`+`context_window` re-seed the token/context meters; `auto_approve` re-seeds the toggle; `model_override`/`effort_override` echo the picker's per-chat pick (each may be `null`). |
 | `history` | `{items, commands}` | On resume: the transcript + the executed-command trail to replay. |
 | `assistant_text` | `{text}` | A chat message from the agent. |
 | `tool_call` | `{id, name, input}` | The agent invoked a tool. |

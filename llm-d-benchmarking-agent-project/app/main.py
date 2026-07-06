@@ -817,6 +817,11 @@ async def ws(websocket: WebSocket) -> None:
         # Per-session auto-approve state (persisted) so the UI toggle reflects THIS chat on
         # connect/reload/chat-switch. Defaults False; the client seeds the button from this.
         "auto_approve": session.auto_approve,
+        # Per-session model/effort override (the picker), echoed RAW (may be null). A warm chat keeps
+        # this ephemeral in-memory pick across reconnect, so a client with cleared/divergent
+        # localStorage must adopt what THIS chat will actually run rather than show its own default.
+        "model_override": session.model_override,
+        "effort_override": session.effort_override,
     })
     if resumed and not incremental:
         # Commands are interleaved into `items` (as `command` entries in their original
@@ -967,7 +972,9 @@ async def ws(websocket: WebSocket) -> None:
                 # model like Haiku). On invalid → the same structured protocol `error` a malformed
                 # frame gets, socket kept alive, PRIOR selection unchanged. On valid → store as
                 # per-session, ephemeral state; it takes effect at the NEXT run_turn (never mid-turn,
-                # never mutating the global provider). Not persisted — a reload resets to the default.
+                # never mutating the global provider). Not persisted to disk, but it survives reconnect
+                # to the still-warm session (the `ready` frame re-echoes it); only a server restart /
+                # eviction drops it back to the default.
                 settings = get_settings()
                 switchable = (settings.llm_provider or "anthropic").lower() in AGENT_SDK_PROVIDERS
                 info = (valid_selection(msg.model, msg.effort, settings.agent_sdk_model)

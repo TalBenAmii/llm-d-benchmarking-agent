@@ -403,7 +403,9 @@ function connect(sid, afterSeq) {
 
   // Re-fetch the LLM badge on every (re)connect: a server restarted with a fixed — or newly
   // broken — provider must not keep showing the stale boot-time badge next to a live status.
-  sock.onopen = () => { if (sock === ws) { setStatus("connected", "ok"); loadProviderBadge().then(autoSendStoredPick); } };
+  // Reset the per-connect override sentinel: the fresh `ready` frame re-delivers THIS chat's pick,
+  // and reconcilePick() (fired from both the fetch and that frame) seeds/paints + auto-sends.
+  sock.onopen = () => { if (sock === ws) { setStatus("connected", "ok"); sessionOverride = undefined; loadProviderBadge(); } };
   sock.onclose = () => {
     if (sock !== ws) return;                         // superseded socket (a switch/reconnect took over)
     setStatus("disconnected — retrying…", "down");
@@ -502,6 +504,14 @@ function handle(msg) {
       // on connect/reload/switch. Unconditional (outside the !inc rebuild branch) — a chat switch
       // that resumes incrementally must still re-point the button at the active chat's state.
       applyAutoApprove(!!data.auto_approve);
+      // Adopt THIS warm chat's server-side model/effort override (the picker) so the badge reflects
+      // what it will actually run — even if localStorage was cleared or points elsewhere. Missing/
+      // null → the session has no override (seed from default + stored). Reconciled with the async
+      // /api/provider catalog so arrival order never flashes a stale badge (see reconcilePick).
+      sessionOverride = data.model_override != null
+        ? { model: data.model_override, effort: data.effort_override ?? null }
+        : null;
+      reconcilePick();
       if (!inc) {
         // A brand-new chat shows the welcome card with suggestion chips (a `suggestions` event
         // follows `ready`). The plain note is only a FALLBACK for when no chips arrive — defer it
@@ -598,6 +608,11 @@ const mpEfforts = document.getElementById("mp-efforts");
 let providerData = null;   // last GET /api/provider payload (models + defaults + switchable)
 let llmPick = null;        // { model, effort|null } — the current selection shown on the badge
 let pickRevert = null;     // snapshot to roll back to if the server rejects a set_model (error frame)
+// Per-connect: the model override the `ready` WS frame echoed. `undefined` = not received yet;
+// `null` = the session has none; `{model, effort}` = the warm chat is already running this pick.
+// The provider catalog (async /api/provider) and this frame arrive in either order, so we stash
+// whichever lands first and reconcile once both are in — no default/raw-id flash (see reconcilePick).
+let sessionOverride;
 
 function modelEntry(id) { return ((providerData && providerData.models) || []).find((m) => m.id === id) || null; }
 function effortsFor(id) { const m = modelEntry(id); return (m && m.efforts) || []; }
@@ -616,8 +631,8 @@ function readStoredPick() {
 }
 function persistPick() { try { localStorage.setItem(LLM_PICK_KEY, JSON.stringify(llmPick)); } catch (e) {} }
 
-// Fetch the provider, seed the current selection (a remembered pick wins when its model still
-// exists, else the server's default), and paint the badge. Called on boot and on every (re)connect.
+// Fetch the provider catalog, then reconcile against the `ready` frame's echoed override.
+// Called on boot and on every (re)connect.
 async function loadProviderBadge() {
   if (!llmBadge) return;
   try {
@@ -625,14 +640,31 @@ async function loadProviderBadge() {
     if (!r.ok) return;
     providerData = await r.json();
   } catch (e) { return; }   // offline — leave the badge as-is
-  const stored = readStoredPick();
-  if (stored && modelEntry(stored.model)) {
-    llmPick = { model: stored.model, effort: clampEffort(stored.effort, stored.model) };
-  } else {
-    llmPick = { model: providerData.model, effort: clampEffort(providerData.effort, providerData.model) };
+  reconcilePick();
+}
+
+// Seed the badge's selection from the two async inputs — the provider catalog (labels/efforts) and
+// the session override the `ready` frame echoed — once BOTH are in. Fired from both sites and a
+// no-op until then, so arrival order never paints a raw id or a stale default. When the warm chat
+// already runs an override we ADOPT it (server-authoritative, no re-send); otherwise we seed from a
+// remembered pick (when its model still exists) else the server default, and tell the fresh session
+// about a stored pick that differs (autoSendStoredPick).
+function reconcilePick() {
+  if (!providerData || sessionOverride === undefined) return;   // wait for the other input
+  if (sessionOverride && modelEntry(sessionOverride.model)) {
+    llmPick = { model: sessionOverride.model, effort: clampEffort(sessionOverride.effort, sessionOverride.model) };
+    persistPick();                                              // mirror the live pick into localStorage
+    renderBadge();
+    if (modelPopover && !modelPopover.hidden) renderPopover();
+    return;                                                     // already applied server-side — do NOT re-send
   }
+  const stored = readStoredPick();
+  llmPick = (stored && modelEntry(stored.model))
+    ? { model: stored.model, effort: clampEffort(stored.effort, stored.model) }
+    : { model: providerData.model, effort: clampEffort(providerData.effort, providerData.model) };
   renderBadge();
   if (modelPopover && !modelPopover.hidden) renderPopover();
+  autoSendStoredPick();
 }
 
 function renderBadge() {
@@ -643,7 +675,7 @@ function renderBadge() {
     llmBadge.classList.remove("switchable");
     llmBadge.classList.add("err");
     llmBadge.disabled = true;
-    llmBadge.removeAttribute("aria-expanded");
+    clearBadgeMenuAttrs();
     llmBadge.textContent = "LLM not configured";
     llmBadge.title = "The LLM provider failed to load — wire one (e.g. ./scripts/setup-claude-plan.sh) and restart.";
     return;
@@ -656,12 +688,22 @@ function renderBadge() {
     // Friendly label + effort + a caret to signal it's clickable; raw model id in the tooltip.
     llmBadge.textContent = labelFor(llmPick.model) + (llmPick.effort ? " · " + llmPick.effort : "") + " ▾";
     llmBadge.title = llmPick.model;
+    // Advertise the menu it controls only while it's a real button (not the inert/plain label).
+    llmBadge.setAttribute("aria-haspopup", "menu");
+    llmBadge.setAttribute("aria-controls", "model-popover");
     llmBadge.setAttribute("aria-expanded", modelPopover && !modelPopover.hidden ? "true" : "false");
   } else {
     llmBadge.textContent = d.model;
     llmBadge.title = "The LLM model powering this assistant";
-    llmBadge.removeAttribute("aria-expanded");
+    clearBadgeMenuAttrs();
   }
+}
+// A non-switchable / not-configured badge is a plain label — strip the menu-button semantics so
+// assistive tech doesn't announce a popup that can't open.
+function clearBadgeMenuAttrs() {
+  llmBadge.removeAttribute("aria-haspopup");
+  llmBadge.removeAttribute("aria-controls");
+  llmBadge.removeAttribute("aria-expanded");
 }
 
 function renderPopover() {
@@ -671,7 +713,9 @@ function renderPopover() {
     const sel = m.id === llmPick.model;
     const row = el("button", "mp-model");
     row.type = "button";
-    row.setAttribute("aria-pressed", sel ? "true" : "false");
+    row.setAttribute("role", "menuitemradio");
+    row.setAttribute("aria-checked", sel ? "true" : "false");
+    row.tabIndex = sel ? 0 : -1;               // roving focus: the checked model is the menu's tabstop
     row.appendChild(el("span", "mp-check", sel ? "✓" : ""));
     row.appendChild(el("span", "mp-model-label", m.label || m.id));
     row.addEventListener("click", () => selectModel(m.id));
@@ -686,7 +730,9 @@ function renderPopover() {
     if (!efforts.includes(level)) continue;
     const seg = el("button", "mp-effort", level);
     seg.type = "button";
-    seg.setAttribute("aria-pressed", level === llmPick.effort ? "true" : "false");
+    seg.setAttribute("role", "menuitemradio");
+    seg.setAttribute("aria-checked", level === llmPick.effort ? "true" : "false");
+    seg.tabIndex = -1;                         // the checked model owns the initial tabstop
     seg.addEventListener("click", () => selectEffort(level));
     mpEfforts.appendChild(seg);
   }
@@ -707,7 +753,21 @@ function selectModel(id) {
   closePopover(true);   // VSCode-style: picking a model closes the popover (effort tweaks keep it open)
 }
 function selectEffort(level) {
-  if (level !== llmPick.effort) applyPick(llmPick.model, level);   // stay open so the user can keep nudging effort
+  if (level === llmPick.effort) return;
+  applyPick(llmPick.model, level);   // stay open so the user can keep nudging effort (rebuilds the popover)
+  // applyPick re-rendered the popover, dropping focus — restore it to the now-checked effort so
+  // keyboard nav keeps working.
+  const seg = [...mpEfforts.children].find((s) => s.getAttribute("aria-checked") === "true");
+  if (seg) focusMenuItem(seg);
+}
+
+// Roving focus across the menu: both role="group" sections form ONE ring of menuitemradio items,
+// so Up/Down moves through models then efforts. Only the focused item is the tabstop (tabindex 0).
+function menuItems() { return modelPopover ? [...modelPopover.querySelectorAll('[role="menuitemradio"]')] : []; }
+function focusMenuItem(item) {
+  if (!item) return;
+  for (const it of menuItems()) it.tabIndex = it === item ? 0 : -1;
+  item.focus();
 }
 
 function openPopover() {
@@ -715,7 +775,7 @@ function openPopover() {
   renderPopover();
   modelPopover.hidden = false;
   llmBadge.setAttribute("aria-expanded", "true");
-  const first = mpModels.querySelector('[aria-pressed="true"]') || mpModels.querySelector(".mp-model");
+  const first = mpModels.querySelector('[aria-checked="true"]') || mpModels.querySelector(".mp-model");
   if (first) first.focus();
 }
 function closePopover(focusBadge) {
@@ -740,6 +800,18 @@ if (llmBadge) {
     if (llmBadge.disabled) return;          // not switchable / not configured -> inert label
     e.stopPropagation();                    // don't let the outside-click handler immediately re-close
     if (modelPopover.hidden) openPopover(); else closePopover(true);
+  });
+}
+// Arrow-key roving focus within the open menu (Enter/Space select via the native <button>; Escape
+// closes + returns focus to the badge via the document handler below).
+if (modelPopover) {
+  modelPopover.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const items = menuItems();
+    if (!items.length) return;
+    e.preventDefault();
+    const i = items.indexOf(document.activeElement), n = items.length;
+    focusMenuItem(items[e.key === "ArrowDown" ? (i + 1) % n : (i - 1 + n) % n]);
   });
 }
 // Dismiss the popover on an outside click or Escape (it's a non-modal anchored popover, so we manage
