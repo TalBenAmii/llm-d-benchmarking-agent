@@ -29,13 +29,15 @@ from app.agent.ws_schemas import (
     CancelIn,
     PingIn,
     SetAutoApproveIn,
+    SetModelIn,
     UserMessageIn,
     ValidationError,
     outbound,
     parse_inbound,
 )
 from app.config import get_settings
-from app.llm.provider import get_provider
+from app.llm.model_catalog import valid_selection
+from app.llm.provider import AGENT_SDK_PROVIDERS, get_provider
 from app.observability import metrics as instrument
 from app.observability.logging import bind as log_bind
 from app.observability.logging import new_corr_id, setup_logging
@@ -958,6 +960,27 @@ async def ws(websocket: WebSocket) -> None:
                 # parked); the toggle takes effect on the next command gate.
                 session.auto_approve = msg.enabled
                 session.persist()
+            elif isinstance(msg, SetModelIn):
+                # Switch this chat's Anthropic model + reasoning effort (the UI model picker).
+                # Validate against RUNTIME truth: only the switchable agent-SDK provider has a
+                # served catalog, and the id + effort must be in it (effort None for a no-effort
+                # model like Haiku). On invalid → the same structured protocol `error` a malformed
+                # frame gets, socket kept alive, PRIOR selection unchanged. On valid → store as
+                # per-session, ephemeral state; it takes effect at the NEXT run_turn (never mid-turn,
+                # never mutating the global provider). Not persisted — a reload resets to the default.
+                settings = get_settings()
+                switchable = (settings.llm_provider or "anthropic").lower() in AGENT_SDK_PROVIDERS
+                info = (valid_selection(msg.model, msg.effort, settings.agent_sdk_model)
+                        if switchable else None)
+                if info is None:
+                    await websocket.send_json(outbound(ws_events.ERROR, {
+                        "message": f"unavailable model selection: {msg.model!r}"
+                                   + (f" (effort {msg.effort!r})" if msg.effort else ""),
+                        "kind": "protocol_error",
+                    }))
+                else:
+                    session.model_override = info.id
+                    session.effort_override = msg.effort
             elif isinstance(msg, PingIn):
                 await channel.emit("pong", {})
     except WebSocketDisconnect:

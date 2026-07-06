@@ -226,7 +226,7 @@ def _provider_with_fake_connect(monkeypatch, *, connects: list, fail: bool = Fal
     when ``fail``), appending every produced client to ``connects`` so a test can inspect them."""
     p = AgentSdkProvider(_settings())
 
-    async def _fake_connect(system, tools):
+    async def _fake_connect(system, tools, model=None, reasoning=None):
         if fail:
             raise RuntimeError("CLI not found")
         c = _FakeClient()

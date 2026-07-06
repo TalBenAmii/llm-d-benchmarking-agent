@@ -18,6 +18,7 @@ the LLM as JSON Schema); the registry + descriptions live in
 | `GET` | `/healthz` | **Liveness** (minimal): `{ok: true}` — process is up and serving; no dependency checks. K8s `livenessProbe` target. |
 | `GET` | `/readyz` | **Readiness** (Phase 16): `{ready, self_check:{checks:[…]}}` with per-component status (provider configured, repos present, runner ok, workspace writable). `200` when ready, `503` when not. K8s `readinessProbe` target. |
 | `GET` | `/metrics` | Prometheus text exposition of the agent + orchestrator metrics (content-type `text/plain; version=0.0.4`). Scrape target. |
+| `GET` | `/api/provider` | The active LLM provider + model, for the composer badge. Includes `switchable` (true only for the agent-SDK provider), the current `effort`, and the switchable `models` list (`{id,label,efforts}` from `app/llm/model_catalog.py`) the picker offers. |
 | `GET` | `/api/sessions` | Recent chats for the sidebar (summaries, newest first). |
 | `DELETE` | `/api/sessions/{id}` | Delete a saved chat; `404` if unknown. |
 | `DELETE` | `/api/namespaces/{namespace}` | Delete a whole sidebar folder — every chat in one namespace at once (the `no_namespace` sentinel removes chats with no namespace). Returns `{deleted, count}`; `404` if the folder is empty. |
@@ -81,6 +82,7 @@ order — and then continues live, rather than waiting blind for only the final 
 | `user_message` | `{text}` | The user's chat input (starts a turn). |
 | `approval` | `{request_id, approved}` | Approve/Reject a pending command/plan. |
 | `cancel` | `{}` | Cancel this chat's in-flight run (Phase 16): frees its concurrency slot, reaps its subprocess. Idempotent. |
+| `set_model` | `{model[, effort]}` | Switch this chat's Anthropic model + reasoning effort (the composer model picker). Validated against the served catalog (`app/llm/model_catalog.py`); a bad selection is rejected (`error` `kind:"protocol_error"`, prior pick kept). Per-session ephemeral override, applied at the next turn. **Agent-SDK provider only.** |
 | `ping` | `{}` | Keepalive. |
 
 ---

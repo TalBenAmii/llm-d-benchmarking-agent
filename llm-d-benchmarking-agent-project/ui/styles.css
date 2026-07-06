@@ -321,14 +321,67 @@ header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin:
 .status.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
 .status.down { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
 /* LLM model (from /api/provider) — a slim muted line pinned to the bottom-left of the composer,
-   mono face because the content is an identifier. Red when the provider failed to build. */
+   mono face because the content is an identifier. Red when the provider failed to build. It's a
+   <button>, so reset the global button chrome to keep the plain-label look; the `.switchable` class
+   adds the click affordance (cursor + caret + hover) only when the server allows switching. */
 .llm-badge {
   align-self: flex-start;
   font: 11px/1 var(--mono); color: var(--muted);
-  padding: 3px 6px 3px 12px; margin-top: 1px;
+  padding: 3px 6px 3px 12px; margin-top: 1px; border-radius: 7px;
   max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: none; border: 1px solid transparent; cursor: default;   /* button reset */
 }
+.llm-badge:hover { filter: none; }                     /* neutralise the global button:hover brightness */
+.llm-badge:active { transform: none; }
+.llm-badge:disabled { opacity: 1; cursor: default; }   /* an inert label, not a dimmed disabled button */
 .llm-badge.err { color: var(--red); }
+.llm-badge.switchable { cursor: pointer; transition: color .15s, background .15s, border-color .15s; }
+.llm-badge.switchable:hover,
+.llm-badge.switchable[aria-expanded="true"] {
+  color: var(--text); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+/* Model + reasoning-effort picker: a small VSCode-style popover anchored ABOVE the composer's
+   bottom-left (opens upward from the badge). Theme-aware via the shared vars. */
+.model-popover {
+  position: absolute; left: 6px; bottom: calc(100% + 8px); z-index: 50;
+  width: 264px; max-width: calc(100vw - 32px); max-height: min(58vh, 420px); overflow-y: auto;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--shadow);
+  padding: 6px;
+}
+.model-popover[hidden] { display: none; }
+.mp-section { padding: 4px; }
+.mp-section + .mp-section { border-top: 1px solid var(--border); margin-top: 2px; }
+.mp-effort-section[hidden] { display: none; }
+.mp-label {
+  font: 600 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); padding: 2px 6px 6px;
+}
+.mp-models { display: flex; flex-direction: column; gap: 2px; }
+.mp-model {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 8px; border-radius: 8px;
+  font: 500 12.5px/1.2 var(--serif); color: var(--text);
+  background: transparent; border: 1px solid transparent;
+}
+.mp-model:hover { background: var(--panel-2); }
+.mp-model[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel-2));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.mp-check { flex: none; width: 14px; color: var(--accent); font-size: 12px; }
+.mp-model-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-efforts { display: flex; gap: 4px; padding: 2px 4px 4px; }
+.mp-effort {
+  flex: 1; padding: 6px 4px; border-radius: 7px;
+  font: 600 11px/1 var(--mono); color: var(--muted);
+  background: var(--panel-2); border: 1px solid var(--border);
+}
+.mp-effort:hover { border-color: var(--accent); color: var(--text); }
+.mp-effort[aria-pressed="true"] { background: var(--accent-strong); border-color: transparent; color: var(--on-accent); }
+.mp-model:focus-visible, .mp-effort:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .icon-btn {
   width: 34px; height: 34px; padding: 0; border-radius: 9px; cursor: pointer;
@@ -860,6 +913,7 @@ footer {
 #composer {
   display: flex; flex-direction: column; gap: 2px;
   max-width: 900px; margin: 0 auto;
+  position: relative;   /* anchor for the model-picker popover (opens upward from the badge) */
   background: var(--panel); border: 1px solid var(--border);   /* filled, slightly-elevated card (matches mock) */
   border-radius: var(--radius-lg); box-shadow: var(--shadow);
   padding: 6px 6px 6px 4px;

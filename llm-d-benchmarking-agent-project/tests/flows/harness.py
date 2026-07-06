@@ -266,8 +266,9 @@ class _PerCallTimeoutProvider(LLMProvider):
             return await self._inner.chat(
                 system=system, messages=messages, tools=tools, cache_key=cache_key)
 
-    def open_turn(self, *, system, tools, cache_key=None) -> ProviderTurn:
-        inner_turn = open_provider_turn(self._inner, system=system, tools=tools, cache_key=cache_key)
+    def open_turn(self, *, system, tools, cache_key=None, model=None, effort=None) -> ProviderTurn:
+        inner_turn = open_provider_turn(self._inner, system=system, tools=tools, cache_key=cache_key,
+                                        model=model, effort=effort)
         return _TimeoutTurn(inner_turn, self._timeout_s)
 
 

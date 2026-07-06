@@ -26,10 +26,16 @@ thin-code. Don't grow it into behavioural branching.
   prewarm pool (`_PREWARM_TTL_S=120s`) — don't leak spares (BUG-033).
 - `openai_provider` guards a 200-with-empty-`choices` (raises `ProviderError`, not IndexError); sends
   `prompt_cache_key` only when explicitly enabled.
+- **Model + reasoning effort are per-session runtime-switchable (agent-SDK only)** via the chat-UI picker:
+  `open_provider_turn(model=, effort=)` applies a PER-TURN override that NEVER mutates the provider
+  singleton or `.env` (`model_catalog.py` = the served allowlist + `valid_selection`). **Invariant:** the
+  agent-SDK connection/prewarm `_fingerprint` MUST fold in model+reasoning, so a switch can't adopt a
+  stale prewarmed connection built for a different model/effort.
 
 ## Key files
 - `provider.py` — `LLMProvider` ABC, `AssistantTurn` / `ToolCall` / `Usage`, `open_provider_turn`, `get_provider`.
 - `anthropic_provider.py` · `openai_provider.py` · `agent_sdk_provider.py` — the three backends.
+- `model_catalog.py` — pure/no-I/O switchable Anthropic model catalog for the picker (`served_models`/`valid_selection`/`model_views`); read by `app.web.provider_view` (`/api/provider`) + the `set_model` WS handler. Agent-SDK only.
 
 ## Scoped tests
 ```bash
