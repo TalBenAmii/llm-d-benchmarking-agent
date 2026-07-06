@@ -164,18 +164,23 @@
       </div>
       <textarea id="input" rows="1" placeholder="e.g. Benchmark a small chat model on my laptop" disabled></textarea>
       <div class="composer-tools">
-        <!-- Auto-approve sits at the bottom-left of the composer (where the user acts), not buried in
-             the header. Same id as before so the existing handler/seed logic is unchanged — only the
-             location + look change (a labeled pill; aria-pressed drives the on/off fill). -->
-        <button id="autoapprove-toggle" type="button" class="autoapprove" title="Auto-approve commands — skip the Approve card for commands in this chat (the plan still asks)" aria-label="Toggle auto-approve for commands" aria-pressed="false"><span class="autoapprove-mark" aria-hidden="true">✓</span><span>Auto-approve</span></button>
-        <div id="context-window" class="ctx-meter" title="Current context-window usage sent to the model (real provider token count)" hidden>0 ctx</div>
-        <button id="send" type="submit" disabled>Send</button>
+        <!-- Left group: the user's controls — auto-approve toggle + model badge — grouped at the
+             bottom-LEFT of the composer (where the user acts), split from the input above by a
+             hairline. Same ids as before so existing handlers/seed logic are unchanged. -->
+        <div class="composer-tools-group">
+          <button id="autoapprove-toggle" type="button" class="autoapprove" title="Auto-approve commands — skip the Approve card for commands in this chat (the plan still asks)" aria-label="Toggle auto-approve for commands" aria-pressed="false"><span class="autoapprove-mark" aria-hidden="true">✓</span><span>Auto-approve</span></button>
+          <!-- LLM model (GET /api/provider). A plain muted label by default; when the provider is
+               `switchable` it becomes a pill that opens #model-popover (anchored ABOVE the composer's
+               bottom-left) to pick the Anthropic model + reasoning effort. -->
+          <button id="llm-badge" class="llm-badge" type="button" hidden></button>
+        </div>
+        <!-- Right group: the live context-window meter + the circular send button, right-aligned. -->
+        <div class="composer-tools-group">
+          <div id="context-window" class="ctx-meter" title="Current context-window usage sent to the model (real provider token count)" hidden>0 ctx</div>
+          <button id="send" type="submit" disabled>Send</button>
+        </div>
       </div>
-      <!-- LLM model powering the assistant (GET /api/provider), pinned to the bottom of the composer.
-           A plain muted label by default; when the provider is `switchable` it becomes a button that
-           opens #model-popover (a VSCode-style popover anchored ABOVE the composer) to pick the
-           Anthropic model + reasoning effort. -->
-      <button id="llm-badge" class="llm-badge" type="button" hidden></button>
+      <!-- Model + reasoning-effort picker, anchored ABOVE the composer's bottom-left (see .model-popover CSS). -->
       <div id="model-popover" class="model-popover" role="menu" aria-label="Choose model and reasoning effort" hidden>
         <div class="mp-section">
           <div class="mp-label" id="mp-models-label">Model</div>
