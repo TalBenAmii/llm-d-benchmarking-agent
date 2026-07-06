@@ -817,6 +817,11 @@ async def ws(websocket: WebSocket) -> None:
         # Per-session auto-approve state (persisted) so the UI toggle reflects THIS chat on
         # connect/reload/chat-switch. Defaults False; the client seeds the button from this.
         "auto_approve": session.auto_approve,
+        # Per-session model/effort override (the picker), echoed RAW (may be null). A warm chat keeps
+        # this ephemeral in-memory pick across reconnect, so a client with cleared/divergent
+        # localStorage must adopt what THIS chat will actually run rather than show its own default.
+        "model_override": session.model_override,
+        "effort_override": session.effort_override,
     })
     if resumed and not incremental:
         # Commands are interleaved into `items` (as `command` entries in their original

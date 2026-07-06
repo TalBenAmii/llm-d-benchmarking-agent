@@ -403,7 +403,9 @@ function connect(sid, afterSeq) {
 
   // Re-fetch the LLM badge on every (re)connect: a server restarted with a fixed — or newly
   // broken — provider must not keep showing the stale boot-time badge next to a live status.
-  sock.onopen = () => { if (sock === ws) { setStatus("connected", "ok"); loadProviderBadge().then(autoSendStoredPick); } };
+  // Reset the per-connect override sentinel: the fresh `ready` frame re-delivers THIS chat's pick,
+  // and reconcilePick() (fired from both the fetch and that frame) seeds/paints + auto-sends.
+  sock.onopen = () => { if (sock === ws) { setStatus("connected", "ok"); sessionOverride = undefined; loadProviderBadge(); } };
   sock.onclose = () => {
     if (sock !== ws) return;                         // superseded socket (a switch/reconnect took over)
     setStatus("disconnected — retrying…", "down");
@@ -502,6 +504,14 @@ function handle(msg) {
       // on connect/reload/switch. Unconditional (outside the !inc rebuild branch) — a chat switch
       // that resumes incrementally must still re-point the button at the active chat's state.
       applyAutoApprove(!!data.auto_approve);
+      // Adopt THIS warm chat's server-side model/effort override (the picker) so the badge reflects
+      // what it will actually run — even if localStorage was cleared or points elsewhere. Missing/
+      // null → the session has no override (seed from default + stored). Reconciled with the async
+      // /api/provider catalog so arrival order never flashes a stale badge (see reconcilePick).
+      sessionOverride = data.model_override != null
+        ? { model: data.model_override, effort: data.effort_override ?? null }
+        : null;
+      reconcilePick();
       if (!inc) {
         // A brand-new chat shows the welcome card with suggestion chips (a `suggestions` event
         // follows `ready`). The plain note is only a FALLBACK for when no chips arrive — defer it
@@ -598,6 +608,11 @@ const mpEfforts = document.getElementById("mp-efforts");
 let providerData = null;   // last GET /api/provider payload (models + defaults + switchable)
 let llmPick = null;        // { model, effort|null } — the current selection shown on the badge
 let pickRevert = null;     // snapshot to roll back to if the server rejects a set_model (error frame)
+// Per-connect: the model override the `ready` WS frame echoed. `undefined` = not received yet;
+// `null` = the session has none; `{model, effort}` = the warm chat is already running this pick.
+// The provider catalog (async /api/provider) and this frame arrive in either order, so we stash
+// whichever lands first and reconcile once both are in — no default/raw-id flash (see reconcilePick).
+let sessionOverride;
 
 function modelEntry(id) { return ((providerData && providerData.models) || []).find((m) => m.id === id) || null; }
 function effortsFor(id) { const m = modelEntry(id); return (m && m.efforts) || []; }
@@ -616,8 +631,8 @@ function readStoredPick() {
 }
 function persistPick() { try { localStorage.setItem(LLM_PICK_KEY, JSON.stringify(llmPick)); } catch (e) {} }
 
-// Fetch the provider, seed the current selection (a remembered pick wins when its model still
-// exists, else the server's default), and paint the badge. Called on boot and on every (re)connect.
+// Fetch the provider catalog, then reconcile against the `ready` frame's echoed override.
+// Called on boot and on every (re)connect.
 async function loadProviderBadge() {
   if (!llmBadge) return;
   try {
@@ -625,14 +640,31 @@ async function loadProviderBadge() {
     if (!r.ok) return;
     providerData = await r.json();
   } catch (e) { return; }   // offline — leave the badge as-is
-  const stored = readStoredPick();
-  if (stored && modelEntry(stored.model)) {
-    llmPick = { model: stored.model, effort: clampEffort(stored.effort, stored.model) };
-  } else {
-    llmPick = { model: providerData.model, effort: clampEffort(providerData.effort, providerData.model) };
+  reconcilePick();
+}
+
+// Seed the badge's selection from the two async inputs — the provider catalog (labels/efforts) and
+// the session override the `ready` frame echoed — once BOTH are in. Fired from both sites and a
+// no-op until then, so arrival order never paints a raw id or a stale default. When the warm chat
+// already runs an override we ADOPT it (server-authoritative, no re-send); otherwise we seed from a
+// remembered pick (when its model still exists) else the server default, and tell the fresh session
+// about a stored pick that differs (autoSendStoredPick).
+function reconcilePick() {
+  if (!providerData || sessionOverride === undefined) return;   // wait for the other input
+  if (sessionOverride && modelEntry(sessionOverride.model)) {
+    llmPick = { model: sessionOverride.model, effort: clampEffort(sessionOverride.effort, sessionOverride.model) };
+    persistPick();                                              // mirror the live pick into localStorage
+    renderBadge();
+    if (modelPopover && !modelPopover.hidden) renderPopover();
+    return;                                                     // already applied server-side — do NOT re-send
   }
+  const stored = readStoredPick();
+  llmPick = (stored && modelEntry(stored.model))
+    ? { model: stored.model, effort: clampEffort(stored.effort, stored.model) }
+    : { model: providerData.model, effort: clampEffort(providerData.effort, providerData.model) };
   renderBadge();
   if (modelPopover && !modelPopover.hidden) renderPopover();
+  autoSendStoredPick();
 }
 
 function renderBadge() {
