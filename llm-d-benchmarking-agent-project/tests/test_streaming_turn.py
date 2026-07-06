@@ -200,9 +200,21 @@ class _FakeClient:
         pass
 
 
+class _FakeProvider:
+    """Minimal AgentSdkProvider stand-in: satisfies the ``_effective(model, effort)`` contract the
+    turn resolves ONCE at construction. Returns the effective model (the per-turn override, or this
+    fake's default) + an empty reasoning dict — these turn steps never read the resolved values (the
+    persistent path drives the fake client; the degraded path re-passes the raw override)."""
+
+    _model = "m"
+
+    def _effective(self, model, effort):
+        return model or self._model, {}
+
+
 async def test_agent_sdk_turn_sends_full_seed_then_only_new_non_assistant_tail():
     fake = _FakeClient()
-    turn = _AgentSdkTurn(provider=object(), system="sys", tools=[], cache_key="s1")
+    turn = _AgentSdkTurn(provider=_FakeProvider(), system="sys", tools=[], cache_key="s1")
     turn._client = fake  # simulate a successful connect
 
     # Step 1: only the user message exists → full seed.
@@ -234,8 +246,8 @@ async def test_agent_sdk_turn_degrades_to_one_shot_chat_when_not_connected():
     """If connect() failed (degraded) the turn must transparently use the one-shot chat()."""
     recorded: list[list[dict]] = []
 
-    class _Prov:
-        async def chat(self, *, system, messages, tools, cache_key=None):
+    class _Prov(_FakeProvider):
+        async def chat(self, *, system, messages, tools, cache_key=None, model=None, effort=None):
             recorded.append(list(messages))
             return AssistantTurn(text="fallback", tool_calls=[], usage=Usage())
 
