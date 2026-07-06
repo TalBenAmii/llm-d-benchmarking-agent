@@ -175,8 +175,8 @@
            A plain muted label by default; when the provider is `switchable` it becomes a button that
            opens #model-popover (a VSCode-style popover anchored ABOVE the composer) to pick the
            Anthropic model + reasoning effort. -->
-      <button id="llm-badge" class="llm-badge" type="button" hidden aria-haspopup="dialog" aria-expanded="false"></button>
-      <div id="model-popover" class="model-popover" role="dialog" aria-label="Choose model and reasoning effort" hidden>
+      <button id="llm-badge" class="llm-badge" type="button" hidden></button>
+      <div id="model-popover" class="model-popover" role="menu" aria-label="Choose model and reasoning effort" hidden>
         <div class="mp-section">
           <div class="mp-label" id="mp-models-label">Model</div>
           <div id="mp-models" class="mp-models" role="group" aria-labelledby="mp-models-label"></div>

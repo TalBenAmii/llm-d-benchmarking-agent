@@ -675,7 +675,7 @@ function renderBadge() {
     llmBadge.classList.remove("switchable");
     llmBadge.classList.add("err");
     llmBadge.disabled = true;
-    llmBadge.removeAttribute("aria-expanded");
+    clearBadgeMenuAttrs();
     llmBadge.textContent = "LLM not configured";
     llmBadge.title = "The LLM provider failed to load — wire one (e.g. ./scripts/setup-claude-plan.sh) and restart.";
     return;
@@ -688,12 +688,22 @@ function renderBadge() {
     // Friendly label + effort + a caret to signal it's clickable; raw model id in the tooltip.
     llmBadge.textContent = labelFor(llmPick.model) + (llmPick.effort ? " · " + llmPick.effort : "") + " ▾";
     llmBadge.title = llmPick.model;
+    // Advertise the menu it controls only while it's a real button (not the inert/plain label).
+    llmBadge.setAttribute("aria-haspopup", "menu");
+    llmBadge.setAttribute("aria-controls", "model-popover");
     llmBadge.setAttribute("aria-expanded", modelPopover && !modelPopover.hidden ? "true" : "false");
   } else {
     llmBadge.textContent = d.model;
     llmBadge.title = "The LLM model powering this assistant";
-    llmBadge.removeAttribute("aria-expanded");
+    clearBadgeMenuAttrs();
   }
+}
+// A non-switchable / not-configured badge is a plain label — strip the menu-button semantics so
+// assistive tech doesn't announce a popup that can't open.
+function clearBadgeMenuAttrs() {
+  llmBadge.removeAttribute("aria-haspopup");
+  llmBadge.removeAttribute("aria-controls");
+  llmBadge.removeAttribute("aria-expanded");
 }
 
 function renderPopover() {
@@ -703,7 +713,9 @@ function renderPopover() {
     const sel = m.id === llmPick.model;
     const row = el("button", "mp-model");
     row.type = "button";
-    row.setAttribute("aria-pressed", sel ? "true" : "false");
+    row.setAttribute("role", "menuitemradio");
+    row.setAttribute("aria-checked", sel ? "true" : "false");
+    row.tabIndex = sel ? 0 : -1;               // roving focus: the checked model is the menu's tabstop
     row.appendChild(el("span", "mp-check", sel ? "✓" : ""));
     row.appendChild(el("span", "mp-model-label", m.label || m.id));
     row.addEventListener("click", () => selectModel(m.id));
@@ -718,7 +730,9 @@ function renderPopover() {
     if (!efforts.includes(level)) continue;
     const seg = el("button", "mp-effort", level);
     seg.type = "button";
-    seg.setAttribute("aria-pressed", level === llmPick.effort ? "true" : "false");
+    seg.setAttribute("role", "menuitemradio");
+    seg.setAttribute("aria-checked", level === llmPick.effort ? "true" : "false");
+    seg.tabIndex = -1;                         // the checked model owns the initial tabstop
     seg.addEventListener("click", () => selectEffort(level));
     mpEfforts.appendChild(seg);
   }
@@ -739,7 +753,21 @@ function selectModel(id) {
   closePopover(true);   // VSCode-style: picking a model closes the popover (effort tweaks keep it open)
 }
 function selectEffort(level) {
-  if (level !== llmPick.effort) applyPick(llmPick.model, level);   // stay open so the user can keep nudging effort
+  if (level === llmPick.effort) return;
+  applyPick(llmPick.model, level);   // stay open so the user can keep nudging effort (rebuilds the popover)
+  // applyPick re-rendered the popover, dropping focus — restore it to the now-checked effort so
+  // keyboard nav keeps working.
+  const seg = [...mpEfforts.children].find((s) => s.getAttribute("aria-checked") === "true");
+  if (seg) focusMenuItem(seg);
+}
+
+// Roving focus across the menu: both role="group" sections form ONE ring of menuitemradio items,
+// so Up/Down moves through models then efforts. Only the focused item is the tabstop (tabindex 0).
+function menuItems() { return modelPopover ? [...modelPopover.querySelectorAll('[role="menuitemradio"]')] : []; }
+function focusMenuItem(item) {
+  if (!item) return;
+  for (const it of menuItems()) it.tabIndex = it === item ? 0 : -1;
+  item.focus();
 }
 
 function openPopover() {
@@ -747,7 +775,7 @@ function openPopover() {
   renderPopover();
   modelPopover.hidden = false;
   llmBadge.setAttribute("aria-expanded", "true");
-  const first = mpModels.querySelector('[aria-pressed="true"]') || mpModels.querySelector(".mp-model");
+  const first = mpModels.querySelector('[aria-checked="true"]') || mpModels.querySelector(".mp-model");
   if (first) first.focus();
 }
 function closePopover(focusBadge) {
@@ -772,6 +800,18 @@ if (llmBadge) {
     if (llmBadge.disabled) return;          // not switchable / not configured -> inert label
     e.stopPropagation();                    // don't let the outside-click handler immediately re-close
     if (modelPopover.hidden) openPopover(); else closePopover(true);
+  });
+}
+// Arrow-key roving focus within the open menu (Enter/Space select via the native <button>; Escape
+// closes + returns focus to the badge via the document handler below).
+if (modelPopover) {
+  modelPopover.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const items = menuItems();
+    if (!items.length) return;
+    e.preventDefault();
+    const i = items.indexOf(document.activeElement), n = items.length;
+    focusMenuItem(items[e.key === "ArrowDown" ? (i + 1) % n : (i - 1 + n) % n]);
   });
 }
 // Dismiss the popover on an outside click or Escape (it's a non-modal anchored popover, so we manage
