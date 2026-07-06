@@ -14,19 +14,18 @@ from __future__ import annotations
 import yaml
 
 from app.config import PROJECT_ROOT
+from app.tools.skill_gate import _TASK_BY_SUBCOMMAND
 from tests.eval._skills import SKILL_TASKS
 
-# The one benchmark skill grounds both a single `run` and a multi-config `experiment` — the
-# llm-d-skills library has exactly five skills, with no dedicated experiment/smoketest skill.
-_OPERATION_SUBCOMMANDS = {
-    "standup": "deploy_skill",
-    "run": "benchmark_skill",
-    "experiment": "benchmark_skill",
-    "teardown": "teardown_skill",
-}
-# Mutating but NOT a standalone grounded operation: a readiness/verification probe that only
-# runs inside a deploy/benchmark flow (already grounded) and has no skill of its own.
-_EXEMPT_SUBSTEPS = {"smoketest"}
+# Derived from the canonical skill-gate map so this test can't drift from the gate the runner
+# actually enforces: every mutating llmdbenchmark subcommand the gate grounds is a grounded
+# operation here, mapped to the same *_skill (run→benchmark_skill, experiment→compare_skill,
+# smoketest→benchmark_skill, …).
+_OPERATION_SUBCOMMANDS = dict(_TASK_BY_SUBCOMMAND)
+# Mutating but NOT a standalone grounded operation: a verification sub-step that only runs inside
+# an already-grounded flow and has no skill of its own. Currently none — smoketest is a grounded
+# operation in the canonical gate — but kept as an (empty) set for the partition assertions below.
+_EXEMPT_SUBSTEPS: set[str] = set()
 # Mutating result-store plumbing (git-like add/rm/push/pull to a results store) — not a
 # skill-grounded llm-d lifecycle operation, so no skill applies.
 _EXEMPT_STORE = {

@@ -25,8 +25,13 @@ def test_prompt_states_ground_each_operation_in_its_skill(system_prompt):
 
 
 def test_prompt_names_the_fetch_tool(system_prompt):
-    """The mandate names fetch_key_docs as the grounding mechanism."""
-    assert "fetch_key_docs" in system_prompt
+    """The mandate BLOCK (not just the prompt at large) names fetch_key_docs as the grounding
+    mechanism — scoped to the mandate slice so dropping the tool name there is actually caught."""
+    # Same slice bounds as tests/eval/test_prompt_operation_skill_mapping.py::mandate_block.
+    start = system_prompt.index("GROUND EACH OPERATION IN ITS SKILL")
+    end = system_prompt.index("ALWAYS present the plan", start)
+    mandate_block = system_prompt[start:end]
+    assert "fetch_key_docs" in mandate_block
 
 
 def test_prompt_role_step_grounds_operations_first(system_prompt):

@@ -1775,6 +1775,9 @@ WVA_AUTOSCALING_CONFIG = Flow(
     # Hermetic deterministic exemplar: the ~9-step run_shell WVA walk can't fairly replay in one
     # live turn, and its existing-stack shape conflicts with SIMULATE's redeploy note; live wva
     # grounding is covered by the skill-usage SCENARIOS. Scored via the hermetic gate instead.
+    # Also live_eval=False because the live plan-gate requires deploy_skill/quickstart grounding on
+    # every plan, which a no-standup autoscaling plan (grounded in wva+benchmark) can't satisfy
+    # without spurious grounding.
     live_eval=False,
 )
 

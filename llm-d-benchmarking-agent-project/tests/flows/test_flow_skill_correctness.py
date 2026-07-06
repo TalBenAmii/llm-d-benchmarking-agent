@@ -34,7 +34,7 @@ def _calls(flow):
 
 
 def _is_kind_spec(spec) -> bool:
-    return bool(spec) and str(spec).startswith("cicd/")
+    return bool(spec) and str(spec).startswith("cicd/kind")
 
 
 def _required_grounding(flow) -> set[str]:
