@@ -503,16 +503,10 @@ function handle(msg) {
       // that resumes incrementally must still re-point the button at the active chat's state.
       applyAutoApprove(!!data.auto_approve);
       if (!inc) {
-        // DEFER the catch-up note: on this full-rebuild path the `history` event arrives right
-        // after `ready`, and renderHistory appends the restored transcript. Adding the note here
-        // would strand it ABOVE that transcript (at the very top — the bug). Flag it instead and
-        // let renderHistory drop it at the BOTTOM: the boundary between the restored history and
-        // the live tail replay that follows.
-        if (data.running) { if (cur) cur.pendingResumeNote = true; }
         // A brand-new chat shows the welcome card with suggestion chips (a `suggestions` event
         // follows `ready`). The plain note is only a FALLBACK for when no chips arrive — defer it
         // briefly so the chips, if any, supersede it.
-        else if (!data.resumed) scheduleReadyNote();
+        if (!data.running && !data.resumed) scheduleReadyNote();
       }
       // Refresh the sidebar list only when it must change — a brand-new chat has to appear in it.
       // Switching to a chat already in the list leaves its content identical (only the active-row
@@ -2080,13 +2074,6 @@ function renderHistory(items) {
   // (then the live tail re-lights the current phase) — mirrors done/error/approval, which clear the
   // active pulse but keep the furthest milestone marked done.
   if (!cur || !cur.running) clearPhaseActive();
-  // Now that the restored transcript is in place, drop the deferred "catching up to live" note at
-  // the BOTTOM (set in `ready` on a full rebuild of a still-running chat). It marks the seam before
-  // the live tail replay that follows — not stranded at the top above the rebuilt history.
-  if (cur && cur.pendingResumeNote) {
-    cur.pendingResumeNote = false;
-    addNote("⏳ Picking up a benchmark already running in this chat — catching up to live…");
-  }
   scroll();
 }
 
