@@ -18,7 +18,7 @@ The agent drives the *local* `llmdbenchmark` CLI and shells out to your local
 the one the kind/sim quickstart uses.
 
 ### Prerequisites
-- `uv` (the Python package/venv manager) — `scripts/install.sh` / `scripts/run.sh` auto-bootstrap it
+- `uv` (the Python package/venv manager) — `scripts/install_local.sh` / `scripts/run.sh` auto-bootstrap it
   if it's missing, and it fetches a matching Python 3.11 itself. Plus whatever the agent installs for
   you (Docker + the kind binary via the vetted `scripts/install_prereqs.sh`, and the benchmark repo's
   toolchain via `install.sh`).

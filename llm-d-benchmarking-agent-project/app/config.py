@@ -155,6 +155,13 @@ class Settings(BaseSettings):
     # Container image for orchestrator-submitted benchmark Jobs (the in-cluster image that
     # carries the llmdbenchmark CLI + kubectl). Empty until built/published in the packaging
     # phase; the orchestrate tool then refuses rather than submitting an unrunnable Job.
+    #
+    # The DEFAULT in-Pod benchmark path is the local-CLI path (execute_llmdbenchmark), which now
+    # works in-cluster too because the agent image bakes in the llmdbenchmark CLI at
+    # $REPOS_DIR/llm-d-benchmark/.venv/bin — no orchestrator image required. To instead enable the
+    # orchestrated Kubernetes-Job path (orchestrate_benchmark_run), set this to the agent's OWN
+    # image ref (the same image serves both: the CLI is also symlinked onto PATH for that path) —
+    # a future deployment option, not the default.
     orchestrator_image: str = ""
 
     # ServiceAccount the orchestrator-submitted benchmark Jobs run under. When the agent runs

@@ -102,11 +102,21 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
-        # readOnlyRootFilesystem is on, so the writable paths the app needs are emptyDir.
+        # readOnlyRootFilesystem is on, so the writable paths the app needs are backed by
+        # bounded volumes. /workspace defaults to an ephemeral emptyDir (sizeLimit-capped); flip
+        # workspace.persistence.enabled for a PVC so sessions survive a pod restart. /tmp is
+        # always an ephemeral, capped emptyDir.
         - name: workspace
-          emptyDir: {}
+          {{- if .Values.workspace.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "agent.fullname" . }}-workspace
+          {{- else }}
+          emptyDir:
+            sizeLimit: {{ .Values.workspace.sizeLimit }}
+          {{- end }}
         - name: tmp
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: {{ .Values.workspace.tmpSizeLimit }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -22,10 +22,11 @@ config:
   openaiBaseUrl: https://api.openai.com/v1
   openaiModel: gpt-4o
   maxConcurrentRuns: 2
-  # Container image used for ORCHESTRATED (K8s Job) benchmark runs. Empty by default → the
-  # orchestrate_benchmark_run tool refuses rather than submitting an unrunnable Job, and the
-  # agent falls back to the local CLI path. Set this to an image carrying the llmdbenchmark
-  # CLI to enable in-cluster orchestrated runs.
+  # Container image used for ORCHESTRATED (K8s Job) benchmark runs. Leave empty to use the
+  # in-Pod local-CLI path (default) — the agent runs llmdbenchmark inside its own Pod and the
+  # orchestrate_benchmark_run tool refuses rather than submitting an unrunnable Job. Set to this
+  # chart's image ref to enable orchestrated K8s-Job runs — the baked image carries llmdbenchmark
+  # on PATH. Future deployment option.
   orchestratorImage: ""
 
 # --- secrets ----------------------------------------------------------------------------
@@ -76,6 +77,20 @@ resources:
   limits:
     cpu: "1"
     memory: "512Mi"
+
+# --- writable workspace volume ----------------------------------------------------------
+# The root filesystem is read-only, so the agent writes to two mounted volumes: /workspace
+# (per-session state, generated configs, logs) and /tmp. Both are bounded emptyDirs by default.
+workspace:
+  # Writable scratch for per-session state, generated configs, logs. Ephemeral by default
+  # (emptyDir) — sessions do NOT survive a pod restart. Flip persistence.enabled for a PVC.
+  sizeLimit: 2Gi        # cap on the /workspace emptyDir (and default PVC size)
+  tmpSizeLimit: 1Gi     # cap on the /tmp emptyDir (always ephemeral — never persisted)
+  persistence:
+    enabled: false
+    storageClass: ""    # "" = cluster default StorageClass
+    size: 5Gi
+    accessMode: ReadWriteOnce
 
 # --- observability ----------------------------------------------------------------------
 # When true, annotate the pod for Prometheus scraping of the agent's /metrics endpoint.

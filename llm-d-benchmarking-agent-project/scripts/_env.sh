@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap helpers shared by install.sh (full setup), run.sh (standalone launcher), and
+# Bootstrap helpers shared by install_local.sh (full setup), run.sh (standalone launcher), and
 # setup-claude-plan.sh (Claude-plan wiring) — and by the external llm-d-bench-mcp installer, which
 # sources this same file cross-repo — kept here so all source
 # one copy instead of duplicating it. The sourcing script must define `log` first (and `die`
@@ -7,7 +7,7 @@
 # calls register_mcp_server). The menu helpers (menu_select/confirm) need no caller-defined helpers —
 # they render on /dev/tty. read_env/set_env_var operate on ./.env — callers cd to root before sourcing.
 #
-# The venv / editable-install steps are deliberately NOT shared: install.sh resolves the backend for a
+# The venv / editable-install steps are deliberately NOT shared: install_local.sh resolves the backend for a
 # bare box and honours --uv/--dev, while run.sh stays a minimal `command -v uv` launcher, so a single
 # shared shape would either lose behavior or over-parameterize.
 
@@ -39,7 +39,7 @@ set_env_var() {  # $1 KEY  $2 VALUE
 }
 
 # Clone an upstream sibling repo into $dest if it's absent/empty; no-op if present. With NO_CLONE=1
-# (install.sh's --no-clone) a missing repo is a hard error instead. Needs `git`; uses `log`/`die`.
+# (install_local.sh's --no-clone) a missing repo is a hard error instead. Needs `git`; uses `log`/`die`.
 clone_if_missing() {
   local name="$1" dest="$2" owner="${3:-llm-d}"
   if [[ -d "$dest" && -n "$(ls -A "$dest" 2>/dev/null)" ]]; then
