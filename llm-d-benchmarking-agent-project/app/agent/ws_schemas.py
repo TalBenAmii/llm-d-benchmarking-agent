@@ -12,6 +12,7 @@ Inbound (client -> server) frames are a tagged union discriminated on ``type``:
   approval         {type, request_id, approved}
   cancel           {type}                    — cancel this chat's in-flight run (Phase 16)
   set_auto_approve {type, enabled}           — toggle per-session auto-approve of command gates
+  set_model        {type, model, effort?}    — switch this chat's Anthropic model + reasoning effort
   ping             {type}
 
 Outbound (server -> client) frames are uniformly ``{type, data}`` (see :func:`outbound`);
@@ -28,6 +29,7 @@ __all__ = [
     "ApprovalIn",
     "CancelIn",
     "SetAutoApproveIn",
+    "SetModelIn",
     "PingIn",
     "InboundMessage",
     "INBOUND_ADAPTER",
@@ -72,6 +74,20 @@ class SetAutoApproveIn(BaseModel):
     enabled: bool
 
 
+class SetModelIn(BaseModel):
+    """Switch THIS chat's Anthropic model + reasoning effort (the UI model picker; agent-SDK
+    provider only). Per-session + ephemeral, applied as a per-turn override at the NEXT turn
+    boundary — never mid-turn, never mutating the global provider. This schema validates SHAPE
+    only; the ``/ws`` handler validates the id + effort against the runtime served catalog and
+    rejects an unavailable selection. ``effort`` is None for a model with no effort control
+    (e.g. Haiku)."""
+    model_config = {"extra": "forbid"}
+
+    type: Literal["set_model"]
+    model: str = Field(..., min_length=1)
+    effort: str | None = None
+
+
 class PingIn(BaseModel):
     """A keep-alive probe; the server answers with a ``pong`` event."""
     model_config = {"extra": "forbid"}
@@ -83,7 +99,7 @@ class PingIn(BaseModel):
 # error for an unknown/missing tag or a malformed payload. Keeping the discriminator explicit
 # means a new inbound frame is a one-line addition here, not a branch in the handler.
 InboundMessage = Annotated[
-    UserMessageIn | ApprovalIn | CancelIn | SetAutoApproveIn | PingIn,
+    UserMessageIn | ApprovalIn | CancelIn | SetAutoApproveIn | SetModelIn | PingIn,
     Field(discriminator="type"),
 ]
 

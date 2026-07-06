@@ -59,7 +59,7 @@ def test_open_provider_turn_uses_provider_open_turn_when_present():
     sentinel = object()
 
     class _P:
-        def open_turn(self, *, system, tools, cache_key=None):
+        def open_turn(self, *, system, tools, cache_key=None, model=None, effort=None):
             return sentinel
 
     assert open_provider_turn(_P(), system="s", tools=[], cache_key="k") is sentinel
@@ -261,7 +261,7 @@ class _StreamingTurn(ProviderTurn):
 
 
 class _StreamingProvider:
-    def open_turn(self, *, system, tools, cache_key=None):
+    def open_turn(self, *, system, tools, cache_key=None, model=None, effort=None):
         return _StreamingTurn()
 
     async def chat(self, *, system, messages, tools, cache_key=None):  # pragma: no cover

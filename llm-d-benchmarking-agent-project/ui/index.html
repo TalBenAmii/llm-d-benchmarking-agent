@@ -171,8 +171,21 @@
         <div id="context-window" class="ctx-meter" title="Current context-window usage sent to the model (real provider token count)" hidden>0 ctx</div>
         <button id="send" type="submit" disabled>Send</button>
       </div>
-      <!-- LLM model powering the assistant (GET /api/provider), pinned to the bottom of the composer. -->
-      <span id="llm-badge" class="llm-badge" hidden></span>
+      <!-- LLM model powering the assistant (GET /api/provider), pinned to the bottom of the composer.
+           A plain muted label by default; when the provider is `switchable` it becomes a button that
+           opens #model-popover (a VSCode-style popover anchored ABOVE the composer) to pick the
+           Anthropic model + reasoning effort. -->
+      <button id="llm-badge" class="llm-badge" type="button" hidden aria-haspopup="dialog" aria-expanded="false"></button>
+      <div id="model-popover" class="model-popover" role="dialog" aria-label="Choose model and reasoning effort" hidden>
+        <div class="mp-section">
+          <div class="mp-label" id="mp-models-label">Model</div>
+          <div id="mp-models" class="mp-models" role="group" aria-labelledby="mp-models-label"></div>
+        </div>
+        <div id="mp-effort-section" class="mp-section mp-effort-section">
+          <div class="mp-label" id="mp-effort-label">Reasoning effort</div>
+          <div id="mp-efforts" class="mp-efforts" role="group" aria-labelledby="mp-effort-label"></div>
+        </div>
+      </div>
     </form>
   </footer>
   <button id="jump-latest" class="jump-latest" type="button" title="Jump to the latest message" hidden>↓ Latest</button>

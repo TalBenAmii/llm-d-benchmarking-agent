@@ -140,14 +140,21 @@ def open_provider_turn(
     system: str,
     tools: list[dict[str, Any]],
     cache_key: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
 ) -> ProviderTurn:
     """Return a turn handle for ``provider``: its own amortized turn if it implements
     ``open_turn`` (only the Claude Agent SDK provider does), else a :class:`StatelessTurn`
     wrapper. Duck-typed on ``open_turn`` so test fakes (which don't inherit ``LLMProvider``)
-    transparently get the stateless path."""
+    transparently get the stateless path.
+
+    ``model``/``effort`` are an optional PER-TURN override of the provider's configured model +
+    reasoning effort (the chat-UI model picker). ``None`` (the default) means "no override — use the
+    configured defaults", exactly today's behavior. They flow to the agent-SDK ``open_turn``; the
+    stateless path drops them (other providers aren't switchable)."""
     factory = getattr(provider, "open_turn", None)
     if factory is not None:
-        return factory(system=system, tools=tools, cache_key=cache_key)
+        return factory(system=system, tools=tools, cache_key=cache_key, model=model, effort=effort)
     return StatelessTurn(provider, system=system, tools=tools, cache_key=cache_key)
 
 

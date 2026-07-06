@@ -222,12 +222,14 @@ class AgentSdkProvider(LLMProvider):
                                 **_effort_option(settings.agent_sdk_effort)}
         self._server_cache: tuple[tuple[str, ...], Any] | None = None
         # Single-slot connection prewarm (see _PREWARM_TTL_S). Holds a background ``connect()``
-        # task for the NEXT turn's client, its (system, tools) fingerprint, and when it started —
-        # so a later turn can adopt it only if it matches and is still fresh. The provider is an
-        # app-level singleton (app.state.provider), so this slot persists across turns/sessions
-        # of the single local user; at most ONE spare subprocess is ever held.
+        # task for the NEXT turn's client, its (system, tools, model, reasoning) fingerprint, and
+        # when it started — so a later turn can adopt it only if it matches and is still fresh. The
+        # fingerprint INCLUDES the effective model + reasoning opts so a turn that SWITCHED model/
+        # effort (the UI picker) never adopts a spare built for the old model. The provider is an
+        # app-level singleton (app.state.provider), so this slot persists across turns/sessions of
+        # the single local user; at most ONE spare subprocess is ever held.
         self._prewarm_task: asyncio.Task | None = None
-        self._prewarm_fp: tuple[int, tuple[str, ...]] | None = None
+        self._prewarm_fp: tuple[int, tuple[str, ...], str, str] | None = None
         self._prewarm_at: float = 0.0
         # Strong refs to in-flight background spare-disconnect tasks (_discard_prewarm). A bare
         # create_task is only weakly held by the loop, so without this set a cleanup task can be
@@ -247,18 +249,48 @@ class AgentSdkProvider(LLMProvider):
             self._server_cache = (key, server)
         return self._server_cache[1]
 
+    # ---- per-turn model/effort override resolution -----------------------------------------
+    def _effective(self, model: str | None, effort: str | None) -> tuple[str, dict[str, Any]]:
+        """Resolve a per-turn ``(model, effort)`` override into the effective model id + reasoning
+        opts for this turn. ``None`` falls back to the configured defaults (``self._model`` /
+        ``self._reasoning_opts``). An effort override replaces ONLY the ``effort`` portion of the
+        reasoning opts (extended-thinking mode is a process-level setting, unchanged); an invalid
+        effort is dropped by ``_effort_option`` so a turn never crashes on a typo (the ``/ws``
+        handler already validated it against the model's supported efforts). Never mutates
+        ``self`` — the provider is an app-level singleton shared across chats."""
+        eff_model = model or self._model
+        if effort is None:
+            return eff_model, self._reasoning_opts
+        reasoning = {k: v for k, v in self._reasoning_opts.items() if k != "effort"}
+        reasoning.update(_effort_option(effort))
+        return eff_model, reasoning
+
+    def _conn_params(
+        self, model: str | None, reasoning: dict[str, Any] | None
+    ) -> tuple[str, dict[str, Any]]:
+        """Coalesce a connection's ``(model, reasoning)`` to concrete values — ``None`` means the
+        configured defaults. The live turn passes already-resolved values (see ``_effective``); this
+        only matters for direct callers that omit the override (i.e. "no switch → configured")."""
+        return (model or self._model,
+                self._reasoning_opts if reasoning is None else reasoning)
+
     # ---- persistent-client connection + prewarm pool ---------------------------------------
-    async def _connect_client(self, system: str, tools: list[dict[str, Any]]) -> Any:
+    async def _connect_client(
+        self, system: str, tools: list[dict[str, Any]],
+        model: str | None = None, reasoning: dict[str, Any] | None = None,
+    ) -> Any:
         """Build the persistent-client options and return a freshly ``connect()``-ed
         ``ClaudeSDKClient``. Shared by the live turn (:meth:`_AgentSdkTurn.__aenter__`) and the
         background prewarm so both produce an IDENTICAL connection — the only difference is WHEN
         the ~0.5s connect is paid. The client comes back empty (no conversation state); the
         turn's first ``chat()`` seeds the full history, so a prewarmed client is interchangeable
-        with one connected at turn start."""
+        with one connected at turn start. ``model``/``reasoning`` are the effective per-turn values
+        (``None`` => configured); they must match the fingerprint the spare was built under."""
         from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
+        model, reasoning = self._conn_params(model, reasoning)
         options = ClaudeAgentOptions(
-            model=self._model,
+            model=model,
             system_prompt=system,
             mcp_servers={_SERVER_NAME: self._server(tools)},
             tools=[],
@@ -270,39 +302,51 @@ class AgentSdkProvider(LLMProvider):
             include_partial_messages=True,   # stream text deltas to the UI (see _consume)
             env=dict(_NEUTRALIZE_ENV),
             cli_path=self._cli_path,
-            **self._reasoning_opts,          # effort + extended-thinking (chain-of-thought capture)
+            **reasoning,                     # effort + extended-thinking (chain-of-thought capture)
         )
         client = ClaudeSDKClient(options=options)
         await client.connect()
         return client
 
     @staticmethod
-    def _fingerprint(system: str, tools: list[dict[str, Any]]) -> tuple[int, tuple[str, ...]]:
-        """A cheap identity for a (system, tools) pair. Both are stable across a session, so a
-        prewarmed connection built for one turn is reusable by the next iff this matches."""
-        return (hash(system), tuple(t["name"] for t in tools))
+    def _fingerprint(
+        system: str, tools: list[dict[str, Any]], model: str, reasoning: dict[str, Any],
+    ) -> tuple[int, tuple[str, ...], str, str]:
+        """A cheap identity for a connection: its (system, tools, model, reasoning-opts). All four
+        determine the ``ClaudeAgentOptions`` the CLI subprocess is built with, so a prewarmed
+        connection is reusable by a later turn iff ALL match. Folding the model + reasoning in is
+        what stops a model/effort SWITCH from silently adopting a spare built for the old model."""
+        return (hash(system), tuple(t["name"] for t in tools), model,
+                json.dumps(reasoning, sort_keys=True))
 
-    async def acquire_client(self, system: str, tools: list[dict[str, Any]]) -> Any:
+    async def acquire_client(
+        self, system: str, tools: list[dict[str, Any]],
+        model: str | None = None, reasoning: dict[str, Any] | None = None,
+    ) -> Any:
         """Return a connected client for a turn: adopt a matching, still-fresh prewarmed
         connection if one is ready (its ~0.5s connect was paid in the background during the
         previous turn's idle gap), else connect a fresh one now. Adopting a prewarmed connect
         that FAILED in the background transparently falls back to a fresh connect — so prewarm
         only ever helps, never regresses correctness."""
-        task = self._take_prewarmed(system, tools)
+        model, reasoning = self._conn_params(model, reasoning)
+        task = self._take_prewarmed(system, tools, model, reasoning)
         if task is not None:
             try:
                 return await task
             except Exception:  # noqa: BLE001 — background connect failed; just connect fresh
                 pass
-        return await self._connect_client(system, tools)
+        return await self._connect_client(system, tools, model, reasoning)
 
-    def _take_prewarmed(self, system: str, tools: list[dict[str, Any]]) -> asyncio.Task | None:
-        """Hand off the prewarmed connect task iff it matches ``(system, tools)`` and is within
-        the freshness TTL; otherwise drop it (disconnecting in the background) and return None."""
+    def _take_prewarmed(
+        self, system: str, tools: list[dict[str, Any]], model: str, reasoning: dict[str, Any],
+    ) -> asyncio.Task | None:
+        """Hand off the prewarmed connect task iff it matches the ``(system, tools, model,
+        reasoning)`` fingerprint and is within the freshness TTL; otherwise drop it (disconnecting
+        in the background) and return None."""
         task = self._prewarm_task
         if task is None:
             return None
-        matches = self._prewarm_fp == self._fingerprint(system, tools)
+        matches = self._prewarm_fp == self._fingerprint(system, tools, model, reasoning)
         fresh = (time.monotonic() - self._prewarm_at) < _PREWARM_TTL_S
         if matches and fresh:
             self._prewarm_task = None
@@ -311,14 +355,20 @@ class AgentSdkProvider(LLMProvider):
         self._discard_prewarm()  # stale or mismatched — never adopt; reclaim the subprocess
         return None
 
-    def start_prewarm(self, system: str, tools: list[dict[str, Any]]) -> None:
+    def start_prewarm(
+        self, system: str, tools: list[dict[str, Any]],
+        model: str | None = None, reasoning: dict[str, Any] | None = None,
+    ) -> None:
         """Kick off a background connect for the NEXT turn (single global slot). Best-effort and
         non-blocking: any prior unused prewarm is discarded first so at most one spare subprocess
-        is ever held. Called at end-of-turn, when the user is reading the answer (idle time)."""
+        is ever held. Called at end-of-turn, when the user is reading the answer (idle time). The
+        spare is fingerprinted with THIS turn's effective model/reasoning, so a next turn that
+        switched model/effort correctly declines it and connects fresh."""
+        model, reasoning = self._conn_params(model, reasoning)
         self._discard_prewarm()
-        self._prewarm_fp = self._fingerprint(system, tools)
+        self._prewarm_fp = self._fingerprint(system, tools, model, reasoning)
         self._prewarm_at = time.monotonic()
-        self._prewarm_task = asyncio.create_task(self._connect_client(system, tools))
+        self._prewarm_task = asyncio.create_task(self._connect_client(system, tools, model, reasoning))
 
     @staticmethod
     async def _disconnect_spare(task: asyncio.Task) -> None:
@@ -368,9 +418,10 @@ class AgentSdkProvider(LLMProvider):
             with contextlib.suppress(Exception):
                 await asyncio.gather(*pending, return_exceptions=True)
 
-    async def chat(self, *, system, messages, tools, cache_key=None) -> AssistantTurn:
+    async def chat(self, *, system, messages, tools, cache_key=None, model=None, effort=None) -> AssistantTurn:
         # cache_key is accepted for the provider-agnostic interface but ignored — the CLI caches
-        # the stable prefix (system + tools) automatically.
+        # the stable prefix (system + tools) automatically. model/effort are an optional per-turn
+        # override (the UI model picker); None => the configured defaults (see _effective).
         from claude_agent_sdk import (
             AssistantMessage,
             ClaudeAgentOptions,
@@ -381,8 +432,9 @@ class AgentSdkProvider(LLMProvider):
             query,
         )
 
+        eff_model, eff_reasoning = self._effective(model, effort)
         options = ClaudeAgentOptions(
-            model=self._model,
+            model=eff_model,
             system_prompt=system,                 # string => the app's prompt ONLY (no CC preset)
             mcp_servers={_SERVER_NAME: self._server(tools)},
             tools=[],                              # expose NO built-in tools to the model
@@ -393,7 +445,7 @@ class AgentSdkProvider(LLMProvider):
             max_turns=1,                           # exactly one assistant turn
             env=dict(_NEUTRALIZE_ENV),
             cli_path=self._cli_path,               # None => the SDK auto-discovers `claude` on PATH
-            **self._reasoning_opts,                # effort + extended-thinking (chain-of-thought capture)
+            **eff_reasoning,                       # effort + extended-thinking (chain-of-thought capture)
         )
 
         text_parts: list[str] = []
@@ -441,12 +493,14 @@ class AgentSdkProvider(LLMProvider):
             thinking="".join(thinking_parts) or None,
         )
 
-    def open_turn(self, *, system, tools, cache_key=None) -> _AgentSdkTurn:
+    def open_turn(self, *, system, tools, cache_key=None, model=None, effort=None) -> _AgentSdkTurn:
         """Open a turn-scoped handle that keeps ONE warm ``claude`` CLI subprocess alive across
         every step of a single user turn, instead of spawning a fresh one per ``chat()`` (the
         one-shot ``query()`` path above pays ~3s of subprocess + CLI init on EVERY call). See
-        :class:`_AgentSdkTurn`."""
-        return _AgentSdkTurn(self, system=system, tools=tools, cache_key=cache_key)
+        :class:`_AgentSdkTurn`. ``model``/``effort`` are the per-turn override (the UI picker),
+        held for the WHOLE turn — every re-open within the turn uses the same values."""
+        return _AgentSdkTurn(self, system=system, tools=tools, cache_key=cache_key,
+                             model=model, effort=effort)
 
 
 async def _consume(
@@ -549,11 +603,19 @@ class _AgentSdkTurn:
     regresses — only the latency win is forgone.
     """
 
-    def __init__(self, provider: AgentSdkProvider, *, system, tools, cache_key=None):
+    def __init__(self, provider: AgentSdkProvider, *, system, tools, cache_key=None,
+                 model=None, effort=None):
         self._provider = provider
         self._system = system
         self._tools = tools
         self._cache_key = cache_key
+        # Per-turn model/effort override (the UI picker). Resolve to the effective model + reasoning
+        # opts ONCE here so every connect/prewarm/degraded step within this turn is byte-identical —
+        # a mid-turn re-open (the tool set grew) must never pick up a different model. The raw
+        # override is kept too, for the degraded one-shot chat() fallback (which re-resolves).
+        self._model_override = model
+        self._effort_override = effort
+        self._eff_model, self._eff_reasoning = provider._effective(model, effort)
         self._client: Any = None
         self._sent = 0          # number of session.messages already streamed to the live client
         self._degraded = False  # True => connect failed; fall back to one-shot chat() per step
@@ -564,7 +626,8 @@ class _AgentSdkTurn:
             # background during the previous turn's idle gap), else connect fresh. The options +
             # connect live on the provider (_connect_client) so the prewarm and the live path are
             # byte-identical — only the timing differs.
-            self._client = await self._provider.acquire_client(self._system, self._tools)
+            self._client = await self._provider.acquire_client(
+                self._system, self._tools, self._eff_model, self._eff_reasoning)
         except Exception:  # noqa: BLE001 — any connect failure degrades to one-shot, never fatal
             self._client = None
             self._degraded = True
@@ -581,9 +644,12 @@ class _AgentSdkTurn:
         self._sent = len(messages)
 
         # Degraded, or (defensively) nothing new to send incrementally: one-shot full replay.
+        # Carry the SAME per-turn model/effort override into the one-shot path so a degraded turn
+        # honors the picker too (chat() re-resolves the raw override via _effective).
         if self._degraded or self._client is None or not to_send:
             return await self._provider.chat(
-                system=self._system, messages=messages, tools=self._tools, cache_key=self._cache_key
+                system=self._system, messages=messages, tools=self._tools, cache_key=self._cache_key,
+                model=self._model_override, effort=self._effort_override,
             )
 
         try:
@@ -613,5 +679,6 @@ class _AgentSdkTurn:
         # — start_prewarm never raises into the turn teardown.
         if not self._degraded:
             with contextlib.suppress(Exception):
-                self._provider.start_prewarm(self._system, self._tools)
+                self._provider.start_prewarm(
+                    self._system, self._tools, self._eff_model, self._eff_reasoning)
         return False

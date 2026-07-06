@@ -163,6 +163,15 @@ class Session:
     # leaking the "[environment pre-probe …]" text into the rendered chat + sidebar title. Defaults
     # False so pre-feature state.json files (no snapshot injected yet) behave as before.
     prewarmed: bool = False
+    # RUNTIME-ONLY (deliberately NOT persisted, like ``env_snapshot``): the Anthropic model +
+    # reasoning effort this chat picked from the UI model picker (the ``set_model`` WS frame; only
+    # meaningful for the switchable agent-SDK provider). Overrides the provider's configured
+    # model/effort for THIS chat's turns only — captured ONCE at the start of each run_turn
+    # (loop.py) and applied as a per-turn override, never mid-turn, never mutating the global
+    # provider singleton. None => the provider's configured defaults (unchanged behavior). Ephemeral
+    # by design: a reload resets to the configured default (the picker re-seeds from /api/provider).
+    model_override: str | None = None
+    effort_override: str | None = None
     # Per-session "auto-approve commands" toggle (the UI button). When True, the Channel
     # auto-approves every kind=="command" approval gate (run_shell + the dedicated mutating
     # tools) WITHOUT prompting; the kind=="session_plan" gate is NEVER auto-approved (the one

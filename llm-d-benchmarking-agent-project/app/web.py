@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from app.agent.ws_schemas import ValidationError
 from app.config import Settings
 from app.dig import scrub_strings
+from app.llm.model_catalog import model_views
 from app.llm.provider import AGENT_SDK_PROVIDERS, OPENAI_PROVIDERS
 from app.storage.provenance import BundleStore
 
@@ -48,16 +49,24 @@ def first_validation_message(exc: ValidationError) -> str:
 
 
 def provider_view(settings: Settings, provider_error: str | None) -> dict[str, Any]:
-    """The active LLM provider + model as the header badge shows them (GET /api/provider).
+    """The active LLM provider + model as the header badge shows them (GET /api/provider), plus the
+    switchable-model picker's data source.
 
     Shares ``get_provider``'s alias constants (config dispatch, not judgment) but stays
     settings-based so it still answers when the provider FAILED to build — exactly the state
     the badge must surface (``configured: False`` → "LLM not configured"). An unknown provider
     name (which makes ``get_provider`` raise) gets ``model: None`` rather than a model it never
     resolved to. Deliberately minimal: never a key, account identity, or the error text (which
-    can name env vars)."""
+    can name env vars).
+
+    Model switching (agent-SDK provider ONLY): ``switchable`` is True iff the active provider is the
+    agent-SDK (Anthropic) path; then ``effort`` carries the configured reasoning effort and
+    ``models`` carries the served catalog the picker offers (curated set + the configured default,
+    each with its supported efforts). For any other provider ``switchable`` is False, ``effort`` is
+    null, and ``models`` is empty — the picker never appears."""
     provider = (settings.llm_provider or "anthropic").lower()
-    if provider in AGENT_SDK_PROVIDERS:
+    switchable = provider in AGENT_SDK_PROVIDERS
+    if switchable:
         model = settings.agent_sdk_model
     elif provider in OPENAI_PROVIDERS:
         model = settings.openai_model
@@ -65,7 +74,14 @@ def provider_view(settings: Settings, provider_error: str | None) -> dict[str, A
         model = settings.anthropic_model
     else:
         model = None
-    return {"provider": provider, "model": model, "configured": provider_error is None}
+    return {
+        "provider": provider,
+        "model": model,
+        "configured": provider_error is None,
+        "switchable": switchable,
+        "effort": settings.agent_sdk_effort if switchable else None,
+        "models": model_views(settings.agent_sdk_model) if switchable else [],
+    }
 
 
 def history_record_view(rec) -> dict[str, Any]:

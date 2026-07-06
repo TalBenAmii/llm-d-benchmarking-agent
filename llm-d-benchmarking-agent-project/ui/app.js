@@ -403,7 +403,7 @@ function connect(sid, afterSeq) {
 
   // Re-fetch the LLM badge on every (re)connect: a server restarted with a fixed — or newly
   // broken — provider must not keep showing the stale boot-time badge next to a live status.
-  sock.onopen = () => { if (sock === ws) { setStatus("connected", "ok"); loadProviderBadge(); } };
+  sock.onopen = () => { if (sock === ws) { setStatus("connected", "ok"); loadProviderBadge().then(autoSendStoredPick); } };
   sock.onclose = () => {
     if (sock !== ws) return;                         // superseded socket (a switch/reconnect took over)
     setStatus("disconnected — retrying…", "down");
@@ -558,11 +558,11 @@ function handle(msg) {
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "results_card": renderResultsCard(data.card); break;
     case "approval_request": if (addApprovalCard(data)) noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); setEnabled(true); break;  // now waiting on the user: they can click Approve/Decline OR type a message to steer (which declines + redirects); tally only if a NEW card rendered (a reconnect re-emit dedups)
-    case "error": resetStreamBubble(); addBubble("error", data.message); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;
+    case "error": if (pickRevert && data.kind === "protocol_error") { llmPick = pickRevert; pickRevert = null; persistPick(); renderBadge(); if (modelPopover && !modelPopover.hidden) renderPopover(); } resetStreamBubble(); addBubble("error", data.message); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // ONLY a set_model rejection (kind="protocol_error") rolls the badge back; a generic turn error leaves the pick — the backend already accepted the switch
     case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
-    case "done": resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); if (cur) cur.resourceRunEnded = true; loadSessions(); loadHistory(); stopWorking(); break;
+    case "done": pickRevert = null; resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); if (cur) cur.resourceRunEnded = true; loadSessions(); loadHistory(); stopWorking(); break;  // a completed turn used the current pick -> no rollback pending
     case "pong": break;
   }
   // Advance this chat's resume cursor for every turn event we rendered (live or replayed); the
@@ -581,23 +581,175 @@ async function loadSessions() {
   } catch (e) { /* offline — keep whatever's shown */ }
 }
 
-// Header LLM badge: which provider · model powers the assistant. Red "LLM not configured"
-// when the provider failed to build at startup (otherwise that only surfaces at first chat).
+// ---- LLM model + reasoning-effort picker (composer badge popover) --------
+// The #llm-badge shows which Anthropic model + reasoning effort powers the assistant. When the
+// server marks the provider `switchable`, the badge is a button that opens #model-popover — a small
+// VSCode-style popover anchored ABOVE the composer — to change the model and effort. The choice is
+// per-turn on the backend (sent as a `set_model` control frame) and remembered in localStorage so a
+// fresh session reuses it. When not switchable / not configured it stays a plain, inert label.
+const EFFORT_ORDER = ["low", "medium", "high", "xhigh", "max"];
+const LLM_PICK_KEY = "llmd-llm-pick";
+const llmBadge = document.getElementById("llm-badge");
+const modelPopover = document.getElementById("model-popover");
+const mpModels = document.getElementById("mp-models");
+const mpEffortSection = document.getElementById("mp-effort-section");
+const mpEfforts = document.getElementById("mp-efforts");
+
+let providerData = null;   // last GET /api/provider payload (models + defaults + switchable)
+let llmPick = null;        // { model, effort|null } — the current selection shown on the badge
+let pickRevert = null;     // snapshot to roll back to if the server rejects a set_model (error frame)
+
+function modelEntry(id) { return ((providerData && providerData.models) || []).find((m) => m.id === id) || null; }
+function effortsFor(id) { const m = modelEntry(id); return (m && m.efforts) || []; }
+function labelFor(id) { const m = modelEntry(id); return (m && m.label) || id; }
+// Keep an effort valid for a model: use it if supported, else drop to the model's HIGHEST supported
+// level (EFFORT_ORDER is low→…→max), or null when the model has no effort control (e.g. Haiku).
+function clampEffort(effort, modelId) {
+  const efforts = effortsFor(modelId);
+  if (!efforts.length) return null;
+  if (efforts.includes(effort)) return effort;
+  for (let i = EFFORT_ORDER.length - 1; i >= 0; i--) if (efforts.includes(EFFORT_ORDER[i])) return EFFORT_ORDER[i];
+  return null;
+}
+function readStoredPick() {
+  try { const v = JSON.parse(localStorage.getItem(LLM_PICK_KEY)); return v && v.model ? v : null; } catch (e) { return null; }
+}
+function persistPick() { try { localStorage.setItem(LLM_PICK_KEY, JSON.stringify(llmPick)); } catch (e) {} }
+
+// Fetch the provider, seed the current selection (a remembered pick wins when its model still
+// exists, else the server's default), and paint the badge. Called on boot and on every (re)connect.
 async function loadProviderBadge() {
-  const el = document.getElementById("llm-badge");
-  if (!el) return;
+  if (!llmBadge) return;
   try {
     const r = await fetch("/api/provider");
     if (!r.ok) return;
-    const d = await r.json();
-    el.classList.toggle("err", !d.configured);
-    el.textContent = d.configured ? d.model : "LLM not configured";
-    el.title = d.configured
-      ? "The LLM model powering this assistant"
-      : "The LLM provider failed to load — wire one (e.g. ./scripts/setup-claude-plan.sh) and restart.";
-    el.hidden = false;
-  } catch (e) { /* offline — leave the badge hidden */ }
+    providerData = await r.json();
+  } catch (e) { return; }   // offline — leave the badge as-is
+  const stored = readStoredPick();
+  if (stored && modelEntry(stored.model)) {
+    llmPick = { model: stored.model, effort: clampEffort(stored.effort, stored.model) };
+  } else {
+    llmPick = { model: providerData.model, effort: clampEffort(providerData.effort, providerData.model) };
+  }
+  renderBadge();
+  if (modelPopover && !modelPopover.hidden) renderPopover();
 }
+
+function renderBadge() {
+  const d = providerData;
+  if (!d) return;
+  llmBadge.hidden = false;
+  if (!d.configured) {
+    llmBadge.classList.remove("switchable");
+    llmBadge.classList.add("err");
+    llmBadge.disabled = true;
+    llmBadge.removeAttribute("aria-expanded");
+    llmBadge.textContent = "LLM not configured";
+    llmBadge.title = "The LLM provider failed to load — wire one (e.g. ./scripts/setup-claude-plan.sh) and restart.";
+    return;
+  }
+  llmBadge.classList.remove("err");
+  const switchable = !!d.switchable;
+  llmBadge.classList.toggle("switchable", switchable);
+  llmBadge.disabled = !switchable;
+  if (switchable) {
+    // Friendly label + effort + a caret to signal it's clickable; raw model id in the tooltip.
+    llmBadge.textContent = labelFor(llmPick.model) + (llmPick.effort ? " · " + llmPick.effort : "") + " ▾";
+    llmBadge.title = llmPick.model;
+    llmBadge.setAttribute("aria-expanded", modelPopover && !modelPopover.hidden ? "true" : "false");
+  } else {
+    llmBadge.textContent = d.model;
+    llmBadge.title = "The LLM model powering this assistant";
+    llmBadge.removeAttribute("aria-expanded");
+  }
+}
+
+function renderPopover() {
+  if (!modelPopover) return;
+  mpModels.innerHTML = "";
+  for (const m of (providerData.models || [])) {
+    const sel = m.id === llmPick.model;
+    const row = el("button", "mp-model");
+    row.type = "button";
+    row.setAttribute("aria-pressed", sel ? "true" : "false");
+    row.appendChild(el("span", "mp-check", sel ? "✓" : ""));
+    row.appendChild(el("span", "mp-model-label", m.label || m.id));
+    row.addEventListener("click", () => selectModel(m.id));
+    mpModels.appendChild(row);
+  }
+  // Effort segmented control: only the current model's supported levels, in fixed order; the whole
+  // section is hidden for a model with no effort control.
+  const efforts = effortsFor(llmPick.model);
+  mpEffortSection.hidden = efforts.length === 0;
+  mpEfforts.innerHTML = "";
+  for (const level of EFFORT_ORDER) {
+    if (!efforts.includes(level)) continue;
+    const seg = el("button", "mp-effort", level);
+    seg.type = "button";
+    seg.setAttribute("aria-pressed", level === llmPick.effort ? "true" : "false");
+    seg.addEventListener("click", () => selectEffort(level));
+    mpEfforts.appendChild(seg);
+  }
+}
+
+// Optimistically apply a selection: repaint the badge, remember it, and tell the backend. A rejected
+// set_model comes back as a `protocol_error` error frame, which rolls llmPick back to `pickRevert`.
+function applyPick(model, effort) {
+  pickRevert = { ...llmPick };
+  llmPick = { model, effort };
+  persistPick();
+  renderBadge();
+  renderPopover();
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "set_model", model, effort }));
+}
+function selectModel(id) {
+  if (id !== llmPick.model) applyPick(id, clampEffort(llmPick.effort, id));  // clamp effort into the new model's range
+  closePopover(true);   // VSCode-style: picking a model closes the popover (effort tweaks keep it open)
+}
+function selectEffort(level) {
+  if (level !== llmPick.effort) applyPick(llmPick.model, level);   // stay open so the user can keep nudging effort
+}
+
+function openPopover() {
+  if (!modelPopover || !providerData || !providerData.switchable) return;
+  renderPopover();
+  modelPopover.hidden = false;
+  llmBadge.setAttribute("aria-expanded", "true");
+  const first = mpModels.querySelector('[aria-pressed="true"]') || mpModels.querySelector(".mp-model");
+  if (first) first.focus();
+}
+function closePopover(focusBadge) {
+  if (!modelPopover || modelPopover.hidden) return;
+  modelPopover.hidden = true;
+  llmBadge.setAttribute("aria-expanded", "false");
+  if (focusBadge) llmBadge.focus();
+}
+// On (re)connect, if the remembered pick differs from the server default, tell the fresh session to
+// use it right away — set_model is per-turn on the backend, so each new socket must be re-told.
+function autoSendStoredPick() {
+  if (!providerData || !providerData.switchable || !llmPick) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const same = llmPick.model === providerData.model
+    && (llmPick.effort ?? null) === clampEffort(providerData.effort, providerData.model);
+  if (same) return;
+  ws.send(JSON.stringify({ type: "set_model", model: llmPick.model, effort: llmPick.effort }));
+}
+
+if (llmBadge) {
+  llmBadge.addEventListener("click", (e) => {
+    if (llmBadge.disabled) return;          // not switchable / not configured -> inert label
+    e.stopPropagation();                    // don't let the outside-click handler immediately re-close
+    if (modelPopover.hidden) openPopover(); else closePopover(true);
+  });
+}
+// Dismiss the popover on an outside click or Escape (it's a non-modal anchored popover, so we manage
+// this ourselves rather than relying on <dialog>'s built-in light-dismiss).
+document.addEventListener("click", (e) => {
+  if (modelPopover && !modelPopover.hidden && !modelPopover.contains(e.target) && e.target !== llmBadge) closePopover(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && modelPopover && !modelPopover.hidden) { e.stopPropagation(); closePopover(true); }
+});
 
 // Chats are grouped into one folder per Kubernetes namespace; un-namespaced chats live in a
 // "no_namespace" folder until an approved plan assigns one. We persist the set of COLLAPSED
@@ -2797,6 +2949,7 @@ function sendUserMessage(text) {
   // or empty text blocks the send. At an approval gate the turn is PARKED (busy=false), so that
   // type-instead-of-approve path flows through the normal "start working" branch below, unchanged.
   if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+  pickRevert = null;                // the current model/effort pick is now committed to this turn
   const steering = busy;            // a turn is actively running -> this send redirects it
   removeWelcomeCard();              // the conversation has started — clear any suggestion chips
   // If a turn is parked at an approval gate and the user typed instead of clicking, this message

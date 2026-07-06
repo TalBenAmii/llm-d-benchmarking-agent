@@ -148,6 +148,14 @@ class AgentLoop:
         log.info("turn.start", extra={"session_id": session.id, "user_chars": len(user_text)})
 
         system = build_system_prompt(ctx)
+        # Per-session model/effort override (the UI model picker), captured ONCE at the start of the
+        # turn and held for the WHOLE turn — the loop re-opens the provider turn when the tool set
+        # grows (below), and every re-open must use the SAME model/effort. A set_model that lands
+        # mid-turn thus takes effect only on the NEXT turn (never mid-turn). None => the provider's
+        # configured defaults (unchanged behavior). Only the switchable agent-SDK provider reads
+        # these; other providers accept-and-ignore them (see open_provider_turn).
+        model_override = session.model_override
+        effort_override = session.effort_override
         tool_calls_made = 0
         # One user "press enter" runs this loop = several LLM calls; per-turn tokens are the SUM
         # of usage across all of them. Track the running turn total + a call counter so the live
@@ -179,7 +187,8 @@ class AgentLoop:
             exposed_groups = frozenset(session.loaded_groups)
             tools = tool_definitions(loaded=exposed_groups)
             async with open_provider_turn(
-                self._provider, system=system, tools=tools, cache_key=session.id
+                self._provider, system=system, tools=tools, cache_key=session.id,
+                model=model_override, effort=effort_override,
             ) as agent_turn:
                 while True:
                     if calls >= MAX_STEPS:
