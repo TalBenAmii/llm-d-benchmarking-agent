@@ -972,7 +972,9 @@ async def ws(websocket: WebSocket) -> None:
                 # model like Haiku). On invalid → the same structured protocol `error` a malformed
                 # frame gets, socket kept alive, PRIOR selection unchanged. On valid → store as
                 # per-session, ephemeral state; it takes effect at the NEXT run_turn (never mid-turn,
-                # never mutating the global provider). Not persisted — a reload resets to the default.
+                # never mutating the global provider). Not persisted to disk, but it survives reconnect
+                # to the still-warm session (the `ready` frame re-echoes it); only a server restart /
+                # eviction drops it back to the default.
                 settings = get_settings()
                 switchable = (settings.llm_provider or "anthropic").lower() in AGENT_SDK_PROVIDERS
                 info = (valid_selection(msg.model, msg.effort, settings.agent_sdk_model)
