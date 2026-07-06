@@ -18,27 +18,28 @@ The agent drives the *local* `llmdbenchmark` CLI and shells out to your local
 the one the kind/sim quickstart uses.
 
 ### Prerequisites
-- Python 3.11+ (the project), plus whatever the agent installs for you (Docker + the kind
-  binary via the vetted `scripts/install_prereqs.sh`, and the benchmark repo's toolchain via
-  `install.sh`).
+- `uv` (the Python package/venv manager) — `scripts/install.sh` / `scripts/run.sh` auto-bootstrap it
+  if it's missing, and it fetches a matching Python 3.11 itself. Plus whatever the agent installs for
+  you (Docker + the kind binary via the vetted `scripts/install_prereqs.sh`, and the benchmark repo's
+  toolchain via `install.sh`).
 - An LLM API key for *live* sessions (Anthropic, or any OpenAI-compatible endpoint). Without
   a key the server still boots and the deterministic test/validation paths run.
 
 ### Run it
-The quickest way — `scripts/run.sh` sets up a venv, installs the app, ensures a `.env`, and starts
-the server (reads `HOST`/`PORT` from `.env`; defaults to `127.0.0.1:8000`):
+The quickest way — `scripts/run.sh` syncs the venv from `uv.lock` (via `uv sync`), ensures a `.env`,
+and starts the server (reads `HOST`/`PORT` from `.env`; defaults to `127.0.0.1:8000`):
 
 ```bash
 ./scripts/run.sh            # then open http://127.0.0.1:8000
 ./scripts/run.sh --open     # ...and open it in a browser automatically
 ```
 
-Or manually:
+Or manually (uv is required — it builds `.venv` from the committed `uv.lock`, the source of truth):
 
 ```bash
 cp .env.example .env          # add ANTHROPIC_API_KEY (or OpenAI-compatible creds)
-pip install -e .              # or: uv pip install -e .
-uvicorn app.main:app --reload
+uv sync                       # runtime deps from uv.lock  (uv sync --extra dev  for the test/lint toolchain)
+uv run uvicorn app.main:app --reload
 # open http://127.0.0.1:8000
 ```
 

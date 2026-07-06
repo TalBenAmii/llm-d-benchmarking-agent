@@ -25,11 +25,11 @@ help:
 	@echo "make typecheck        # mypy type check of app/"
 	@echo "make coverage         # full suite under coverage, gated at $(COV_FAIL_UNDER)%"
 	@echo "make quality          # lint + typecheck + coverage (the CI quality gate)"
-	@echo "make install          # editable install with dev extras"
+	@echo "make install          # sync .venv from uv.lock (with dev extras)"
 	@echo "make snapshot-catalog # regenerate the frozen catalog snapshot from the live repo"
 
 install:
-	$(PY) -m pip install -e ".[dev]"
+	uv sync --extra dev
 
 test:
 	$(PY) -m pytest tests/ -v

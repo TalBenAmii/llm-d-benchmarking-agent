@@ -8,7 +8,7 @@
 #                                     helmfile, kustomize)
 #   3. benchmark framework + CLI  → llm-d-benchmark/install.sh --uv
 #                                    (builds llm-d-benchmark/.venv + the `llmdbenchmark` CLI)
-#   4. this project's venv + app  → .venv + `pip install -e .`, and a .env
+#   4. this project's venv + app  → .venv synced from uv.lock (`uv sync`), and a .env
 #
 # Optionally also installs the host cluster prereqs (Docker + the kind binary) via the
 # vetted scripts/install_prereqs.sh (with --prereqs).
@@ -27,7 +27,6 @@
 #   ./scripts/install.sh --no-clone      # don't clone missing repos (fail if a needed repo is absent)
 #   ./scripts/install.sh --no-llm-setup  # skip the interactive Claude-plan (LLM provider) step at the end
 #   ./scripts/install.sh --no-mcp        # skip installing + registering the llm-d-bench MCP server
-#   ./scripts/install.sh --uv | --no-uv  # force the venv backend (default: uv if present, else python3 -m venv)
 #   ./scripts/install.sh -h | --help
 #
 # The three repos are expected as siblings of this project. Override their location with
@@ -40,7 +39,7 @@
 #   • For a real GPU cluster (beyond the CPU/kind quickstart) see docs/GPU_CLUSTER_RUNBOOK.md.
 set -euo pipefail
 
-usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'; }
 case "${1:-}" in -h|--help) usage; exit 0 ;; esac   # before the bootstrap, so curl-mode --help doesn't clone
 
 # ── Curl-bootstrap (symmetry with the llm-d-bench-mcp installer) ──────────────
@@ -67,7 +66,7 @@ BENCH_REPO="$REPOS_DIR/llm-d-benchmark"
 SKILLS_REPO="$REPOS_DIR/llm-d-skills"
 VENV="$PROJECT_DIR/.venv"
 
-DEV=0; PREREQS=0; APP_ONLY=0; NO_CLIENT=0; NO_BENCH=0; NO_CLONE=0; NO_LLM_SETUP=0; NO_MCP=0; USE_UV="auto"
+DEV=0; PREREQS=0; APP_ONLY=0; NO_CLIENT=0; NO_BENCH=0; NO_CLONE=0; NO_LLM_SETUP=0; NO_MCP=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dev)          DEV=1 ;;
@@ -78,8 +77,6 @@ while [[ $# -gt 0 ]]; do
     --no-clone)     NO_CLONE=1 ;;
     --no-llm-setup) NO_LLM_SETUP=1 ;;
     --no-mcp)       NO_MCP=1 ;;
-    --uv)           USE_UV=1 ;;
-    --no-uv)        USE_UV=0 ;;
     -h|--help)      usage; exit 0 ;;
     *) echo "install.sh: unknown option '$1' (try --help)" >&2; exit 2 ;;
   esac
@@ -122,42 +119,23 @@ ensure_base_tools() {
   done
 }
 
-# ── Resolve the venv backend (uv vs python3 -m venv), robust on a fresh box ─
-# The trap a fresh Debian/Ubuntu falls into: python3 is present but python3-venv
-# is NOT (so `python3 -m venv` fails with "ensurepip is not available") and uv
-# isn't installed either. Resolve LAZILY (after step 2 has provided curl) and,
-# in auto mode, GUARANTEE a working backend: an existing uv, else a python3 that
-# can really build a venv, else apt-install python3-venv, else bootstrap uv.
-_BACKEND_DONE=0
-resolve_backend() {
-  [[ "$_BACKEND_DONE" == 1 ]] && return 0
-  if [[ "$USE_UV" == 1 || "$USE_UV" == 0 ]]; then
-    :                                          # explicit --uv / --no-uv: honour it
-  elif command -v uv >/dev/null 2>&1; then
-    USE_UV=1
-  elif command -v python3 >/dev/null 2>&1 && python3 -c 'import ensurepip' >/dev/null 2>&1; then
-    USE_UV=0                                   # system python3 can build a venv
-  else
-    warn "python3 cannot create virtual environments here (python3-venv/ensurepip missing)."
-    if command -v apt-get >/dev/null 2>&1; then
-      log "Installing python3-venv + python3-pip…"
-      $SUDO apt-get update -y  >/dev/null 2>&1 || true
-      $SUDO apt-get install -y python3-venv python3-pip >/dev/null 2>&1 || true
-    fi
-    if command -v python3 >/dev/null 2>&1 && python3 -c 'import ensurepip' >/dev/null 2>&1; then
-      USE_UV=0
-    else
-      log "Bootstrapping uv instead (self-contained — needs no python3-venv)…"
-      command -v curl >/dev/null 2>&1 || die "need either a working python3-venv or curl (to bootstrap uv). Install python3-venv and re-run."
-      curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || die "uv bootstrap failed (no network?). Install python3-venv and re-run."
-      export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-      command -v uv >/dev/null 2>&1 || die "uv was bootstrapped but is not on PATH — open a new shell or add ~/.local/bin to PATH, then re-run."
-      USE_UV=1
-    fi
+# ── uv is REQUIRED — ensure it's on PATH, bootstrapping it if missing ────────
+# The venv is built by `uv sync` from the committed uv.lock (the single source of truth), so uv is
+# now a hard requirement. It is self-contained (needs no python3-venv) and fetches a matching CPython
+# itself. Resolve LAZILY (after step 2 has provided curl on a bare box): use an existing uv, else
+# bootstrap it via the official installer into ~/.local/bin — and fail loudly if that can't happen.
+_UV_DONE=0
+ensure_uv() {
+  [[ "$_UV_DONE" == 1 ]] && return 0
+  if ! command -v uv >/dev/null 2>&1; then
+    log "uv not found — bootstrapping it (self-contained; required for install)…"
+    command -v curl >/dev/null 2>&1 || die "uv is required but missing, and curl isn't available to bootstrap it — install uv (https://astral.sh/uv) and re-run."
+    curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || die "uv bootstrap failed (no network?). Install uv (https://astral.sh/uv) and re-run."
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+    command -v uv >/dev/null 2>&1 || die "uv was bootstrapped but is not on PATH — open a new shell or add ~/.local/bin to PATH, then re-run."
   fi
-  [[ "$USE_UV" == 1 ]] && BENCH_UV="--uv" || BENCH_UV="--no-uv"
-  _BACKEND_DONE=1
-  log "venv backend: $([[ "$USE_UV" == 1 ]] && echo uv || echo 'python3 -m venv')"
+  _UV_DONE=1
+  log "uv: $(command -v uv)"
 }
 
 if [[ "$PREREQS" == 1 && "$APP_ONLY" != 1 ]]; then
@@ -184,33 +162,28 @@ if [[ "$APP_ONLY" != 1 && "$NO_CLIENT" != 1 ]]; then
 fi
 
 if [[ "$APP_ONLY" != 1 && "$NO_BENCH" != 1 ]]; then
-  resolve_backend
-  step "Benchmark framework + CLI (llm-d-benchmark/install.sh $BENCH_UV)"
+  ensure_uv
+  step "Benchmark framework + CLI (llm-d-benchmark/install.sh --uv)"
   BENCH_SH="$BENCH_REPO/install.sh"
   [[ -f "$BENCH_SH" ]] || die "expected $BENCH_SH — is the llm-d-benchmark repo populated? (re-run without --no-clone)"
-  ( cd "$BENCH_REPO" && bash "install.sh" "$BENCH_UV" )
+  ( cd "$BENCH_REPO" && bash "install.sh" --uv )
 fi
 
 step "This project (.env + venv + app)"
 cd "$PROJECT_DIR"
-resolve_backend   # no-op if step 3 already resolved it; matters for --app-only/--no-bench
+ensure_uv   # no-op if the benchmark step already ensured it; matters for --app-only/--no-bench
 
 ensure_env
 
-if [[ ! -x "$VENV/bin/python" ]]; then
-  if [[ "$USE_UV" == 1 ]]; then log "Creating venv with uv…"; uv venv "$VENV" >/dev/null
-  else log "Creating venv with python3 -m venv…"; python3 -m venv "$VENV"; fi
-fi
+# `uv sync` builds .venv from uv.lock (the committed source of truth) and installs the agent
+# editable, honouring requires-python / .python-version (uv fetches a matching CPython if the host
+# lacks one). --extra dev adds the test/lint toolchain the git hooks + `make` expect in .venv.
+# --inexact: force the agent's own packages back to their locked versions WITHOUT pruning the
+# editable MCP server (installed further below) — so re-running install.sh over an existing venv
+# restores lock-compliance yet keeps the MCP install instead of removing then re-adding it.
+if [[ "$DEV" == 1 ]]; then log "Syncing the agent venv from uv.lock (with dev extras)…"; uv sync --inexact --extra dev >/dev/null
+else                        log "Syncing the agent venv from uv.lock…";                  uv sync --inexact >/dev/null; fi
 PY="$VENV/bin/python"
-
-TARGET="."; [[ "$DEV" == 1 ]] && TARGET=".[dev]"
-log "Installing the agent (editable: $TARGET)…"
-if [[ "$USE_UV" == 1 ]]; then
-  uv pip install --python "$PY" -e "$TARGET" >/dev/null
-else
-  "$PY" -m pip install --upgrade pip >/dev/null
-  "$PY" -m pip install -e "$TARGET" >/dev/null
-fi
 "$PY" -c "import app.main" >/dev/null 2>&1 && log "Agent imports OK." || die "the agent failed to import after install."
 
 # Offer to wire the user's Claude subscription as the LLM provider (consent-first; skips itself
@@ -238,12 +211,23 @@ if [[ "$NO_MCP" != 1 && "$APP_ONLY" != 1 ]]; then
       log "Cloning llm-d-bench-mcp → $MCP_DIR"
       git clone --depth 1 "https://github.com/TalBenAmii/llm-d-bench-mcp" "$MCP_DIR" || exit 1
     fi
-    log "Installing the MCP server (editable) into the agent venv…"
+    log "Installing the MCP server (editable) into the agent venv, pinned to the agent's locked versions…"
     # set -e is disabled inside a subshell on the left of ||, so guard each fallible command
-    # explicitly — a failed clone/pip must exit the subshell non-zero (→ MCP_RC=1 → "setup failed").
+    # explicitly — a failed clone/export/pip must exit the subshell non-zero (→ MCP_RC → "setup failed").
     # >/dev/null suppresses only stdout; pip/git errors on stderr stay visible for diagnosis.
-    if [[ "$USE_UV" == 1 ]]; then uv pip install --python "$PY" -e "$MCP_DIR" >/dev/null || exit 1
-    else "$PY" -m pip install -e "$MCP_DIR" >/dev/null || exit 1; fi
+    #
+    # The agent's uv.lock is authoritative: export it to a constraints file and pin the MCP install
+    # to it, so every package MCP shares with the agent (mcp, anyio, pydantic, starlette, uvicorn, …)
+    # resolves to the LOCKED version instead of drifting. If MCP genuinely required an incompatible
+    # version the constrained resolve ERRORS here — desired (fail loudly, don't silently drift).
+    #   --no-hashes: this is a version-pin only; the authoritative hash verification already ran in
+    #     `uv sync`, and hashes would only bloat the throwaway file.
+    #   (--no-dev omitted on purpose so dev-group pins are covered too — constraints bind only the
+    #     packages actually being installed, so the extra lines are harmless.)
+    CONSTRAINTS="$(mktemp)" || exit 1
+    trap 'rm -f "$CONSTRAINTS"' EXIT   # subshell-local trap; cleans up the temp file, leaves the outer EXIT trap intact
+    uv export --project "$PROJECT_DIR" --frozen --no-emit-project --no-hashes --format requirements.txt -o "$CONSTRAINTS" >/dev/null || exit 1
+    uv pip install --python "$PY" -e "$MCP_DIR" --constraint "$CONSTRAINTS" >/dev/null || exit 1
     register_mcp_server "$VENV/bin/llm-d-bench-mcp" user 0 || exit 3   # installed but not registered (claude CLI absent)
   ) || MCP_RC=$?
   case "$MCP_RC" in
