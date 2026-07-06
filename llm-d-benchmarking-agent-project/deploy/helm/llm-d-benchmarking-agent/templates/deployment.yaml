@@ -9,6 +9,14 @@ spec:
   selector:
     matchLabels:
       {{- include "agent.selectorLabels" . | nindent 6 }}
+  {{- if .Values.workspace.persistence.enabled }}
+  # A ReadWriteOnce PVC attaches to one node at a time; the default RollingUpdate spins the new
+  # pod up before the old one releases the volume → Multi-Attach deadlock on redeploy. Recreate
+  # tears the old pod down first. Only needed for the PVC path (emptyDir has no such constraint),
+  # so it is omitted otherwise to preserve the zero-downtime RollingUpdate default.
+  strategy:
+    type: Recreate
+  {{- end }}
   template:
     metadata:
       labels:

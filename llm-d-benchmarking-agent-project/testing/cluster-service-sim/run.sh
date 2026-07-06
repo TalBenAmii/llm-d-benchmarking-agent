@@ -111,7 +111,7 @@ WATCHDOG_PID=""
 # Late-bind the Anthropic key from a project .env if still unset (never overrides an explicit one).
 # Pure bash parameter-expansion parsing: take the value, strip a trailing CR and surrounding quotes.
 if [[ -z "$ANTHROPIC_KEY" && -f "$PROJECT_DIR/.env" ]]; then
-  env_line="$(grep -E '^[[:space:]]*ANTHROPIC_API_KEY=' "$PROJECT_DIR/.env" 2>/dev/null | tail -n1)"
+  env_line="$(grep -E '^[[:space:]]*ANTHROPIC_API_KEY=' "$PROJECT_DIR/.env" 2>/dev/null | tail -n1 || true)"
   if [[ -n "$env_line" ]]; then
     env_key="${env_line#*=}"
     env_key="${env_key%$'\r'}"
@@ -172,7 +172,7 @@ dump_diagnostics() {
   timeout 20 kubectl --context "$CTX" -n "$NS" get pods -o wide 2>&1 | sed 's/^/  /' || true
   timeout 20 kubectl --context "$CTX" -n "$NS" get events --sort-by=.lastTimestamp 2>&1 | tail -n 20 | sed 's/^/  /' || true
   local pod
-  pod="$(timeout 15 kubectl --context "$CTX" -n "$NS" get pods -o name 2>/dev/null | head -n1)"
+  pod="$(timeout 15 kubectl --context "$CTX" -n "$NS" get pods -o name 2>/dev/null | head -n1 || true)"
   if [[ -n "$pod" ]]; then
     timeout 20 kubectl --context "$CTX" -n "$NS" describe "$pod" 2>&1 | tail -n 30 | sed 's/^/  /' || true
     timeout 20 kubectl --context "$CTX" -n "$NS" logs "$pod" --tail=40 2>&1 | sed 's/^/  /' || true
@@ -188,7 +188,7 @@ for t in docker kind kubectl helm curl timeout; do have "$t" || missing+=("$t");
 [[ ${#missing[@]} -eq 0 ]] || die "missing required tool(s): ${missing[*]} — install them and re-run."
 [[ -x "$INSTALLER" || -f "$INSTALLER" ]] || die "service installer not found at $INSTALLER"
 [[ -d "$CHART_DIR" ]] || die "Helm chart not found at $CHART_DIR"
-docker info >/dev/null 2>&1 || die "docker is installed but the daemon is unreachable ('docker info' failed)."
+timeout 20 docker info >/dev/null 2>&1 || die "docker is installed but the daemon is unreachable ('docker info' failed)."
 HAVE_PY3=0; have python3 && HAVE_PY3=1
 info "tooling OK (docker, kind, kubectl, helm, curl, timeout$( [[ $HAVE_PY3 == 1 ]] && echo ', python3' ))"
 info "provider: $LLM_PROVIDER$( [[ -n "$ANTHROPIC_KEY" ]] && echo ' (key present -> live chat enabled)' || echo ' (no key -> live chat skipped)')"
@@ -221,7 +221,7 @@ arm_watchdog
 # 3. kind cluster
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 step "3. kind cluster '$CLUSTER'"
-cluster_exists() { kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; }
+cluster_exists() { timeout 20 kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; }
 if cluster_exists; then
   if [[ "$KEEP" == 1 ]]; then
     info "cluster '$CLUSTER' exists and --keep set — reusing it"
@@ -235,7 +235,7 @@ else
   timeout "$((KIND_WAIT + 120))" kind create cluster --name "$CLUSTER" --wait "${KIND_WAIT}s" \
     || die "kind create cluster timed out/failed."
 fi
-kubectl --context "$CTX" cluster-info >/dev/null 2>&1 || die "kind context '$CTX' is not reachable."
+timeout 20 kubectl --context "$CTX" cluster-info >/dev/null 2>&1 || die "kind context '$CTX' is not reachable."
 info "cluster ready (context $CTX)"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -276,8 +276,8 @@ else
 fi
 
 # Derive the deployment + service names FROM THE CLUSTER (robust vs the chart's fullname helper).
-DEPLOY="$(kubectl --context "$CTX" -n "$NS" get deploy -o name 2>/dev/null | head -n1)"
-SVC="$(kubectl --context "$CTX" -n "$NS" get svc -o name 2>/dev/null | head -n1)"
+DEPLOY="$(timeout 20 kubectl --context "$CTX" -n "$NS" get deploy -o name 2>/dev/null | head -n1)"
+SVC="$(timeout 20 kubectl --context "$CTX" -n "$NS" get svc -o name 2>/dev/null | head -n1)"
 [[ -n "$DEPLOY" ]] || { dump_diagnostics; die "no Deployment found in namespace '$NS' after deploy."; }
 [[ -n "$SVC" ]] || { dump_diagnostics; die "no Service found in namespace '$NS' after deploy."; }
 info "deployment: $DEPLOY"

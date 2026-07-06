@@ -49,7 +49,8 @@ WORKDIR /build
 RUN python -m venv "$VENV"
 ENV PATH="$VENV/bin:$PATH"
 
-# Install dependencies first (better layer caching), then the app itself.
+# Resolve the app + its dependencies into the venv. NOTE: `COPY app` precedes this RUN, so an
+# app-only edit busts the cache here and re-runs the full dependency install (deps + app together).
 COPY pyproject.toml README.md ./
 COPY app ./app
 RUN pip install .
@@ -72,6 +73,8 @@ ARG CRANE_VERSION=0.21.7
 
 # REPOS_DIR: the app resolves the CLI + the three sibling repos under it; it defaults to
 #   PROJECT_ROOT.parent (which would be "/" here), so pin it to where we clone the repos.
+# HOME: useradd's default /home/agent is on the read-only root fs and HOME passes through to
+#   subprocesses, so git/kubectl cache writes to ~ would fail — point it at writable /tmp.
 # HELM_DATA_HOME: where the baked helm-diff plugin lives (world-readable, read-only at runtime).
 # HELM_CACHE_HOME/HELM_CONFIG_HOME: helm needs these WRITABLE, but the root fs is read-only at
 #   runtime, so point them at /tmp (a writable mount).
@@ -82,6 +85,7 @@ ENV VENV=/opt/venv \
     HOST=0.0.0.0 \
     PORT=8000 \
     REPOS_DIR=/repos \
+    HOME=/tmp \
     HELM_DATA_HOME=/opt/helm/data \
     HELM_CACHE_HOME=/tmp/helm/cache \
     HELM_CONFIG_HOME=/tmp/helm/config

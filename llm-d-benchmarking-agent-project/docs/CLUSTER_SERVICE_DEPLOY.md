@@ -261,11 +261,12 @@ echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env   # project .env (gitignored)
 bash testing/cluster-service-sim/run.sh
 ```
 
-> Note: `testing/cluster-service-sim/run.sh` is the kind end-to-end adapter for this feature (being
-> written alongside it). It builds the image, spins up a kind cluster, deploys via the chart, and asserts
-> `/healthz` + `/readyz` + a live 403 (the deterministic gated-model refusal) + a live chat turn. Useful
-> flags: `--keep` (leave the cluster up to inspect it), `--no-build` (reuse an already-built image and
-> skip the ~1 GB rebuild). If the file isn't present yet, that path is where it lands.
+> Note: `testing/cluster-service-sim/run.sh` is the kind end-to-end adapter for this feature. It builds
+> the image, spins up a kind cluster, deploys via the real `install_service.sh` + chart, and asserts
+> `/healthz` + `/readyz` + `/api/provider`, plus the **RBAC least-privilege boundary** (an in-Pod
+> `kubectl delete ns kube-system` must be refused `Forbidden`) and — only when an Anthropic key is
+> present — one live-chat round-trip over `/ws`. Useful flags: `--keep` (leave the cluster up to inspect
+> it), `--no-build` (reuse an already-built image and skip the ~1 GB rebuild).
 
 ### Run on a fresh environment (WSL)
 

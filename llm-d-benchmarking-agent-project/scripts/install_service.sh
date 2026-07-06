@@ -114,7 +114,7 @@ deploy_agent() {
     upgrade --install "$RELEASE" "$CHART_DIR"
     --namespace "$NAMESPACE" --create-namespace
     --set "image.repository=$IMAGE"
-    --set "image.tag=$TAG"
+    --set-string "image.tag=$TAG"
     --set "image.pullPolicy=$IMAGE_PULL_POLICY"
     --wait --timeout "$TIMEOUT"
   )

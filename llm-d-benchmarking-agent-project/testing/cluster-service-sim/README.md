@@ -74,7 +74,7 @@ bash fresh-env/run-app.sh --with-runtime      # builds the throwaway 'kind-fresh
 ```
 
 `--with-runtime` provisions docker + kind + kubectl (`helm` is installed by the agent's own
-`install.sh` during setup). Then run **this** adapter *inside* that distro — it deploys its own
+`install_local.sh` during setup). Then run **this** adapter *inside* that distro — it deploys its own
 cluster-service copy, independent of the local `uvicorn` app `run-app.sh` also starts:
 
 ```bash

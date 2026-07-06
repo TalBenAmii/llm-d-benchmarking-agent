@@ -40,7 +40,9 @@ jobs:
       - name: Derive image tags
         id: meta
         run: |
-          version="${GITHUB_REF_NAME}"
+          # Strip the leading "v" so the published tag matches the chart default (values.yaml /
+          # install_service.sh / Makefile all default to :0.1.0, no "v") — else a default install 404s.
+          version="${GITHUB_REF_NAME#v}"
           echo "tags=${IMAGE}:${version},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
