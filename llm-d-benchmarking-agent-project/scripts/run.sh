@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Start the llm-d Benchmarking Assistant locally.
 #
-# Sets up a virtualenv (uv if available, else python3 -m venv), installs the app,
-# ensures a .env exists, then launches the FastAPI/uvicorn server. HOST/PORT are
+# Syncs the project venv from uv.lock (via `uv sync`; uv is required and auto-installed if
+# missing), ensures a .env exists, then launches the FastAPI/uvicorn server. HOST/PORT are
 # read from .env (defaults 127.0.0.1:8000); PORT can be overridden with --port.
 #
 #   ./scripts/run.sh                  # start with autoreload on http://127.0.0.1:8000
@@ -45,26 +45,25 @@ source "scripts/_env.sh"   # cwd is the project root (cd above); provides ensure
 
 ensure_env
 
-if [[ ! -x "$PY" ]]; then
-  if command -v uv >/dev/null 2>&1; then
-    log "Creating virtualenv with uv…"
-    uv venv "$VENV" >/dev/null
-  else
-    log "Creating virtualenv with python3 -m venv…"
-    python3 -m venv "$VENV"
-  fi
-  REINSTALL=1
+# uv is REQUIRED — surface an already-installed copy (~/.local/bin), else bootstrap it. It's
+# self-contained (needs no python3-venv) and `uv sync` builds .venv from the committed uv.lock.
+add_local_bin_to_path
+if ! command -v uv >/dev/null 2>&1; then
+  log "uv not found — bootstrapping it (required to sync the venv)…"
+  command -v curl >/dev/null 2>&1 || { echo "run.sh: uv is required but missing, and curl isn't available to bootstrap it — install uv (https://astral.sh/uv) and re-run." >&2; exit 1; }
+  curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || { echo "run.sh: uv bootstrap failed — install uv (https://astral.sh/uv) and re-run." >&2; exit 1; }
+  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+  command -v uv >/dev/null 2>&1 || { echo "run.sh: uv bootstrapped but not on PATH — add ~/.local/bin to PATH and re-run." >&2; exit 1; }
 fi
 
-# Install if forced, or if the app can't be imported yet.
-if [[ "$REINSTALL" == 1 ]] || ! "$PY" -c "import uvicorn, app.main" >/dev/null 2>&1; then
-  log "Installing dependencies (editable install)…"
-  if command -v uv >/dev/null 2>&1; then
-    uv pip install --python "$PY" -e . >/dev/null
-  else
-    "$PY" -m pip install --upgrade pip >/dev/null
-    "$PY" -m pip install -e . >/dev/null
-  fi
+# Sync the runtime venv from uv.lock when forced, when the venv is missing, or when the app can't
+# be imported yet. `uv sync` (no dev extras) creates .venv from the lock — the source of truth.
+# --inexact: a --reinstall/resync forces the agent's own packages back to their locked versions
+# (restoring lock-compliance) while PRESERVING the editable MCP server + any MCP-only packages that
+# install.sh added — a plain `uv sync` would prune them as "not in the lock".
+if [[ "$REINSTALL" == 1 ]] || [[ ! -x "$PY" ]] || ! "$PY" -c "import uvicorn, app.main" >/dev/null 2>&1; then
+  log "Syncing dependencies from uv.lock…"
+  uv sync --inexact >/dev/null
 fi
 
 HOST="$(read_env HOST)"; HOST="${HOST:-127.0.0.1}"
