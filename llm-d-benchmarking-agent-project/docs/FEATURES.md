@@ -263,7 +263,7 @@ enforced the same way and loads on demand via a `kind: knowledge` `key_docs.yaml
 from CORE), while WVA autoscaling stays description-driven (no command chokepoint → no gate). **Verify:**
 `fetch_key_docs(task='teardown_skill')` returns the live SKILL.md (the repo is cloned by `ensure_repos`
 / `git clone .../llm-d-incubation/llm-d-skills`); the clone allowlist + read-only guard are pinned in
-`tests/test_allowlist.py` (`test_git_clone_skills_allowed`) and the root `.claude/settings.json`.
+`tests/test_allowlist.py` (`test_git_clone_skills_allowed`) and the root `.claude/settings.json`. Each golden operation-flow now grounds in its grounding doc first — its `*_skill`, or the `quickstart` runbook on the kind/CPU-sim path — and all 5 operations are exemplified (compare/wva added), enforced hermetically by `tests/flows/test_flow_skill_grounding.py` / `test_flow_skill_correctness.py` / `test_corpus_skill_coverage.py` + `tests/eval/test_no_orphan_operation.py`.
 
 **Prompt-token efficiency (token-tracking merge):** fixed prompt overhead was cut ~40%
 (`~20.4K → ~12.3K`), schema `title`s are stripped (`registry.py:_strip_titles`), and

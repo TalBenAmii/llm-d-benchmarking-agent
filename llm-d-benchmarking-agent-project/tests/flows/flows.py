@@ -459,6 +459,8 @@ DRY_RUN_PREVIEW = Flow(
     mock_user_input="Before you change anything on my cluster, show me exactly what deploying "
                     "the kind quickstart would do.",
     turns=[
+        _turn("Grounding this kind deploy preview in the quickstart runbook first.",
+              _tc("fetch_key_docs", task="quickstart")),
         _turn("Sensing the environment.",
               _tc("probe_environment", checks="all", namespace="llmd-quickstart")),
         _turn("Previewing the deployment plan (read-only).",
@@ -1610,6 +1612,176 @@ ERROR_PATH_FLOWS = [
 ]
 
 
+COMPARE_CONFIGURATIONS = Flow(
+    name="compare-configurations",
+    title="A/B compare two guide configs (full deploy→benchmark→teardown per config)",
+    description="User asks to compare optimized-baseline vs pd-disaggregation head-to-head. The agent "
+                "grounds in the deploy, benchmark, teardown and compare skills, then for EACH config runs "
+                "the full standup→run→teardown cycle through execute_llmdbenchmark, and finally diffs the "
+                "two reports with compare_reports. Models the compare skill's per-config loop adapted to "
+                "this app's tooling (SessionPlan gate + execute_llmdbenchmark, never raw helm).",
+    repo_state="present_with_venv",
+    mock_user_input="Compare the optimized-baseline and pd-disaggregation guides head-to-head — deploy "
+                    "each, benchmark it with the same workload, tear it down, then show me which "
+                    "configuration is faster.",
+    turns=[
+        _turn("Grounding this comparison in its llm-d skills first — I'll reuse deploy, benchmark and "
+              "teardown for each config, then compare the two reports.",
+              _tc("fetch_key_docs", task="deploy_skill"),
+              _tc("fetch_key_docs", task="benchmark_skill"),
+              _tc("fetch_key_docs", task="teardown_skill"),
+              _tc("fetch_key_docs", task="compare_skill")),
+        _turn("Sensing the environment before the first deploy.",
+              _tc("probe_environment", checks="all")),
+        _turn("Config A plan: stand up optimized-baseline, benchmark it, then tear it down.",
+              _tc("propose_session_plan",
+                  use_case_summary="A/B compare — config A: optimized-baseline",
+                  goal_metrics=["ttft", "throughput"],
+                  spec="guides/optimized-baseline", deploy_path="guide",
+                  namespace="llm-d-optimized-baseline",
+                  harness="inference-perf", workload="guide_optimized-baseline_1.yaml",
+                  expected_steps=["standup", "run", "teardown"],
+                  notes="config A of an A/B compare; same workload as config B")),
+        _turn("Standing up config A (optimized-baseline).",
+              _tc("execute_llmdbenchmark", subcommand="standup", spec="guides/optimized-baseline",
+                  namespace="llm-d-optimized-baseline", flags={"skip_smoketest": True})),
+        _turn("Benchmarking config A.",
+              _tc("execute_llmdbenchmark", subcommand="run", spec="guides/optimized-baseline",
+                  namespace="llm-d-optimized-baseline", harness="inference-perf",
+                  workload="guide_optimized-baseline_1.yaml")),
+        _turn("Tearing down config A to free the cluster before config B.",
+              _tc("execute_llmdbenchmark", subcommand="teardown", spec="guides/optimized-baseline",
+                  namespace="llm-d-optimized-baseline")),
+        _turn("Config B plan: same cycle for pd-disaggregation, then compare the two reports.",
+              _tc("propose_session_plan",
+                  use_case_summary="A/B compare — config B: pd-disaggregation, then compare",
+                  goal_metrics=["ttft", "throughput"],
+                  spec="guides/pd-disaggregation", deploy_path="guide",
+                  namespace="llm-d-pd-disaggregation",
+                  harness="inference-perf", workload="guide_pd-disaggregation_1.yaml",
+                  expected_steps=["standup", "run", "teardown", "compare"],
+                  notes="config B of an A/B compare; then compare_reports against config A")),
+        _turn("Standing up config B (pd-disaggregation).",
+              _tc("execute_llmdbenchmark", subcommand="standup", spec="guides/pd-disaggregation",
+                  namespace="llm-d-pd-disaggregation", flags={"skip_smoketest": True})),
+        _turn("Benchmarking config B with the same workload.",
+              _tc("execute_llmdbenchmark", subcommand="run", spec="guides/pd-disaggregation",
+                  namespace="llm-d-pd-disaggregation", harness="inference-perf",
+                  workload="guide_pd-disaggregation_1.yaml")),
+        _turn("Tearing down config B.",
+              _tc("execute_llmdbenchmark", subcommand="teardown", spec="guides/pd-disaggregation",
+                  namespace="llm-d-pd-disaggregation")),
+        _turn("Comparing the two runs head-to-head.",
+              _tc("compare_reports",
+                  sources=["./runs/optimized-baseline", "./runs/pd-disaggregation"],
+                  labels=["optimized-baseline", "pd-disaggregation"], baseline_index=0)),
+        _turn("optimized-baseline vs pd-disaggregation — here's the side-by-side on TTFT and throughput."),
+    ],
+    expected=[
+        ExpectedCommand(["llmdbenchmark", "--spec", "guides/optimized-baseline", "standup", "-p",
+                         "llm-d-optimized-baseline", "--skip-smoketest"], MUTATING),
+        ExpectedCommand(["llmdbenchmark", "--spec", "guides/optimized-baseline", "--workspace", "*", "run",
+                         "-p", "llm-d-optimized-baseline", "-l", "inference-perf",
+                         "-w", "guide_optimized-baseline_1.yaml", "-r", "local"], MUTATING),
+        ExpectedCommand(["llmdbenchmark", "--spec", "guides/optimized-baseline", "teardown", "-p",
+                         "llm-d-optimized-baseline"], MUTATING),
+        ExpectedCommand(["llmdbenchmark", "--spec", "guides/pd-disaggregation", "standup", "-p",
+                         "llm-d-pd-disaggregation", "--skip-smoketest"], MUTATING),
+        ExpectedCommand(["llmdbenchmark", "--spec", "guides/pd-disaggregation", "--workspace", "*", "run",
+                         "-p", "llm-d-pd-disaggregation", "-l", "inference-perf",
+                         "-w", "guide_pd-disaggregation_1.yaml", "-r", "local"], MUTATING),
+        ExpectedCommand(["llmdbenchmark", "--spec", "guides/pd-disaggregation", "teardown", "-p",
+                         "llm-d-pd-disaggregation"], MUTATING),
+    ],
+    required_subcommands=["standup", "run", "teardown"],
+    # Hermetic deterministic exemplar: the live flow-eval can't fairly reproduce a 2×-config
+    # deploy→bench→teardown walk in one turn; live compare grounding is covered by the skill-usage
+    # SCENARIOS. Scored via the hermetic golden gate + the flow skill-grounding tests instead.
+    live_eval=False,
+)
+
+
+WVA_AUTOSCALING_CONFIG = Flow(
+    name="wva-autoscaling-config",
+    title="configure WVA autoscaling on an existing stack, then benchmark under bursty load",
+    description="User asks to add the Workload Variant Autoscaler to an already-running stack. The agent "
+                "grounds in the wva + benchmark skills, discovers the decode deployments, clones and "
+                "deploys the WVA controller and applies VariantAutoscaling + HPA via run_shell (these "
+                "mutations aren't allowlisted dedicated tools), then benchmarks the autoscaled stack under "
+                "a bursty guidellm rate ladder. No redeploy — it configures the existing stack.",
+    repo_state="present_with_venv",
+    tools_present=["docker", "kind", "kubectl"],
+    canned={
+        "get pods": _PODS_RUNNING,
+        "get endpoints": _ENDPOINTS_READY,
+        "--list-endpoints": _LIST_ENDPOINTS_READY,
+    },
+    mock_user_input="There's an llm-d stack already running in llm-d-workload-autoscaling. Add the "
+                    "Workload Variant Autoscaler to it (balanced preset) and then benchmark how it handles "
+                    "bursty load — don't redeploy the stack.",
+    turns=[
+        _turn("Grounding this in the WVA autoscaling skill and the benchmark skill first — I'll configure "
+              "WVA on the running stack, then benchmark the autoscaled stack.",
+              _tc("fetch_key_docs", task="wva_skill"),
+              _tc("fetch_key_docs", task="benchmark_skill")),
+        _turn("Confirming the stack is up and finding the decode deployments to autoscale.",
+              _tc("probe_environment", checks="all", namespace="llm-d-workload-autoscaling")),
+        _turn("Listing the decode deployments grouped by EPP.",
+              _tc("run_shell",
+                  command="kubectl get deployment -n llm-d-workload-autoscaling -l llm-d.ai/role=decode -o name")),
+        _turn("Plan: configure WVA (balanced preset) on the existing stack, then benchmark it under bursty "
+              "load. No standup — the stack is already running.",
+              _tc("propose_session_plan",
+                  use_case_summary="Configure WVA autoscaling on the running stack, then benchmark under bursty load",
+                  goal_metrics=["throughput", "ttft"],
+                  spec="guides/workload-autoscaling", deploy_path="guide",
+                  namespace="llm-d-workload-autoscaling",
+                  harness="guidellm", workload="guide_workload-autoscaling_1.yaml",
+                  expected_steps=["autoscale", "run"],
+                  notes="stack already running; configure WVA via run_shell (clone+make+apply-hpa), then "
+                        "benchmark the autoscaled stack; no standup/teardown")),
+        _turn("Cloning the Workload Variant Autoscaler controller repo.",
+              _tc("run_shell",
+                  command="git clone https://github.com/llm-d-incubation/llm-d-workload-variant-autoscaler /tmp/wva")),
+        _turn("Deploying the WVA controller (balanced preset) into the namespace.",
+              _tc("run_shell",
+                  command="cd /tmp/wva && WVA_NAMESPACE=llm-d-workload-autoscaling make deploy-wva")),
+        _turn("Labelling the decode deployment with its accelerator so WVA can size it.",
+              _tc("run_shell",
+                  command="kubectl label deployment llm-d-wa-decode inference.optimization/acceleratorName=nvidia --overwrite -n llm-d-workload-autoscaling")),
+        _turn("Applying VariantAutoscaling + HPA for the decode deployment.",
+              _tc("run_shell",
+                  command="/tmp/wva/scripts/apply-hpa.sh --mode va-hpa --namespace llm-d-workload-autoscaling --deployment llm-d-wa-decode")),
+        _turn("Verifying the autoscaler is in place.",
+              _tc("run_shell",
+                  command="kubectl get variantautoscaling,hpa -n llm-d-workload-autoscaling")),
+        _turn("WVA is configured — now benchmarking the autoscaled stack under a bursty guidellm rate ladder.",
+              _tc("execute_llmdbenchmark", subcommand="run", spec="guides/workload-autoscaling",
+                  namespace="llm-d-workload-autoscaling", harness="guidellm",
+                  workload="guide_workload-autoscaling_1.yaml")),
+        _turn("Parsing the autoscaled-stack report.", _tc("locate_and_parse_report")),
+        _turn("WVA is live and the stack scaled under the bursty load — here's how it held up on throughput and TTFT."),
+    ],
+    expected=[
+        ExpectedCommand(["llmdbenchmark", "--spec", "guides/workload-autoscaling", "--workspace", "*", "run",
+                         "-p", "llm-d-workload-autoscaling", "-l", "guidellm",
+                         "-w", "guide_workload-autoscaling_1.yaml", "-r", "local"], MUTATING),
+    ],
+    required_subcommands=["run"],
+    required_spec="guides/workload-autoscaling",
+    required_tools=["run_shell"],
+    forbidden_subcommands=["standup", "teardown"],
+    expect_stack_detected=True,
+    # Hermetic deterministic exemplar: the ~9-step run_shell WVA walk can't fairly replay in one
+    # live turn, and its existing-stack shape conflicts with SIMULATE's redeploy note; live wva
+    # grounding is covered by the skill-usage SCENARIOS. Scored via the hermetic gate instead.
+    # Also live_eval=False because the live plan-gate requires deploy_skill/quickstart grounding on
+    # every plan, which a no-standup autoscaling plan (grounded in wva+benchmark) can't satisfy
+    # without spurious grounding.
+    live_eval=False,
+)
+
+
 ALL_FLOWS: list[Flow] = [
     KIND_QUICKSTART,
     *GUIDE_FLOWS,            # optimized-baseline + pd-disaggregation + 5 more guide deploys
@@ -1618,7 +1790,9 @@ ALL_FLOWS: list[Flow] = [
     DRY_RUN_PREVIEW,
     SAFETY_REFUSAL,
     *TOOL_CHOICE_FLOWS,     # DOE/analysis/history/orchestrator/capacity/readiness/observe/cancel
+    COMPARE_CONFIGURATIONS,  # A/B compare two guide configs (deploy→bench→teardown per config, then diff)
     *FEATURE_FLOWS,         # advise-accel/aggregate/discover/convert-guide/write-config/provision-hf
+    WVA_AUTOSCALING_CONFIG,  # configure WVA on an existing stack via run_shell, then benchmark
     *ERROR_PATH_FLOWS,      # standup/run/endpoint/gated/stuck-run/catalog-drift failure recovery
 ]
 
