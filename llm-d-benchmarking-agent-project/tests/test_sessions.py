@@ -201,6 +201,36 @@ def test_synthetic_pre_probe_never_leaks_into_namespace_folder_title(tmp_path):
         assert "pre-probe" not in row["title"]
 
 
+def test_list_reheals_frozen_sentinel_title(manager):
+    # Regression: a chat persisted before its first real turn once had "New chat" FROZEN into
+    # its title; the sidebar (list()) must re-derive past the sentinel so it heals once a real
+    # user message lands, not stay "New chat" forever.
+    s = _seed(manager, "deploy a model on kind")
+    state_path = s.ctx.workspace / "state.json"
+    data = json.loads(state_path.read_text())
+    data["title"] = "New chat"  # simulate a legacy frozen snapshot
+    state_path.write_text(json.dumps(data))
+    manager._sessions.clear()
+    row = next(x for x in manager.list() if x["id"] == s.id)
+    assert row["title"] == "deploy a model on kind"
+
+
+def test_persist_never_freezes_sentinel_title(manager):
+    # Regression: persist() must not store the "New chat" sentinel. A chat persisted while it
+    # only has a synthetic pre-probe message keeps an EMPTY title (not the sentinel), and the
+    # title recovers the moment a real user message is present.
+    s = manager.create()
+    s.messages.append({"role": "user", "synthetic": True,
+                       "content": "[environment pre-probe …] {\"tools\": {}}"})
+    s.persist()
+    assert json.loads((s.ctx.workspace / "state.json").read_text())["title"] == ""
+    s.messages.append({"role": "user", "content": "run a quick benchmark"})
+    s.persist()
+    manager._sessions.clear()
+    loaded = manager.load(s.id)
+    assert loaded is not None and loaded.title == "run a quick benchmark"
+
+
 # ---- REST endpoints that feed the sidebar ------------------------------------
 def test_api_sessions_list_and_delete(tmp_path):
     manager = make_manager(tmp_path)
