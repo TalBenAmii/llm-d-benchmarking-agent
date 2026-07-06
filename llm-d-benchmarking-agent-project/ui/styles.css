@@ -320,7 +320,7 @@ header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin:
 }
 .status.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
 .status.down { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
-/* LLM model (from /api/provider) — pinned to the bottom-left of the composer, mono face because the
+/* LLM model (from /api/provider) — pinned to the bottom-right of the composer, mono face because the
    content is an identifier. Red when the provider failed to build. It's a <button>: the base is a
    quiet secondary label (the non-switchable / not-configured states keep the plain look — NO click
    affordance), while `.switchable` promotes it to a real chip — a rounded pill with a faint accent
@@ -352,6 +352,20 @@ header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin:
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 .llm-badge.switchable:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+/* Dark theme only: the accent-on-dark mix is too faint at rest — the pill barely reads as a button.
+   Strengthen the resting border + fill so it's as obviously clickable as in light theme, and push
+   hover/focus/open proportionally further so the interaction keeps its headroom. (Dark is applied via
+   the always-present :root[data-theme] attribute, so this never leaks into the light theme.) */
+:root[data-theme="dark"] .llm-badge.switchable {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+}
+:root[data-theme="dark"] .llm-badge.switchable:hover,
+:root[data-theme="dark"] .llm-badge.switchable:focus-visible,
+:root[data-theme="dark"] .llm-badge.switchable[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--border));
+}
 
 /* Model + reasoning-effort picker: a small VSCode-style popover anchored ABOVE the composer's
    bottom-left (opens upward from the badge). Theme-aware via the shared vars. */
