@@ -29,6 +29,11 @@ from app.tools.context import ToolContext
 # ``?session=`` query param), so validate it before building a filesystem path from it.
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _TITLE_MAX = 60
+# Placeholder title before the human types a REAL message (derive_title's fallback). It is a
+# sentinel, NOT a finished title: it is never persisted, and the read side re-derives past it so
+# a chat's sidebar title self-heals the moment a real user turn lands. The frontend shows the same
+# literal as its own empty-title fallback.
+_DEFAULT_TITLE = "New chat"
 
 # The sidebar groups chats into one folder per namespace; chats with no namespace land in a
 # folder under this sentinel key. "no_namespace" can never collide with a real namespace
@@ -55,7 +60,7 @@ def derive_title(messages: list[dict[str, Any]]) -> str:
             text = " ".join(str(m.get("content") or "").split())
             if text and not text.startswith("["):
                 return text[:_TITLE_MAX] + ("…" if len(text) > _TITLE_MAX else "")
-    return "New chat"
+    return _DEFAULT_TITLE
 
 
 def _effective_namespace(data: dict[str, Any]) -> str | None:
@@ -245,8 +250,12 @@ class Session:
         the new one lands whole."""
         try:
             self.ctx.workspace.mkdir(parents=True, exist_ok=True)
-            if not self.title:
-                self.title = derive_title(self.messages)
+            # Persist only a REAL title; never freeze the sentinel, so the title stays empty until a
+            # genuine user turn exists and then heals to it (derive_title is stable — the first real
+            # message doesn't change, so re-deriving each persist just re-affirms the same title).
+            t = derive_title(self.messages)
+            if t != _DEFAULT_TITLE:
+                self.title = t
             self.updated_at = time.time()
             payload = json.dumps(
                 {
@@ -395,10 +404,15 @@ class SessionManager:
             messages = data.get("messages", [])
             if not messages:
                 continue  # never-used session (e.g. a throwaway healthz probe)
+            # Re-derive when the stored title is empty OR still the sentinel (a chat persisted
+            # before its first real user turn), so the sidebar heals once one lands.
+            title = data.get("title")
+            if title in (None, "", _DEFAULT_TITLE):
+                title = derive_title(messages)
             out.append(
                 {
                     "id": data.get("id", d.name),
-                    "title": data.get("title") or derive_title(messages),
+                    "title": title,
                     "created_at": data.get("created_at"),
                     "updated_at": data.get("updated_at"),
                     "namespace": _effective_namespace(data),
