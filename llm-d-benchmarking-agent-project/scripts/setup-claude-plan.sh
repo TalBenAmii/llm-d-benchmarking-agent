@@ -9,7 +9,7 @@
 #   4. verifies end-to-end with ONE tiny test call on your plan (a few tokens)
 #
 # No API key is involved — the app authenticates through the CLI's own login, exactly like
-# the claude-agent-sdk provider does at runtime. Runs standalone or as install.sh's last
+# the claude-agent-sdk provider does at runtime. Runs standalone or as install_local.sh's last
 # step (skip there with --no-llm-setup). Without a usable terminal (CI / scripted installs)
 # it skips cleanly and changes nothing.
 #
@@ -30,11 +30,11 @@ die()  { printf '\033[1;31m[setup-claude-plan] ERROR: %s\033[0m\n' "$*" >&2; exi
 # shellcheck source=scripts/_env.sh
 source "scripts/_env.sh"   # provides _tty_interactive + ensure_env + read_env + set_env_var + confirm/menu_select + ensure_claude_cli
 
-# Prompts read /dev/tty so they work even when stdin is a pipe (curl | bash, install.sh). Without a
+# Prompts read /dev/tty so they work even when stdin is a pipe (curl | bash, install_local.sh). Without a
 # usable terminal there is nobody to ask — skip cleanly, never hang a scripted install. _tty_interactive
 # (shared with the menu helpers, one definition) is the single source of truth: it requires /dev/tty to
 # be openable AND our process to be its FOREGROUND process group, so a background/non-foreground job
-# (`./scripts/install.sh &`, nohup, WSL/ssh non-interactive exec) — which would SIGTTIN-stop or block
+# (`./scripts/install_local.sh &`, nohup, WSL/ssh non-interactive exec) — which would SIGTTIN-stop or block
 # forever on the first read — takes the clean-skip path instead of prompting.
 if _tty_interactive; then TTY=/dev/tty; else
   log "No interactive terminal — skipping Claude-plan setup. Run ./scripts/setup-claude-plan.sh later."
@@ -82,7 +82,7 @@ esac
 # and walk a logged-in user into a re-login that then "fails" for the wrong reason.
 if command -v python3 >/dev/null 2>&1; then PYJSON="python3"
 elif [[ -x .venv/bin/python ]]; then PYJSON=".venv/bin/python"
-else die "python3 is required (to read 'claude auth status') — install it, or run ./scripts/install.sh first, then re-run this script."
+else die "python3 is required (to read 'claude auth status') — install it, or run ./scripts/install_local.sh first, then re-run this script."
 fi
 # Fields: loggedIn → "true"/"", email/subscriptionType → value/"".
 refresh_auth() { AUTH_JSON="$(claude auth status --json 2>/dev/null || true)"; }

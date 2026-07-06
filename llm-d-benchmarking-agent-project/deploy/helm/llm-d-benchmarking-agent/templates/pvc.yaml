@@ -1,0 +1,20 @@
+{{- if .Values.workspace.persistence.enabled }}
+# Optional persistent workspace. When workspace.persistence.enabled is true the agent Pod's
+# /workspace is backed by this PVC instead of an ephemeral emptyDir, so per-session state,
+# generated configs, and logs survive a pod restart. OFF by default (sessions are ephemeral).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "agent.fullname" . }}-workspace
+  labels:
+    {{- include "agent.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.workspace.persistence.accessMode }}
+  {{- with .Values.workspace.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.workspace.persistence.size }}
+{{- end }}

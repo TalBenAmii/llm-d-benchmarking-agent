@@ -7,8 +7,9 @@ scheduling** paths WITHOUT real hardware. It is debugging infrastructure, not pr
 These tests turn "it never reaches the shipped artifact" into a *checked invariant*
 rather than a hope:
 
-1. the production image's build context (the Dockerfile ``COPY`` set) only pulls the four
-   product dirs + the two metadata files — never ``testing/``;
+1. the production image's build context (the Dockerfile ``COPY`` set) only pulls the product
+   dirs (app, security, knowledge, ui, scripts) + the metadata files (pyproject.toml, README.md,
+   NOTICE) — never ``testing/``;
 2. ``.dockerignore`` excludes ``testing/`` (belt-and-suspenders on the COPY allowlist, and
    it makes the build context *physically unable* to include it);
 3. no module under ``app/`` imports from ``testing/`` (the product can't depend on the mock).
@@ -24,8 +25,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # The ONLY build-context sources the production image is allowed to COPY. Anything else
 # (notably ``testing/``) entering the image is a product-boundary leak. Keep in sync with
-# the Dockerfile COPY lines (the four runtime dirs + the two files pip needs).
-ALLOWED_COPY_SOURCES = {"pyproject.toml", "README.md", "app", "security", "knowledge", "ui"}
+# the Dockerfile COPY lines: the runtime dirs (app, security, knowledge, ui, and scripts —
+# the allowlist wires scripts/*.py to run via the bundled CLI venv), the two files pip needs
+# in the builder (pyproject.toml, README.md), and the NOTICE attribution file. The sibling
+# repos + toolchain are cloned/installed via RUN layers, never COPY'd from the context.
+ALLOWED_COPY_SOURCES = {
+    "pyproject.toml", "README.md", "app", "security", "knowledge", "ui", "scripts", "NOTICE",
+}
 
 
 def _context_copy_sources(dockerfile: str) -> list[str]:

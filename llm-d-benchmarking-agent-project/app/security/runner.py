@@ -32,6 +32,8 @@ _ENV_PASSTHROUGH = (
     "PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TERM",
     "KUBECONFIG", "TMPDIR", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
     "SSL_CERT_FILE", "SSL_CERT_DIR", "DOCKER_HOST", "container",
+    # helm dirs — the baked image points these at writable /tmp + the plugin dir
+    "HELM_CACHE_HOME", "HELM_CONFIG_HOME", "HELM_DATA_HOME",
 )
 
 _MAX_CAPTURE_CHARS = 200_000  # keep a bounded tail in memory

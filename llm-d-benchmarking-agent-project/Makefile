@@ -6,9 +6,16 @@ PY := $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)
 # Tune here, not in tool config, so it can move with the suite without churn.
 COV_FAIL_UNDER := 85
 
+# Container image coordinates (override on the CLI, e.g. `make image VERSION=0.2.0`).
+IMAGE   ?= ghcr.io/llm-d/llm-d-benchmarking-agent
+VERSION ?= 0.1.0
+# Pinned llm-d-benchmark ref baked into the image (the Dockerfile default matches this).
+BENCH_REF ?= v0.7.0
+
 .PHONY: help install test validate validate-pytest validate-live validate-live-iso \
         validate-simulate-iso snapshot-catalog flows \
-        lint typecheck coverage quality eval-shadow eval-judge bughunt
+        lint typecheck coverage quality eval-shadow eval-judge bughunt \
+        image image-publish
 
 help:
 	@echo "make validate         # prove the agent runs the right commands per flow (deterministic, hermetic)"
@@ -27,6 +34,8 @@ help:
 	@echo "make quality          # lint + typecheck + coverage (the CI quality gate)"
 	@echo "make install          # sync .venv from uv.lock (with dev extras)"
 	@echo "make snapshot-catalog # regenerate the frozen catalog snapshot from the live repo"
+	@echo "make image            # build the self-contained container image ($(IMAGE):$(VERSION))"
+	@echo "make image-publish    # build then docker push it to the registry (needs docker login)"
 
 install:
 	uv sync --extra dev
@@ -83,6 +92,15 @@ bughunt:
 
 flows:
 	$(PY) scripts/validate_flows.py --list
+
+# --- Container image (self-contained "full-bake": app + CLI venv + repos + toolchain) ---------
+# Large (~1 GB) and needs build-time network egress — see the Dockerfile header.
+image:
+	docker build -t $(IMAGE):$(VERSION) --build-arg BENCH_REF=$(BENCH_REF) .
+
+# Push assumes you have already run `docker login ghcr.io` (or your registry) with push rights.
+image-publish: image
+	docker push $(IMAGE):$(VERSION)
 
 # Print the live catalog so you can refresh tests/flows/catalog_snapshot.py when the
 # upstream repo changes (the drift guard flags when a refresh is due).

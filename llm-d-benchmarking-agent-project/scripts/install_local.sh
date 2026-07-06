@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — one-shot bootstrap for the llm-d Benchmarking Assistant Agent.
+# install_local.sh — one-shot bootstrap for the llm-d Benchmarking Assistant Agent (local/dev box).
 #
 # Sets up EVERYTHING needed to run the project end-to-end, in order:
 #   1. (clone if missing) the three upstream sibling repos: llm-d/, llm-d-benchmark/, llm-d-skills/
@@ -16,18 +16,18 @@
 # When it finishes:   ./scripts/run.sh   →   http://127.0.0.1:8000
 #
 # Usage:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install_local.sh)
 #                                        # curl-bootstrap: clone into INSTALL_DIR, then run on-disk
-#   ./scripts/install.sh                 # full bootstrap (repos + client deps + bench + app)
-#   ./scripts/install.sh --dev           # + dev extras (chart-testing; this project's .[dev])
-#   ./scripts/install.sh --prereqs       # + Docker & kind (host cluster prereqs; needs passwordless sudo)
-#   ./scripts/install.sh --app-only      # ONLY this project's venv + .env (skip the upstream installers)
-#   ./scripts/install.sh --no-client     # skip the llm-d client toolchain step
-#   ./scripts/install.sh --no-bench      # skip the llm-d-benchmark framework step
-#   ./scripts/install.sh --no-clone      # don't clone missing repos (fail if a needed repo is absent)
-#   ./scripts/install.sh --no-llm-setup  # skip the interactive Claude-plan (LLM provider) step at the end
-#   ./scripts/install.sh --no-mcp        # skip installing + registering the llm-d-bench MCP server
-#   ./scripts/install.sh -h | --help
+#   ./scripts/install_local.sh                 # full bootstrap (repos + client deps + bench + app)
+#   ./scripts/install_local.sh --dev           # + dev extras (chart-testing; this project's .[dev])
+#   ./scripts/install_local.sh --prereqs       # + Docker & kind (host cluster prereqs; needs passwordless sudo)
+#   ./scripts/install_local.sh --app-only      # ONLY this project's venv + .env (skip the upstream installers)
+#   ./scripts/install_local.sh --no-client     # skip the llm-d client toolchain step
+#   ./scripts/install_local.sh --no-bench      # skip the llm-d-benchmark framework step
+#   ./scripts/install_local.sh --no-clone      # don't clone missing repos (fail if a needed repo is absent)
+#   ./scripts/install_local.sh --no-llm-setup  # skip the interactive Claude-plan (LLM provider) step at the end
+#   ./scripts/install_local.sh --no-mcp        # skip installing + registering the llm-d-bench MCP server
+#   ./scripts/install_local.sh -h | --help
 #
 # The three repos are expected as siblings of this project. Override their location with
 # REPOS_DIR=/path (matches the agent's own REPOS_DIR setting). In curl-bootstrap mode the repo is
@@ -43,22 +43,22 @@ usage() { sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'; }
 case "${1:-}" in -h|--help) usage; exit 0 ;; esac   # before the bootstrap, so curl-mode --help doesn't clone
 
 # ── Curl-bootstrap (symmetry with the llm-d-bench-mcp installer) ──────────────
-# This script also runs via `bash <(curl … install.sh)`. Under the curl pipe BASH_SOURCE isn't a
+# This script also runs via `bash <(curl … install_local.sh)`. Under the curl pipe BASH_SOURCE isn't a
 # real path, so use it to locate the project only when that yields a real checkout; otherwise clone
 # the repo into INSTALL_DIR and re-exec the on-disk copy so every path below resolves normally.
 INSTALL_DIR="${INSTALL_DIR:-$HOME/llm-d-benchmarking-agent}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/.." 2>/dev/null && pwd || true)"   # this script lives in scripts/
 if [[ -z "$PROJECT_DIR" || ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
-  [[ "${_AGENT_BOOTSTRAPPED:-0}" == 1 ]] && { echo "install.sh: project not found after cloning (bootstrap loop)." >&2; exit 1; }
-  command -v git >/dev/null 2>&1 || { echo "install.sh: git is required to fetch the repo — install git and re-run." >&2; exit 1; }
+  [[ "${_AGENT_BOOTSTRAPPED:-0}" == 1 ]] && { echo "install_local.sh: project not found after cloning (bootstrap loop)." >&2; exit 1; }
+  command -v git >/dev/null 2>&1 || { echo "install_local.sh: git is required to fetch the repo — install git and re-run." >&2; exit 1; }
   if [[ ! -d "$INSTALL_DIR/.git" ]]; then
     printf '\033[1;35m━━ Fetching llm-d-benchmarking-agent → %s\033[0m\n' "$INSTALL_DIR"
     git clone "https://github.com/TalBenAmii/llm-d-benchmarking-agent" "$INSTALL_DIR"
   fi
   PROJECT_DIR="$INSTALL_DIR/llm-d-benchmarking-agent-project"
-  [[ -f "$PROJECT_DIR/scripts/install.sh" ]] || { echo "install.sh: $PROJECT_DIR/scripts/install.sh missing after clone." >&2; exit 1; }
+  [[ -f "$PROJECT_DIR/scripts/install_local.sh" ]] || { echo "install_local.sh: $PROJECT_DIR/scripts/install_local.sh missing after clone." >&2; exit 1; }
   export _AGENT_BOOTSTRAPPED=1
-  exec bash "$PROJECT_DIR/scripts/install.sh" "$@"   # re-run on-disk so BASH_SOURCE paths resolve
+  exec bash "$PROJECT_DIR/scripts/install_local.sh" "$@"   # re-run on-disk so BASH_SOURCE paths resolve
 fi
 REPOS_DIR="${REPOS_DIR:-$(dirname "$PROJECT_DIR")}"   # repos are siblings of the project
 GUIDE_REPO="$REPOS_DIR/llm-d"
@@ -78,7 +78,7 @@ while [[ $# -gt 0 ]]; do
     --no-llm-setup) NO_LLM_SETUP=1 ;;
     --no-mcp)       NO_MCP=1 ;;
     -h|--help)      usage; exit 0 ;;
-    *) echo "install.sh: unknown option '$1' (try --help)" >&2; exit 2 ;;
+    *) echo "install_local.sh: unknown option '$1' (try --help)" >&2; exit 2 ;;
   esac
   shift
 done
@@ -179,7 +179,7 @@ ensure_env
 # editable, honouring requires-python / .python-version (uv fetches a matching CPython if the host
 # lacks one). --extra dev adds the test/lint toolchain the git hooks + `make` expect in .venv.
 # --inexact: force the agent's own packages back to their locked versions WITHOUT pruning the
-# editable MCP server (installed further below) — so re-running install.sh over an existing venv
+# editable MCP server (installed further below) — so re-running install_local.sh over an existing venv
 # restores lock-compliance yet keeps the MCP install instead of removing then re-adding it.
 if [[ "$DEV" == 1 ]]; then log "Syncing the agent venv from uv.lock (with dev extras)…"; uv sync --inexact --extra dev >/dev/null
 else                        log "Syncing the agent venv from uv.lock…";                  uv sync --inexact >/dev/null; fi

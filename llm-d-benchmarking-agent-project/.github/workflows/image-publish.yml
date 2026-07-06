@@ -1,0 +1,54 @@
+# Scaffold — enable by ensuring the ghcr package is public or configuring pull secrets; verify org
+# permissions. Builds the self-contained agent image and pushes it to GitHub Container Registry on
+# a version tag (v*). The image is ~1 GB and the build clones the sibling repos + pip-installs the
+# CLI, so it needs network egress and a generous timeout on the runner.
+name: image-publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write   # required to push to ghcr.io/<owner>/*
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: llm-d-benchmarking-agent-project
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/llm-d-benchmarking-agent
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag the image with the pushed git tag (strip the leading refs/tags/) plus :latest.
+      - name: Derive image tags
+        id: meta
+        run: |
+          # Strip the leading "v" so the published tag matches the chart default (values.yaml /
+          # install_service.sh / Makefile all default to :0.1.0, no "v") — else a default install 404s.
+          version="${GITHUB_REF_NAME#v}"
+          echo "tags=${IMAGE}:${version},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: llm-d-benchmarking-agent-project
+          file: llm-d-benchmarking-agent-project/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}

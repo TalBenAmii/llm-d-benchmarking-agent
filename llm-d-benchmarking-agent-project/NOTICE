@@ -1,0 +1,34 @@
+llm-d Benchmarking Assistant
+Copyright the llm-d Benchmarking Assistant authors.
+
+------------------------------------------------------------------------------
+Bundled third-party software
+------------------------------------------------------------------------------
+
+The container image built from this repository's Dockerfile REDISTRIBUTES the
+following upstream projects (cloned into /repos at the pinned refs shown, plus
+their transitive Python/CLI dependencies). Each is licensed under the Apache
+License, Version 2.0; see http://www.apache.org/licenses/LICENSE-2.0 and the
+LICENSE file inside each project for the full terms.
+
+  * llm-d                @ 0227212d78661ef184446c875adb4972fda2237c
+    https://github.com/llm-d/llm-d
+    Apache-2.0
+
+  * llm-d-benchmark      @ v0.7.0
+    https://github.com/llm-d/llm-d-benchmark
+    Apache-2.0
+    (installed as the `llmdbenchmark` CLI in /repos/llm-d-benchmark/.venv)
+
+  * llm-d-skills         @ 84c100c6ec6f4055b4d8132a6eb9bfa326e6c1d4
+    https://github.com/llm-d-incubation/llm-d-skills
+    Apache-2.0
+
+  * llm-d-planner        @ v0.1.0
+    https://github.com/llm-d-incubation/llm-d-planner
+    Apache-2.0
+    (a required CLI dependency installed into the llmdbenchmark venv)
+
+The image additionally bundles the standard client toolchain the CLI shells out
+to (kubectl, helm, the helm-diff plugin, helmfile, kustomize, yq, jq, skopeo,
+crane, git); each retains its own upstream license.

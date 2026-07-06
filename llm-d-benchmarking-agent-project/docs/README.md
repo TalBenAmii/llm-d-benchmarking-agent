@@ -9,6 +9,7 @@ agent + Kubernetes-native benchmark orchestrator + results analyzer for
 | [ARCHITECTURE.md](ARCHITECTURE.md) | engineers / reviewers | System design: layers, components, the four determinism gates, request flow, trust boundaries, concurrency & resilience. |
 | [API.md](API.md) | integrators / contributors | The HTTP/WebSocket API and the agent tool surface (inputs, classification, result shapes) + the `SessionPlan`. |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | operators | Running locally and in-cluster (Helm), configuration, secrets, least-privilege RBAC, observability. |
+| [CLUSTER_SERVICE_DEPLOY.md](CLUSTER_SERVICE_DEPLOY.md) | maintainers / operators | Deploying the agent **itself as an in-cluster service**: the self-contained full-bake image (bundles the `llmdbenchmark` CLI + sibling repos + client toolchain), `scripts/install_service.sh` (Helm), workspace persistence, and the kind test adapter. |
 | [USER_GUIDE.md](USER_GUIDE.md) | end users | Using the agent end-to-end with no `llm-d-benchmark` expertise. |
 | [GPU_CLUSTER_RUNBOOK.md](GPU_CLUSTER_RUNBOOK.md) | end users / operators | Going beyond the CPU `cicd/kind` quickstart: stand up a real **single-GPU** cluster (minikube + NVIDIA, WSL2/RTX 4060 worked example), author a tiny-model scenario that fits 8 GB, and a feature-by-feature checklist of what's real vs simulated on one card. |
 | [VALIDATION.md](VALIDATION.md) | contributors | The flow-validation harness — proving the agent runs the *right* commands. |

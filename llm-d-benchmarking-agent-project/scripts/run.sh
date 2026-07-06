@@ -60,7 +60,7 @@ fi
 # be imported yet. `uv sync` (no dev extras) creates .venv from the lock — the source of truth.
 # --inexact: a --reinstall/resync forces the agent's own packages back to their locked versions
 # (restoring lock-compliance) while PRESERVING the editable MCP server + any MCP-only packages that
-# install.sh added — a plain `uv sync` would prune them as "not in the lock".
+# install_local.sh added — a plain `uv sync` would prune them as "not in the lock".
 if [[ "$REINSTALL" == 1 ]] || [[ ! -x "$PY" ]] || ! "$PY" -c "import uvicorn, app.main" >/dev/null 2>&1; then
   log "Syncing dependencies from uv.lock…"
   uv sync --inexact >/dev/null
