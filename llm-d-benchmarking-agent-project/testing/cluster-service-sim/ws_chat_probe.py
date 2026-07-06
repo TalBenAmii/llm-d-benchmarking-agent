@@ -28,7 +28,7 @@ from typing import NoReturn
 HOST = "127.0.0.1"
 
 
-def _fail(reason: str) -> "NoReturn":
+def _fail(reason: str) -> NoReturn:
     print("CHAT_FAIL: " + reason)
     sys.exit(1)
 
@@ -69,7 +69,7 @@ def main() -> None:
             _fail("timed out during the WebSocket handshake")
         try:
             b = sock.recv(1)
-        except socket.timeout:
+        except TimeoutError:
             continue
         if not b:
             _fail("connection closed during the handshake")
@@ -89,7 +89,7 @@ def main() -> None:
                 _fail("timed out waiting for a server frame")
             try:
                 chunk = sock.recv(4096)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             if not chunk:
                 _fail("connection closed by the server")
@@ -115,7 +115,7 @@ def main() -> None:
         masked = bytes(bb ^ mask[i % 4] for i, bb in enumerate(payload))
         sock.sendall(bytes(header) + masked)
 
-    def recv_frame() -> "tuple[int, int, bytes]":
+    def recv_frame() -> tuple[int, int, bytes]:
         b0, b1 = recv_exact(2)
         fin = b0 & 0x80
         opcode = b0 & 0x0F
