@@ -47,7 +47,7 @@ def test_set_model_rejects_extras_and_bad_shape():
         parse_inbound({"type": "set_model"})
     with pytest.raises(ValidationError):
         parse_inbound({"type": "set_model", "model": ""})
-    # a non-dict / unknown tag is not a set_model frame.
+    # effort, when present, must be a string (a non-str like an int is rejected).
     with pytest.raises(ValidationError):
         parse_inbound({"type": "set_model", "model": "x", "effort": 3})
 
