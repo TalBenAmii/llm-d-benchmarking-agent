@@ -320,16 +320,16 @@ header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin:
 }
 .status.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
 .status.down { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
-/* LLM model (from /api/provider) — pinned to the bottom-left of the composer, mono face because the
+/* LLM model (from /api/provider) — pinned to the bottom-right of the composer, mono face because the
    content is an identifier. Red when the provider failed to build. It's a <button>: the base is a
    quiet secondary label (the non-switchable / not-configured states keep the plain look — NO click
    affordance), while `.switchable` promotes it to a real chip — a rounded pill with a faint accent
    border+fill that strengthens on hover AND keyboard focus, heavier + higher-contrast type, and a
    caret (added in JS) — so it reads as clickable. Mirrors the #autoapprove-toggle pill language. */
 .llm-badge {
-  align-self: flex-start;
+  align-self: flex-end;   /* bottom-RIGHT of the composer, right edge aligned under the send button */
   font: 500 11.5px/1 var(--mono); color: var(--muted);
-  padding: 3px 6px 3px 12px; margin-top: 1px; border-radius: 7px;
+  padding: 3px 6px 3px 12px; margin: 1px 6px 0 0; border-radius: 7px;
   max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: none; border: 1px solid transparent; cursor: default;   /* button reset */
 }
@@ -352,11 +352,28 @@ header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin:
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 .llm-badge.switchable:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+/* Dark theme only: the accent-on-dark mix is too faint at rest — the pill barely reads as a button.
+   Strengthen the resting border + fill so it's as obviously clickable as in light theme, and push
+   hover/focus/open proportionally further so the interaction keeps its headroom. (Dark is applied via
+   the always-present :root[data-theme] attribute, so this never leaks into the light theme.) */
+:root[data-theme="dark"] .llm-badge.switchable {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+}
+:root[data-theme="dark"] .llm-badge.switchable:hover,
+:root[data-theme="dark"] .llm-badge.switchable:focus-visible,
+:root[data-theme="dark"] .llm-badge.switchable[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--border));
+}
 
 /* Model + reasoning-effort picker: a small VSCode-style popover anchored ABOVE the composer's
-   bottom-left (opens upward from the badge). Theme-aware via the shared vars. */
+   bottom-RIGHT — it opens upward from the badge, aligned to the badge's right edge, and grows
+   up-and-to-the-left. `right: 12px` matches the badge's right edge (composer right padding 6px +
+   badge margin-right 6px); the max-width guard keeps it in the viewport. Theme-aware via the shared
+   vars. */
 .model-popover {
-  position: absolute; left: 6px; bottom: calc(100% + 8px); z-index: 50;
+  position: absolute; right: 12px; bottom: calc(100% + 8px); z-index: 50;
   width: 264px; max-width: calc(100vw - 32px); max-height: min(58vh, 420px); overflow-y: auto;
   background: var(--panel); color: var(--text);
   border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--shadow);
