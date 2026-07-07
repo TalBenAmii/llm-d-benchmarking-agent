@@ -87,6 +87,11 @@ helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
   --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
 ```
 
+> **Default chat provider is now `claude-agent-sdk`** (Claude Max/Pro subscription), authenticated by
+> `secret.claudeCodeOauthToken` (a `claude setup-token` token; the `claude` CLI is baked into the image).
+> The `secret.anthropicApiKey` example above is the API-key **fallback** — pair it with
+> `config.llmProvider=anthropic`. Full operator runbook: **`docs/CLUSTER_SERVICE_DEPLOY.md`**.
+
 Key chart values (`deploy/helm/llm-d-benchmarking-agent/values.yaml`):
 
 | Value | Default | Purpose |
@@ -96,6 +101,7 @@ Key chart values (`deploy/helm/llm-d-benchmarking-agent/values.yaml`):
 | `config.llmProvider` / `config.anthropicModel` / `config.openaiBaseUrl` / `config.openaiModel` | provider config | Non-secret env. |
 | `config.maxConcurrentRuns` | `2` | Concurrency cap. |
 | `config.orchestratorImage` | `""` | Enables orchestrated K8s-Job runs when set. |
+| `secret.claudeCodeOauthToken` | `""` | **Primary chat auth** — the `claude setup-token` subscription token for the default `claude-agent-sdk` provider. |
 | `secret.create` / `secret.existingSecret` / `secret.anthropicApiKey` / `secret.openaiApiKey` / `secret.hfToken` | `true` / `""` / … | Chart-managed Secret, or point at a pre-existing one (recommended for real deploys). |
 | `serviceAccount.create` / `serviceAccount.name` / `rbac.create` | `true` / `""` / `true` | The least-privilege SA + namespaced Role/RoleBinding. |
 | `service.type` / `service.port` | `ClusterIP` / `8000` | Networking. |

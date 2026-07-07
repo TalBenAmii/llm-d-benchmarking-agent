@@ -15,7 +15,8 @@
 # Usage:
 #   ./run.sh [flags]
 #   ./run.sh --keep                 # leave the cluster up afterwards for inspection
-#   ANTHROPIC_API_KEY=sk-... ./run.sh    # deploy anthropic + run the live-chat check
+#   CLAUDE_CODE_OAUTH_TOKEN=... ./run.sh # PRIMARY: deploy claude-agent-sdk (subscription auth) + live chat
+#   ANTHROPIC_API_KEY=sk-... ./run.sh    # FALLBACK: deploy anthropic (API key) + the live-chat check
 #
 #   --cluster NAME        kind cluster name          (default: csvc-sim)
 #   -n, --namespace NS    target namespace           (default: llmd-bench)
@@ -25,7 +26,9 @@
 #   --tag TAG             image tag                   (default: 0.1.0)
 #   --no-build            require the image to already exist locally (never build it)
 #   --keep                do NOT tear the cluster down on exit (and reuse it if it exists)
-#   --anthropic-key KEY   Anthropic API key (default: $ANTHROPIC_API_KEY / a project .env)
+#   --oauth-token TOKEN   Claude subscription token from `claude setup-token` — PRIMARY auth
+#                         (default: $CLAUDE_CODE_OAUTH_TOKEN / a project .env); -> claude-agent-sdk
+#   --anthropic-key KEY   Anthropic API key — FALLBACK auth (default: $ANTHROPIC_API_KEY / a project .env)
 #   --build-timeout SECS  hard cap on the image build     (default: 1800)
 #   --phase-timeout SECS  watchdog on the post-build cluster phase (default: 1800)
 #   -h, --help
@@ -49,6 +52,7 @@ IMAGE="llm-d-benchmarking-agent"
 TAG="0.1.0"
 NO_BUILD=0
 KEEP=0
+OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}"
 ANTHROPIC_KEY="${ANTHROPIC_API_KEY:-}"
 BUILD_TIMEOUT=1800
 PHASE_TIMEOUT=1800
@@ -82,6 +86,20 @@ usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "${BASH_SOU
 have()  { command -v "$1" >/dev/null 2>&1; }
 die()   { printf '%s[csvc-sim] ERROR: %s%s\n' "$C_R" "$*" "$C_0" >&2; exit 1; }
 
+# Read KEY=value for $1 from a project .env if present; echo the parsed value (empty if absent).
+# Pure bash parameter-expansion parsing: strip a trailing CR and surrounding quotes. The `|| true`
+# keeps a keyless .env from tripping `set -euo pipefail`. Always returns 0.
+env_fallback() {
+  local line val
+  [[ -f "$PROJECT_DIR/.env" ]] || return 0
+  line="$(grep -E "^[[:space:]]*$1=" "$PROJECT_DIR/.env" 2>/dev/null | tail -n1 || true)"
+  [[ -n "$line" ]] || return 0
+  val="${line#*=}"; val="${val%$'\r'}"
+  val="${val#\"}"; val="${val%\"}"
+  val="${val#\'}"; val="${val%\'}"
+  printf '%s' "$val"
+}
+
 # ─── arg parsing ─────────────────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -93,6 +111,7 @@ while [[ $# -gt 0 ]]; do
     --tag)             TAG="${2:?--tag needs a value}"; shift 2 ;;
     --no-build)        NO_BUILD=1; shift ;;
     --keep)            KEEP=1; shift ;;
+    --oauth-token)     OAUTH_TOKEN="${2:?--oauth-token needs a value}"; shift 2 ;;
     --anthropic-key)   ANTHROPIC_KEY="${2:?--anthropic-key needs a value}"; shift 2 ;;
     --build-timeout)   BUILD_TIMEOUT="${2:?--build-timeout needs a value}"; shift 2 ;;
     --phase-timeout)   PHASE_TIMEOUT="${2:?--phase-timeout needs a value}"; shift 2 ;;
@@ -108,22 +127,24 @@ BODY_FILE="$TMPDIR/body"
 PF_PID=""
 WATCHDOG_PID=""
 
-# Late-bind the Anthropic key from a project .env if still unset (never overrides an explicit one).
-# Pure bash parameter-expansion parsing: take the value, strip a trailing CR and surrounding quotes.
-if [[ -z "$ANTHROPIC_KEY" && -f "$PROJECT_DIR/.env" ]]; then
-  env_line="$(grep -E '^[[:space:]]*ANTHROPIC_API_KEY=' "$PROJECT_DIR/.env" 2>/dev/null | tail -n1 || true)"
-  if [[ -n "$env_line" ]]; then
-    env_key="${env_line#*=}"
-    env_key="${env_key%$'\r'}"
-    env_key="${env_key#\"}"; env_key="${env_key%\"}"
-    env_key="${env_key#\'}"; env_key="${env_key%\'}"
-    [[ -n "$env_key" ]] && ANTHROPIC_KEY="$env_key" && info "Picked up ANTHROPIC_API_KEY from $PROJECT_DIR/.env"
-  fi
+# Late-bind auth from a project .env if still unset (never overrides an explicit flag/env). The
+# OAuth token is the PRIMARY path (Claude subscription auth); the Anthropic API key is the fallback.
+if [[ -z "$OAUTH_TOKEN" ]]; then
+  OAUTH_TOKEN="$(env_fallback CLAUDE_CODE_OAUTH_TOKEN)"
+  [[ -n "$OAUTH_TOKEN" ]] && info "Picked up CLAUDE_CODE_OAUTH_TOKEN from $PROJECT_DIR/.env"
+fi
+if [[ -z "$ANTHROPIC_KEY" ]]; then
+  ANTHROPIC_KEY="$(env_fallback ANTHROPIC_API_KEY)"
+  [[ -n "$ANTHROPIC_KEY" ]] && info "Picked up ANTHROPIC_API_KEY from $PROJECT_DIR/.env"
 fi
 
-# Provider selection (per the task): a key -> anthropic (green /readyz AND live chat); no key ->
-# claude-agent-sdk (passes readiness keyless so /readyz still goes green; live chat is skipped).
-if [[ -n "$ANTHROPIC_KEY" ]]; then LLM_PROVIDER="anthropic"; else LLM_PROVIDER="claude-agent-sdk"; fi
+# Provider selection mirrors install_service.sh: an OAuth token -> claude-agent-sdk (subscription
+# auth, live-chat testable in-Pod); else an Anthropic API key -> anthropic (metered API, live-chat
+# testable); else keyless -> claude-agent-sdk with chat disabled (still passes /readyz green).
+if   [[ -n "$OAUTH_TOKEN" ]];   then LLM_PROVIDER="claude-agent-sdk"
+elif [[ -n "$ANTHROPIC_KEY" ]]; then LLM_PROVIDER="anthropic"
+else                                 LLM_PROVIDER="claude-agent-sdk"; fi
+LIVE_CHAT_AUTH=0; [[ -n "$OAUTH_TOKEN" || -n "$ANTHROPIC_KEY" ]] && LIVE_CHAT_AUTH=1
 
 # ─── cleanup / trap ──────────────────────────────────────────────────────────────────────────
 # Idempotent, self-bounded (every teardown command is timeout-wrapped so cleanup itself can't
@@ -191,7 +212,7 @@ for t in docker kind kubectl helm curl timeout; do have "$t" || missing+=("$t");
 timeout 20 docker info >/dev/null 2>&1 || die "docker is installed but the daemon is unreachable ('docker info' failed)."
 HAVE_PY3=0; have python3 && HAVE_PY3=1
 info "tooling OK (docker, kind, kubectl, helm, curl, timeout$( [[ $HAVE_PY3 == 1 ]] && echo ', python3' ))"
-info "provider: $LLM_PROVIDER$( [[ -n "$ANTHROPIC_KEY" ]] && echo ' (key present -> live chat enabled)' || echo ' (no key -> live chat skipped)')"
+info "provider: $LLM_PROVIDER$( [[ "$LIVE_CHAT_AUTH" == 1 ]] && echo ' (auth present -> live chat enabled)' || echo ' (no auth -> live chat skipped)')"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 # 2. Ensure the image exists locally
@@ -250,30 +271,21 @@ info "image loaded onto node(s)"
 # 5. Deploy via the service installer (kind-appropriate: locally-loaded image, pullPolicy Never)
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 step "5. Deploy — release '$RELEASE' into namespace '$NS' (provider $LLM_PROVIDER)"
-if [[ "$LLM_PROVIDER" == "anthropic" ]]; then
-  # PRIMARY path: exercise the REAL installer end to end. The chart default provider is already
-  # anthropic, so --anthropic-key is all it needs; --context targets kind explicitly (never the
-  # caller's current-context), --image-pull-policy Never keeps kind off any registry.
-  timeout --kill-after=30s "$DEPLOY_TIMEOUT" bash "$INSTALLER" \
-    -n "$NS" -r "$RELEASE" \
-    --image "$IMAGE" --tag "$TAG" --image-pull-policy Never \
-    --context "$CTX" --timeout "$HELM_TIMEOUT" \
-    --anthropic-key "$ANTHROPIC_KEY" \
-    || { dump_diagnostics; die "install_service.sh deploy failed/timed out (see diagnostics above)."; }
-else
-  # KEYLESS path: install_service.sh has no provider flag, so pin config.llmProvider directly in
-  # the helm call (the task-sanctioned override). This mirrors install_service.sh::deploy_agent's
-  # invocation exactly, plus the one knob it can't yet express — needed so a keyless kind run gets
-  # a green /readyz (claude-agent-sdk is coherent without a key; anthropic-without-key is not).
-  timeout --kill-after=30s "$DEPLOY_TIMEOUT" helm --kube-context "$CTX" upgrade --install "$RELEASE" "$CHART_DIR" \
-    --namespace "$NS" --create-namespace \
-    --set "image.repository=$IMAGE" \
-    --set "image.tag=$TAG" \
-    --set "image.pullPolicy=Never" \
-    --set "config.llmProvider=$LLM_PROVIDER" \
-    --wait --timeout "$HELM_TIMEOUT" \
-    || { dump_diagnostics; die "helm deploy failed/timed out (see diagnostics above)."; }
-fi
+# ALWAYS exercise the REAL installer end to end — it now selects the provider from the auth flag:
+#   --oauth-token  -> claude-agent-sdk (+ secret.claudeCodeOauthToken)
+#   --anthropic-key -> anthropic       (+ secret.anthropicApiKey)
+#   neither         -> claude-agent-sdk with chat disabled (keeps a keyless /readyz green)
+# so there is no longer any keyless helm bypass. --context targets kind explicitly (never the
+# caller's current-context); --image-pull-policy Never keeps kind off any registry.
+auth_args=()
+if   [[ -n "$OAUTH_TOKEN" ]];   then auth_args=(--oauth-token "$OAUTH_TOKEN")
+elif [[ -n "$ANTHROPIC_KEY" ]]; then auth_args=(--anthropic-key "$ANTHROPIC_KEY"); fi
+timeout --kill-after=30s "$DEPLOY_TIMEOUT" bash "$INSTALLER" \
+  -n "$NS" -r "$RELEASE" \
+  --image "$IMAGE" --tag "$TAG" --image-pull-policy Never \
+  --context "$CTX" --timeout "$HELM_TIMEOUT" \
+  ${auth_args[@]+"${auth_args[@]}"} \
+  || { dump_diagnostics; die "install_service.sh deploy failed/timed out (see diagnostics above)."; }
 
 # Derive the deployment + service names FROM THE CLUSTER (robust vs the chart's fullname helper).
 DEPLOY="$(timeout 20 kubectl --context "$CTX" -n "$NS" get deploy -o name 2>/dev/null | head -n1)"
@@ -335,7 +347,7 @@ fi
 http_get /api/provider
 if [[ "$HTTP_CODE" == 200 ]]; then
   if [[ "$HAVE_PY3" == 1 ]]; then
-    pv="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("provider=%s model=%s ready=%s" % (d.get("provider"), d.get("model"), d.get("ready")))' "$BODY_FILE" 2>/dev/null || true)"
+    pv="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("provider=%s model=%s configured=%s" % (d.get("provider"), d.get("model"), d.get("configured")))' "$BODY_FILE" 2>/dev/null || true)"
   else
     pv="$(head -c 200 "$BODY_FILE")"
   fi
@@ -358,10 +370,10 @@ else
   fail "RBAC boundary — expected a Forbidden refusal (rc=$rbac_rc): $(printf '%s' "$rbac_out" | head -c 300)"
 fi
 
-# 8e. Live chat (only when a key is present -> anthropic). One minimal /ws round-trip; assert a
-# non-error assistant reply comes back. Pure-stdlib raw-WS client (no websockets/websocket-client
-# dependency). Bounded by both an internal deadline and an outer `timeout`.
-if [[ -n "$ANTHROPIC_KEY" ]]; then
+# 8e. Live chat (only when an OAuth token or Anthropic key is present). One minimal /ws round-trip;
+# assert a non-error assistant reply comes back. Pure-stdlib raw-WS client (no websockets/
+# websocket-client dependency). Bounded by both an internal deadline and an outer `timeout`.
+if [[ "$LIVE_CHAT_AUTH" == 1 ]]; then
   if [[ "$HAVE_PY3" == 1 ]]; then
     chat_msg="Respond with a brief one-sentence greeting confirming you are online. Do not use any tools or run any commands."
     if chat_out="$(timeout "$((CHAT_DEADLINE + 30))" python3 "$SCRIPT_DIR/ws_chat_probe.py" "$PORT" "$chat_msg" "$CHAT_DEADLINE" 2>&1)"; then
@@ -370,19 +382,20 @@ if [[ -n "$ANTHROPIC_KEY" ]]; then
       fail "live chat — no valid reply over /ws: $chat_out"
     fi
   else
-    # Fallback per the task: approximate live-chat by asserting the anthropic provider built + is
-    # ready on /api/provider, and clearly log that the WS round-trip was not performed. Used as an
-    # `if` condition so the grep chain never trips set -e.
+    # Fallback per the task: approximate live-chat by asserting the authed provider built (configured)
+    # AND is the expected provider on /api/provider, and clearly log that the WS round-trip was not
+    # performed. Used as an `if` condition so the greps never trip set -e. Provider-agnostic (SDK via
+    # token or anthropic via key).
     http_get /api/provider
-    if grep -q '"provider"[[:space:]]*:[[:space:]]*"anthropic"' "$BODY_FILE" \
-       && grep -Eq '"ready"[[:space:]]*:[[:space:]]*true' "$BODY_FILE"; then
-      pass "live chat (APPROXIMATED — no python3 for a WS client) — /api/provider shows anthropic built + ready"
+    if grep -Eq '"configured"[[:space:]]*:[[:space:]]*true' "$BODY_FILE" \
+       && grep -Eq "\"provider\"[[:space:]]*:[[:space:]]*\"$LLM_PROVIDER\"" "$BODY_FILE"; then
+      pass "live chat (APPROXIMATED — no python3 for a WS client) — /api/provider shows $LLM_PROVIDER built + configured"
     else
-      fail "live chat approximation — /api/provider did not show anthropic built + ready"
+      fail "live chat approximation — /api/provider did not show $LLM_PROVIDER configured"
     fi
   fi
 else
-  skip "live chat — no Anthropic key (deployed claude-agent-sdk for a keyless-green /readyz)"
+  skip "live chat — no OAuth token or Anthropic key (deployed claude-agent-sdk with chat disabled for a keyless-green /readyz)"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════

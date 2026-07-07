@@ -26,6 +26,10 @@ helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
   --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
 ```
 
+The in-cluster **default provider is `claude-agent-sdk`** (Claude Max/Pro subscription) authed by
+`secret.claudeCodeOauthToken` (a `claude setup-token` token); the `secret.anthropicApiKey` above is the
+API-key **fallback** (`config.llmProvider=anthropic`). Full runbook: `docs/CLUSTER_SERVICE_DEPLOY.md`.
+
 Then `kubectl -n <ns> port-forward svc/bench-agent-llm-d-benchmarking-agent 8000:8000` and open
 the UI (the Service name is `<release>-<chart>` via the fullname template — adjust if you chose a
 different release name or set `fullnameOverride`).

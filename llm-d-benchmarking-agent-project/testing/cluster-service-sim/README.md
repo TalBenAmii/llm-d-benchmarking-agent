@@ -18,11 +18,13 @@ fully works** end to end.
 3. **kind cluster** — creates a throwaway cluster (`--name csvc-sim`, `--wait 120s`). An existing
    same-named cluster is deleted first for a clean slate (unless `--keep`, which reuses it).
 4. **Load image** — `kind load docker-image` so the node never reaches a registry.
-5. **Deploy** — with an Anthropic key it invokes **`scripts/install_service.sh`** directly (the
-   real installer, provider `anthropic`, `--image-pull-policy Never`, `--context kind-csvc-sim`);
-   without a key it does an equivalent `helm upgrade --install` that pins
-   `config.llmProvider=claude-agent-sdk` (the installer has no provider flag, and `claude-agent-sdk`
-   is the provider that passes readiness **keyless**).
+5. **Deploy** — **always** via the real **`scripts/install_service.sh`** (`--image-pull-policy Never`,
+   `--context kind-csvc-sim`). The installer picks the provider from the auth flag it is handed: a
+   **`--oauth-token`** (Claude subscription token) → `claude-agent-sdk` + `secret.claudeCodeOauthToken`;
+   else a **`--anthropic-key`** → `anthropic` + `secret.anthropicApiKey`; else **no auth flag** →
+   `claude-agent-sdk` with chat disabled (the provider that passes readiness **keyless**, so `/readyz`
+   still goes green). There is no longer any keyless `helm` bypass — the installer now owns provider
+   selection.
 6. **Rollout** — `kubectl rollout status` (bounded).
 7. **Port-forward** the service and poll `/healthz` with a **bounded** retry (never an unbounded loop).
 8. **Assertions** (below), each printed `PASS`/`FAIL`, with a final summary.
@@ -32,9 +34,12 @@ fully works** end to end.
 
 - `docker` (daemon running), `kind`, `kubectl`, `helm`, `curl`, and GNU `timeout` (coreutils) on `PATH`.
 - `python3` (stdlib only) for the live-chat WebSocket round-trip. If it is absent, the chat check is
-  **approximated** (asserts `/api/provider` shows anthropic built + ready) and clearly logged as such.
-- Optional: an **Anthropic API key** (`--anthropic-key`, or `$ANTHROPIC_API_KEY`, or a project
-  `.env` the script will source). With a key the live-chat check runs; without one it is skipped.
+  **approximated** (asserts `/api/provider` shows the authed provider built + ready) and clearly logged.
+- Optional auth (any one enables the live-chat check; **skipped** if none is present):
+  - **PRIMARY — a Claude subscription OAuth token** (`--oauth-token`, or `$CLAUDE_CODE_OAUTH_TOKEN`,
+    or a project `.env` the script reads) from `claude setup-token` → deploys `claude-agent-sdk`.
+  - **FALLBACK — an Anthropic API key** (`--anthropic-key`, or `$ANTHROPIC_API_KEY`, or `.env`)
+    → deploys `anthropic`.
 - Enough disk/RAM for the ~1GB full-bake image and a single-node kind cluster.
 
 ## How to run
@@ -45,14 +50,18 @@ testing/cluster-service-sim/run.sh                 # build/reuse image, deploy, 
 testing/cluster-service-sim/run.sh --keep          # leave the cluster up for inspection afterwards
 testing/cluster-service-sim/run.sh --no-build      # require the image to already exist locally
 
-# With a key -> deploys anthropic AND runs the live-chat round-trip:
+# PRIMARY: a Claude subscription OAuth token -> deploys claude-agent-sdk AND runs the live-chat round-trip:
+CLAUDE_CODE_OAUTH_TOKEN=... testing/cluster-service-sim/run.sh
+#   or: testing/cluster-service-sim/run.sh --oauth-token ...
+
+# FALLBACK: an Anthropic API key -> deploys anthropic AND runs the live-chat round-trip:
 ANTHROPIC_API_KEY=sk-ant-... testing/cluster-service-sim/run.sh
 #   or: testing/cluster-service-sim/run.sh --anthropic-key sk-ant-...
 ```
 
-Useful flags (`--help` lists all): `--cluster`, `--namespace`, `--release`, `--port`, `--image`,
-`--tag`, `--build-timeout SECS`, `--phase-timeout SECS`. Exit status is **0 only if every required
-check passed**.
+Useful flags (`--help` lists all): `--oauth-token`, `--anthropic-key`, `--cluster`, `--namespace`,
+`--release`, `--port`, `--image`, `--tag`, `--build-timeout SECS`, `--phase-timeout SECS`. Exit status
+is **0 only if every required check passed**.
 
 ## What each assertion proves
 
@@ -60,9 +69,9 @@ check passed**.
 |-------|--------------------|
 | `/healthz` 200 + `{"ok": true}` | The process is up and serving (liveness). |
 | `/readyz` 200 | The startup self-check is green in-Pod: workspace writable, provider coherent, the read-only sibling repos are present on disk (baked into the image), runner/auth OK. On failure the JSON body (which names the failed probe) is printed. |
-| `/api/provider` 200 | The provider surface answers; the log shows which provider built (`anthropic` with a key, else `claude-agent-sdk`). |
+| `/api/provider` 200 | The provider surface answers; the log shows which provider built (`claude-agent-sdk` with an OAuth token or keyless, `anthropic` with an API key). |
 | **RBAC boundary** | Running `kubectl delete ns kube-system` **from inside the Pod** is refused with `Forbidden`. This proves the namespaced least-privilege Role holds — the agent's ServiceAccount cannot touch cluster-scoped resources or other namespaces. A *success* here would be a security failure; the refusal is the required pass. |
-| **Live chat** (key only) | One real `user_message` over the `/ws` WebSocket comes back as a non-error `assistant_text` — the full LLM path works in-cluster. Skipped without a key (there is no keyless live LLM to talk to); the `claude-agent-sdk` deploy in that case exists only to prove a keyless-green `/readyz`. |
+| **Live chat** (auth only) | One real `user_message` over the `/ws` WebSocket comes back as a non-error `assistant_text` — the full LLM path works in-cluster (`claude-agent-sdk` via the OAuth token, or `anthropic` via the API key). Skipped when neither is present (there is no authed live LLM to talk to); the keyless `claude-agent-sdk` deploy in that case exists only to prove a keyless-green `/readyz`. |
 
 ## Running it on the throwaway `kind-fresh` distro (WSL)
 
