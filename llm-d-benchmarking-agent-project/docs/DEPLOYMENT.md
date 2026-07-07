@@ -73,19 +73,24 @@ the supported POC path**, exercised on a local `kind` cluster.
 
 ### Laptop (kind) — `./install.sh`
 
-From the **repo root**, one command builds the image, creates a `kind` cluster, `kind load`s the
-image, deploys the chart via `scripts/install_service.sh`, verifies `/healthz`+`/readyz`, and
-leaves the service running (printing the port-forward + teardown commands):
+One command auto-installs any missing prereqs (docker/kind/kubectl/helm) via `sudo`, builds the
+image, creates a `kind` cluster, `kind load`s the image, deploys the chart via
+`scripts/install_service.sh`, verifies `/healthz`+`/readyz`, leaves the service running, and opens
+the UI in your browser. Run it either **from scratch** (the curl one-liner self-clones) or **from a
+checkout / repo root** (`./install.sh`):
 
 ```bash
-./install.sh                     # fresh laptop first: sudo ./install.sh --prereqs  (docker+kind+kubectl+helm)
-./install.sh --open              # …and port-forward + open the browser
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/install.sh)  # self-clones + runs
+./install.sh                     # …or run from a clone of the repo
+./install.sh --no-open           # deploy but don't open a browser (prints the port-forward line)
 ```
 
-Chat auth defaults to a **Claude subscription**: `install.sh` reads `CLAUDE_CODE_OAUTH_TOKEN` (a
-`claude setup-token` token) from the project `.env` or `--oauth-token`, falling back to
-`ANTHROPIC_API_KEY` / `--anthropic-key`. Keyless still serves the health endpoints (chat
-disabled). Teardown: `kind delete cluster --name bench-agent`.
+If Docker was newly installed, `install.sh` stops once for you to log out/in (docker-group
+activation), then re-run. On first run it also offers to wire your **Claude subscription**
+interactively (no manual `.env` step). Chat auth otherwise defaults to that subscription: `install.sh` reads
+`CLAUDE_CODE_OAUTH_TOKEN` (a `claude setup-token` token) from the project `.env` or `--oauth-token`,
+falling back to `ANTHROPIC_API_KEY` / `--anthropic-key`. Keyless still serves the health endpoints
+(chat disabled). Teardown: `kind delete cluster --name bench-agent`.
 
 ### Real cluster (not yet tested) — same deploy, minimal delta
 
