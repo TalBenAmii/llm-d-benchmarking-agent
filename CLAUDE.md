@@ -10,6 +10,7 @@ This directory is a **container**, not the project. It holds:
 ├── llm-d-bench-mcp/                  # OWNED sibling repo (its own git repo) — the standalone MCP server split out of the app
 ├── demo-output/                      # demo videos/screenshots from the capture pipeline (git-excluded)
 ├── fresh-env/                        # throwaway fresh-WSL-distro test env (reset.sh → kind-fresh)
+├── install.sh                        # ⭐ main install path — run the assistant as a service on a local kind cluster (laptop)
 ├── README.md                         # the project README (front page)
 └── llm-d-benchmarking-agent-project/ # THE project — where the app code lives
 ```

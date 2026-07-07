@@ -1,8 +1,9 @@
 # Deployment Guide
 
 How to run the agent in each of its two modes — **local** (a laptop / dev box, the
-quickstart path) and **in-cluster** (a hardened Deployment via Helm) — plus
-configuration, secrets, RBAC, and observability wiring.
+direct / dev path) and **in-cluster** (a hardened Deployment via Helm; on a local
+`kind` cluster this is the recommended POC path) — plus configuration, secrets, RBAC,
+and observability wiring.
 
 The mechanism (the `Dockerfile`, the Helm chart under
 `deploy/helm/llm-d-benchmarking-agent/`)
@@ -11,7 +12,7 @@ This guide ties them together.
 
 ---
 
-## Mode 1 — Local (the default; quickstart / laptop demo)
+## Mode 1 — Local (dev / non-service, on your laptop)
 
 The agent drives the *local* `llmdbenchmark` CLI and shells out to your local
 `kubectl`/`kind`/`docker`. No container, no in-cluster RBAC. This is the simplest path and
@@ -47,8 +48,8 @@ uv run uvicorn app.main:app --reload
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_PROVIDER` | `anthropic` | `anthropic`, `openai`, or `claude-agent-sdk` (your Claude Pro/Max plan via the local `claude` CLI login — no API key; `scripts/setup-claude-plan.sh` wires it interactively). |
-| `AGENT_SDK_MODEL` / `AGENT_SDK_EFFORT` | `claude-haiku-4-5` / `high` | Model + reasoning effort for the `claude-agent-sdk` route (the setup script recommends `claude-sonnet-4-6`). |
+| `LLM_PROVIDER` | `claude-agent-sdk` | `claude-agent-sdk` (default — your Claude Pro/Max plan via the local `claude` CLI login or a `claude setup-token` token, no API key; `scripts/setup-claude-plan.sh` wires it interactively), `anthropic`, or `openai`. |
+| `AGENT_SDK_MODEL` / `AGENT_SDK_EFFORT` | `claude-sonnet-5` / `high` | Model + reasoning effort for the `claude-agent-sdk` route. |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | — / `claude-opus-4-8` | Anthropic creds + model. |
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` | — / `…/v1` / `gpt-4o` | OpenAI-compatible creds; `BASE_URL` may point at a self-hosted vLLM/llm-d endpoint. |
 | `REPOS_DIR` | parent of the project | Where the `llm-d` / `llm-d-benchmark` repos are (or will be cloned). |
@@ -67,30 +68,64 @@ uv run uvicorn app.main:app --reload
 ## Mode 2 — In-cluster (Helm, one command)
 
 Run the agent as a Deployment inside the cluster, reachable via its Service (port 8000). Use
-this to live the agent next to the workloads it benchmarks, or to expose it to a team.
+this to live the agent next to the workloads it benchmarks, or to expose it to a team. **This is
+the supported POC path**, exercised on a local `kind` cluster.
 
-### Build the image
+### Laptop (kind) — `./install.sh`
+
+From the **repo root**, one command builds the image, creates a `kind` cluster, `kind load`s the
+image, deploys the chart via `scripts/install_service.sh`, verifies `/healthz`+`/readyz`, and
+leaves the service running (printing the port-forward + teardown commands):
 
 ```bash
-docker build -t llm-d-benchmarking-agent:0.1.0 .
+./install.sh                     # fresh laptop first: sudo ./install.sh --prereqs  (docker+kind+kubectl+helm)
+./install.sh --open              # …and port-forward + open the browser
 ```
 
-The image is **hardened**: non-root (uid 10001), read-only root filesystem, all Linux
-capabilities dropped, `RuntimeDefault` seccomp, no baked-in secrets (`.dockerignore`
-excludes `.env`), pinned kubectl. Prefer pinning by **digest** in production (below).
+Chat auth defaults to a **Claude subscription**: `install.sh` reads `CLAUDE_CODE_OAUTH_TOKEN` (a
+`claude setup-token` token) from the project `.env` or `--oauth-token`, falling back to
+`ANTHROPIC_API_KEY` / `--anthropic-key`. Keyless still serves the health endpoints (chat
+disabled). Teardown: `kind delete cluster --name bench-agent`.
 
-### Deploy with Helm
+### Real cluster (not yet tested) — same deploy, minimal delta
+
+`scripts/install_service.sh` deploys to whatever cluster your `kubectl` context points at, so a
+real cluster is the *same* steps with two changes: (a) push the image to a registry the cluster
+can pull (`make image-publish`, or your own registry) instead of `kind load`; (b) point at your
+context and skip `kind create`:
 
 ```bash
+cd llm-d-benchmarking-agent-project
+./scripts/install_service.sh \
+  --image <registry-repo> --context <your-context> \
+  --oauth-token "$CLAUDE_CODE_OAUTH_TOKEN"        # selects the default claude-agent-sdk provider
+```
+
+`--oauth-token` (or `$CLAUDE_CODE_OAUTH_TOKEN`) is the default auth; `--anthropic-key` is the
+API-key fallback. This path should work but is **untested** today. Full operator runbook,
+including auth and RBAC: **`docs/CLUSTER_SERVICE_DEPLOY.md`**.
+
+### Manual / API-key fallback (build + raw Helm)
+
+`install_service.sh` wraps these; run them by hand only for an air-gapped or API-key-only deploy:
+
+```bash
+cd llm-d-benchmarking-agent-project
+docker build -t llm-d-benchmarking-agent:0.1.0 .
+# make the image visible to your cluster, e.g.:  kind load docker-image llm-d-benchmarking-agent:0.1.0
 helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
   --namespace llmd-bench --create-namespace \
+  --set image.repository=llm-d-benchmarking-agent \
+  --set config.llmProvider=anthropic \
   --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
 ```
 
-> **Default chat provider is now `claude-agent-sdk`** (Claude Max/Pro subscription), authenticated by
-> `secret.claudeCodeOauthToken` (a `claude setup-token` token; the `claude` CLI is baked into the image).
-> The `secret.anthropicApiKey` example above is the API-key **fallback** — pair it with
-> `config.llmProvider=anthropic`. Full operator runbook: **`docs/CLUSTER_SERVICE_DEPLOY.md`**.
+The image is **hardened**: non-root (uid 10001), read-only root filesystem, all Linux
+capabilities dropped, `RuntimeDefault` seccomp, no baked-in secrets (`.dockerignore` excludes
+`.env`), pinned kubectl. Prefer pinning by **digest** in production (below). The chart's default
+provider is `claude-agent-sdk` (`secret.claudeCodeOauthToken`, a `claude setup-token` token; the
+`claude` CLI is baked into the image); the `secret.anthropicApiKey` example above is the API-key
+fallback — pair it with `config.llmProvider=anthropic`.
 
 Key chart values (`deploy/helm/llm-d-benchmarking-agent/values.yaml`):
 
@@ -111,7 +146,7 @@ Key chart values (`deploy/helm/llm-d-benchmarking-agent/values.yaml`):
 ### Reach the UI
 
 ```bash
-kubectl -n llmd-bench port-forward svc/llm-d-benchmarking-agent 8000:8000
+kubectl -n llmd-bench port-forward svc/bench-agent-llm-d-benchmarking-agent 8000:8000
 # open http://127.0.0.1:8000
 ```
 
