@@ -53,6 +53,55 @@ The `llm-d-benchmark` expertise lives in the agent's editable brain
 
 ## Quick start
 
+> **⚠️ Proof of concept — laptop-first.** This is a POC. The supported, exercised path today is
+> running the assistant as a **service on a local `kind` cluster on your laptop** (the `./install.sh`
+> path below). Running it against a **real** (remote / multi-node / GPU) cluster is **not yet
+> tested** — but it uses the *same* service deploy, so the delta should be minimal: point `kubectl`
+> at your real cluster and pull the image from a registry instead of `kind load`. See
+> [docs/CLUSTER_SERVICE_DEPLOY.md](llm-d-benchmarking-agent-project/docs/CLUSTER_SERVICE_DEPLOY.md).
+
+### Run the service on your laptop · recommended
+
+```bash
+# 1. Clone the repo — install.sh lives at the repo root:
+git clone https://github.com/TalBenAmii/llm-d-benchmarking-agent.git
+cd llm-d-benchmarking-agent
+
+# 2. Fresh laptop missing docker/kind/kubectl/helm? One-time install (needs sudo):
+sudo ./install.sh --prereqs      # then log out/in so the docker group applies
+
+# 3. First time only — wire your Claude subscription so chat works:
+claude setup-token               # prints a ~1-year headless token
+echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste-token>' >> llm-d-benchmarking-agent-project/.env
+# Skip step 3 and it still deploys (health goes green) — but chat is disabled until a token/key is set.
+
+# 4. Build the image, create a kind cluster, deploy via Helm, verify /healthz+/readyz — leaves it running:
+./install.sh
+
+# 5. Reach the UI:
+./install.sh --open              # port-forwards + opens the browser (recommended)
+# …or manually (install.sh prints this exact line when it finishes):
+kubectl -n llmd-bench port-forward svc/bench-agent-llm-d-benchmarking-agent 8000:8000  # then open http://localhost:8000
+```
+
+Teardown: `kind delete cluster --name bench-agent`. Full build+deploy+assert+auto-teardown e2e
+test: `bash llm-d-benchmarking-agent-project/testing/cluster-service-sim/run.sh`.
+
+| `install.sh` flag | What |
+|---|---|
+| `--prereqs` | Install docker + kind + kubectl + helm (needs `sudo`), then exit — the one-time fresh-laptop step. |
+| `--open` | Port-forward and open the UI in your browser. |
+| `--no-build` | Skip the image build (reuse an already-built/loaded image). |
+| `--cluster NAME` | kind cluster name (default `bench-agent`). |
+| `--oauth-token TOKEN` / `--anthropic-key KEY` | Pass chat auth on the CLI instead of via `.env`. |
+| `--port PORT` | Host port for `--open`'s port-forward (default `8000`). |
+
+`./install.sh --help` lists the rest (`--namespace`, `--release`, `--image`, `--tag`, `--build-timeout`).
+
+### Run it directly, no cluster · dev / non-service path
+
+Skip Kubernetes and run the app straight on your host (uvicorn on `127.0.0.1:8000`):
+
 ```bash
 # One-liner — clones into ~/llm-d-benchmarking-agent, then installs everything:
 bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install_local.sh)
@@ -69,15 +118,17 @@ cd llm-d-benchmarking-agent/llm-d-benchmarking-agent-project
 cd ~/llm-d-benchmarking-agent/llm-d-benchmarking-agent-project && ./scripts/run.sh --open
 ```
 
-Then give it an LLM to think with. The installer's last step offers to wire your **Claude
-subscription** (Pro/Max plan) for you — login, model pick, and a verified test call
-(`./scripts/setup-claude-plan.sh` re-runs it anytime; `--no-llm-setup` skips it). Or set one
-of these in `.env` by hand:
+### Give it an LLM
+
+Either path needs an LLM to think with. Easiest is your **Claude subscription** (Pro/Max, no API
+key): the service path reads a `claude setup-token` token from `.env` (step 3 above); the direct
+installer offers to wire it interactively (`./scripts/setup-claude-plan.sh` re-runs it anytime,
+`--no-llm-setup` skips it). Or set one of these in `.env` by hand:
 
 | Provider | `.env` settings |
 |---|---|
-| Your **Claude plan** — no API key | `LLM_PROVIDER=claude-agent-sdk` (or run `./scripts/setup-claude-plan.sh`) |
-| **Anthropic** API (default) | `ANTHROPIC_API_KEY=...` |
+| Your **Claude plan** — no API key *(default)* | `LLM_PROVIDER=claude-agent-sdk` (or run `./scripts/setup-claude-plan.sh`) |
+| **Anthropic** API | `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY=...` |
 | Any **OpenAI-compatible** endpoint | `LLM_PROVIDER=openai` + `OPENAI_API_KEY` (+ `OPENAI_BASE_URL`) |
 
 To try it without a cluster, set `SIMULATE=1` (see [Simulate Mode](#simulate-mode)).
@@ -278,16 +329,22 @@ install).
 
 ### Deploy to Kubernetes
 
+**Laptop (kind):** this is the recommended install — `./install.sh` from the repo root does the
+whole thing (see [Quick start](#quick-start)).
+
+**Real cluster (not yet tested):** it's the *same* deploy — `install_service.sh` deploys to
+whatever cluster your `kubectl` context points at. Only two deltas vs. the laptop path:
+
 ```bash
 cd llm-d-benchmarking-agent-project
-docker build -t llm-d-benchmarking-agent:0.1.0 .
-# make the image visible to your cluster, e.g.:  kind load docker-image llm-d-benchmarking-agent:0.1.0
-
-helm install bench-agent deploy/helm/llm-d-benchmarking-agent \
-  --namespace llmd-bench --create-namespace \
-  --set image.repository=llm-d-benchmarking-agent \
-  --set secret.anthropicApiKey=$ANTHROPIC_API_KEY
+# (a) push the image to a registry your cluster can pull (instead of `kind load`):
+make image-publish                       # or build+push to your own registry
+# (b) deploy to your real context (skip `kind create`):
+./scripts/install_service.sh --image <registry-repo> --context <your-context> --oauth-token <token>
 ```
+
+Full operator runbook:
+[`docs/CLUSTER_SERVICE_DEPLOY.md`](llm-d-benchmarking-agent-project/docs/CLUSTER_SERVICE_DEPLOY.md).
 
 Runs **non-root** with a read-only root filesystem, sources keys from a Kubernetes Secret,
 probes `/healthz`, exposes `/metrics`, and grants a **namespaced least-privilege Role**.
