@@ -62,41 +62,41 @@ The `llm-d-benchmark` expertise lives in the agent's editable brain
 
 ### Run the service on your laptop · recommended
 
+One command deploys the assistant as a service on a local `kind` cluster and opens the chat UI:
+
 ```bash
-# 1. Clone the repo — install.sh lives at the repo root:
-git clone https://github.com/TalBenAmii/llm-d-benchmarking-agent.git
-cd llm-d-benchmarking-agent
-
-# 2. Fresh laptop missing docker/kind/kubectl/helm? One-time install (needs sudo):
-sudo ./install.sh --prereqs      # then log out/in so the docker group applies
-
-# 3. First time only — wire your Claude subscription so chat works:
-claude setup-token               # prints a ~1-year headless token
-echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste-token>' >> llm-d-benchmarking-agent-project/.env
-# Skip step 3 and it still deploys (health goes green) — but chat is disabled until a token/key is set.
-
-# 4. Build the image, create a kind cluster, deploy via Helm, verify /healthz+/readyz — leaves it running:
-./install.sh
-
-# 5. Reach the UI:
-./install.sh --open              # port-forwards + opens the browser (recommended)
-# …or manually (install.sh prints this exact line when it finishes):
-kubectl -n llmd-bench port-forward svc/bench-agent-llm-d-benchmarking-agent 8000:8000  # then open http://localhost:8000
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/install.sh)
 ```
 
-Teardown: `kind delete cluster --name bench-agent`. Full build+deploy+assert+auto-teardown e2e
-test: `bash llm-d-benchmarking-agent-project/testing/cluster-service-sim/run.sh`.
+…or clone first, then run it from the repo root:
+
+```bash
+git clone https://github.com/TalBenAmii/llm-d-benchmarking-agent.git
+cd llm-d-benchmarking-agent
+./install.sh
+```
+
+That single run auto-installs anything missing (docker/kind/kubectl/helm) via `sudo` — it prompts for
+your password, and if Docker was newly installed it stops once to have you log out/in (docker-group
+activation) and re-run. On first run it also offers to wire your Claude subscription (when the `claude` CLI is present) so chat works —
+accept, or skip and it still deploys with health green (chat stays disabled until you add a token/key).
+It then builds the image, creates the `kind` cluster, deploys via Helm, verifies `/healthz`+`/readyz`,
+leaves the service running, and opens the UI in your browser.
+
+```bash
+./install.sh --no-open           # deploy without opening a browser — prints the port-forward line
+kind delete cluster --name bench-agent                                   # tear it all down
+bash llm-d-benchmarking-agent-project/testing/cluster-service-sim/run.sh # full build+deploy+assert+auto-teardown e2e
+```
 
 | `install.sh` flag | What |
 |---|---|
-| `--prereqs` | Install docker + kind + kubectl + helm (needs `sudo`), then exit — the one-time fresh-laptop step. |
-| `--open` | Port-forward and open the UI in your browser. |
+| `--no-open` | Deploy but don't open a browser (prints the port-forward command). |
 | `--no-build` | Skip the image build (reuse an already-built/loaded image). |
 | `--cluster NAME` | kind cluster name (default `bench-agent`). |
 | `--oauth-token TOKEN` / `--anthropic-key KEY` | Pass chat auth on the CLI instead of via `.env`. |
-| `--port PORT` | Host port for `--open`'s port-forward (default `8000`). |
 
-`./install.sh --help` lists the rest (`--namespace`, `--release`, `--image`, `--tag`, `--build-timeout`).
+`./install.sh --help` lists the rest (`--open`, `--namespace`, `--release`, `--image`, `--tag`, `--port`, `--build-timeout`).
 
 ### Run it directly, no cluster · dev / non-service path
 
@@ -121,9 +121,9 @@ cd ~/llm-d-benchmarking-agent/llm-d-benchmarking-agent-project && ./scripts/run.
 ### Give it an LLM
 
 Either path needs an LLM to think with. Easiest is your **Claude subscription** (Pro/Max, no API
-key): the service path reads a `claude setup-token` token from `.env` (step 3 above); the direct
-installer offers to wire it interactively (`./scripts/setup-claude-plan.sh` re-runs it anytime,
-`--no-llm-setup` skips it). Or set one of these in `.env` by hand:
+key): the service path's `install.sh` offers to wire it for you on first run (no manual `.env`
+step); the direct installer offers the same interactively (`./scripts/setup-claude-plan.sh` re-runs
+it anytime, `--no-llm-setup` skips it). Or set one of these in `.env` by hand:
 
 | Provider | `.env` settings |
 |---|---|

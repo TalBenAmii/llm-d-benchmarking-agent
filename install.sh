@@ -2,16 +2,18 @@
 # install.sh — one-command install-and-run of the llm-d Benchmarking Assistant as a
 # Kubernetes SERVICE on a local `kind` cluster (a laptop POC).
 #
-# It ORCHESTRATES only: preflight -> build image -> create kind cluster -> load image ->
+# It ORCHESTRATES only: (curl-bootstrap self-clone) -> preflight (auto-installs any missing
+# docker/kind/kubectl/helm via sudo) -> build image -> create kind cluster -> load image ->
 # DELEGATE the actual deploy to scripts/install_service.sh (the real Helm installer) ->
-# verify /healthz + /readyz -> LEAVE THE SERVICE RUNNING and print how to reach/tear it down.
+# verify /healthz + /readyz -> LEAVE THE SERVICE RUNNING and (by default, on a terminal) open the UI.
 # The Helm logic lives in install_service.sh; this script does not duplicate it. For a
 # build+deploy+assert+AUTO-TEARDOWN e2e test instead, use testing/cluster-service-sim/run.sh.
 #
 # Caveats: the image is a ~1 GB "full-bake" and the FIRST build is slow and needs network
-# egress (it clones the CLI + toolchain). On WSL2, run from the Linux filesystem (not /mnt/*)
-# and make sure Docker is reachable in this shell. Prereqs (docker/kind/kubectl/helm) are a
-# one-time `sudo ./install.sh --prereqs`.
+# egress (it clones the CLI + toolchain). On WSL2, run from the Linux filesystem (not /mnt/*).
+# Missing prereqs (docker/kind/kubectl/helm) are auto-installed during preflight via interactive
+# sudo. Run it straight from GitHub:
+#   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/install.sh)
 set -euo pipefail
 
 log()  { printf '\033[35m▸\033[0m %s\n' "$*"; }                                    # llm-d purple bullet
@@ -23,17 +25,18 @@ have() { command -v "$1" >/dev/null 2>&1; }
 usage() {
   cat <<'EOF'
 install.sh — one-command install-and-run of the llm-d Benchmarking Assistant as a Kubernetes
-SERVICE on a local `kind` cluster (laptop POC). It orchestrates preflight -> build image ->
-create kind cluster -> load image -> DELEGATE the deploy to scripts/install_service.sh (Helm)
--> verify /healthz + /readyz, then LEAVES THE SERVICE RUNNING and prints how to reach and tear
-it down. (For a build+deploy+assert+auto-teardown e2e test instead, use the harness at
-testing/cluster-service-sim/run.sh.)
+SERVICE on a local `kind` cluster (laptop POC). Run it straight from GitHub with the curl one-liner
+below, or clone the repo and run ./install.sh. It orchestrates: fetch (curl-bootstrap self-clone) ->
+preflight (auto-installs any missing docker/kind/kubectl/helm via interactive sudo) -> build image ->
+create kind cluster -> load image -> DELEGATE the deploy to scripts/install_service.sh (Helm) ->
+verify /healthz + /readyz. If no Claude auth is configured it offers to set up your subscription token,
+then LEAVES THE SERVICE RUNNING and (by default, on a terminal) opens the chat UI in your browser.
+(For a build+deploy+assert+auto-teardown e2e test instead, use testing/cluster-service-sim/run.sh.)
 
 Usage:
+  bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/install.sh)
   ./install.sh [flags]
-  sudo ./install.sh --prereqs        # one-time: install docker + kind + kubectl (+helm)
 
-  --prereqs             install docker+kind+kubectl (+helm) and exit; needs root (sudo)
   --cluster NAME        kind cluster name            (default: bench-agent; env CLUSTER)
   -n, --namespace NS    target namespace             (default: llmd-bench;  env NAMESPACE)
   -r, --release NAME    Helm release name            (default: bench-agent; env RELEASE)
@@ -45,22 +48,30 @@ Usage:
       --anthropic-key KEY  Anthropic API key fallback
                         (default: $ANTHROPIC_API_KEY, else the project .env) -> anthropic
       --no-build        reuse an existing local image; never build (fails if it is absent)
-      --open            after a healthy deploy, port-forward :PORT and open the browser (Ctrl-C to stop)
+      --no-open         deploy and leave running, but don't port-forward / open a browser
+      --open            open the UI even when stdout isn't a terminal (default: open on a terminal)
       --build-timeout SECS  hard cap on the image build (default: 1800)
   -h, --help
 
+Prerequisites: any missing docker/kind/kubectl/helm are installed automatically during preflight via
+interactive sudo (you'll be prompted for your password; Ctrl-C to abort and install them manually). If
+Docker was just installed, its group membership only activates on a new login — log out/in (or run
+'newgrp docker') once, then re-run.
+
 Examples:
-  sudo ./install.sh --prereqs   # fresh laptop: install docker+kind+kubectl+helm, then re-login
-  ./install.sh                  # build, spin up kind, deploy, verify, leave it running
+  bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/install.sh)
+                                # from scratch: clone into ~/llm-d-benchmarking-agent, install, and run
+  ./install.sh                  # in a checkout: build, spin up kind, deploy, verify, open the UI
   ./install.sh --no-build       # skip the build; deploy an image already built locally
-  ./install.sh --open           # deploy, then open the chat UI in your browser
+  ./install.sh --no-open        # deploy and leave running, but don't open a browser
 EOF
 }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"      # this script lives at the repo root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" 2>/dev/null && pwd || true)"  # empty under `bash <(curl …)`
 PROJECT_DIR="$SCRIPT_DIR/llm-d-benchmarking-agent-project"
 INSTALLER="$PROJECT_DIR/scripts/install_service.sh"            # the real Helm deployer we delegate to
 CHART_DIR="$PROJECT_DIR/deploy/helm/llm-d-benchmarking-agent"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/llm-d-benchmarking-agent}"   # curl-bootstrap clone target (see bootstrap_if_curl)
 
 # Inputs — all env-overridable; the flags below win over the environment.
 CLUSTER="${CLUSTER:-bench-agent}"
@@ -72,7 +83,7 @@ PORT="${PORT:-8000}"
 OAUTH_TOKEN="${OAUTH_TOKEN:-${CLAUDE_CODE_OAUTH_TOKEN:-}}"
 ANTHROPIC_KEY="${ANTHROPIC_KEY:-${ANTHROPIC_API_KEY:-}}"
 BUILD_TIMEOUT="${BUILD_TIMEOUT:-1800}"
-NO_BUILD=0; PREREQS=0; OPEN=0
+NO_BUILD=0; OPEN=0; NO_OPEN=0
 
 # Per-step bounds (seconds) — nothing runs unbounded.
 LOAD_TIMEOUT=300
@@ -87,7 +98,6 @@ TMPDIR="$(mktemp -d)"; BODY_FILE="$TMPDIR/body"
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --prereqs)        PREREQS=1; shift ;;
       --cluster)        CLUSTER="${2:?--cluster needs a value}"; shift 2 ;;
       -n|--namespace)   NAMESPACE="${2:?--namespace needs a value}"; shift 2 ;;
       -r|--release)     RELEASE="${2:?--release needs a value}"; shift 2 ;;
@@ -98,6 +108,7 @@ parse_args() {
       --anthropic-key)  ANTHROPIC_KEY="${2:?--anthropic-key needs a value}"; shift 2 ;;
       --no-build)       NO_BUILD=1; shift ;;
       --open)           OPEN=1; shift ;;
+      --no-open)        NO_OPEN=1; shift ;;
       --build-timeout)  BUILD_TIMEOUT="${2:?--build-timeout needs a value}"; shift 2 ;;
       -h|--help)        usage; exit 0 ;;
       *) die "unknown option '$1' (try --help)" ;;
@@ -134,32 +145,68 @@ http_get() {
   HTTP_CODE="$(timeout 15 curl -sS -o "$BODY_FILE" -w '%{http_code}' "http://127.0.0.1:$PORT$1" 2>/dev/null || echo 000)"
 }
 
-# --prereqs: the ONLY privileged step. Does not assume passwordless sudo; stops afterwards.
-install_prereqs() {
-  [[ $EUID -eq 0 ]] || die "Installing prerequisites needs root. Re-run:  sudo ./install.sh --prereqs"
-  step "Installing prerequisites (docker + kind + kubectl)"
-  bash "$PROJECT_DIR/scripts/install_prereqs.sh" --all
-  if have helm; then
-    log "helm already present — skipping."
+# Curl-bootstrap (mirrors scripts/install_local.sh): this file also runs via `bash <(curl … install.sh)`,
+# where it is NOT inside a checkout (no sibling project dir). In that case clone the repo into INSTALL_DIR
+# and re-exec the on-disk copy so every path below resolves. A real checkout (marker file present) is a no-op.
+bootstrap_if_curl() {
+  [[ -f "$PROJECT_DIR/pyproject.toml" ]] && return 0   # already a real checkout — nothing to do
+  [[ "${_AGENT_BOOTSTRAPPED:-0}" == 1 ]] && die "project still not found after cloning (bootstrap loop) — check $INSTALL_DIR."
+  have git  || die "git is required to fetch the repo — install git and re-run."
+  have curl || die "curl is required to fetch the repo — install curl and re-run."
+  if [[ -d "$INSTALL_DIR/.git" ]]; then
+    # Deliberate: an existing checkout is reused as-is (no `git pull`) so a local .env / uncommitted work isn't clobbered.
+    log "Using existing checkout at $INSTALL_DIR"
   else
-    step "Installing helm"
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    step "Fetching llm-d-benchmarking-agent → $INSTALL_DIR"
+    git clone "https://github.com/TalBenAmii/llm-d-benchmarking-agent" "$INSTALL_DIR" \
+      || die "git clone failed (no network?) — clone it yourself, then run $INSTALL_DIR/install.sh."
   fi
-  step "Prerequisites installed."
-  log "If docker was just installed, your group membership needs a fresh login:"
-  log "    start a new shell (or run 'newgrp docker'), then run:  ./install.sh"
-  log "Run ./install.sh as your NORMAL user (not root)."
+  [[ -f "$INSTALL_DIR/install.sh" ]] || die "$INSTALL_DIR/install.sh missing after clone (unexpected repo layout)."
+  export _AGENT_BOOTSTRAPPED=1
+  exec bash "$INSTALL_DIR/install.sh" "$@"   # re-run the on-disk copy so BASH_SOURCE paths resolve
+}
+
+# Auto-install any missing docker/kind/kubectl/helm via INTERACTIVE sudo (this user is NOT assumed to
+# have passwordless sudo — the single password prompt happens at the `sudo` below). docker/kind/kubectl
+# go through the vetted installer run under sudo (its root-check passes, its `sudo -n` calls no-op);
+# helm (not covered there) via the upstream get-helm-3.
+ensure_prereqs() {
+  local tools=(docker kind kubectl helm) missing=() t docker_was_missing=0
+  for t in "${tools[@]}"; do have "$t" || missing+=("$t"); done
+  have docker || docker_was_missing=1
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    warn "Missing: ${missing[*]} — installing them now; you'll be prompted for your sudo password. Ctrl-C to abort and install them manually."
+    step "Installing prerequisites (docker/kind/kubectl) via sudo"
+    sudo bash "$PROJECT_DIR/scripts/install_prereqs.sh" --all \
+      || die "prerequisite install failed (see above). Install docker+kind+kubectl manually (scripts/install_prereqs.sh) and re-run."
+    if ! have helm; then
+      step "Installing helm via sudo"
+      curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | sudo bash \
+        || die "helm install failed — install helm manually (https://helm.sh/docs/intro/install/) and re-run."
+    fi
+    missing=(); for t in "${tools[@]}"; do have "$t" || missing+=("$t"); done
+    [[ ${#missing[@]} -eq 0 ]] || die "still missing after install: ${missing[*]} — install them manually and re-run."
+  fi
+
+  # docker present but unusable is almost always the just-added 'docker' group not yet active in this
+  # shell. If WE just installed docker that's an expected first-run stop (exit 0), not an error.
+  if ! docker info >/dev/null 2>&1; then
+    if [[ "$docker_was_missing" == 1 ]]; then
+      step "Docker installed, but its group membership only activates on a new login."
+      log  "Log out and back in (or run: newgrp docker), then re-run:  ./install.sh"
+      exit 0
+    fi
+    die "docker is installed but not usable in this shell (the 'docker' group isn't active, or the daemon isn't running) — start a new shell or run 'newgrp docker', then re-run."
+  fi
 }
 
 preflight() {
-  local missing=() t
-  for t in docker kind kubectl helm curl timeout; do have "$t" || missing+=("$t"); done
-  if [[ ${#missing[@]} -gt 0 ]]; then
-    die "Missing prerequisites: ${missing[*]}
-    Install them (one time, needs sudo):
-        sudo ./install.sh --prereqs"
-  fi
-  docker info >/dev/null 2>&1 || die "docker is installed but not usable in this shell (the 'docker' group isn't active) — start a new shell or run 'newgrp docker', then re-run. If you just ran --prereqs, log out and back in."
+  # Hard requirements we never auto-install: curl (used here, by get-helm-3, and by the health check)
+  # and timeout (bounds every step). git is needed only by the curl-bootstrap path (bootstrap_if_curl).
+  local t
+  for t in curl timeout; do have "$t" || die "required tool '$t' is missing — install it and re-run."; done
+  ensure_prereqs   # docker/kind/kubectl/helm — auto-installed via interactive sudo if any are missing
   [[ -f "$INSTALLER" ]] || die "service installer not found at $INSTALLER (repo layout unexpected)."
   [[ -d "$CHART_DIR" ]] || die "Helm chart not found at $CHART_DIR (repo layout unexpected)."
 }
@@ -183,6 +230,34 @@ resolve_auth() {
     PROVIDER="claude-agent-sdk"; KEYLESS=1
     warn "no Claude token / API key found — deploying anyway; /healthz + /readyz will be green but chat is disabled. Add CLAUDE_CODE_OAUTH_TOKEN to $PROJECT_DIR/.env (via 'claude setup-token') and re-run to enable chat."
   fi
+}
+
+# When the deploy would be keyless AND the `claude` CLI is present AND we're on a terminal, offer to
+# mint a subscription token now: `claude setup-token` (prints an sk-ant-oat… token to stdout; its
+# interactive prompts go to stderr, so the user still sees them). Persist it to .env and use it for THIS
+# deploy so chat is enabled. Declined / no CLI / non-interactive → stay keyless exactly as resolve_auth set.
+offer_claude_setup() {
+  [[ "$KEYLESS" == 1 ]] || return 0
+  have claude || return 0
+  [[ -t 0 ]]  || return 0
+  local reply out token envf="$PROJECT_DIR/.env"
+  printf '\033[36m?\033[0m Set up Claude subscription chat now? [Y/n] '
+  IFS= read -r reply || reply=""
+  case "$reply" in [nN]|[nN][oO]) log "Skipping Claude setup — deploying keyless (chat disabled)."; return 0 ;; esac
+  step "Setting up your Claude subscription token (claude setup-token)"
+  out="$(claude setup-token)" || { warn "'claude setup-token' did not complete — proceeding keyless. Run it yourself, add CLAUDE_CODE_OAUTH_TOKEN to $envf, then re-run."; return 0; }
+  token="$(printf '%s\n' "$out" | grep -oE 'sk-ant-oat[A-Za-z0-9._-]+' | tail -n1 || true)"
+  [[ -n "$token" ]] || { warn "couldn't read a token from 'claude setup-token' output — proceeding keyless. Add CLAUDE_CODE_OAUTH_TOKEN to $envf manually, then re-run."; return 0; }
+  if [[ -f "$envf" ]] && grep -qE '^[[:space:]]*CLAUDE_CODE_OAUTH_TOKEN=[^[:space:]]' "$envf"; then
+    log "CLAUDE_CODE_OAUTH_TOKEN already set in .env — using it."
+  else
+    touch "$envf"          # a fresh .env would otherwise be created at the umask default (world-readable)
+    chmod 600 "$envf"      # owner-only before the long-lived token lands (matches _env.sh set_env_var)
+    printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$token" >> "$envf"
+    log "Saved CLAUDE_CODE_OAUTH_TOKEN to $envf."
+  fi
+  OAUTH_TOKEN="$token"; PROVIDER="claude-agent-sdk"; KEYLESS=0
+  log "Claude subscription wired — this deploy will have chat enabled."
 }
 
 build_image() {
@@ -284,7 +359,7 @@ report() {
   [[ "$KEYLESS" == 1 ]] && warn "Chat is DISABLED (no token/key). Add CLAUDE_CODE_OAUTH_TOKEN to $PROJECT_DIR/.env and re-run."
   log "Reach the UI:"
   log "    kubectl -n $NAMESPACE port-forward svc/$SVC 8000:8000"
-  log "    # then open http://localhost:8000   (or re-run:  ./install.sh --open)"
+  log "    # then open http://localhost:8000"
   log "Tear down:"
   log "    kind delete cluster --name $CLUSTER"
   log "Full e2e test (build+deploy+assert+auto-teardown):"
@@ -309,10 +384,11 @@ open_ui() {
 
 main() {
   parse_args "$@"
-  [[ "$PREREQS" == 1 ]] && { install_prereqs; exit 0; }
+  bootstrap_if_curl "$@"   # curl one-liner: clone + re-exec on-disk; no-op inside a checkout
   CTX="kind-$CLUSTER"
   preflight
   resolve_auth
+  offer_claude_setup
   build_image
   ensure_cluster
   load_image
@@ -320,7 +396,10 @@ main() {
   wait_ready
   health_check
   report
-  if [[ "$OPEN" == 1 ]]; then
+  # Open the UI by default on a terminal; --no-open opts out, --open forces it even without a tty.
+  local should_open=0
+  if [[ "$NO_OPEN" != 1 ]] && [[ "$OPEN" == 1 || -t 1 ]]; then should_open=1; fi
+  if [[ "$should_open" == 1 ]]; then
     open_ui
   fi
 }
