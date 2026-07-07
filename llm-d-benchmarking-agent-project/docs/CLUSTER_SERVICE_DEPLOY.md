@@ -135,11 +135,13 @@ Steps a cluster user runs to stand up the agent.
 ### Basic install
 
 ```bash
-./scripts/install_service.sh --anthropic-key sk-ant-...
-# or: export ANTHROPIC_API_KEY=sk-ant-...   &&   ./scripts/install_service.sh
+./scripts/install_service.sh --oauth-token <TOKEN>
+# or: export CLAUDE_CODE_OAUTH_TOKEN=<TOKEN>   &&   ./scripts/install_service.sh
 ```
 
-On success it prints the port-forward command to reach the UI.
+On success it prints the port-forward command to reach the UI. `<TOKEN>` is a Claude subscription
+token from `claude setup-token` — the PRIMARY auth path (see "Provide auth for chat" below). The
+`--anthropic-key` API-key path is the documented fallback.
 
 ### Common flags
 
@@ -150,7 +152,8 @@ On success it prints the port-forward command to reach the UI.
     --tag TAG               image tag / VERSION       (default: 0.1.0)
     --image-pull-policy P   Always|IfNotPresent|Never (default: IfNotPresent)
     --build                 docker-build the image locally + use it (air-gapped/dev; pullPolicy→Never)
-    --anthropic-key KEY     Anthropic API key         (default: $ANTHROPIC_API_KEY; empty → chat disabled + warn)
+    --oauth-token TOKEN     Claude subscription token (default: $CLAUDE_CODE_OAUTH_TOKEN) → claude-agent-sdk  [PRIMARY]
+    --anthropic-key KEY     Anthropic API key         (default: $ANTHROPIC_API_KEY) → anthropic  [FALLBACK]
     --orchestrator-image IMG   image for in-cluster orchestrated benchmark Jobs (config.orchestratorImage)
     --kubeconfig PATH       kubeconfig file           (default: $KUBECONFIG / ~/.kube/config)
     --context NAME          kube-context              (default: current-context)
@@ -168,18 +171,37 @@ For local/kind or air-gapped clusters, `--build` builds the image on the spot (d
 pullPolicy to `Never` — you must then load it onto the nodes yourself, e.g.
 `kind load docker-image ghcr.io/llm-d/llm-d-benchmarking-agent:0.1.0`.
 
-### Provide the API key for chat (required for a usable service)
+### Provide auth for chat (required for a usable service)
 
-A **real `ANTHROPIC_API_KEY` is required for live chat.** The Max-plan `claude-agent-sdk` auth used on a
-dev box **does not work inside a Pod** — supply a proper API key. Without it the app still deploys and
-`/healthz` serves, but chat is disabled (`/readyz` reports the provider component not ready) until
-`secret.anthropicApiKey` is set.
+The chat provider defaults to the **Claude Agent SDK**, authenticated by your **Claude Max/Pro
+subscription** via a **`CLAUDE_CODE_OAUTH_TOKEN`** — no metered API key needed. The baked `claude` CLI
+reads this token from the environment **headlessly** (no browser, no TTY), so the subscription auth
+**does work inside a Pod**. (This corrects earlier guidance: an `ANTHROPIC_API_KEY` is no longer
+required — it is now the fallback.)
 
-More secure alternative to passing the key on the CLI: create the Secret yourself and reference it.
+**Get the token** — on a machine already logged into your Claude plan:
+
+```bash
+claude setup-token      # prints a long-lived (~1 year) OAuth token; copy it
+```
+
+**Provide it** to the service (pick one):
+
+```bash
+./scripts/install_service.sh --oauth-token <TOKEN>                        # installer flag
+export CLAUDE_CODE_OAUTH_TOKEN=<TOKEN> && ./scripts/install_service.sh    # env var
+# or straight to Helm:
+helm upgrade --install bench-agent deploy/helm/llm-d-benchmarking-agent -n <ns> --create-namespace \
+  --set-string secret.claudeCodeOauthToken=<TOKEN>
+```
+
+More secure alternative (keeps the token off the CLI / Helm values) — create the Secret yourself and
+reference it:
 
 ```bash
 kubectl -n <ns> create secret generic bench-agent-llm \
-  --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
+  --from-literal=CLAUDE_CODE_OAUTH_TOKEN=<TOKEN> \
+  --from-literal=ANTHROPIC_API_KEY= \
   --from-literal=OPENAI_API_KEY= \
   --from-literal=HF_TOKEN=
 helm upgrade --install bench-agent deploy/helm/llm-d-benchmarking-agent \
@@ -187,7 +209,27 @@ helm upgrade --install bench-agent deploy/helm/llm-d-benchmarking-agent \
   --set secret.create=false --set secret.existingSecret=bench-agent-llm
 ```
 
-(`secret.existingSecret` must carry the keys `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `HF_TOKEN`.)
+(`secret.existingSecret` must carry the keys `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` /
+`OPENAI_API_KEY` / `HF_TOKEN`.)
+
+**Fallback — a metered Anthropic API key.** To bill per-token against the API instead of a
+subscription, pass an API key; the installer then selects `LLM_PROVIDER=anthropic` +
+`secret.anthropicApiKey`:
+
+```bash
+./scripts/install_service.sh --anthropic-key sk-ant-...
+# or: export ANTHROPIC_API_KEY=sk-ant-...  &&  ./scripts/install_service.sh
+```
+
+**Neither?** The app still deploys (SDK, chat disabled): `/healthz` and the keyless `/readyz` serve,
+but chat stays off (`/readyz` reports the provider component not ready) until a token or key is set.
+
+> **On terms of service.** Anthropic's auth docs support running your Claude subscription **headlessly**
+> via `CLAUDE_CODE_OAUTH_TOKEN` for the `claude` CLI — exactly what this Pod does (your own subscription
+> token, in your own Pod). Their Agent-SDK guidance separately steers third-party developers who expose
+> *claude.ai login to their own end-users* toward API keys. Running **your own** token in **your own**
+> cluster is the intended CLI-headless use; if you plan to expose the service to other users as a
+> product, prefer the API-key fallback. Make an informed choice.
 
 ### Reach the UI
 
@@ -219,7 +261,7 @@ with a PVC so they do:
 
 ```bash
 helm upgrade --install bench-agent deploy/helm/llm-d-benchmarking-agent -n <ns> --create-namespace \
-  --set-string secret.anthropicApiKey=sk-ant-... \
+  --set-string secret.claudeCodeOauthToken=<TOKEN> \
   --set workspace.persistence.enabled=true \
   --set workspace.persistence.storageClass=<sc> \
   --set workspace.persistence.size=5Gi \
@@ -235,7 +277,7 @@ submit benchmark runs as **separate Kubernetes Jobs**, point `config.orchestrato
 agent image ref** (the baked image has `llmdbenchmark` symlinked onto PATH, which the Job path resolves):
 
 ```bash
-./scripts/install_service.sh --anthropic-key sk-ant-... \
+./scripts/install_service.sh --oauth-token <TOKEN> \
   --orchestrator-image ghcr.io/llm-d/llm-d-benchmarking-agent:0.1.0
 ```
 
@@ -247,12 +289,15 @@ Left empty (default), the `orchestrate_benchmark_run` tool refuses rather than s
 
 Steps **you** run to prove the cluster-service path works end-to-end before publishing.
 
-### Add an API key to `.env`
+### Add auth to `.env`
 
-The live-chat assertion needs a real key:
+The live-chat assertion needs real auth — the OAuth token (primary) or an API key (fallback). The
+adapter reads either from the project `.env`:
 
 ```bash
-echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env   # project .env (gitignored)
+echo 'CLAUDE_CODE_OAUTH_TOKEN=...' >> .env   # PRIMARY (from `claude setup-token`); project .env (gitignored)
+# or the fallback:
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
 ```
 
 ### Run the kind adapter
@@ -264,8 +309,8 @@ bash testing/cluster-service-sim/run.sh
 > Note: `testing/cluster-service-sim/run.sh` is the kind end-to-end adapter for this feature. It builds
 > the image, spins up a kind cluster, deploys via the real `install_service.sh` + chart, and asserts
 > `/healthz` + `/readyz` + `/api/provider`, plus the **RBAC least-privilege boundary** (an in-Pod
-> `kubectl delete ns kube-system` must be refused `Forbidden`) and — only when an Anthropic key is
-> present — one live-chat round-trip over `/ws`. Useful flags: `--keep` (leave the cluster up to inspect
+> `kubectl delete ns kube-system` must be refused `Forbidden`) and — only when an OAuth token or an
+> Anthropic key is present — one live-chat round-trip over `/ws`. Useful flags: `--keep` (leave the cluster up to inspect
 > it), `--no-build` (reuse an already-built image and skip the ~1 GB rebuild).
 
 ### Run on a fresh environment (WSL)
@@ -299,7 +344,7 @@ golden base image).
 | Build with a version | `make image VERSION=0.2.0` |
 | Log in to GHCR | `echo $GH_PAT \| docker login ghcr.io -u <user> --password-stdin` |
 | Publish image | `make image-publish` |
-| Install service | `./scripts/install_service.sh --anthropic-key sk-ant-...` |
+| Install service | `./scripts/install_service.sh --oauth-token <TOKEN>` |
 | Validate only | `./scripts/install_service.sh --dry-run` |
 | Local build + install | `./scripts/install_service.sh --build` (+ `kind load docker-image <img>`) |
 | Reach the UI | `kubectl -n <ns> port-forward svc/<release>-llm-d-benchmarking-agent 8000:8000` |
@@ -313,7 +358,9 @@ golden base image).
 |---|---|---|
 | Image repo/tag | `--image` / `--tag`, or `image.repository` / `image.tag` | `ghcr.io/llm-d/llm-d-benchmarking-agent` / `0.1.0` |
 | Pin by digest | `image.digest` (wins over tag) | `""` |
-| Anthropic key | `--anthropic-key` / `$ANTHROPIC_API_KEY`, or `secret.anthropicApiKey` | empty → chat disabled |
+| Chat auth — OAuth token (PRIMARY) | `--oauth-token` / `$CLAUDE_CODE_OAUTH_TOKEN`, or `secret.claudeCodeOauthToken` → claude-agent-sdk | empty |
+| Chat auth — Anthropic key (FALLBACK) | `--anthropic-key` / `$ANTHROPIC_API_KEY`, or `secret.anthropicApiKey` → anthropic | empty |
+| No token & no key | chat disabled; `/healthz` + keyless `/readyz` still serve | — |
 | Existing Secret | `secret.create=false` + `secret.existingSecret=<name>` | `create=true` |
 | Namespace / release | `--namespace` / `--release` | `llmd-bench` / `bench-agent` |
 | Persistence | `workspace.persistence.enabled=true` (+ `storageClass`/`size`/`accessMode`) | `false` (ephemeral) |

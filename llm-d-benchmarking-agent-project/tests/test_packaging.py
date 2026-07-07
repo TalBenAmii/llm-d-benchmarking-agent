@@ -124,6 +124,17 @@ def test_dockerfile_exists_and_is_multistage_nonroot():
     assert "KUBECTL_VERSION=v" in text
 
 
+def test_dockerfile_bakes_claude_cli_for_agent_sdk():
+    text = DOCKERFILE.read_text()
+    # The cluster-service deploy defaults to the claude-agent-sdk provider, whose Python package
+    # spawns the native `claude` binary — so the image bakes it at a fixed system path on PATH.
+    assert "/usr/local/bin/claude" in text
+    # Pinned to a specific version (not "latest"), like the other toolchain pins (KUBECTL_VERSION=v…).
+    assert re.search(r"CLAUDE_CODE_VERSION=\d+\.\d+", text), "the claude CLI version must be pinned"
+    # Non-essential traffic / the self-updater is disabled — the read-only root fs can't self-update.
+    assert "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" in text
+
+
 def test_dockerfile_does_not_bake_in_secrets_or_scratch():
     text = DOCKERFILE.read_text()
     # The two read-only sibling repos and the workspace scratch are not copied into the image,
@@ -204,7 +215,11 @@ def test_helm_values_pin_image_and_default_safely():
     assert "tag" in vals["image"] and "digest" in vals["image"]
     # The orchestrator image defaults to empty so the tool refuses an unrunnable Job by default.
     assert vals["config"]["orchestratorImage"] == ""
-    # No secret material is baked into the chart defaults.
+    # The cluster-service default provider is the Claude Agent SDK (subscription / OAuth-token auth);
+    # the API-key path is the fallback. Pin it so flipping this default can't happen silently again.
+    assert vals["config"]["llmProvider"] == "claude-agent-sdk"
+    # No secret material is baked into the chart defaults (the OAuth token and both API keys).
+    assert vals["secret"]["claudeCodeOauthToken"] == ""
     assert vals["secret"]["anthropicApiKey"] == ""
     assert vals["secret"]["openaiApiKey"] == ""
     # Non-root hardening defaults.
@@ -218,6 +233,26 @@ def test_pod_is_scrape_annotated_for_metrics():
     text = (helm_chart_dir() / "templates" / "deployment.yaml").read_text()
     assert "prometheus.io/scrape" in text
     assert AGENT_METRICS_PATH in text
+
+
+# ===========================================================================
+# Installer ↔ chart consistency (static; no helm/cluster needed)
+# ===========================================================================
+
+def test_install_service_wires_provider_selection():
+    # The service installer's provider selection must stay in lockstep with the chart: an OAuth
+    # token → claude-agent-sdk + secret.claudeCodeOauthToken; an API key → anthropic +
+    # secret.anthropicApiKey. This doubles as a cross-file consistency check that the installer,
+    # the chart values, and the deployment env wiring agree on the provider + Secret key names.
+    text = (PROJECT_ROOT / "scripts" / "install_service.sh").read_text()
+    # Primary path: the Claude subscription OAuth token selects the SDK provider.
+    assert "--oauth-token" in text
+    assert "config.llmProvider=claude-agent-sdk" in text
+    assert "secret.claudeCodeOauthToken=" in text
+    # Fallback path (KEPT): an Anthropic API key selects the metered API provider.
+    assert "--anthropic-key" in text
+    assert "config.llmProvider=anthropic" in text
+    assert "secret.anthropicApiKey=" in text
 
 
 # ===========================================================================
@@ -260,3 +295,20 @@ def test_helm_digest_pin_overrides_tag():
     dep = _find_kind(docs, "Deployment")
     image = _deployment_container(dep)["image"]
     assert image.endswith("@sha256:abc123"), image
+
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
+def test_helm_renders_oauth_token_env_and_secret():
+    chart = str(helm_chart_dir())
+    # By default the container sources CLAUDE_CODE_OAUTH_TOKEN (the claude-agent-sdk auth) from the
+    # chart Secret, marked optional so the pod still starts with no token set (keyless /readyz green).
+    dep = _find_kind(_render_yaml_docs(["helm", "template", "rel", chart]), "Deployment")
+    env = {e["name"]: e for e in _deployment_container(dep)["env"]}
+    ref = env["CLAUDE_CODE_OAUTH_TOKEN"]["valueFrom"]["secretKeyRef"]
+    assert ref["key"] == "CLAUDE_CODE_OAUTH_TOKEN"
+    assert ref["optional"] is True
+    # Setting the value flows it into the chart-managed Secret's stringData.
+    docs = _render_yaml_docs(
+        ["helm", "template", "rel", chart, "--set", "secret.claudeCodeOauthToken=XYZ"]
+    )
+    assert _find_kind(docs, "Secret")["stringData"]["CLAUDE_CODE_OAUTH_TOKEN"] == "XYZ"

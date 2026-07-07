@@ -58,6 +58,12 @@ spec:
               value: "8000"
             - name: LLM_PROVIDER
               value: {{ .Values.config.llmProvider | quote }}
+            - name: AGENT_SDK_MODEL
+              value: {{ .Values.config.agentSdkModel | quote }}
+            - name: AGENT_SDK_EFFORT
+              value: {{ .Values.config.agentSdkEffort | quote }}
+            - name: AGENT_SDK_THINKING
+              value: {{ .Values.config.agentSdkThinking | quote }}
             - name: ANTHROPIC_MODEL
               value: {{ .Values.config.anthropicModel | quote }}
             - name: OPENAI_BASE_URL
@@ -72,6 +78,12 @@ spec:
             - name: WORKSPACE_DIR
               value: /workspace
             # Secrets — sourced from the chart-managed or pre-existing Secret, never inlined here.
+            - name: CLAUDE_CODE_OAUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agent.secretName" . }}
+                  key: CLAUDE_CODE_OAUTH_TOKEN
+                  optional: true
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:

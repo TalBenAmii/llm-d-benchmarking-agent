@@ -78,6 +78,9 @@ ARG CRANE_VERSION=0.21.7
 # HELM_DATA_HOME: where the baked helm-diff plugin lives (world-readable, read-only at runtime).
 # HELM_CACHE_HOME/HELM_CONFIG_HOME: helm needs these WRITABLE, but the root fs is read-only at
 #   runtime, so point them at /tmp (a writable mount).
+# CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: bundles DISABLE_AUTOUPDATER + telemetry-off; the baked
+#   `claude` CLI (installed below) sits on the read-only root fs, so its self-updater — which writes a
+#   new version under HOME — would fail. Disable it (and non-essential network) outright.
 ENV VENV=/opt/venv \
     PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
@@ -86,6 +89,7 @@ ENV VENV=/opt/venv \
     PORT=8000 \
     REPOS_DIR=/repos \
     HOME=/tmp \
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
     HELM_DATA_HOME=/opt/helm/data \
     HELM_CACHE_HOME=/tmp/helm/cache \
     HELM_CONFIG_HOME=/tmp/helm/config
@@ -139,6 +143,25 @@ RUN set -eux; \
         | tar xz -C "${HELM_DATA_HOME}/plugins"; \
     chmod -R a+rX "${HELM_DATA_HOME}"; \
     cd /; rm -rf "$tmp"; \
+    apt-get purge -y curl; apt-get autoremove -y; rm -rf /var/lib/apt/lists/*
+
+# --- claude CLI (native, pinned) --------------------------------------------------------
+# The cluster-service deploy path defaults to the `claude-agent-sdk` LLM provider, whose Python
+# package spawns THIS `claude` binary as a subprocess — so it must sit on PATH for uid 10001. The
+# official native installer drops a single self-contained glibc binary (NO Node.js/npm) and symlinks
+# ~/.local/bin/claude -> ~/.local/share/claude/versions/<v>; HOME=/tmp is a fresh emptyDir at runtime,
+# so we copy the RESOLVED binary to a fixed system path and discard the HOME-side install tree. Its
+# own layer (curl re-added just for the fetch, then purged; git + ca-certificates stay from above) so
+# a version bump doesn't bust the toolchain layer. `claude --version` fails the build if install broke.
+ARG CLAUDE_CODE_VERSION=2.1.193
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl; \
+    cd /tmp; \
+    curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}"; \
+    install -m 0755 "$(readlink -f "$HOME/.local/bin/claude")" /usr/local/bin/claude; \
+    rm -rf "$HOME/.local" "$HOME/.claude"; \
+    claude --version; \
     apt-get purge -y curl; apt-get autoremove -y; rm -rf /var/lib/apt/lists/*
 
 # Non-root runtime user (uid:gid 10001). The K8s securityContext also enforces this.

@@ -32,3 +32,13 @@ LICENSE file inside each project for the full terms.
 The image additionally bundles the standard client toolchain the CLI shells out
 to (kubectl, helm, the helm-diff plugin, helmfile, kustomize, yq, jq, skopeo,
 crane, git); each retains its own upstream license.
+
+The image also bundles the native Claude Code CLI (the `claude` binary), by
+Anthropic, installed at /usr/local/bin/claude:
+
+  * Claude Code          @ 2.1.193
+    https://code.claude.com/docs
+    Proprietary — NOT Apache-2.0; governed by Anthropic's Commercial Terms of
+    Service (https://www.anthropic.com/legal/commercial-terms).
+    (installed via https://claude.ai/install.sh; spawned as a subprocess by the
+    `claude-agent-sdk` LLM provider on the cluster-service deploy path)
