@@ -29,8 +29,9 @@ SERVICE on a local `kind` cluster (laptop POC). Run it straight from GitHub with
 below, or clone the repo and run ./install.sh. It orchestrates: fetch (curl-bootstrap self-clone) ->
 preflight (auto-installs any missing docker/kind/kubectl/helm via interactive sudo) -> build image ->
 create kind cluster -> load image -> DELEGATE the deploy to scripts/install_service.sh (Helm) ->
-verify /healthz + /readyz. If no Claude auth is configured it offers to set up your subscription token,
-then LEAVES THE SERVICE RUNNING and (by default, on a terminal) opens the chat UI in your browser.
+verify /healthz + /readyz. If no Claude auth is configured it checks whether you're signed in to the
+Claude app (offering to sign in + mint a subscription token if not), then LEAVES THE SERVICE RUNNING
+and (by default, on a terminal) opens the chat UI in your browser.
 (For a build+deploy+assert+auto-teardown e2e test instead, use testing/cluster-service-sim/run.sh.)
 
 Usage:
@@ -93,6 +94,8 @@ HEALTH_INTERVAL=2
 
 # Runtime state (set as we go).
 CTX=""; PROVIDER=""; KEYLESS=0; PF_PID=""; DEPLOY=""; SVC=""
+CLAUDE_CMD=()   # argv to invoke the `claude` CLI as the human user (see resolve_claude_cmd)
+CLAUDE_HOME=""  # that user's home dir — where ~/.claude/.credentials.json lives (set by resolve_claude_cmd)
 TMPDIR="$(mktemp -d)"; BODY_FILE="$TMPDIR/body"
 
 parse_args() {
@@ -232,32 +235,112 @@ resolve_auth() {
   fi
 }
 
-# When the deploy would be keyless AND the `claude` CLI is present AND we're on a terminal, offer to
-# mint a subscription token now: `claude setup-token` (prints an sk-ant-oat… token to stdout; its
-# interactive prompts go to stderr, so the user still sees them). Persist it to .env and use it for THIS
-# deploy so chat is enabled. Declined / no CLI / non-interactive → stay keyless exactly as resolve_auth set.
-offer_claude_setup() {
+# Resolve how to invoke the `claude` CLI *as the human user* into CLAUDE_CMD (+ that user's home into
+# CLAUDE_HOME, where ~/.claude/.credentials.json lives), even when install.sh runs under sudo/root —
+# Claude's login + credentials live in that user's home, not root's, and its bin (~/.local/bin/claude)
+# is usually off root's PATH. Under sudo we drop back to $SUDO_USER (root → user needs no password);
+# otherwise we probe PATH then ~/.local/bin. Returns 1 if none works.
+resolve_claude_cmd() {
+  local bin uhome
+  if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]]; then
+    uhome="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
+    for bin in "$uhome/.local/bin/claude" claude; do
+      if sudo -u "$SUDO_USER" -H -- "$bin" --version >/dev/null 2>&1; then
+        CLAUDE_CMD=(sudo -u "$SUDO_USER" -H -- "$bin"); CLAUDE_HOME="$uhome"; return 0
+      fi
+    done
+    return 1
+  fi
+  for bin in claude "$HOME/.local/bin/claude"; do
+    command -v "$bin" >/dev/null 2>&1 && { CLAUDE_CMD=("$bin"); CLAUDE_HOME="$HOME"; return 0; }
+  done
+  return 1
+}
+
+# Signed in to the Claude app? `auth status --json` → {"loggedIn": true, ...}.
+claude_logged_in() {
+  "${CLAUDE_CMD[@]}" auth status --json 2>/dev/null | grep -q '"loggedIn"[[:space:]]*:[[:space:]]*true'
+}
+
+# Read the subscription LOGIN token from ~/.claude/.credentials.json (of the resolved user) into
+# REUSE_TOKEN, and the whole hours until it expires into REUSE_TOKEN_H. Returns 0 only when a token is
+# present and still valid ≥5 min out — the CLI keeps this token fresh, so when signed in it usually is.
+# Pure grep/date, no jq/python dependency. Note: this token is SHORT-LIVED and the headless pod cannot
+# refresh it (caller warns + does NOT persist it, so a re-run re-reads a freshly-refreshed one).
+read_login_token() {
+  local cred="$CLAUDE_HOME/.claude/.credentials.json" exp now_ms
+  [[ -r "$cred" ]] || return 1
+  REUSE_TOKEN="$(grep -oE '"accessToken"[[:space:]]*:[[:space:]]*"[^"]+"' "$cred" | head -n1 | sed -E 's/.*"([^"]+)"$/\1/' || true)"
+  exp="$(grep -oE '"expiresAt"[[:space:]]*:[[:space:]]*[0-9]+' "$cred" | head -n1 | grep -oE '[0-9]+$' || true)"
+  [[ -n "$REUSE_TOKEN" && -n "$exp" ]] || return 1
+  now_ms=$(( $(date +%s) * 1000 ))
+  (( exp > now_ms + 300000 )) || return 1        # <5 min left → treat as no valid token
+  REUSE_TOKEN_H=$(( (exp - now_ms) / 3600000 ))
+  return 0
+}
+
+# Append CLAUDE_CODE_OAUTH_TOKEN=<token> to the project .env (owner-only), unless one is already set.
+persist_token() {
+  local token="$1" envf="$PROJECT_DIR/.env"
+  if [[ -f "$envf" ]] && grep -qE '^[[:space:]]*CLAUDE_CODE_OAUTH_TOKEN=[^[:space:]]' "$envf"; then
+    log "CLAUDE_CODE_OAUTH_TOKEN already set in .env — leaving it as-is."; return 0
+  fi
+  touch "$envf"          # a fresh .env would otherwise be created at the umask default (world-readable)
+  chmod 600 "$envf"      # owner-only before the long-lived token lands (matches _env.sh set_env_var)
+  printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$token" >> "$envf"
+  log "Saved CLAUDE_CODE_OAUTH_TOKEN to $envf."
+}
+
+# When the deploy would otherwise be keyless, wire up a Claude subscription token so chat works.
+# Needs the `claude` CLI (found even under sudo). Flow: ensure signed in (offering `claude auth login`
+# if not — needs a tty); then REUSE-FIRST — reuse the existing login token (instant, no browser) for
+# THIS deploy only, NOT persisted so a re-run refreshes it. Only if no valid login token exists do we
+# fall back to minting a long-lived (~1yr) token via `claude setup-token` (browser), which IS persisted
+# to .env. Any missing piece (no CLI, not signed in + no tty, declined, aborted) → stay keyless.
+ensure_claude_auth() {
   [[ "$KEYLESS" == 1 ]] || return 0
-  have claude || return 0
-  [[ -t 0 ]]  || return 0
-  local reply out token envf="$PROJECT_DIR/.env"
-  printf '\033[36m?\033[0m Set up Claude subscription chat now? [Y/n] '
-  IFS= read -r reply || reply=""
-  case "$reply" in [nN]|[nN][oO]) log "Skipping Claude setup — deploying keyless (chat disabled)."; return 0 ;; esac
-  step "Setting up your Claude subscription token (claude setup-token)"
-  out="$(claude setup-token)" || { warn "'claude setup-token' did not complete — proceeding keyless. Run it yourself, add CLAUDE_CODE_OAUTH_TOKEN to $envf, then re-run."; return 0; }
+  local envf="$PROJECT_DIR/.env" reply out token
+  if ! resolve_claude_cmd; then
+    warn "the 'claude' CLI isn't reachable — can't set up subscription chat automatically. Install Claude Code (https://claude.com/claude-code) and sign in, or add CLAUDE_CODE_OAUTH_TOKEN to $envf, then re-run. Deploying keyless."
+    return 0
+  fi
+
+  # Ensure a Claude sign-in (an interactive login needs a terminal).
+  if ! claude_logged_in; then
+    if [[ ! -t 0 ]]; then
+      warn "not signed in to Claude and no terminal for an interactive sign-in — deploying keyless. Run 'claude auth login' (or add CLAUDE_CODE_OAUTH_TOKEN to $envf), then re-run."
+      return 0
+    fi
+    printf '\033[36m?\033[0m Not signed in to Claude. Sign in now to enable chat? [Y/n] '
+    IFS= read -r reply || reply=""
+    case "$reply" in [nN]|[nN][oO]) log "Skipping Claude sign-in — deploying keyless (chat disabled)."; return 0 ;; esac
+    step "Signing in to Claude (claude auth login)"
+    "${CLAUDE_CMD[@]}" auth login \
+      || { warn "'claude auth login' didn't complete — proceeding keyless. Sign in, then re-run."; return 0; }
+    claude_logged_in || { warn "still not signed in after 'claude auth login' — proceeding keyless."; return 0; }
+  fi
+
+  # Reuse-first: use the existing login token (no browser). Short-lived + unrefreshable in the pod, so
+  # use it in-memory for THIS deploy only and DON'T persist it — a re-run then reads a fresh one.
+  if read_login_token; then
+    OAUTH_TOKEN="$REUSE_TOKEN"; PROVIDER="claude-agent-sdk"; KEYLESS=0
+    log "Reusing your Claude login token — chat enabled for this deploy."
+    warn "this login token expires in ~${REUSE_TOKEN_H}h and the pod can't refresh it — just re-run ./install.sh to refresh, or run 'claude setup-token' and add the 1-year CLAUDE_CODE_OAUTH_TOKEN to $envf for a durable deploy."
+    return 0
+  fi
+
+  # Fallback: no valid login token to reuse → mint a long-lived (~1yr) one (needs a browser + tty).
+  if [[ ! -t 0 ]]; then
+    warn "no reusable login token and no terminal for 'claude setup-token' — deploying keyless. Run 'claude setup-token', add CLAUDE_CODE_OAUTH_TOKEN to $envf, then re-run."
+    return 0
+  fi
+  step "Minting a long-lived (~1yr) Claude token (claude setup-token — a browser window will open; complete the sign-in there)"
+  out="$("${CLAUDE_CMD[@]}" setup-token)" || { warn "'claude setup-token' did not complete — proceeding keyless. Run it yourself, add CLAUDE_CODE_OAUTH_TOKEN to $envf, then re-run."; return 0; }
   token="$(printf '%s\n' "$out" | grep -oE 'sk-ant-oat[A-Za-z0-9._-]+' | tail -n1 || true)"
   [[ -n "$token" ]] || { warn "couldn't read a token from 'claude setup-token' output — proceeding keyless. Add CLAUDE_CODE_OAUTH_TOKEN to $envf manually, then re-run."; return 0; }
-  if [[ -f "$envf" ]] && grep -qE '^[[:space:]]*CLAUDE_CODE_OAUTH_TOKEN=[^[:space:]]' "$envf"; then
-    log "CLAUDE_CODE_OAUTH_TOKEN already set in .env — using it."
-  else
-    touch "$envf"          # a fresh .env would otherwise be created at the umask default (world-readable)
-    chmod 600 "$envf"      # owner-only before the long-lived token lands (matches _env.sh set_env_var)
-    printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$token" >> "$envf"
-    log "Saved CLAUDE_CODE_OAUTH_TOKEN to $envf."
-  fi
+  persist_token "$token"
   OAUTH_TOKEN="$token"; PROVIDER="claude-agent-sdk"; KEYLESS=0
-  log "Claude subscription wired — this deploy will have chat enabled."
+  log "Claude subscription wired (1-year token) — this deploy will have chat enabled."
 }
 
 build_image() {
@@ -407,7 +490,7 @@ main() {
   CTX="kind-$CLUSTER"
   preflight
   resolve_auth
-  offer_claude_setup
+  ensure_claude_auth
   build_image
   ensure_cluster
   load_image
