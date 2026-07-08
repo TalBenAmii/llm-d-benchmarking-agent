@@ -282,10 +282,29 @@ build_image() {
   docker image inspect "$IMAGE:$TAG" >/dev/null 2>&1 || die "build reported success but $IMAGE:$TAG is still absent."
 }
 
+# kind runs a K8s control plane inside a container whose init is systemd; if the host's inotify limits
+# are too low that systemd never reaches Multi-User and `kind create cluster` fails with "could not find
+# a log line that matches ...Reached target .*Multi-User System..." (logs show "Failed to allocate
+# directory watch: Too many open files"). Raise the limits (once, persisted) before creating a cluster.
+# No-op when they're already high enough — so the common case never prompts for a sudo password. Every
+# privileged command is best-effort: a locked-down host that forbids the sysctl must NOT abort the
+# install (kind may still work; if not, the die on cluster-create surfaces the real error).
+ensure_inotify() {
+  local watches instances
+  watches="$(sysctl -n fs.inotify.max_user_watches 2>/dev/null || echo 0)"
+  instances="$(sysctl -n fs.inotify.max_user_instances 2>/dev/null || echo 0)"
+  [[ "$watches" -ge 1048576 && "$instances" -ge 8192 ]] && return 0
+  step "Raising inotify limits so kind's node systemd can boot (you may be prompted for your sudo password)"
+  sudo sysctl -w fs.inotify.max_user_watches=1048576 || true
+  sudo sysctl -w fs.inotify.max_user_instances=8192 || true
+  printf 'fs.inotify.max_user_watches=1048576\nfs.inotify.max_user_instances=8192\n' | sudo tee /etc/sysctl.d/99-inotify-kind.conf >/dev/null || true
+}
+
 ensure_cluster() {
   if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
     log "Reusing existing kind cluster '$CLUSTER'."
   else
+    ensure_inotify
     step "Creating kind cluster '$CLUSTER'"
     timeout 300 kind create cluster --name "$CLUSTER" || die "kind create cluster timed out/failed."
   fi

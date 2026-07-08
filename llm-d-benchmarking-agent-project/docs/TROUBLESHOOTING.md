@@ -59,6 +59,13 @@ trail is replayed in its original transcript position on reconnect/resume.
   The runner raises `… not found — the benchmark venv is not set up yet (run install.sh first)`.
   Have the agent run the bootstrap (`install.sh --uv`) first, or set up the venv manually.
 
+### `kind create cluster` fails on a fresh host ("could not find a log line … Multi-User System")
+- The kind node's systemd can't boot because the host's inotify limits are too low (node logs show
+  `Failed to allocate directory watch: Too many open files`). The repo-root `install.sh` now raises
+  `fs.inotify.max_user_watches`/`max_user_instances` automatically (persisted to
+  `/etc/sysctl.d/99-inotify-kind.conf`) before creating the cluster. Creating a cluster by hand? Bump
+  those limits first (best-effort `sudo sysctl -w …`), then retry `kind create cluster`.
+
 ### Repos not found / catalog or report tools fail
 - The two read-only sibling repos (`llm-d/`, `llm-d-benchmark/`) must resolve under
   `REPOS_DIR` (defaults to the parent of the project dir). `GET /readyz` reports
