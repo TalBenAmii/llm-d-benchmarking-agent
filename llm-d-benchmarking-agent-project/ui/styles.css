@@ -956,7 +956,7 @@ footer {
    separator (border-top). Left group = the user's controls (auto-approve + model badge); right
    group = the live context-window meter + circular send button. space-between anchors the two
    groups to the card's edges — robust whether or not the badge/ctx-meter are shown. */
-.composer-tools { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 9px 6px 2px 10px; border-top: 1px solid var(--border); margin-top: 4px; }
+.composer-tools { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 4px 6px 1px 10px; border-top: 1px solid var(--border); margin-top: 2px; }
 .composer-tools-group { display: flex; align-items: center; gap: 9px; }
 .ctx-meter { font: 11px var(--mono); color: var(--faint); white-space: nowrap; }
 .ctx-meter[hidden] { display: none; }
@@ -977,14 +977,14 @@ footer {
 .autoapprove[aria-pressed="true"] .autoapprove-mark { opacity: 1; }
 #send {
   flex: none;
-  width: 36px; height: 36px; padding: 0; border-radius: 11px;
+  width: 27px; height: 27px; padding: 0; border-radius: 8px;
   background: var(--accent-strong); color: var(--on-accent); border: none;
   font-size: 0;                                          /* hide the "Send" text; use an icon */
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent-strong) 40%, transparent);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--accent-strong) 38%, transparent);
   display: inline-flex; align-items: center; justify-content: center;
 }
 #send::before {
-  content: ""; width: 18px; height: 18px;
+  content: ""; width: 15px; height: 15px;
   background: currentColor;
   -webkit-mask: var(--send-mask) center/contain no-repeat; mask: var(--send-mask) center/contain no-repeat;
 }
