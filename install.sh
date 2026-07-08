@@ -230,8 +230,9 @@ resolve_auth() {
   elif [[ -n "$ANTHROPIC_KEY" ]]; then
     PROVIDER="anthropic"; log "Auth: Anthropic API key -> provider $PROVIDER."
   else
+    # No token/key yet — stay silent here; ensure_claude_auth runs next and usually enables chat
+    # (reuse the Claude login or mint a token). report() warns at the end if it's still keyless.
     PROVIDER="claude-agent-sdk"; KEYLESS=1
-    warn "no Claude token / API key found — deploying anyway; /healthz + /readyz will be green but chat is disabled. Add CLAUDE_CODE_OAUTH_TOKEN to $PROJECT_DIR/.env (via 'claude setup-token') and re-run to enable chat."
   fi
 }
 
@@ -244,6 +245,7 @@ resolve_claude_cmd() {
   local bin uhome
   if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]]; then
     uhome="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
+    [[ -n "$uhome" ]] || uhome="/home/$SUDO_USER"   # getent absent → assume the conventional home
     for bin in "$uhome/.local/bin/claude" claude; do
       if sudo -u "$SUDO_USER" -H -- "$bin" --version >/dev/null 2>&1; then
         CLAUDE_CMD=(sudo -u "$SUDO_USER" -H -- "$bin"); CLAUDE_HOME="$uhome"; return 0
@@ -263,8 +265,8 @@ claude_logged_in() {
 }
 
 # Read the subscription LOGIN token from ~/.claude/.credentials.json (of the resolved user) into
-# REUSE_TOKEN, and the whole hours until it expires into REUSE_TOKEN_H. Returns 0 only when a token is
-# present and still valid ≥5 min out — the CLI keeps this token fresh, so when signed in it usually is.
+# REUSE_TOKEN, and a human "time left" string (~Nh / ~Nm) into REUSE_TOKEN_LEFT. Returns 0 only when a
+# token is present and still valid ≥5 min out — the CLI keeps this token fresh, so when signed in it is.
 # Pure grep/date, no jq/python dependency. Note: this token is SHORT-LIVED and the headless pod cannot
 # refresh it (caller warns + does NOT persist it, so a re-run re-reads a freshly-refreshed one).
 read_login_token() {
@@ -275,7 +277,8 @@ read_login_token() {
   [[ -n "$REUSE_TOKEN" && -n "$exp" ]] || return 1
   now_ms=$(( $(date +%s) * 1000 ))
   (( exp > now_ms + 300000 )) || return 1        # <5 min left → treat as no valid token
-  REUSE_TOKEN_H=$(( (exp - now_ms) / 3600000 ))
+  local mins=$(( (exp - now_ms) / 60000 ))
+  if (( mins >= 60 )); then REUSE_TOKEN_LEFT="~$(( mins / 60 ))h"; else REUSE_TOKEN_LEFT="~${mins}m"; fi
   return 0
 }
 
@@ -325,7 +328,7 @@ ensure_claude_auth() {
   if read_login_token; then
     OAUTH_TOKEN="$REUSE_TOKEN"; PROVIDER="claude-agent-sdk"; KEYLESS=0
     log "Reusing your Claude login token — chat enabled for this deploy."
-    warn "this login token expires in ~${REUSE_TOKEN_H}h and the pod can't refresh it — just re-run ./install.sh to refresh, or run 'claude setup-token' and add the 1-year CLAUDE_CODE_OAUTH_TOKEN to $envf for a durable deploy."
+    warn "this login token expires in ${REUSE_TOKEN_LEFT} and the pod can't refresh it — just re-run ./install.sh to refresh, or run 'claude setup-token' and add the 1-year CLAUDE_CODE_OAUTH_TOKEN to $envf for a durable deploy."
     return 0
   fi
 
@@ -334,7 +337,7 @@ ensure_claude_auth() {
     warn "no reusable login token and no terminal for 'claude setup-token' — deploying keyless. Run 'claude setup-token', add CLAUDE_CODE_OAUTH_TOKEN to $envf, then re-run."
     return 0
   fi
-  step "Minting a long-lived (~1yr) Claude token (claude setup-token — a browser window will open; complete the sign-in there)"
+  step "Minting a long-lived (~1yr) Claude token — a browser will open, or watch this terminal for a sign-in URL; complete the sign-in to continue (claude setup-token)"
   out="$("${CLAUDE_CMD[@]}" setup-token)" || { warn "'claude setup-token' did not complete — proceeding keyless. Run it yourself, add CLAUDE_CODE_OAUTH_TOKEN to $envf, then re-run."; return 0; }
   token="$(printf '%s\n' "$out" | grep -oE 'sk-ant-oat[A-Za-z0-9._-]+' | tail -n1 || true)"
   [[ -n "$token" ]] || { warn "couldn't read a token from 'claude setup-token' output — proceeding keyless. Add CLAUDE_CODE_OAUTH_TOKEN to $envf manually, then re-run."; return 0; }
@@ -392,6 +395,52 @@ ensure_cluster() {
     timeout 300 kind create cluster --name "$CLUSTER" || die "kind create cluster timed out/failed."
   fi
   timeout 20 kubectl --context "$CTX" cluster-info >/dev/null 2>&1 || die "kind context '$CTX' is not reachable."
+}
+
+# kind pods lose internet egress after a WSL2/Docker restart — Docker wipes the bridge's iptables
+# FORWARD/CT rules and doesn't restore them, so the agent's first LLM call hangs forever. Re-add them
+# now (a no-op on a fresh cluster, where Docker just added them), and — only on WSL, where the wipe
+# happens — install a tiny systemd unit bound to docker.service so they're restored on every future
+# Docker (re)start. Best-effort throughout: a locked-down host that forbids iptables/systemd must not
+# abort the install (the same posture as ensure_inotify).
+ensure_kind_egress() {
+  local heal="$PROJECT_DIR/scripts/kind_egress_heal.sh"
+  [[ -f "$heal" ]] || return 0
+  # The rule-wipe only happens on WSL2 (Docker keeps these rules on other hosts) — do nothing, and
+  # importantly don't prompt for sudo, anywhere else. Gate the whole function, heal included.
+  grep -qi microsoft /proc/version 2>/dev/null || return 0
+  sudo bash "$heal" || true                                   # immediate heal (iptables needs root)
+
+  # Persistence: a systemd oneshot bound to docker.service re-applies the rules on every Docker
+  # (re)start. Best-effort — a host without systemd just relies on re-running install.sh.
+  have systemctl || return 0
+  [[ -d /run/systemd/system ]] || return 0
+  local dst=/usr/local/sbin/kind-egress-heal unit=/etc/systemd/system/kind-egress-heal.service tmp="$TMPDIR/kind-egress-heal.service"
+  sudo cmp -s "$heal" "$dst" 2>/dev/null || sudo install -m 0755 "$heal" "$dst" || return 0
+  cat > "$tmp" <<EOF
+[Unit]
+Description=Re-add kind bridge iptables rules (wiped on Docker restart) so pods keep internet egress
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=$dst
+RemainAfterExit=no
+
+[Install]
+WantedBy=docker.service multi-user.target
+EOF
+  # Refresh the unit only when its body changed (so an upgrade re-installs it); daemon-reload follows.
+  if ! sudo cmp -s "$tmp" "$unit" 2>/dev/null; then
+    step "Installing kind-egress-heal.service so pod internet survives Docker restarts (WSL)"
+    sudo cp "$tmp" "$unit" || return 0
+    sudo systemctl daemon-reload || true
+  fi
+  # Enable idempotently every run — a prior run that wrote the unit but failed to enable is retried.
+  systemctl is-enabled --quiet kind-egress-heal.service 2>/dev/null \
+    || sudo systemctl enable kind-egress-heal.service >/dev/null 2>&1 || true
 }
 
 load_image() {
@@ -493,6 +542,7 @@ main() {
   ensure_claude_auth
   build_image
   ensure_cluster
+  ensure_kind_egress
   load_image
   deploy
   wait_ready
