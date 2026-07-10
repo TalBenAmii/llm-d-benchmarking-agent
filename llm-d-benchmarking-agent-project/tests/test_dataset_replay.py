@@ -151,9 +151,7 @@ def test_dataset_replay_knowledge_is_discoverable():
     assert "-x" in text
 
 
-def test_execute_tool_description_points_at_dataset_knowledge():
-    from app.tools.registry import _DESCRIPTIONS
-
-    desc = _DESCRIPTIONS["execute_llmdbenchmark"]
+def test_execute_schema_description_points_at_dataset_knowledge():
+    desc = ExecuteInput.model_fields["flags"].description or ""
     assert "dataset" in desc.lower()
     assert "dataset_replay" in desc

@@ -237,9 +237,7 @@ def test_multi_stack_knowledge_is_discoverable():
     assert "multi-model-wva" in lower  # the canonical multi-stack example
 
 
-def test_execute_tool_description_points_at_multi_stack_knowledge():
-    from app.tools.registry import _DESCRIPTIONS
-
-    desc = _DESCRIPTIONS["execute_llmdbenchmark"]
+def test_execute_schema_description_points_at_multi_stack_knowledge():
+    desc = ExecuteInput.model_fields["flags"].description or ""
     assert "multi_stack" in desc
     assert "--stack" in desc

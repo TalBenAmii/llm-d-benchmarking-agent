@@ -364,17 +364,11 @@ def test_history_knowledge_documents_the_two_stores():
     assert "separate" in text or "distinct" in text or "independent" in text
 
 
-def test_execute_tool_description_points_at_results_store():
-    from app.tools.registry import _DESCRIPTIONS
-
-    desc = _DESCRIPTIONS["execute_llmdbenchmark"]
-    assert "results store" in desc.lower() or "store=" in desc
-    assert "history.md" in desc
-
-
 def test_execute_schema_describes_store_field():
     field = ExecuteInput.model_fields["store"]
     d = (field.description or "").lower()
     assert "result_history" in d  # distinct from the local store
     assert "gs://" in d or "gcs" in d
     assert "push" in d and "pull" in d
+    assert "results store" in d
+    assert "history" in d  # points the agent at read_knowledge('history') for which/when

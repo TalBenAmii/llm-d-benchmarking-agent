@@ -182,14 +182,6 @@ def test_gateway_class_knowledge_reachable_via_read_knowledge(tool_ctx):
     assert "--gateway-class" in res["content"]
 
 
-def test_execute_tool_description_points_at_gateway_class_knowledge():
-    from app.tools.registry import _DESCRIPTIONS
-
-    desc = _DESCRIPTIONS["execute_llmdbenchmark"]
-    assert "gateway_class" in desc
-    assert "--gateway-class" in desc
-
-
 def test_execute_schema_description_documents_gateway_class():
     from app.tools.schemas import ExecuteInput
 

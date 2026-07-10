@@ -188,9 +188,7 @@ def test_cloud_results_sink_knowledge_is_discoverable():
     assert first.startswith("# ")
 
 
-def test_execute_tool_description_points_at_cloud_sink_knowledge():
-    from app.tools.registry import _DESCRIPTIONS
-
-    desc = _DESCRIPTIONS["execute_llmdbenchmark"]
+def test_execute_schema_description_points_at_cloud_sink_knowledge():
+    desc = ExecuteInput.model_fields["flags"].description or ""
     assert "cloud_results_sink" in desc
     assert "gs://" in desc or "s3://" in desc
