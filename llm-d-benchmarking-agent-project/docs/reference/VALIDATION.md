@@ -28,7 +28,7 @@ flow fixtures); layers 3 and 4 are the agent self-eval harness (`tests/eval/`).
 > **Live-eval mechanics (layer 2).** The live flow eval runs in two modes: `LLM_EVAL_LIVE=1`
 > (the live set: tool-choice / error-recovery / safety) and `LLM_EVAL_LIVE=1
 > LLM_EVAL_SIMULATE=1` (the simulate set: multi-step deploy walks). Both are also runnable
-> WITHOUT pytest via `python scripts/validate_flows.py --live` / `--simulate` (same harness +
+> WITHOUT pytest via `python scripts/eval/validate_flows.py --live` / `--simulate` (same harness +
 > scoring). Two safeguards back the real-model run. First, a per-call watchdog gives each LLM
 > call (and the turn warm-up) a deadline (`LLM_EVAL_CALL_TIMEOUT`, default 90s) and, because
 > neither `asyncio.timeout` nor `task.cancel()` can abort a wedged `claude` CLI subprocess,
@@ -51,10 +51,10 @@ modes do exactly that: (1) a blocking/synchronous call freezes the loop (a flow 
 CLI subprocess across flows, which deadlocks between flows (idle loop ↔ idle subprocess), past
 every in-process cap. Neither is fixable from inside the process.
 
-`scripts/run_eval_isolated.sh` (wired up as `make validate-live-iso` /
+`scripts/eval/run_eval_isolated.sh` (wired up as `make validate-live-iso` /
 `make validate-simulate-iso`) is the structural fix and the actual guarantee:
 
-- **Process isolation.** Each flow runs in its own `python scripts/validate_flows.py --flow … `
+- **Process isolation.** Each flow runs in its own `python scripts/eval/validate_flows.py --flow … `
   process, so it gets a fresh SDK subprocess. That removes the cross-flow deadlock (mode 2) at the
   root: no shared subprocess to accumulate bad state.
 - **External hard timeout.** Each process is wrapped in coreutils `timeout -s TERM -k <grace> <hard>`.

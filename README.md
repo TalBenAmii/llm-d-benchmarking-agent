@@ -123,12 +123,12 @@ cd ~/llm-d-benchmarking-agent/llm-d-benchmarking-agent-project && ./scripts/run.
 
 Either path needs an LLM to think with. Easiest is your Claude subscription (Pro/Max, no API
 key): the service path's `install.sh` offers to wire it for you on first run (no manual `.env`
-step); the direct installer offers the same interactively (`./scripts/setup-claude-plan.sh`
+step); the direct installer offers the same interactively (`./scripts/install/setup-claude-plan.sh`
 re-runs it anytime, `--no-llm-setup` skips it). Or set one of these in `.env` by hand:
 
 | Provider | `.env` settings |
 |---|---|
-| Your Claude plan, no API key *(default)* | `LLM_PROVIDER=claude-agent-sdk` (or run `./scripts/setup-claude-plan.sh`) |
+| Your Claude plan, no API key *(default)* | `LLM_PROVIDER=claude-agent-sdk` (or run `./scripts/install/setup-claude-plan.sh`) |
 | Anthropic API | `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY=...` |
 | Any OpenAI-compatible endpoint | `LLM_PROVIDER=openai` + `OPENAI_API_KEY` (+ `OPENAI_BASE_URL`) |
 
@@ -341,7 +341,7 @@ cd llm-d-benchmarking-agent-project
 # (a) push the image to a registry your cluster can pull (instead of `kind load`):
 make image-publish                       # or build+push to your own registry
 # (b) deploy to your real context (skip `kind create`):
-./scripts/install_service.sh --image <registry-repo> --context <your-context> --oauth-token <token>
+./scripts/install/install_service.sh --image <registry-repo> --context <your-context> --oauth-token <token>
 ```
 
 Full operator runbook:

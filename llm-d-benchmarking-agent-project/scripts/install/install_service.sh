@@ -16,7 +16,7 @@
 # and no auth secret; live chat stays disabled until a token/key is set.
 #
 # Usage:
-#   ./scripts/install_service.sh [flags]
+#   ./scripts/install/install_service.sh [flags]
 #
 #   -n, --namespace NS         target namespace (default: llmd-bench; created if absent)
 #   -r, --release NAME         Helm release name (default: bench-agent)
@@ -45,8 +45,8 @@ die()  { printf '\033[1;31m[install-service] ERROR: %s\033[0m\n' "$*" >&2; exit 
 
 usage() { sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'; }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # this script lives in scripts/
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # this script lives in scripts/install/
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CHART_DIR="$PROJECT_DIR/deploy/helm/llm-d-benchmarking-agent"
 CHART_NAME="llm-d-benchmarking-agent"                        # chart .name — drives the Service fullname
 

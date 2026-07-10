@@ -2,7 +2,7 @@
 
 A local test adapter that deploys the agent as a Kubernetes service onto a throwaway
 [`kind`](https://kind.sigs.k8s.io/) cluster, exercising the real service installer
-(`scripts/install_service.sh`) and the project Helm chart, and asserts that the application
+(`scripts/install/install_service.sh`) and the project Helm chart, and asserts that the application
 fully works end to end.
 
 > This is test scaffolding; it never ships in the product image. `testing/` is excluded by
@@ -18,7 +18,7 @@ fully works end to end.
 3. kind cluster: creates a throwaway cluster (`--name csvc-sim`, `--wait 120s`). An existing
    same-named cluster is deleted first for a clean slate (unless `--keep`, which reuses it).
 4. Load image: `kind load docker-image` so the node never reaches a registry.
-5. Deploy: always via the real `scripts/install_service.sh` (`--image-pull-policy Never`,
+5. Deploy: always via the real `scripts/install/install_service.sh` (`--image-pull-policy Never`,
    `--context kind-csvc-sim`). The installer picks the provider from the auth flag it is
    handed: an `--oauth-token` (Claude subscription token) → `claude-agent-sdk` +
    `secret.claudeCodeOauthToken`; else an `--anthropic-key` → `anthropic` +

@@ -12,7 +12,7 @@
 #   ./scripts/run.sh --reinstall      # force-reinstall dependencies first
 #
 # The LLM credential lives outside git: an API key in .env, or — with LLM_PROVIDER=
-# claude-agent-sdk — your local `claude` CLI login (wired by scripts/setup-claude-plan.sh).
+# claude-agent-sdk — your local `claude` CLI login (wired by scripts/install/setup-claude-plan.sh).
 set -euo pipefail
 
 VENV=".venv"
@@ -77,9 +77,9 @@ case "$PROVIDER" in
     # Plan route: the credential is the `claude` CLI's login, so a logged-out day-2 start
     # would otherwise surface only as an error at the first chat message.
     if ! command -v claude >/dev/null 2>&1; then
-      log "Note: LLM_PROVIDER=$PROVIDER but the 'claude' CLI is not on PATH — the UI loads, chat won't. Run ./scripts/setup-claude-plan.sh"
+      log "Note: LLM_PROVIDER=$PROVIDER but the 'claude' CLI is not on PATH — the UI loads, chat won't. Run ./scripts/install/setup-claude-plan.sh"
     elif ! claude auth status --json 2>/dev/null | grep -qE '"loggedIn":[[:space:]]*true'; then
-      log "Note: the 'claude' CLI is not logged in — the UI loads, chat won't. Run ./scripts/setup-claude-plan.sh (or 'claude auth login')."
+      log "Note: the 'claude' CLI is not logged in — the UI loads, chat won't. Run ./scripts/install/setup-claude-plan.sh (or 'claude auth login')."
     fi ;;
   *)
     # Same explicit alias list as get_provider (app/llm/provider.py) — no open globs, so a

@@ -53,7 +53,7 @@ llm-d-benchmarking-agent-project/
 │                         10 topic subfolders; resolved by basename via a recursive glob — see its CLAUDE.md)
 ├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
 ├─ deploy/               Helm chart + observability manifests
-├─ scripts/              entry points (install_local.sh · install_service.sh · run.sh · setup-claude-plan.sh) + host bootstrap (install_prereqs.sh) + flow eval (validate_flows.py + run_eval_isolated.sh)
+├─ scripts/              root entry points (run.sh · install_local.sh · _env.sh shared lib) + install/ (service+host bootstrap: install_service.sh · install_prereqs.sh · install_metrics_server.sh · install-git-hooks.sh · setup-claude-plan.sh · kind_egress_heal.sh) + bridges/ (allowlisted repo wrappers: aggregate_runs.py · capacity_check.py · provision_hf_secret.py) + eval/ (flow eval: validate_flows.py · run_eval_isolated.sh)
 ├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ ui/                   static chat UI (index.html, app.js, styles.css)

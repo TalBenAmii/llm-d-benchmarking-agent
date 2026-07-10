@@ -21,7 +21,7 @@ the one the kind/sim quickstart uses.
 ### Prerequisites
 - `uv` (the Python package/venv manager). `scripts/install_local.sh` / `scripts/run.sh` auto-bootstrap it
   if it's missing, and it fetches a matching Python 3.11 itself. Plus whatever the agent installs for
-  you (Docker + the kind binary via the vetted `scripts/install_prereqs.sh`, and the benchmark repo's
+  you (Docker + the kind binary via the vetted `scripts/install/install_prereqs.sh`, and the benchmark repo's
   toolchain via `install.sh`).
 - An LLM API key for live sessions (Anthropic, or any OpenAI-compatible endpoint). Without
   a key the server still boots and the deterministic test/validation paths run.
@@ -48,7 +48,7 @@ uv run uvicorn app.main:app --reload
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_PROVIDER` | `claude-agent-sdk` | `claude-agent-sdk` (default: your Claude Pro/Max plan via the local `claude` CLI login or a `claude setup-token` token, no API key; `scripts/setup-claude-plan.sh` wires it interactively), `anthropic`, or `openai`. |
+| `LLM_PROVIDER` | `claude-agent-sdk` | `claude-agent-sdk` (default: your Claude Pro/Max plan via the local `claude` CLI login or a `claude setup-token` token, no API key; `scripts/install/setup-claude-plan.sh` wires it interactively), `anthropic`, or `openai`. |
 | `AGENT_SDK_MODEL` / `AGENT_SDK_EFFORT` | `claude-sonnet-5` / `high` | Model + reasoning effort for the `claude-agent-sdk` route. |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | — / `claude-opus-4-8` | Anthropic creds + model. |
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` | — / `…/v1` / `gpt-4o` | OpenAI-compatible creds; `BASE_URL` may point at a self-hosted vLLM/llm-d endpoint. |
@@ -75,7 +75,7 @@ the supported POC path, exercised on a local `kind` cluster.
 
 One command auto-installs any missing prereqs (docker/kind/kubectl/helm) via `sudo`, builds the
 image, creates a `kind` cluster, `kind load`s the image, deploys the chart via
-`scripts/install_service.sh`, verifies `/healthz` and `/readyz`, leaves the service running, and
+`scripts/install/install_service.sh`, verifies `/healthz` and `/readyz`, leaves the service running, and
 opens the UI in your browser. Run it either from scratch (the curl one-liner self-clones) or from
 a checkout / repo root (`./install.sh`):
 
@@ -94,14 +94,14 @@ falling back to `ANTHROPIC_API_KEY` / `--anthropic-key`. Keyless still serves th
 
 ### Real cluster (not yet tested): same deploy, minimal delta
 
-`scripts/install_service.sh` deploys to whatever cluster your `kubectl` context points at, so a
+`scripts/install/install_service.sh` deploys to whatever cluster your `kubectl` context points at, so a
 real cluster is the same steps with two changes: (a) push the image to a registry the cluster
 can pull (`make image-publish`, or your own registry) instead of `kind load`; (b) point at your
 context and skip `kind create`:
 
 ```bash
 cd llm-d-benchmarking-agent-project
-./scripts/install_service.sh \
+./scripts/install/install_service.sh \
   --image <registry-repo> --context <your-context> \
   --oauth-token "$CLAUDE_CODE_OAUTH_TOKEN"        # selects the default claude-agent-sdk provider
 ```

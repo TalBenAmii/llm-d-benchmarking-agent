@@ -4,7 +4,7 @@
 #
 # It ORCHESTRATES only: (curl-bootstrap self-clone) -> preflight (auto-installs any missing
 # docker/kind/kubectl/helm via sudo) -> build image -> create kind cluster -> load image ->
-# DELEGATE the actual deploy to scripts/install_service.sh (the real Helm installer) ->
+# DELEGATE the actual deploy to scripts/install/install_service.sh (the real Helm installer) ->
 # verify /healthz + /readyz -> LEAVE THE SERVICE RUNNING and (by default, on a terminal) open the UI.
 # The Helm logic lives in install_service.sh; this script does not duplicate it. For a
 # build+deploy+assert+AUTO-TEARDOWN e2e test instead, use testing/cluster-service-sim/run.sh.
@@ -28,7 +28,7 @@ install.sh — one-command install-and-run of the llm-d Benchmarking Assistant a
 SERVICE on a local `kind` cluster (laptop POC). Run it straight from GitHub with the curl one-liner
 below, or clone the repo and run ./install.sh. It orchestrates: fetch (curl-bootstrap self-clone) ->
 preflight (auto-installs any missing docker/kind/kubectl/helm via interactive sudo) -> build image ->
-create kind cluster -> load image -> DELEGATE the deploy to scripts/install_service.sh (Helm) ->
+create kind cluster -> load image -> DELEGATE the deploy to scripts/install/install_service.sh (Helm) ->
 verify /healthz + /readyz. If no Claude auth is configured it checks whether you're signed in to the
 Claude app (offering to sign in + mint a subscription token if not), then LEAVES THE SERVICE RUNNING
 and (by default, on a terminal) opens the chat UI in your browser.
@@ -70,7 +70,7 @@ EOF
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" 2>/dev/null && pwd || true)"  # empty under `bash <(curl …)`
 PROJECT_DIR="$SCRIPT_DIR/llm-d-benchmarking-agent-project"
-INSTALLER="$PROJECT_DIR/scripts/install_service.sh"            # the real Helm deployer we delegate to
+INSTALLER="$PROJECT_DIR/scripts/install/install_service.sh"            # the real Helm deployer we delegate to
 CHART_DIR="$PROJECT_DIR/deploy/helm/llm-d-benchmarking-agent"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/llm-d-benchmarking-agent}"   # curl-bootstrap clone target (see bootstrap_if_curl)
 
@@ -181,8 +181,8 @@ ensure_prereqs() {
   if [[ ${#missing[@]} -gt 0 ]]; then
     warn "Missing: ${missing[*]} — installing them now; you'll be prompted for your sudo password. Ctrl-C to abort and install them manually."
     step "Installing prerequisites (docker/kind/kubectl) via sudo"
-    sudo bash "$PROJECT_DIR/scripts/install_prereqs.sh" --all \
-      || die "prerequisite install failed (see above). Install docker+kind+kubectl manually (scripts/install_prereqs.sh) and re-run."
+    sudo bash "$PROJECT_DIR/scripts/install/install_prereqs.sh" --all \
+      || die "prerequisite install failed (see above). Install docker+kind+kubectl manually (scripts/install/install_prereqs.sh) and re-run."
     if ! have helm; then
       step "Installing helm via sudo"
       curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | sudo bash \
@@ -404,7 +404,7 @@ ensure_cluster() {
 # Docker (re)start. Best-effort throughout: a locked-down host that forbids iptables/systemd must not
 # abort the install (the same posture as ensure_inotify).
 ensure_kind_egress() {
-  local heal="$PROJECT_DIR/scripts/kind_egress_heal.sh"
+  local heal="$PROJECT_DIR/scripts/install/kind_egress_heal.sh"
   [[ -f "$heal" ]] || return 0
   # The rule-wipe only happens on WSL2 (Docker keeps these rules on other hosts) — do nothing, and
   # importantly don't prompt for sudo, anywhere else. Gate the whole function, heal included.

@@ -677,7 +677,7 @@ function renderBadge() {
     llmBadge.disabled = true;
     clearBadgeMenuAttrs();
     llmBadge.textContent = "LLM not configured";
-    llmBadge.title = "The LLM provider failed to load — wire one (e.g. ./scripts/setup-claude-plan.sh) and restart.";
+    llmBadge.title = "The LLM provider failed to load — wire one (e.g. ./scripts/install/setup-claude-plan.sh) and restart.";
     return;
   }
   llmBadge.classList.remove("err");

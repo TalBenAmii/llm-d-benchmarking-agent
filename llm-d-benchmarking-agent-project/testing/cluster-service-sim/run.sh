@@ -2,7 +2,7 @@
 # run.sh — LOCAL cluster-service smoke adapter (NOT product; testing/ is build-excluded).
 #
 # Deploys the agent as a Kubernetes SERVICE onto a THROWAWAY `kind` cluster — exercising the
-# real service installer (scripts/install_service.sh) + Helm chart — and asserts "the app fully
+# real service installer (scripts/install/install_service.sh) + Helm chart — and asserts "the app fully
 # works" end to end: liveness, readiness, the provider surface, the RBAC least-privilege
 # boundary, and (when a key is present) one live-chat round-trip over the /ws WebSocket.
 #
@@ -39,7 +39,7 @@ set -euo pipefail
 # ─── location ────────────────────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"            # testing/cluster-service-sim -> project root
-INSTALLER="$PROJECT_DIR/scripts/install_service.sh"      # the service installer we exercise
+INSTALLER="$PROJECT_DIR/scripts/install/install_service.sh"      # the service installer we exercise
 CHART_DIR="$PROJECT_DIR/deploy/helm/llm-d-benchmarking-agent"  # same chart install_service.sh deploys
 MAIN_PID=$$
 

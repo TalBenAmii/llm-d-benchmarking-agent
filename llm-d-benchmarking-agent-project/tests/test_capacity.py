@@ -281,7 +281,7 @@ def test_runner_resolves_python_via_bench_venv(tmp_path):
     entry = Allowlist.from_file(ALLOWLIST_PATH).executable("capacity_check.py")
     real, cwd = runner.resolve(["capacity_check.py", str(tmp_path / "req.json")], entry)
     assert real[0] == str(venv_bin / "python")
-    assert real[1].endswith("scripts/capacity_check.py")
+    assert real[1].endswith("scripts/bridges/capacity_check.py")
     assert real[2].endswith("req.json")
 
 

@@ -11,7 +11,7 @@
 #   4. this project's venv + app  → .venv synced from uv.lock (`uv sync`), and a .env
 #
 # Optionally also installs the host cluster prereqs (Docker + the kind binary) via the
-# vetted scripts/install_prereqs.sh (with --prereqs).
+# vetted scripts/install/install_prereqs.sh (with --prereqs).
 #
 # When it finishes:   ./scripts/run.sh   →   http://127.0.0.1:8000
 #
@@ -139,8 +139,8 @@ ensure_uv() {
 }
 
 if [[ "$PREREQS" == 1 && "$APP_ONLY" != 1 ]]; then
-  step "Host prereqs: Docker + kind (scripts/install_prereqs.sh)"
-  bash "$PROJECT_DIR/scripts/install_prereqs.sh" --docker --kind --kubectl
+  step "Host prereqs: Docker + kind (scripts/install/install_prereqs.sh)"
+  bash "$PROJECT_DIR/scripts/install/install_prereqs.sh" --docker --kind --kubectl
 fi
 
 if [[ "$APP_ONLY" != 1 ]]; then
@@ -190,8 +190,8 @@ PY="$VENV/bin/python"
 # without a TTY). Best-effort: a declined/failed setup must never fail the install.
 if [[ "$NO_LLM_SETUP" != 1 ]]; then
   step "LLM provider — wire your Claude plan (optional)"
-  bash "$PROJECT_DIR/scripts/setup-claude-plan.sh" \
-    || warn "Claude-plan setup didn't complete — run ./scripts/setup-claude-plan.sh anytime."
+  bash "$PROJECT_DIR/scripts/install/setup-claude-plan.sh" \
+    || warn "Claude-plan setup didn't complete — run ./scripts/install/setup-claude-plan.sh anytime."
 fi
 
 # ── MCP server — editable-install into the shared venv + register with Claude Code ─

@@ -14,7 +14,7 @@ without an API key, Docker, kind, the upstream repos, or any real side effect:
 The same machinery powers three callers:
   * the deterministic gating tests (a *scripted* provider plays a golden transcript),
   * the opt-in live eval (a *real* provider drives from natural-language input), and
-  * the local ``scripts/validate_flows.py`` CLI.
+  * the local ``scripts/eval/validate_flows.py`` CLI.
 
 Nothing here mutates the host. Read-only probes ``shutil.which`` for tools; the harness
 patches that to a flow-declared set so probe behaviour is identical on every machine.

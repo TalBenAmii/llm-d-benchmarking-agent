@@ -9,7 +9,7 @@ Two halves, both hermetic (NO cluster, NO GPU, NO network, NO real benchmark run
       the registry descriptions route there.
 
   (B) THE OPTIONAL SCRIPTED STEP (run a standalone plot script against a results dir):
-      the `aggregate_runs` tool + the vetted `scripts/aggregate_runs.py` wrapper, allowlisted
+      the `aggregate_runs` tool + the vetted `scripts/bridges/aggregate_runs.py` wrapper, allowlisted
       READ-ONLY against a results dir. Covered three ways: the allowlist classification, the
       tool end-to-end through a CaptureRunner faking the bridge, and a REAL end-to-end run of
       the wrapper (importing the repo's OWN aggregate_runs module) over fixture BR v0.2
@@ -38,7 +38,7 @@ from tests._helpers import _real_repo_ctx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
-WRAPPER = PROJECT_ROOT / "scripts" / "aggregate_runs.py"
+WRAPPER = PROJECT_ROOT / "scripts" / "bridges" / "aggregate_runs.py"
 
 
 # ============================================================================
@@ -134,7 +134,7 @@ def test_runner_resolves_wrapper_via_bench_venv(tmp_path):
     entry = Allowlist.from_file(ALLOWLIST_PATH).executable("aggregate_runs.py")
     real, _cwd = runner.resolve(["aggregate_runs.py", str(tmp_path / "req.json")], entry)
     assert real[0] == str(venv_bin / "python")
-    assert real[1].endswith("scripts/aggregate_runs.py")
+    assert real[1].endswith("scripts/bridges/aggregate_runs.py")
     assert real[2].endswith("req.json")
 
 

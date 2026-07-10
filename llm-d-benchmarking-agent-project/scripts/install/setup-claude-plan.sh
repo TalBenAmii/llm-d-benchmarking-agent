@@ -14,19 +14,19 @@
 # it skips cleanly and changes nothing.
 #
 # Usage:
-#   ./scripts/setup-claude-plan.sh
-#   ./scripts/setup-claude-plan.sh -h | --help
+#   ./scripts/install/setup-claude-plan.sh
+#   ./scripts/install/setup-claude-plan.sh -h | --help
 set -euo pipefail
 
 case "${1:-}" in -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac   # before the cd — $0 may be relative
 
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # project root (this script lives in scripts/)
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"   # project root (this script lives in scripts/install/)
 
 log()  { printf '\033[35m▸\033[0m %s\n' "$*"; }            # llm-d purple bullet
 warn() { printf '\033[1;33m[setup-claude-plan] %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31m[setup-claude-plan] ERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
-# shellcheck source-path=SCRIPTDIR/..
+# shellcheck source-path=SCRIPTDIR/../..
 # shellcheck source=scripts/_env.sh
 source "scripts/_env.sh"   # provides _tty_interactive + ensure_env + read_env + set_env_var + confirm/menu_select + ensure_claude_cli
 
@@ -37,7 +37,7 @@ source "scripts/_env.sh"   # provides _tty_interactive + ensure_env + read_env +
 # (`./scripts/install_local.sh &`, nohup, WSL/ssh non-interactive exec) — which would SIGTTIN-stop or block
 # forever on the first read — takes the clean-skip path instead of prompting.
 if _tty_interactive; then TTY=/dev/tty; else
-  log "No interactive terminal — skipping Claude-plan setup. Run ./scripts/setup-claude-plan.sh later."
+  log "No interactive terminal — skipping Claude-plan setup. Run ./scripts/install/setup-claude-plan.sh later."
   exit 0
 fi
 ask() {  # $1 prompt, $2 default → echoes the answer (or default if blank)
@@ -72,7 +72,7 @@ CLI_RC=0; ensure_claude_cli || CLI_RC=$?
 case "$CLI_RC" in
   0) ;;
   2) log "Skipping — nothing changed. Install it later with:  curl -fsSL https://claude.ai/install.sh | bash"
-     log "…then re-run ./scripts/setup-claude-plan.sh"; exit 0 ;;
+     log "…then re-run ./scripts/install/setup-claude-plan.sh"; exit 0 ;;
   *) die "the claude CLI could not be installed (see above) — install it manually and re-run this script." ;;
 esac
 

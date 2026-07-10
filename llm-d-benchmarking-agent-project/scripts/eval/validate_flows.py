@@ -3,13 +3,13 @@
 human-readable front-end over the same harness the CI tests use.
 
     # deterministic (golden transcripts, hermetic — no key/Docker/repos needed):
-    python scripts/validate_flows.py
-    python scripts/validate_flows.py --flow kind-quickstart   # just one
-    python scripts/validate_flows.py --show                   # print each captured command
+    python scripts/eval/validate_flows.py
+    python scripts/eval/validate_flows.py --flow kind-quickstart   # just one
+    python scripts/eval/validate_flows.py --show                   # print each captured command
 
     # live (the real configured LLM drives each flow from natural-language input):
-    LLM_EVAL_LIVE=1 python scripts/validate_flows.py --live        # the non-simulate "live" set
-    LLM_EVAL_LIVE=1 python scripts/validate_flows.py --simulate    # the SIMULATE set (deploy walks)
+    LLM_EVAL_LIVE=1 python scripts/eval/validate_flows.py --live        # the non-simulate "live" set
+    LLM_EVAL_LIVE=1 python scripts/eval/validate_flows.py --simulate    # the SIMULATE set (deploy walks)
 
 Both --live and --simulate spend LLM quota; each scores the real model's tool/command choices
 (including the load_tools phase-group picks) via score_flow, with the per-call watchdog bounding
@@ -27,7 +27,7 @@ import tempfile
 from pathlib import Path
 
 # Make the project importable when run as a bare script.
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 from tests.flows.flows import ALL_FLOWS, FLOWS_BY_NAME  # noqa: E402

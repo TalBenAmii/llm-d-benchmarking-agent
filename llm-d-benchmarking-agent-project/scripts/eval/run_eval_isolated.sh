@@ -5,7 +5,7 @@
 # -----------------------------------------------------------
 # The live/simulate eval drives each flow with a real LLM through the claude-agent-sdk, which spawns
 # a bundled CLI subprocess. Two failure modes defeat the in-process asyncio caps in
-# scripts/validate_flows.py (_bounded) and tests/flows/harness.py (_TimeoutTurn):
+# scripts/eval/validate_flows.py (_bounded) and tests/flows/harness.py (_TimeoutTurn):
 #   1. A blocking/synchronous call freezes the asyncio event loop, so the per-call and per-flow
 #      `asyncio.wait(timeout=…)` timers never fire — a frozen loop cannot run its own timers.
 #   2. AgentSdkProvider reuses ONE long-lived SDK subprocess across flows; accumulated state
@@ -20,7 +20,7 @@
 # guarantee. (Background: docs/reference/VALIDATION.md §"Isolated eval runner".)
 #
 # Usage:
-#   scripts/run_eval_isolated.sh [live|simulate] [flow-name …]
+#   scripts/eval/run_eval_isolated.sh [live|simulate] [flow-name …]
 #     (no flow names) → every flow scored in that mode
 #     flow-name …      → just those flows (e.g. re-running a subset of failures)
 #
@@ -38,7 +38,7 @@
 set -u
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJ="$(cd "$here/.." && pwd)"
+PROJ="$(cd "$here/../.." && pwd)"
 cd "$PROJ" || exit 99
 
 MODE="${1:-simulate}"
@@ -120,7 +120,7 @@ for flow in "${FLOWS[@]}"; do
   flog="$LOG/iso_${MODE}_${flow}.log"
   t0=$(date +%s)
   timeout -k "$GRACE" -s TERM "$HARD" \
-    "$PY" -u scripts/validate_flows.py --flow "$flow" --"$MODE" >"$flog" 2>&1
+    "$PY" -u scripts/eval/validate_flows.py --flow "$flow" --"$MODE" >"$flog" 2>&1
   rc=$?
   dt=$(( $(date +%s) - t0 ))
   reap_orphans

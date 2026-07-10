@@ -22,7 +22,7 @@ Dockerfile, chart, and CI scaffold, not paraphrased.
 
 There are two entirely separate installers; pick by where the agent runs.
 
-| | `scripts/install_local.sh` | `scripts/install_service.sh` |
+| | `scripts/install_local.sh` | `scripts/install/install_service.sh` |
 |---|---|---|
 | **Runs the agent** | on your laptop/dev box (a `.venv` + `./scripts/run.sh`) | as a Pod inside a Kubernetes cluster (Helm-deployed) |
 | **What it sets up** | clones the 3 sibling repos, installs the client toolchain + `llmdbenchmark` CLI + this app's venv + `.env` + MCP server | `helm upgrade --install` of the pre-built published image into an existing cluster, with a namespace-scoped SA + least-privilege RBAC |
@@ -135,8 +135,8 @@ Steps a cluster user runs to stand up the agent.
 ### Basic install
 
 ```bash
-./scripts/install_service.sh --oauth-token <TOKEN>
-# or: export CLAUDE_CODE_OAUTH_TOKEN=<TOKEN>   &&   ./scripts/install_service.sh
+./scripts/install/install_service.sh --oauth-token <TOKEN>
+# or: export CLAUDE_CODE_OAUTH_TOKEN=<TOKEN>   &&   ./scripts/install/install_service.sh
 ```
 
 On success it prints the port-forward command to reach the UI. `<TOKEN>` is a Claude subscription
@@ -164,7 +164,7 @@ token from `claude setup-token`, the primary auth path (see "Provide auth for ch
 Validate without applying anything first:
 
 ```bash
-./scripts/install_service.sh --namespace bench --release bench-agent --dry-run
+./scripts/install/install_service.sh --namespace bench --release bench-agent --dry-run
 ```
 
 For local/kind or air-gapped clusters, `--build` builds the image on the spot (docker) and defaults its
@@ -188,8 +188,8 @@ claude setup-token      # prints a long-lived (~1 year) OAuth token; copy it
 Provide it to the service (pick one):
 
 ```bash
-./scripts/install_service.sh --oauth-token <TOKEN>                        # installer flag
-export CLAUDE_CODE_OAUTH_TOKEN=<TOKEN> && ./scripts/install_service.sh    # env var
+./scripts/install/install_service.sh --oauth-token <TOKEN>                        # installer flag
+export CLAUDE_CODE_OAUTH_TOKEN=<TOKEN> && ./scripts/install/install_service.sh    # env var
 # or straight to Helm:
 helm upgrade --install bench-agent deploy/helm/llm-d-benchmarking-agent -n <ns> --create-namespace \
   --set-string secret.claudeCodeOauthToken=<TOKEN>
@@ -217,8 +217,8 @@ subscription, pass an API key; the installer then selects `LLM_PROVIDER=anthropi
 `secret.anthropicApiKey`:
 
 ```bash
-./scripts/install_service.sh --anthropic-key sk-ant-...
-# or: export ANTHROPIC_API_KEY=sk-ant-...  &&  ./scripts/install_service.sh
+./scripts/install/install_service.sh --anthropic-key sk-ant-...
+# or: export ANTHROPIC_API_KEY=sk-ant-...  &&  ./scripts/install/install_service.sh
 ```
 
 **Neither?** The app still deploys (SDK, chat disabled): `/healthz` and the keyless `/readyz` serve,
@@ -277,7 +277,7 @@ submit benchmark runs as separate Kubernetes Jobs, point `config.orchestratorIma
 agent image ref (the baked image has `llmdbenchmark` symlinked onto PATH, which the Job path resolves):
 
 ```bash
-./scripts/install_service.sh --oauth-token <TOKEN> \
+./scripts/install/install_service.sh --oauth-token <TOKEN> \
   --orchestrator-image ghcr.io/llm-d/llm-d-benchmarking-agent:0.1.0
 ```
 
@@ -344,9 +344,9 @@ golden base image).
 | Build with a version | `make image VERSION=0.2.0` |
 | Log in to GHCR | `echo $GH_PAT \| docker login ghcr.io -u <user> --password-stdin` |
 | Publish image | `make image-publish` |
-| Install service | `./scripts/install_service.sh --oauth-token <TOKEN>` |
-| Validate only | `./scripts/install_service.sh --dry-run` |
-| Local build + install | `./scripts/install_service.sh --build` (+ `kind load docker-image <img>`) |
+| Install service | `./scripts/install/install_service.sh --oauth-token <TOKEN>` |
+| Validate only | `./scripts/install/install_service.sh --dry-run` |
+| Local build + install | `./scripts/install/install_service.sh --build` (+ `kind load docker-image <img>`) |
 | Reach the UI | `kubectl -n <ns> port-forward svc/<release>-llm-d-benchmarking-agent 8000:8000` |
 | Post-install notes | `helm get notes <release> -n <ns>` |
 | Test (kind adapter) | `bash testing/cluster-service-sim/run.sh` |
