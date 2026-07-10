@@ -475,7 +475,7 @@ def test_cancel_judgment_lives_in_knowledge(tmp_path):
     """The 'when to cancel' guidance is in knowledge/run_lifecycle.md (judgment), NOT in Python
     if/elif, and the system prompt loads it so the agent reasons over it."""
     settings = get_settings()
-    kfile = settings.knowledge_dir / "run_lifecycle.md"
+    kfile = settings.knowledge_dir / "run/run_lifecycle.md"
     assert kfile.is_file(), "knowledge/run_lifecycle.md must exist (the cancel judgment)"
     text = kfile.read_text().lower()
     # It speaks to BOTH directions of the decision (when to and when not to cancel).

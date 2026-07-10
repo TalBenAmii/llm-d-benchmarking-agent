@@ -39,7 +39,7 @@ def _read_knowledge_file(rel: str) -> str:
 
 
 def _epp_data() -> dict:
-    data = yaml.safe_load(_read_knowledge_file("knowledge/epp_headers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/workload/epp_headers.yaml"))
     assert isinstance(data, dict)
     return data
 
@@ -184,7 +184,7 @@ def test_narration_reframes_failures_as_capacity_not_breakage():
 # ---- (7) results_interpretation.md routes the agent here --------------------
 
 def test_results_interpretation_routes_to_epp_headers():
-    md = _read_knowledge_file("knowledge/results_interpretation.md")
+    md = _read_knowledge_file("knowledge/analysis/results_interpretation.md")
     assert 'read_knowledge("epp_headers")' in md
     assert "x-llm-d-request-dropped-reason" in md
     # It frames the routing around a non-100% success / 429.
@@ -196,7 +196,7 @@ def test_results_interpretation_routes_to_epp_headers():
 def test_classification_is_data_not_python():
     """The rejected/evicted/broken classification must NOT live in any Python module — assert the
     enum values appear in the YAML but not as branch literals in the prompt/probe code."""
-    yaml_text = _read_knowledge_file("knowledge/epp_headers.yaml")
+    yaml_text = _read_knowledge_file("knowledge/workload/epp_headers.yaml")
     for reason in ("rejected-saturated", "evicted-priority", "rejected-ttl-expired",
                    "evicted-queue-pressure"):
         assert reason in yaml_text

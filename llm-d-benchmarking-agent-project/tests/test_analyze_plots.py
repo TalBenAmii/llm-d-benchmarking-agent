@@ -221,7 +221,7 @@ def test_agent_analysis_math_is_independent_of_analyze_plots():
 
 
 def test_analysis_knowledge_documents_the_three_families_as_supplementary():
-    guide = KNOWLEDGE_DIR / "analysis.md"
+    guide = KNOWLEDGE_DIR / "analysis/analysis.md"
     assert guide.is_file()
     text = guide.read_text().lower()
     assert "--analyze" in text

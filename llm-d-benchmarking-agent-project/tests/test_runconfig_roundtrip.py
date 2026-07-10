@@ -185,7 +185,7 @@ def test_roundtrip_in_one_session_acceptance(allowlist, catalog):
 def test_runconfig_roundtrip_knowledge_is_discoverable():
     from pathlib import Path
 
-    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "runconfig_roundtrip.md"
+    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "run/runconfig_roundtrip.md"
     assert kfile.is_file(), "knowledge/runconfig_roundtrip.md must exist (auto-indexed by glob)"
     text = kfile.read_text()
     # It must actually carry the generate-vs-reuse-vs-author judgment, not just name the flags.

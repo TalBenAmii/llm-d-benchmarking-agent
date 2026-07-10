@@ -195,7 +195,7 @@ def test_debug_launch_argv_is_a_complete_allowed_mutating_run(allowlist, catalog
 
 
 def test_harness_debug_knowledge_exists_and_describes_the_boundaries():
-    guide = KNOWLEDGE_DIR / "harness_debug.md"
+    guide = KNOWLEDGE_DIR / "run/harness_debug.md"
     assert guide.is_file(), "knowledge/harness_debug.md must hold the WHEN + no-drive judgment"
     text = guide.read_text()
     lower = text.lower()

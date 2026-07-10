@@ -230,7 +230,7 @@ def test_accelerators_knowledge_loads_via_read_knowledge(tool_ctx):
 
 def test_accelerators_knowledge_carries_cpu_floor():
     """The real (non-sim) CPU-only 64c/64GB-per-replica floor is DATA, not a Python threshold."""
-    path = "knowledge/accelerators.yaml"
+    path = "knowledge/deploy/accelerators.yaml"
     data = yaml.safe_load(_read_knowledge_file(path))
     cpu = data["cpu_inferencing"]
     assert cpu["supported"] is True
@@ -242,7 +242,7 @@ def test_accelerators_knowledge_carries_cpu_floor():
 
 
 def test_accelerators_knowledge_carries_cuda_driver_minimums():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/accelerators.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/accelerators.yaml"))
     cuda = data["cuda_driver"]
     assert cuda["current"]["cuda_version"] == "12.9.1"
     assert cuda["current"]["min_driver"] == "525.60.13"
@@ -253,7 +253,7 @@ def test_accelerators_knowledge_carries_cuda_driver_minimums():
 
 
 def test_accelerators_knowledge_carries_dra_vs_device_plugin_distinction():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/accelerators.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/accelerators.yaml"))
     rm = data["resource_management"]
     names = {m["name"] for m in rm["mechanisms"]}
     assert any("Device Plugin" in n for n in names)
@@ -263,7 +263,7 @@ def test_accelerators_knowledge_carries_dra_vs_device_plugin_distinction():
 
 
 def test_accelerators_knowledge_marks_kind_sim_floor_exempt():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/accelerators.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/accelerators.yaml"))
     sim = data["kind_cpu_sim"]
     assert sim["floor_exempt"] is True
     assert sim["path"] == "cicd/kind"
@@ -271,7 +271,7 @@ def test_accelerators_knowledge_marks_kind_sim_floor_exempt():
 
 def test_accelerators_knowledge_maps_sibling_vendor_resource_keys():
     """Every accelerator key the probe detects must be documented as a vendor resource."""
-    data = yaml.safe_load(_read_knowledge_file("knowledge/accelerators.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/accelerators.yaml"))
     documented: set[str] = set()
     for entry in data["accelerator_resources"]:
         if "resource_key" in entry:

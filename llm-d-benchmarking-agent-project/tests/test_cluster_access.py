@@ -261,7 +261,7 @@ ALLOWLIST_TEXT = (Path(__file__).resolve().parents[1] / "security" / "allowlist.
 
 
 def test_remote_cluster_knowledge_documents_the_levers_and_secret_rule():
-    guide = KNOWLEDGE_DIR / "preconditions.md"
+    guide = KNOWLEDGE_DIR / "deploy/preconditions.md"
     text = guide.read_text()
     # Both levers are documented...
     assert "kubeconfig" in text and "-k" in text

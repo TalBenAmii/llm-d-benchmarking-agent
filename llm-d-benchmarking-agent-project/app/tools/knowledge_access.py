@@ -128,7 +128,7 @@ def fetch_key_docs(
     The *list* of docs is hard-coded (in key_docs.yaml); the *content* is read live from
     the cloned repos, so it is never a stale vendored copy. Read-only. Call this before
     proposing a deployment plan so the flow/flags come from the real procedure."""
-    kfile = ctx.settings.knowledge_dir / "key_docs.yaml"
+    kfile = ctx.settings.knowledge_dir / "reference" / "key_docs.yaml"
     if not kfile.is_file():
         return {"docs": [], "note": f"key_docs.yaml not found at {kfile}"}
     try:
@@ -203,7 +203,7 @@ def _knowledge_files(ctx: ToolContext) -> list[Path]:
     kdir = ctx.settings.knowledge_dir
     if not kdir.is_dir():
         return []
-    files = list(kdir.glob("*.md")) + list(kdir.glob("*.yaml")) + list(kdir.glob("*.yml"))
+    files = list(kdir.rglob("*.md")) + list(kdir.rglob("*.yaml")) + list(kdir.rglob("*.yml"))
     files = [f for f in files if f.name not in EXCLUDED_KNOWLEDGE_FILES]
     return sorted(files, key=lambda p: p.name)
 
@@ -468,7 +468,7 @@ def _repo_doc_pointers(ctx: ToolContext) -> list[tuple[str, str]]:
     """(repo-relative-path, line) pairs parsed from the curated knowledge/useful_repo_docs.md
     index. Each bulleted/numbered line that names a `repo/...` doc becomes a searchable pointer
     so a problem-driven query can surface the right UPSTREAM doc by topic, not exact basename."""
-    idx = ctx.settings.knowledge_dir / "useful_repo_docs.md"
+    idx = ctx.settings.knowledge_dir / "reference" / "useful_repo_docs.md"
     if not idx.is_file():
         return []
     pointers: list[tuple[str, str]] = []

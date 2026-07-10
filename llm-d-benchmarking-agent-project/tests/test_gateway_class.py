@@ -159,7 +159,7 @@ def test_gateway_class_on_plan_stays_read_only(allowlist, catalog):
 def test_gateway_class_knowledge_is_discoverable():
     from pathlib import Path
 
-    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "gateway_class.md"
+    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "deploy/gateway_class.md"
     assert kfile.is_file(), "knowledge/gateway_class.md must exist (auto-indexed by prompt glob)"
     text = kfile.read_text()
     # First line must be a heading (the on-demand index uses it as the one-line purpose).
