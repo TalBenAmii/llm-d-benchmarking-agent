@@ -375,22 +375,25 @@ build_image() {
 # No-op when they're already high enough — so the common case never prompts for a sudo password. Every
 # privileged command is best-effort: a locked-down host that forbids the sysctl must NOT abort the
 # install (kind may still work; if not, the die on cluster-create surfaces the real error).
+# High RUNTIME values alone are not enough to skip: without the sysctl.d file a reboot resets the
+# limits to defaults, and every kind cluster on the shared kernel then wedges (kube-proxy et al.
+# CrashLoopBackOff with "too many open files") — so skip only when the persisted file exists too.
 ensure_inotify() {
-  local watches instances
+  local watches instances conf=/etc/sysctl.d/99-inotify-kind.conf
   watches="$(sysctl -n fs.inotify.max_user_watches 2>/dev/null || echo 0)"
   instances="$(sysctl -n fs.inotify.max_user_instances 2>/dev/null || echo 0)"
-  [[ "$watches" -ge 1048576 && "$instances" -ge 8192 ]] && return 0
+  [[ "$watches" -ge 1048576 && "$instances" -ge 8192 && -f "$conf" ]] && return 0
   step "Raising inotify limits so kind's node systemd can boot (you may be prompted for your sudo password)"
   sudo sysctl -w fs.inotify.max_user_watches=1048576 || true
   sudo sysctl -w fs.inotify.max_user_instances=8192 || true
-  printf 'fs.inotify.max_user_watches=1048576\nfs.inotify.max_user_instances=8192\n' | sudo tee /etc/sysctl.d/99-inotify-kind.conf >/dev/null || true
+  printf 'fs.inotify.max_user_watches=1048576\nfs.inotify.max_user_instances=8192\n' | sudo tee "$conf" >/dev/null || true
 }
 
 ensure_cluster() {
+  ensure_inotify   # on reuse too: a reboot may have reset the limits out from under a live cluster
   if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
     log "Reusing existing kind cluster '$CLUSTER'."
   else
-    ensure_inotify
     step "Creating kind cluster '$CLUSTER'"
     timeout 300 kind create cluster --name "$CLUSTER" || die "kind create cluster timed out/failed."
   fi
