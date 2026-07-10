@@ -36,14 +36,14 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
 - **orchestrator** — `test_orchestrator*.py`, `test_jobs_api.py`.
 - **agent loop** — `test_deterministic_msgs.py`, `test_context_mgmt.py`, `test_tool_result_budget.py`, `test_events.py`, `test_loop.py`, `test_streaming_turn.py`, `test_suggest*.py`/`test_suggestions.py`, `test_ws*.py`, `test_prewarm.py`.
 - **validation gates** — `test_report_validation.py`, `test_standard_metrics.py`, `test_runconfig_roundtrip.py`, `test_scenario_overrides.py`, `test_model_override.py`.
-- **security / allowlist** — `test_allowlist.py`, `test_api_trust.py`, `test_governance.py`, `test_concurrency.py`, `test_sessions.py`, `test_run_shell.py`, `test_auto_approve.py`, `test_qafix_infra.py`, `test_product_boundary.py`.
+- **security / allowlist** — `test_allowlist.py`, `test_governance.py`, `test_concurrency.py`, `test_sessions.py`, `test_run_shell.py`, `test_auto_approve.py`, `test_qafix_infra.py`, `test_product_boundary.py`.
 - **capacity** — `test_capacity.py`, `test_capacity_gated.py`.
 - **readiness** — `test_endpoint_readiness.py`, `test_gateway_readiness.py`, `test_serving_readiness.py`, `test_gateway_class.py`.
 - **packaging / sharing** — `test_packaging.py`, `test_report_card.py`, `test_share.py`, `test_shared_chat_export.py`, `test_cloud_results_sink.py`.
 - **storage** — `test_retention.py`, `test_results_store.py`, `test_history.py`, `test_run_lifecycle.py`, `test_provenance.py`.
-- **observability** — `test_metrics.py`, `test_cot_trace.py`, `test_logging.py`, `test_tracing_config.py`, `test_resource_*.py`, `test_monitoring_activate.py`, `test_ops_docs.py`.
+- **observability** — `test_metrics.py`, `test_logging.py`, `test_tracing_config.py`, `test_resource_*.py`, `test_monitoring_activate.py`, `test_ops_docs.py`.
 - **llm providers** — `test_agent_sdk_provider.py`, `test_provider_pack.py`, `test_llm_caching_usage.py`.
-- **UI / HTTP e2e** — `test_ui.py`, `test_readyz.py`, `test_static_cache.py`, `test_streaming_turn.py`.
+- **UI / HTTP e2e** — `test_ui.py`, `test_readyz.py`, `test_static_cache.py`, `test_streaming_turn.py`, `test_web.py` (CORS + the API being open by default).
 - **subdirs** — `tests/flows/` (golden-transcript replays + shared harness/flows + hermetic skill-grounding guards — each golden operation-flow must fetch its grounding doc first (its `*_skill`, or the `quickstart` runbook on the kind/CPU-sim path)) · `tests/eval/` (live-LLM agent evals split into `live/` = default-live/real-app + `simulate/` = the SIMULATE-only skill-usage eval, plus hermetic shadow/oracle guards directly under `eval/` — gated, never auto-run) · `tests/integration/` (opt-in).
 
 ## Gotchas (the time-wasters)

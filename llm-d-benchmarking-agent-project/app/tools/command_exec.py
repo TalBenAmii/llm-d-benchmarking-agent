@@ -1,11 +1,11 @@
 """The command-execution engine for :class:`~app.tools.context.ToolContext`.
 
 ToolContext is the dependency-injection hub every tool receives (settings, the security
-allowlist, the command runner, the per-session workspace + quota counter, and the emit /
-approval callbacks the agent loop wires in per dispatch). The logic that actually VALIDATES a
-command against the allowlist, GATES it (approval when mutating), runs + times it, enforces the
-usage quota, announces it to the UI, and records its metric/log used to live on ToolContext
-itself — mixing a state container with an execution engine.
+allowlist, the command runner, the per-session workspace, and the emit / approval callbacks
+the agent loop wires in per dispatch). The logic that actually VALIDATES a command against the
+allowlist, GATES it (approval when mutating), runs + times it, announces it to the UI, and
+records its metric/log used to live on ToolContext itself — mixing a state container with an
+execution engine.
 
 This module holds that execution concern as a :class:`CommandExecutor` collaborator. ToolContext
 keeps thin ``run_readonly`` / ``run_command`` delegators, so every existing
@@ -24,9 +24,8 @@ from typing import TYPE_CHECKING
 
 from app.observability import metrics as instrument
 from app.security.allowlist import MUTATING, READ_ONLY, Decision
-from app.security.quota import QuotaExceeded
 from app.security.runner import RunResult, simulated_run_result
-from app.tools.context import ApprovalRejected, QuotaError, ToolError
+from app.tools.context import ApprovalRejected, ToolError
 from app.tools.run import gated_access, skill_gate
 
 if TYPE_CHECKING:
@@ -39,8 +38,8 @@ log = logging.getLogger("app.tools.context")
 
 
 class CommandExecutor:
-    """Validates, gates, runs, times, quota-counts, announces, and records commands on behalf
-    of a :class:`~app.tools.context.ToolContext`. Stateless apart from a back-reference to the
+    """Validates, gates, runs, times, announces, and records commands on behalf of a
+    :class:`~app.tools.context.ToolContext`. Stateless apart from a back-reference to the
     owning context, whose wired callbacks/fields it reads live at call time."""
 
     def __init__(self, ctx: ToolContext) -> None:
@@ -97,22 +96,6 @@ class CommandExecutor:
                 "timed_out": result.timed_out,
             })
 
-    def _enforce_quota(self, decision: Decision) -> None:
-        """Refuse, BEFORE execution, if this command would exceed its allowlist-declared
-        usage quota. The caps are DATA (on the Decision, sourced from the YAML); the
-        counting is mechanism (the per-session QuotaCounter). No per-command Python."""
-        ctx = self._ctx
-        if decision.quota_key is None:
-            return  # no quota declared in the policy for this command
-        try:
-            ctx.quota.check(
-                decision.quota_key,
-                per_session=decision.quota_per_session,
-                per_day=decision.quota_per_day,
-            )
-        except QuotaExceeded as exc:
-            raise QuotaError(exc) from exc
-
     @staticmethod
     def _effective_timeout(decision: Decision, fallback: float | None) -> float | None:
         """The deadline for this command. The policy's ``timeout_s`` (DATA) wins when the
@@ -132,7 +115,7 @@ class CommandExecutor:
 
         ``cwd`` overrides the resolved working directory for the read-only probe (e.g. a
         ``git rev-parse`` against a specific repo for provenance capture). It can ONLY narrow
-        where the probe reads — every gate (allowlist, read-only classification, quota) still
+        where the probe reads — every gate (allowlist, read-only classification) still
         applies — and an allowlist entry's own pinned ``cwd_must_be`` still takes precedence."""
         ctx = self._ctx
         decision = ctx.allowlist.validate(argv, catalog=ctx.catalog_for_allowlist())
@@ -140,7 +123,6 @@ class CommandExecutor:
             raise ToolError(f"probe command denied by allowlist: {decision.reason}")
         if decision.mode != READ_ONLY:
             raise ToolError(f"probe command is not read-only: {' '.join(argv)}")
-        self._enforce_quota(decision)  # pre-exec refusal (data-driven cap, counter mechanism)
         entry = ctx.allowlist.executable(argv[0])
         if not quiet:
             await self._emit_command(decision, auto_run=True)
@@ -149,8 +131,6 @@ class CommandExecutor:
         result = await ctx.runner.execute(
             argv, entry, timeout=self._effective_timeout(decision, timeout), cwd=cwd_arg
         )
-        if decision.quota_key is not None:
-            ctx.quota.record(decision.quota_key)
         self._record_metric(decision, auto_run=True, result=result)
         return result
 
@@ -173,8 +153,8 @@ class CommandExecutor:
         # Gated-model access guardrail (a SAFETY gate, like the approval gate below): refuse to
         # stand up / run / smoketest a model the backend HF token can't pull, once check_capacity
         # has reported it gated+unauthorized. Mechanism enforcing a stated boundary on the
-        # bridge's own facts — see app/tools/run/gated_access.py. Fires before quota/approval so a
-        # blocked deploy never counts usage or prompts; only deploy subcommands are affected.
+        # bridge's own facts — see app/tools/run/gated_access.py. Fires before approval so a
+        # blocked deploy never prompts; only deploy subcommands are affected.
         if decision.mode == MUTATING:
             block = gated_access.gated_block(ctx, decision.argv)
             if block is not None:
@@ -185,9 +165,6 @@ class CommandExecutor:
             sblock = skill_gate.skill_gate_block(ctx, decision)
             if sblock:
                 raise ToolError(sblock)
-        # Quota refusal happens BEFORE the approval prompt and before any execution, so an
-        # over-quota command never even asks the user. Cap = DATA; counter = mechanism.
-        self._enforce_quota(decision)
         # SIMULATE: a MUTATING command must not actually run. When the wired runner spawns real
         # subprocesses (production), pre-empt it with a synthetic no-op — ANNOUNCED (so the UI's
         # command trail shows exactly what WOULD run) but never executed. READ-ONLY commands are
@@ -199,8 +176,6 @@ class CommandExecutor:
             result = simulated_run_result(
                 decision.argv, timeout=self._effective_timeout(decision, timeout)
             )
-            if decision.quota_key is not None:
-                ctx.quota.record(decision.quota_key)
             self._record_metric(decision, auto_run=False, result=result)
             return result
         # Mutating commands need approval BEFORE running — but NOT in simulate (a simulated
@@ -229,8 +204,5 @@ class CommandExecutor:
             result = await ctx.runner.execute(
                 argv, entry, on_line=on_line, timeout=deadline, cwd=cwd, extra_env=env
             )
-        # Tally the use only after it actually ran (an approved, executed command).
-        if decision.quota_key is not None:
-            ctx.quota.record(decision.quota_key)
         self._record_metric(decision, auto_run=auto_run, result=result)
         return result

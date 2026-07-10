@@ -45,7 +45,7 @@ llm-d-benchmarking-agent-project/
 │  ├─ capacity/      📁   capacity pre-flight — feasibility check at the plan gate (pure, no-I/O half)
 │  ├─ readiness/     📁   endpoint/stack readiness — pure analyzer + thin probe layer
 │  ├─ packaging/     📁   deploy-artifact contract + shareable HTML report/chat export
-│  ├─ observability/ 📁   dependency-free metrics + Prometheus exposition + structured logging / CoT trace
+│  ├─ observability/ 📁   dependency-free metrics + Prometheus exposition + structured logging
 │  ├─ llm/           📁   provider-agnostic LLM integration (anthropic / openai-compat / claude-agent-sdk)
 │  ├─ storage/       📁   persistence: history · provenance · share · retention/GC
 │  └─ web.py             pure, decorator-free HTTP/SSE helpers extracted from main (path-traversal 404s, CORS guard, share redaction)

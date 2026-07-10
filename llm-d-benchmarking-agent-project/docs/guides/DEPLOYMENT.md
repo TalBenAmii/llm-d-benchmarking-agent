@@ -23,8 +23,9 @@ the one the kind/sim quickstart uses.
   if it's missing, and it fetches a matching Python 3.11 itself. Plus whatever the agent installs for
   you (Docker + the kind binary via the vetted `scripts/install/install_prereqs.sh`, and the benchmark repo's
   toolchain via `install.sh`).
-- An LLM API key for live sessions (Anthropic, or any OpenAI-compatible endpoint). Without
-  a key the server still boots and the deterministic test/validation paths run.
+- An LLM API key for live sessions (Anthropic), or a Claude subscription login for the default
+  `claude-agent-sdk` provider. Without a key the server still boots and the deterministic
+  test/validation paths run.
 
 ### Run it
 The quickest way: `scripts/run.sh` syncs the venv from `uv.lock` (via `uv sync`), ensures a `.env`,
@@ -48,10 +49,9 @@ uv run uvicorn app.main:app --reload
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_PROVIDER` | `claude-agent-sdk` | `claude-agent-sdk` (default: your Claude Pro/Max plan via the local `claude` CLI login or a `claude setup-token` token, no API key; `scripts/install/setup-claude-plan.sh` wires it interactively), `anthropic`, or `openai`. |
+| `LLM_PROVIDER` | `claude-agent-sdk` | `claude-agent-sdk` (default: your Claude Pro/Max plan via the local `claude` CLI login or a `claude setup-token` token, no API key; `scripts/install/setup-claude-plan.sh` wires it interactively) or `anthropic`. |
 | `AGENT_SDK_MODEL` / `AGENT_SDK_EFFORT` | `claude-sonnet-5` / `high` | Model + reasoning effort for the `claude-agent-sdk` route. |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | — / `claude-opus-4-8` | Anthropic creds + model. |
-| `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` | — / `…/v1` / `gpt-4o` | OpenAI-compatible creds; `BASE_URL` may point at a self-hosted vLLM/llm-d endpoint. |
 | `REPOS_DIR` | parent of the project | Where the `llm-d` / `llm-d-benchmark` repos are (or will be cloned). |
 | `WORKSPACE_DIR` | `./workspace` | Runtime scratch (sessions, configs, logs, history). |
 | `HF_TOKEN` | — | Only for gated models on real (non-sim) deploys; backend-only, never echoed. |
@@ -138,11 +138,11 @@ Key chart values (`deploy/helm/llm-d-benchmarking-agent/values.yaml`):
 |---|---|---|
 | `image.repository` / `image.tag` / `image.digest` | `ghcr.io/llm-d/llm-d-benchmarking-agent` / `0.1.0` / `""` | Image; digest wins over tag when set. |
 | `replicaCount` | `1` | The agent keeps in-memory per-session state; `>1` needs sticky ingress (out of scope). |
-| `config.llmProvider` / `config.anthropicModel` / `config.openaiBaseUrl` / `config.openaiModel` | provider config | Non-secret env. |
+| `config.llmProvider` / `config.anthropicModel` | provider config | Non-secret env. |
 | `config.maxConcurrentRuns` | `2` | Concurrency cap. |
 | `config.orchestratorImage` | `""` | Enables orchestrated K8s-Job runs when set. |
 | `secret.claudeCodeOauthToken` | `""` | Primary chat auth: the `claude setup-token` subscription token for the default `claude-agent-sdk` provider. |
-| `secret.create` / `secret.existingSecret` / `secret.anthropicApiKey` / `secret.openaiApiKey` / `secret.hfToken` | `true` / `""` / … | Chart-managed Secret, or point at a pre-existing one (recommended for real deploys). |
+| `secret.create` / `secret.existingSecret` / `secret.anthropicApiKey` / `secret.hfToken` | `true` / `""` / … | Chart-managed Secret, or point at a pre-existing one (recommended for real deploys). |
 | `serviceAccount.create` / `serviceAccount.name` / `rbac.create` | `true` / `""` / `true` | The least-privilege SA + namespaced Role/RoleBinding. |
 | `service.type` / `service.port` | `ClusterIP` / `8000` | Networking. |
 | `resources`, `podSecurityContext`, `securityContext` | hardened defaults | Requests/limits + the non-root/read-only-rootfs posture. |

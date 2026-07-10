@@ -64,8 +64,7 @@ class AssistantTurn:
     # The model's extended-thinking / chain-of-thought for this step, when the provider both
     # ran with thinking enabled AND surfaces it (only the Claude Agent SDK provider does today).
     # NEVER fed back into the conversation (it would bloat context and the SDK replays history as
-    # plain text) — captured purely so the agent loop can persist it to the per-session debug
-    # trace. ``None`` when the provider produced no thinking this step.
+    # plain text). ``None`` when the provider produced no thinking this step.
     thinking: str | None = None
 
 
@@ -162,10 +161,9 @@ class ProviderError(RuntimeError):
     pass
 
 
-# LLM_PROVIDER alias sets — the single source of truth for provider dispatch, shared by
+# LLM_PROVIDER alias set — the single source of truth for provider dispatch, shared by
 # ``app.web.provider_view`` (the header badge) and the retention self-check's keyless set so
 # a new alias added here can't silently drift out of sync with them.
-OPENAI_PROVIDERS: frozenset[str] = frozenset({"openai", "openai-compatible", "vllm"})
 AGENT_SDK_PROVIDERS: frozenset[str] = frozenset({"claude-agent-sdk", "agent-sdk", "claude-max"})
 
 
@@ -174,9 +172,6 @@ def get_provider(settings: Settings) -> LLMProvider:
     if provider == "anthropic":
         from app.llm.anthropic_provider import AnthropicProvider
         return AnthropicProvider(settings)
-    if provider in OPENAI_PROVIDERS:
-        from app.llm.openai_provider import OpenAIProvider
-        return OpenAIProvider(settings)
     if provider in AGENT_SDK_PROVIDERS:
         from app.llm.agent_sdk_provider import AgentSdkProvider
         return AgentSdkProvider(settings)

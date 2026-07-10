@@ -14,7 +14,7 @@ import signal
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 from app.agent import events as ws_events
@@ -47,7 +47,6 @@ from app.orchestrator.kube import RealKubeClient
 from app.packaging.report_card import render_report_card
 from app.packaging.shared_chat import render_shared_chat
 from app.security.allowlist import Allowlist
-from app.security.auth import RateLimiter, check_http_auth, rate_limit, websocket_authorized
 from app.security.runner import CommandRunner
 from app.storage.history import HistoryStore, available_metrics, trend
 from app.storage.retention import readiness, run_gc, self_check
@@ -79,17 +78,6 @@ async def lifespan(app: FastAPI):
     setup_logging(level=settings.log_level, log_format=settings.log_format)
     log.info("startup", extra={"log_format": settings.log_format, "provider": settings.llm_provider})
     app.state.settings = settings
-    # API trust (Phase 12): a misconfigured auth toggle (enabled but no token) would silently
-    # reject every request — fail loudly at startup instead, per the project's fail-loud rule.
-    if settings.auth_enabled and not settings.auth_token:
-        raise RuntimeError("AUTH_ENABLED is set but AUTH_TOKEN is empty — refusing to start")
-    # Build the rate limiter ONCE (shared process-wide bucket) so the per-request dependency
-    # doesn't reconstruct it. Off by default -> a no-op limiter.
-    app.state.rate_limiter = RateLimiter.from_settings(settings)
-    if settings.auth_enabled:
-        log.info("auth.enabled")
-    if settings.rate_limit_enabled:
-        log.info("ratelimit.enabled", extra={"rps": settings.rate_limit_rps, "burst": settings.rate_limit_burst})
     # The allowlist still governs the DEDICATED command tools (execute_llmdbenchmark, probes,
     # orchestrator) via ctx.run_command/ctx.run_readonly. The agent's ad-hoc `run_shell` tool runs
     # arbitrary `bash -lc` and does NOT consult it (human approval still gates mutating commands).
@@ -209,15 +197,9 @@ def _active_session_ids(app: FastAPI) -> set[str]:
     return ids
 
 
-# Auth (Phase 12) guards HTTP routes via an app-level dependency: a single registration
-# point (thin code) rather than per-route annotations that could be forgotten. It's a no-op
-# when AUTH_ENABLED is False (the default), so the API is open exactly as today. The
-# liveness/readiness probes (/healthz, /readyz) are exempted inside check_http_auth so K8s
-# probes — which can't carry a Bearer token — are never locked out.
 app = FastAPI(
     title="llm-d Benchmarking Assistant",
     lifespan=lifespan,
-    dependencies=[Depends(check_http_auth)],
 )
 install_cors(app, get_settings().cors_origins_list)
 
@@ -240,10 +222,10 @@ async def healthz() -> JSONResponse:
 async def readyz() -> JSONResponse:
     """Readiness probe: reports per-component readiness from the startup configuration self-check
     — workspace writable, provider configured, repos present, runner ok (the allowlist policy
-    loads), auth coherent (Phase 16 splits this from /healthz liveness and adds the runner_ok
-    component). Returns 200 when ready, 503 when not, with the STRUCTURED self-check reasons so an
-    operator/orchestrator can see *why*. Liveness stays on the minimal /healthz; this is the
-    readiness gate a K8s readinessProbe / load balancer should poll."""
+    loads; Phase 16 splits this from /healthz liveness). Returns 200 when ready, 503 when not,
+    with the STRUCTURED self-check reasons so an operator/orchestrator can see *why*. Liveness
+    stays on the minimal /healthz; this is the readiness gate a K8s readinessProbe / load
+    balancer should poll."""
     contrib = readiness(get_settings())
     code = status.HTTP_200_OK if contrib.get("ready") else status.HTTP_503_SERVICE_UNAVAILABLE
     return JSONResponse(contrib, status_code=code)
@@ -257,17 +239,13 @@ async def metrics() -> PlainTextResponse:
     return PlainTextResponse(render_prometheus(instrument.REGISTRY), media_type=_PROM_CONTENT_TYPE)
 
 
-# The /api/* routes are the HTTP message-intake surface the browser drives, so the rate
-# limiter (Phase 12) guards them: an empty bucket -> 429. /healthz + /metrics are deliberately
-# NOT throttled (liveness probes / Prometheus scrapes must never be rate-limited away). The
-# limiter is a no-op when RATE_LIMIT_ENABLED is False (the default).
-@app.get("/api/sessions", dependencies=[Depends(rate_limit)])
+@app.get("/api/sessions")
 async def list_sessions() -> JSONResponse:
     """Recent chats for the sidebar (summaries only, newest first)."""
     return JSONResponse({"sessions": app.state.sessions.list()})
 
 
-@app.get("/api/provider", dependencies=[Depends(rate_limit)])
+@app.get("/api/provider")
 async def provider_info() -> JSONResponse:
     """The active LLM provider + model for the header badge — plus whether the provider
     actually built at startup, so the UI can show "LLM not configured" instead of leaving
@@ -290,7 +268,7 @@ def _teardown_session_runtime(sid: str) -> None:
     app.state.channels.pop(sid, None)
 
 
-@app.delete("/api/sessions/{sid}", dependencies=[Depends(rate_limit)])
+@app.delete("/api/sessions/{sid}")
 async def delete_session(sid: str) -> JSONResponse:
     if not app.state.sessions.delete(sid):
         raise HTTPException(status_code=404, detail="session not found")
@@ -298,7 +276,7 @@ async def delete_session(sid: str) -> JSONResponse:
     return JSONResponse({"deleted": True, "id": sid})
 
 
-@app.delete("/api/namespaces/{namespace}", dependencies=[Depends(rate_limit)])
+@app.delete("/api/namespaces/{namespace}")
 async def delete_namespace(namespace: str) -> JSONResponse:
     """Delete a whole sidebar folder — every chat in one namespace at once. The literal
     ``no_namespace`` sentinel removes the chats that have no namespace set."""
@@ -310,7 +288,7 @@ async def delete_namespace(namespace: str) -> JSONResponse:
     return JSONResponse({"deleted": deleted, "count": len(deleted)})
 
 
-@app.get("/api/jobs", dependencies=[Depends(rate_limit)])
+@app.get("/api/jobs")
 async def list_orchestrated_jobs(
     namespace: str, session_id: str | None = None, sweep_id: str | None = None,
 ) -> JSONResponse:
@@ -355,7 +333,7 @@ def _history_store() -> HistoryStore:
     return HistoryStore(get_settings().resolved_workspace_dir)
 
 
-@app.get("/api/history", dependencies=[Depends(rate_limit)])
+@app.get("/api/history")
 async def list_history(tag: str | None = None, model: str | None = None) -> JSONResponse:
     """Stored historical results for the results-browser (newest first, summaries only)."""
     records = _history_store().list(tag=tag, model=model)
@@ -365,7 +343,7 @@ async def list_history(tag: str | None = None, model: str | None = None) -> JSON
     })
 
 
-@app.get("/api/history/trend", dependencies=[Depends(rate_limit)])
+@app.get("/api/history/trend")
 async def history_trend(metric: str, tag: str | None = None, model: str | None = None) -> JSONResponse:
     """Time-series of one metric across stored results, for the trends view. Facts only —
     the value series + the metric's better-direction; no regression verdict (that's the agent)."""
@@ -377,9 +355,8 @@ async def history_trend(metric: str, tag: str | None = None, model: str | None =
 # session's analysis/ dir) live under the gitignored workspace, which the /static mount does
 # NOT serve. This read-only route exposes them so the UI can show a run's charts inline next to
 # its summary. Hardened (image suffixes only + INSIDE the named session dir — see
-# app.web.resolve_artifact). Auth-gated by the app-level dependency; rate-limited like the
-# rest of /api. The chart paths come from locate_and_parse_report's `charts` field.
-@app.get("/api/sessions/{sid}/artifact", dependencies=[Depends(rate_limit)])
+# app.web.resolve_artifact). The chart paths come from locate_and_parse_report's `charts` field.
+@app.get("/api/sessions/{sid}/artifact")
 async def session_artifact(sid: str, path: str) -> FileResponse:
     """Serve one image artifact from a session's workspace dir (read-only, image-only)."""
     # Resolve the workspace HERE (so a test monkeypatching app.main.get_settings still steers
@@ -398,13 +375,13 @@ def _resolve_bundle(sid: str, bundle_id: str) -> dict[str, Any]:
     return resolve_bundle(sessions_root, sid, bundle_id)
 
 
-@app.get("/api/sessions/{sid}/bundle/{bundle_id}", dependencies=[Depends(rate_limit)])
+@app.get("/api/sessions/{sid}/bundle/{bundle_id}")
 async def session_bundle(sid: str, bundle_id: str) -> JSONResponse:
     """One provenance bundle's JSON (for the UI's Reproduce / Export affordances)."""
     return JSONResponse(_resolve_bundle(sid, bundle_id))
 
 
-@app.get("/api/sessions/{sid}/bundle/{bundle_id}/report-card.html", dependencies=[Depends(rate_limit)])
+@app.get("/api/sessions/{sid}/bundle/{bundle_id}/report-card.html")
 async def session_bundle_report_card(sid: str, bundle_id: str) -> Response:
     """Download a self-contained, shareable HTML report card for a provenance bundle (no
     external assets). Same path-traversal hardening as the artifact route."""
@@ -420,11 +397,11 @@ async def session_bundle_report_card(sid: str, bundle_id: str) -> Response:
 # ---------------------------------------------------------------------------
 # Share a chat via a read-only public link (ChatGPT-style).
 #
-# Minting/revoking a share is owner-only (the auth-gated POST/DELETE below); VIEWING a share is
-# public — the GET routes are exempted from Bearer auth in app.security.auth (the unguessable
-# token is the credential). A share is an IMMUTABLE snapshot of the chat's transcript taken at
-# share time (see app.storage.share.ShareStore), so continuing or deleting the chat never changes
-# or breaks the link.
+# Minting/revoking a share (POST/DELETE below) is a normal route on this single-user in-cluster
+# service; VIEWING a share (GET) is deliberately public — the unguessable token IS the credential,
+# so a share link works for its recipient with no app session at all. A share is an IMMUTABLE
+# snapshot of the chat's transcript taken at share time (see app.storage.share.ShareStore), so
+# continuing or deleting the chat never changes or breaks the link.
 # ---------------------------------------------------------------------------
 def _share_store() -> ShareStore:
     """The conversation-share store, rooted at the same shared workspace as sessions/history."""
@@ -474,14 +451,14 @@ def _inline_share_chart_artifacts(
     return out
 
 
-@app.post("/api/sessions/{sid}/share", dependencies=[Depends(rate_limit)])
+@app.post("/api/sessions/{sid}/share")
 async def create_share(sid: str) -> JSONResponse:
     """Mint a read-only public link for a chat — an immutable snapshot of its transcript NOW.
 
-    Owner-only (auth-gated). Snapshots the same render-friendly transcript the UI replays on
-    resume, but drops any still-PENDING approval gate (that is live, clickable session state, not
-    transcript — a public snapshot must never carry an actionable gate). 404 for an unknown chat;
-    400 when there is nothing to share yet (a brand-new, empty chat)."""
+    Snapshots the same render-friendly transcript the UI replays on resume, but drops any
+    still-PENDING approval gate (that is live, clickable session state, not transcript — a public
+    snapshot must never carry an actionable gate). 404 for an unknown chat; 400 when there is
+    nothing to share yet (a brand-new, empty chat)."""
     session = app.state.sessions.get_or_load(sid)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
@@ -526,10 +503,10 @@ async def create_share(sid: str) -> JSONResponse:
     return JSONResponse({"token": token, "url": url})
 
 
-@app.get("/api/share/{token}", dependencies=[Depends(rate_limit)])
+@app.get("/api/share/{token}")
 async def read_share(token: str) -> JSONResponse:
-    """PUBLIC read-only transcript of a shared conversation (no auth — the token is the
-    credential). 404 for a malformed/unknown/revoked token. Returns only the snapshot fields the
+    """PUBLIC read-only transcript of a shared conversation — the unguessable token is the
+    credential. 404 for a malformed/unknown/revoked token. Returns only the snapshot fields the
     viewer needs — the owning session id is deliberately withheld."""
     data = _share_store().read(token)
     if data is None:
@@ -543,7 +520,7 @@ async def read_share(token: str) -> JSONResponse:
     })
 
 
-@app.get("/api/share/{token}/page.html", dependencies=[Depends(rate_limit)])
+@app.get("/api/share/{token}/page.html")
 async def read_share_page(token: str) -> Response:
     """PUBLIC self-contained, offline ``.html`` export of a shared conversation — the SPA + the
     frozen snapshot inlined into ONE dependency-free file (no external assets, no network on open).
@@ -560,10 +537,10 @@ async def read_share_page(token: str) -> Response:
     )
 
 
-@app.delete("/api/share/{token}", dependencies=[Depends(rate_limit)])
+@app.delete("/api/share/{token}")
 def revoke_share(token: str) -> JSONResponse:
-    """Revoke a share link: delete its snapshot so the link stops working. Owner-only
-    (auth-gated). 404 if the snapshot is already gone."""
+    """Revoke a share link: delete its snapshot so the link stops working. 404 if the snapshot
+    is already gone."""
     # Reject a malformed token BEFORE it becomes a filesystem path — the delete store path guards
     # internally too; this keeps the cheap shape-check at the HTTP boundary.
     if not is_valid_token(token):
@@ -588,14 +565,7 @@ app.mount("/static", RevalidateStaticFiles(directory=str(get_settings().ui_dir))
 
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
-    # Auth (Phase 12): the app-level HTTP dependency does NOT cover WebSockets, so guard the
-    # handshake here. Accept first so the client receives a clean 1008 (policy-violation) close
-    # rather than a bare network drop; closed immediately when the token is missing/bad. No-op
-    # when AUTH_ENABLED is False (the default) -> /ws is open exactly as today.
     await websocket.accept()
-    if not websocket_authorized(websocket, get_settings()):
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
     # ``/ws?session=<id>`` reattaches to a saved chat (page reload / sidebar click);
     # an unknown or missing id just mints a fresh session.
     requested = websocket.query_params.get("session")

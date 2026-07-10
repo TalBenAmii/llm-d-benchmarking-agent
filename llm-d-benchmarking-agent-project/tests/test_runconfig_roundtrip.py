@@ -194,10 +194,8 @@ def test_runconfig_roundtrip_knowledge_is_discoverable():
     assert "write_and_validate_config" in text  # contrasts the in-workspace authoring path
 
 
-def test_execute_tool_description_points_at_runconfig_knowledge():
-    from app.tools.registry import _DESCRIPTIONS
-
-    desc = _DESCRIPTIONS["execute_llmdbenchmark"]
+def test_execute_schema_description_points_at_runconfig_knowledge():
+    desc = ExecuteInput.model_fields["flags"].description or ""
     assert "generate_config" in desc
     assert "run_config" in desc
     assert "runconfig_roundtrip" in desc

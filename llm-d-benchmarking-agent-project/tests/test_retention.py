@@ -450,8 +450,7 @@ def test_self_check_good_config_passes(tmp_path):
     names = {c.name for c in res.checks}
     # Phase 16 added the runner_ok component (the allowlist policy loads) alongside the
     # Phase-18 checks; the shipped allowlist loads, so a good config still passes overall.
-    assert names == {"workspace_writable", "provider_coherent", "repos_resolvable",
-                     "runner_ok", "auth_coherent"}
+    assert names == {"workspace_writable", "provider_coherent", "repos_resolvable", "runner_ok"}
     # The structured payload carries per-check booleans + reasons.
     js = res.to_json()
     assert js["ok"] is True
@@ -490,20 +489,6 @@ def test_self_check_missing_repos_fails(tmp_path):
     assert "repos_resolvable" in failing
     repos_check = next(c for c in res.checks if c.name == "repos_resolvable")
     assert "llm-d-benchmark" in repos_check.detail or "llm-d" in repos_check.detail
-
-
-def test_self_check_auth_enabled_without_token_fails(tmp_path):
-    _make_repos(tmp_path)
-    s = _settings(
-        tmp_path,
-        llm_provider="anthropic",
-        anthropic_api_key="sk-test",
-        auth_enabled=True,
-        auth_token="",
-    )
-    res = self_check(s)
-    assert res.ok is False
-    assert "auth_coherent" in {c.name for c in res.failures}
 
 
 def test_self_check_workspace_unwritable_fails(tmp_path):

@@ -246,9 +246,7 @@ def test_phase_timeouts_knowledge_is_discoverable():
         assert cli_flag in text, f"{cli_flag} should be documented in the guide"
 
 
-def test_execute_tool_description_points_at_phase_timeouts_knowledge():
-    from app.tools.registry import _DESCRIPTIONS
-
-    desc = _DESCRIPTIONS["execute_llmdbenchmark"]
+def test_execute_schema_description_points_at_phase_timeouts_knowledge():
+    desc = ExecuteInput.model_fields["flags"].description or ""
     assert "knowledge/phase_timeouts.md" in desc
-    assert "below the runner deadline" in desc
+    assert "below the runner" in desc

@@ -27,8 +27,8 @@ async def ensure_repos(ctx: ToolContext, *, repos: list[str] | None = None, ref:
     results: list[dict[str, Any]] = []
 
     # ALWAYS refresh the catalog before returning — even if a later repo's clone is rejected at
-    # the approval gate (ApprovalRejected), denied (ToolError), or over-quota (QuotaError), which
-    # propagate straight out of ``ctx.run_command`` mid-loop. An EARLIER repo in the same call may
+    # the approval gate (ApprovalRejected) or denied (ToolError), which propagate straight out of
+    # ``ctx.run_command`` mid-loop. An EARLIER repo in the same call may
     # already have been cloned successfully; without this ``finally`` the early exception would skip
     # the refresh and leave the per-context catalog cache STALE (empty, present=False). Downstream
     # callers that read ``ctx.catalog()`` WITHOUT refresh — ``plan.validate_plan`` and the

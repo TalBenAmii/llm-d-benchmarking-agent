@@ -230,7 +230,7 @@ def compact_messages(messages: list[dict[str, Any]]) -> int:
 # cap them. A naive ``json.dumps(result)[:budget]`` slices mid-structure and feeds the model
 # invalid JSON it must then parse. Instead, when a result overflows we emit a *valid* JSON
 # truncation envelope that (a) preserves the small top-level signal fields — ``error`` /
-# ``rejected`` / ``quota_exceeded`` and other status flags — verbatim, (b) records the original
+# ``rejected`` and other status flags — verbatim, (b) records the original
 # size, and (c) carries a clipped preview of the full payload with an explicit note so the model
 # knows it is seeing only the leading portion and should narrow its query.
 
@@ -270,7 +270,7 @@ def clamp_tool_result_content(result: Any, budget: int) -> str:
         return full
 
     envelope: dict[str, Any] = {"_truncated": True, "_original_chars": len(full)}
-    # Preserve small top-level signal fields so error / rejected / quota markers survive intact.
+    # Preserve small top-level signal fields so error / rejected markers survive intact.
     if isinstance(result, dict):
         for key, value in result.items():
             if isinstance(key, str) and key not in envelope and _is_signal_scalar(value):

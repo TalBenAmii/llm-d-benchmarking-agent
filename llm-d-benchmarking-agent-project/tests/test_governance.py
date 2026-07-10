@@ -1,15 +1,14 @@
-"""Phase 13 — allowlist governance: per-command timeouts + usage quotas (policy as DATA).
+"""Phase 13 — allowlist governance: per-command timeouts (policy as DATA).
 
 These tests assert the ACCEPTANCE criteria, all hermetically (no live cluster, no network,
 no GPU, no long real sleeps — a tiny timeout kills a would-be-long command in well under a
-second; quotas use a counter; the per-day window uses a fake clock):
+second):
 
   (a) a trivially-short fake command with a tiny ``timeout_s`` is KILLED and reported as a
       timeout;
   (b) the timeout value is honored FROM the YAML, not a Python constant (changing only the
       YAML number changes the deadline);
-  (c) a command with ``per_session`` quota N is refused on call N+1 within a session;
-  (d) a malformed allowlist RAISES at load.
+  (c) a malformed allowlist RAISES at load.
 
 Plus structural guarantees: the old ``app/tools/run/execute.py::_TIMEOUTS`` dict is gone, and the
 real shipped allowlist sources llmdbenchmark subcommand timeouts purely from its YAML.
@@ -24,29 +23,26 @@ import pytest
 
 from app.config import get_settings
 from app.security.allowlist import Allowlist, AllowlistError
-from app.security.quota import QuotaCounter, QuotaExceeded
 from app.security.runner import CommandRunner
-from app.tools.context import QuotaError, ToolContext
+from app.tools.context import ToolContext
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
 
 
-# A throwaway executable so the timeout/quota numbers under test come ONLY from the policy
+# A throwaway executable so the timeout number under test comes ONLY from the policy
 # data we hand in — never from any production constant. argv[0] is the real interpreter so
 # the runner (which uses shutil.which / the literal path) can actually launch it.
-def _policy_with(*, timeout_s=None, quota=None, mode="read_only", with_positional=False):
+def _policy_with(*, timeout_s=None, mode="read_only", with_positional=False):
     # ``with_positional`` adds one required, unconstrained positional so the timeout tests
     # can pass a fake script-FILE path that the real interpreter actually RUNS (executed as
     # ``[python, scriptpath]``). The path token carries no shell metacharacters. Validate-
-    # only and quota tests use bare argv (no positional).
+    # only tests use bare argv (no positional).
     entry = {"flat": True, "mode": mode}
     if with_positional:
         entry["positionals"] = [{}]
     if timeout_s is not None:
         entry["timeout_s"] = timeout_s
-    if quota is not None:
-        entry["quota"] = quota
     return Allowlist({"executables": {sys.executable: entry}})
 
 
@@ -62,7 +58,7 @@ def _sleep_argv(tmp_path: Path, seconds: float) -> list[str]:
     return [sys.executable, str(script)]
 
 
-# ---- (d) malformed allowlist is rejected AT LOAD ---------------------------
+# ---- (c) malformed allowlist is rejected AT LOAD ---------------------------
 
 @pytest.mark.parametrize("bad_entry, needle", [
     ({"flat": True, "timeout_s": -1}, "positive integer"),
@@ -70,11 +66,6 @@ def _sleep_argv(tmp_path: Path, seconds: float) -> list[str]:
     ({"flat": True, "timeout_s": True}, "positive integer"),     # bool is not an int here
     ({"flat": True, "timeout_s": 1.5}, "positive integer"),
     ({"flat": True, "timeout_s": "fast"}, "positive integer"),
-    ({"flat": True, "quota": []}, "must be a mapping"),
-    ({"flat": True, "quota": {}}, "at least one"),
-    ({"flat": True, "quota": {"per_week": 3}}, "unknown key"),
-    ({"flat": True, "quota": {"per_session": 0}}, "positive integer"),
-    ({"flat": True, "quota": {"per_day": -2}}, "positive integer"),
 ])
 def test_malformed_allowlist_rejected_at_load(bad_entry, needle):
     with pytest.raises(AllowlistError) as ei:
@@ -90,10 +81,9 @@ def test_malformed_subcommand_governance_rejected_at_load():
 
 
 def test_well_formed_governance_loads_cleanly():
-    al = _policy_with(timeout_s=42, quota={"per_session": 3, "per_day": 9})
+    al = _policy_with(timeout_s=42)
     d = al.validate([sys.executable])
     assert d.allowed and d.timeout_s == 42
-    assert d.quota_per_session == 3 and d.quota_per_day == 9 and d.quota_key == sys.executable
 
 
 def test_real_shipped_allowlist_loads():
@@ -200,106 +190,6 @@ async def test_no_policy_timeout_uses_caller_fallback(tmp_path):
     res = await ctx.run_readonly(_sleep_argv(tmp_path, 30), timeout=1.0)
     assert res.timed_out is True
     assert time.monotonic() - start < 5.0
-
-
-# ---- (c) per_session quota refuses the (N+1)-th call PRE-execution ----------
-
-class _CountingRunner(CommandRunner):
-    """Records how many times a command actually reached execution (i.e. was NOT refused)."""
-
-    def __init__(self):
-        super().__init__({})
-        self.runs = 0
-
-    async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
-        self.runs += 1
-        from app.security.runner import RunResult
-        return RunResult(exit_code=0, duration_s=0.0, real_argv=list(logical_argv), cwd=None)
-
-
-async def test_per_session_quota_refuses_call_n_plus_1(tmp_path):
-    runner = _CountingRunner()
-    al = _policy_with(quota={"per_session": 3})
-    ctx = ToolContext(settings=get_settings(), allowlist=al, runner=runner,
-                      workspace=tmp_path / "ws")
-    # The first N=3 calls run.
-    for i in range(3):
-        res = await ctx.run_readonly([sys.executable])
-        assert res.exit_code == 0, f"call {i + 1} should have run"
-    assert runner.runs == 3
-    # Call N+1 is refused BEFORE execution.
-    with pytest.raises(QuotaError) as ei:
-        await ctx.run_readonly([sys.executable])
-    err = ei.value
-    assert err.window == "per_session" and err.cap == 3 and err.used == 3
-    assert err.key == sys.executable
-    assert runner.runs == 3, "the over-quota call must NOT have reached the runner"
-
-
-async def test_quota_refusal_happens_before_approval_prompt(tmp_path):
-    """A mutating command over its session quota is refused pre-exec WITHOUT prompting the
-    user (the spec: refuse BEFORE execution; the gate never opens)."""
-    runner = _CountingRunner()
-    al = Allowlist({"executables": {sys.executable: {
-        "flat": True, "mode": "mutating", "quota": {"per_session": 1}}}})
-    approvals: list[dict] = []
-
-    async def approve(kind, payload):
-        approvals.append(payload)
-        return True
-
-    ctx = ToolContext(settings=get_settings(), allowlist=al, runner=runner,
-                      workspace=tmp_path / "ws", request_approval=approve)
-    await ctx.run_command([sys.executable])          # 1st: approved + runs
-    assert len(approvals) == 1 and runner.runs == 1
-    with pytest.raises(QuotaError):                  # 2nd: refused before the gate
-        await ctx.run_command([sys.executable])
-    assert len(approvals) == 1, "over-quota command must not reach the approval prompt"
-    assert runner.runs == 1
-
-
-async def test_command_without_quota_is_uncapped(tmp_path):
-    runner = _CountingRunner()
-    ctx = ToolContext(settings=get_settings(), allowlist=_policy_with(), runner=runner,
-                      workspace=tmp_path / "ws")
-    for _ in range(10):
-        await ctx.run_readonly([sys.executable])
-    assert runner.runs == 10  # no quota declared -> never refused
-
-
-# ---- the quota COUNTER (mechanism) in isolation ----------------------------
-
-def test_quota_counter_per_session():
-    c = QuotaCounter()
-    c.check("k", per_session=2, per_day=None)  # 0 used, ok
-    c.record("k")
-    c.check("k", per_session=2, per_day=None)  # 1 used, ok
-    c.record("k")
-    with pytest.raises(QuotaExceeded) as ei:    # 2 used -> next would exceed
-        c.check("k", per_session=2, per_day=None)
-    assert ei.value.window == "per_session" and ei.value.cap == 2
-
-
-def test_quota_counter_per_day_rolls_with_clock():
-    """A fake clock advances the day with no real sleep, exercising the per-day window."""
-    day = {"v": "2026-06-02"}
-    c = QuotaCounter(now=lambda: day["v"])
-    c.record("k")
-    c.record("k")
-    with pytest.raises(QuotaExceeded) as ei:
-        c.check("k", per_session=None, per_day=2)
-    assert ei.value.window == "per_day"
-    day["v"] = "2026-06-03"                      # next day -> window resets
-    c.check("k", per_session=None, per_day=2)   # ok again
-
-
-def test_quota_counter_is_per_key():
-    c = QuotaCounter()
-    c.record("a")
-    c.record("a")
-    c.check("b", per_session=1, per_day=None)   # different key unaffected
-    with pytest.raises(QuotaExceeded):
-        c.check("a", per_session=2, per_day=None)
 
 
 # ---- structural: the Python timeout table is GONE --------------------------

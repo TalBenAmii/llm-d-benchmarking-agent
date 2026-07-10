@@ -20,9 +20,8 @@ from app.agent.context_mgmt import (
 from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.session import Session
 from app.llm.provider import LLMProvider, Usage, open_provider_turn
-from app.observability.cot_trace import TurnTrace
 from app.observability.logging import bind as log_bind
-from app.tools.context import ApprovalRejected, QuotaError, ToolError
+from app.tools.context import ApprovalRejected, ToolError
 from app.tools.registry import dispatch, tool_definitions
 
 log = logging.getLogger("app.agent.loop")
@@ -63,7 +62,7 @@ class StepResult:
     ``should_break`` ends the step loop WITHOUT triggering the ``for...else`` step-limit branch
     (the abandoned-turn guard, a provider error, and the normal end-of-turn stop all set it).
     The counters accumulate ACROSS steps, so each step returns their new running values and the
-    outer loop carries them into the next step (and into the final trace/log)."""
+    outer loop carries them into the next step (and into the final log line)."""
     tool_calls_made: int
     turn_usage: Usage
     calls: int
@@ -86,11 +85,6 @@ class AgentLoop:
         ctx = session.ctx
         ctx.emit = emit
         ctx.request_approval = request_approval
-        # Chain-of-thought debug trace: append the model's reasoning + every decision this turn
-        # to the session's OWN folder (<workspace>/sessions/<id>/cot_trace.jsonl), so a mistake
-        # can be debugged after the fact. Always on — best-effort and never raises into the turn.
-        trace = TurnTrace.for_session(ctx.workspace)
-        trace.event("turn_start", session_id=session.id, user_text=user_text)
         # If a read-only environment pre-probe ran in the background while the user typed their
         # first message, hand its snapshot to the model as a synthetic user turn BEFORE the real
         # message — so the agent starts environment-aware without spending an extra LLM turn (or
@@ -202,7 +196,6 @@ class AgentLoop:
                         ctx=ctx,
                         agent_turn=agent_turn,
                         emit=emit,
-                        trace=trace,
                         system=system,
                         on_text=on_text,
                         compact=_compact,
@@ -222,7 +215,6 @@ class AgentLoop:
                     if frozenset(session.loaded_groups) != exposed_groups:
                         break
 
-        trace.event("turn_end", tool_calls=tool_calls_made, llm_calls=calls)
         log.info("turn.end", extra={"session_id": session.id, "tool_calls": tool_calls_made})
         session.persist()
         await emit(events.DONE, {})
@@ -234,7 +226,6 @@ class AgentLoop:
         ctx,
         agent_turn,
         emit: EmitFn,
-        trace: TurnTrace,
         system: str,
         on_text: Callable[[str], Awaitable[None]],
         compact: Callable[[], None],
@@ -244,7 +235,7 @@ class AgentLoop:
         calls: int,
     ) -> StepResult:
         """One step of the turn loop: continue-check → compact → LLM call → usage accounting →
-        append assistant message + trace → tool-call dispatch → tool_results append → steer drain
+        append assistant message → tool-call dispatch → tool_results append → steer drain
         → loop-break decision. Pure code motion out of ``run_turn`` — the across-step counters
         (``tool_calls_made``, ``turn_usage``, ``calls``) arrive as their current running values
         and the returned StepResult carries the updated values back. ``should_break`` ending the
@@ -328,18 +319,6 @@ class AgentLoop:
             "content": turn.text or "",
             "tool_calls": [{"id": tc.id, "name": tc.name, "input": tc.input} for tc in turn.tool_calls],
         })
-        # Record this LLM call to the debug trace: the model's chain-of-thought, the text
-        # it produced, the tool calls it decided on, and this call's token usage. The
-        # reasoning is NEVER added to session.messages (it would bloat context) — only here.
-        trace.event(
-            "step",
-            step=calls,
-            thinking=turn.thinking,
-            text=turn.text or None,
-            tool_calls=[{"name": tc.name, "input": tc.input} for tc in turn.tool_calls],
-            usage={"input": turn.usage.input_tokens, "output": turn.usage.output_tokens,
-                   "cache_read": turn.usage.cache_read_tokens},
-        )
         if turn.text:
             await emit(events.ASSISTANT_TEXT, {"text": turn.text})
 
@@ -409,9 +388,6 @@ class AgentLoop:
                 # overflow becomes a valid truncation envelope, never malformed JSON.
                 "content": clamped,
             })
-            # Trace the result the model will actually see (the same budget-clamped text),
-            # so the debug record shows the exact evidence each decision was based on.
-            trace.event("tool_result", tool=tc.name, id=tc.id, result=clamped)
 
         # A tool_results block is appended ONLY when the model actually called tools, so a
         # final text-only step never leaves a dangling empty block before any drained steer.
@@ -459,13 +435,6 @@ class AgentLoop:
                             "instruction: adjust accordingly and, if a mutating step is still the "
                             "right next move, propose it again by calling the tool (a fresh "
                             "Approve/Decline card). Otherwise ask what they want to do instead."}
-        except QuotaError as exc:
-            # Over an allowlist-declared usage quota — refused pre-execution. Surface the
-            # caps so the agent can explain the limit instead of silently failing.
-            return {"quota_exceeded": True, "reason": str(exc),
-                    "key": exc.key, "window": exc.window, "cap": exc.cap, "used": exc.used,
-                    "note": "this command hit its configured usage quota; tell the user the "
-                            "limit was reached and ask whether to wait or adjust the plan"}
         except ToolError as exc:
             return {"error": str(exc)}
         except Exception as exc:  # never let one tool crash the loop

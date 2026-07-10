@@ -406,9 +406,6 @@ def _check_workspace_writable(settings: Settings) -> CheckOutcome:
 # provider name — NOT decision logic; the self-check below just looks the requirement up.
 _PROVIDER_KEY_ATTR: dict[str, str] = {
     "anthropic": "anthropic_api_key",
-    "openai": "openai_api_key",
-    "openai-compatible": "openai_api_key",
-    "vllm": "openai_api_key",
 }
 
 # Keyless providers: they authenticate via the local ``claude`` CLI subscription login, not an
@@ -475,17 +472,6 @@ def _check_runner_ok(settings: Settings) -> CheckOutcome:
                         {"allowlist_path": str(settings.allowlist_path), "executables": n})
 
 
-def _check_auth_coherent(settings: Settings) -> CheckOutcome:
-    """If Bearer auth is enabled it MUST have a token, else every request 401s silently. Mirrors
-    the fail-loud guard in the lifespan, but as a structured readiness signal rather than a crash."""
-    bad = settings.auth_enabled and not settings.auth_token
-    return CheckOutcome(
-        "auth_coherent", not bad,
-        "auth config coherent" if not bad else "AUTH_ENABLED is set but AUTH_TOKEN is empty",
-        {"auth_enabled": settings.auth_enabled},
-    )
-
-
 # The ordered set of self-check probes. DATA (a list of callables) — adding a probe is a list
 # edit, not a new branch. Each returns a structured CheckOutcome.
 _CHECKS: tuple[Callable[[Settings], CheckOutcome], ...] = (
@@ -493,7 +479,6 @@ _CHECKS: tuple[Callable[[Settings], CheckOutcome], ...] = (
     _check_provider_coherent,
     _check_repos_resolvable,
     _check_runner_ok,
-    _check_auth_coherent,
 )
 
 

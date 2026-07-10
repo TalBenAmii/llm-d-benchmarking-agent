@@ -33,11 +33,12 @@ transcript position on reconnect/resume.
 ## Symptom → what to check
 
 ### The agent connects but never responds / no LLM output
-- No API key. A real session needs `ANTHROPIC_API_KEY` (or an OpenAI-compatible key) in
-  `.env`. `GET /readyz` reports `provider_coherent: false` when the configured provider has no
-  key. Tests run a fake provider, so green tests do not imply a configured key.
-- Wrong provider/model. `LLM_PROVIDER` must be `anthropic` or `openai`; an unknown value
-  fails the self-check with `unknown LLM_PROVIDER`.
+- No API key. A real session needs `ANTHROPIC_API_KEY` in
+  `.env` (or a Claude subscription for the default `claude-agent-sdk` provider). `GET /readyz`
+  reports `provider_coherent: false` when the configured provider has no key. Tests run a fake
+  provider, so green tests do not imply a configured key.
+- Wrong provider/model. `LLM_PROVIDER` must be `claude-agent-sdk` or `anthropic`; an unknown
+  value fails the self-check with `unknown LLM_PROVIDER`.
 - Check the logs for `turn.start` without a matching `turn.end` on the same `corr_id`. That
   localizes a hang to the LLM call vs a tool.
 
@@ -96,12 +97,6 @@ transcript position on reconnect/resume.
 - `check_capacity` runs the benchmark repo's own planner (weights + activation + KV-cache
   vs accelerator memory). A shortfall under `enforce=true` is a deployment-halting ERROR;
   otherwise an advisory WARNING. Interpretation guidance: `knowledge/capacity.md`.
-
-### Rate-limited (429) or unauthorized (401)
-- These come from the Phase 12 controls when enabled. 401 means a missing or bad
-  `Authorization: Bearer <AUTH_TOKEN>` (WS may use `?token=`). 429 means the `/api/*` token
-  bucket is empty (tune `RATE_LIMIT_RPS` / `RATE_LIMIT_BURST`). `/healthz` and `/metrics` are
-  never throttled. See `docs/reference/SECURITY.md`.
 
 ### Metrics are missing or reset to zero
 - The agent's counters are process-lifetime: they reset on a backend restart, so a sudden

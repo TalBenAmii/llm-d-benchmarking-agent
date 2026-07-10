@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import copy
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -119,19 +119,7 @@ class CapacityVerdict:
     gated_reason: str = ""
 
     def as_dict(self) -> dict[str, Any]:
-        return {
-            "feasible": self.feasible,
-            "will_fail": self.will_fail,
-            "errors": self.errors,
-            "warnings": self.warnings,
-            "info": self.info,
-            "diagnostics": self.diagnostics,
-            "sizing_evaluated": self.sizing_evaluated,
-            "inconclusive_reason": self.inconclusive_reason,
-            "gated": self.gated,
-            "authorized": self.authorized,
-            "gated_reason": self.gated_reason,
-        }
+        return asdict(self)
 
 
 def classify_diagnostics(diagnostics: list[str]) -> CapacityVerdict:
