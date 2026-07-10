@@ -155,7 +155,7 @@ across a DoE sweep. `app/storage/history.py` is a cross-session result store (pe
 validated report's summary; list/get/trend across runs) backing both the `result_history`
 tool and the UI trends view.
 
-### Capacity: `app/capacity/` + `scripts/capacity_check.py`
+### Capacity: `app/capacity/` + `scripts/bridges/capacity_check.py`
 A pre-flight that answers "will this fit?" before a ~10-minute standup fails opaquely with
 OOM. It runs the benchmark repo's own capacity planner (which lives only in that repo's
 venv) through a vetted, allowlisted bridge script over a workspace-confined JSON request,

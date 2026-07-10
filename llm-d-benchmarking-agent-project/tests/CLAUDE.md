@@ -20,7 +20,7 @@ REPOS_DIR=<repo-root> \
 hook's own output — don't trust numbers written here). No need to establish a green baseline when
 you branch — feature branches aren't gated; the `main`-only hook verifies green at merge.
 
-**Fresh clone / new machine: run `scripts/install-git-hooks.sh` first.** `.git/hooks` is not
+**Fresh clone / new machine: run `scripts/install/install-git-hooks.sh` first.** `.git/hooks` is not
 version-controlled, so a clone starts with NO merge gate — run the installer to (re)write the
 `main`-only ruff + mypy + pytest + dangling-skill-ref hooks (`pre-commit` + `pre-merge-commit`).
 
@@ -58,11 +58,11 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
   and `LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 pytest …` (simulate set) — error/safety flows are honest only live,
   multi-step DEPLOY walks only in simulate. ⚠️ In a worktree the gitignored `.env` is absent → the provider raises
   → every live test SKIPS silently; `cp <primary>/.env <worktree>/.env` first.
-  - **Non-pytest path** (use this when `pytest` is hook-blocked by hand): `scripts/validate_flows.py
+  - **Non-pytest path** (use this when `pytest` is hook-blocked by hand): `scripts/eval/validate_flows.py
     --live` and `--simulate` drive the SAME harness/scoring without pytest — `LLM_EVAL_LIVE=1 python
-    scripts/validate_flows.py --simulate`. Still spends quota; still needs the worktree `.env`.
+    scripts/eval/validate_flows.py --simulate`. Still spends quota; still needs the worktree `.env`.
   - **For any REAL run use the ISOLATED runner**: `make validate-live-iso` / `make validate-simulate-iso`
-    (`scripts/run_eval_isolated.sh`) — one process per flow (fresh SDK subprocess) under an EXTERNAL
+    (`scripts/eval/run_eval_isolated.sh`) — one process per flow (fresh SDK subprocess) under an EXTERNAL
     kernel-level `timeout`, so a stuck flow is killed, logged `TIMEOUT`, and the run continues. The
     in-process per-call watchdog (`LLM_EVAL_CALL_TIMEOUT`) and per-flow cap (`LLM_EVAL_FLOW_TIMEOUT`)
     are first-line only and DEFEATABLE (a frozen event loop never fires them; the shared SDK subprocess
@@ -82,8 +82,8 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
     SKILL_EVAL_RUNS=1 .venv/bin/python -m pytest tests/eval/simulate/test_skill_usage_live.py -v`.
   - **Skill-gate is INERT under pytest, LIVE under the non-pytest harness** — the autouse
     `_ground_skills_by_default` fixture (`conftest.py`) pre-grounds every `ToolContext`, so the
-    skill-grounding gate (`app/tools/skill_gate.py`) never fires in `pytest`. But `scripts/validate_flows.py`
-    / `scripts/run_eval_isolated.sh` load NO conftest, so the gate runs LIVE there: a MUTATING flow must
+    skill-grounding gate (`app/tools/skill_gate.py`) never fires in `pytest`. But `scripts/eval/validate_flows.py`
+    / `scripts/eval/run_eval_isolated.sh` load NO conftest, so the gate runs LIVE there: a MUTATING flow must
     ground ITSELF (fetch the skill) or its plan/standup/run is refused. The golden transcripts now do
     (`fetch_key_docs(task="quickstart")` on `cicd/kind`; `deploy_skill`+`benchmark_skill` on a guide) and
     the live eval's real model grounds itself. Do NOT narrow the fixture — deterministic flows that don't

@@ -149,7 +149,7 @@ class CommandRunner:
                 raise RunnerError(f"script {script} not found")
             real = [str(script), *rest]
         elif invoke == "project-script":
-            # A vetted script shipped with the agent project (e.g. scripts/install_prereqs.sh),
+            # A vetted script shipped with the agent project (e.g. scripts/install/install_prereqs.sh),
             # resolved against the project root — not a cloned repo. The allowlist constrains
             # which script + flags may run; the script's own contents are the only commands it
             # can execute (the allowlist grants no raw apt-get/curl/sudo).

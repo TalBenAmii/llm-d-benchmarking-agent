@@ -36,7 +36,7 @@ from tests.flows.harness import CaptureRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
-BRIDGE_PATH = PROJECT_ROOT / "scripts" / "capacity_check.py"
+BRIDGE_PATH = PROJECT_ROOT / "scripts" / "bridges" / "capacity_check.py"
 
 # A sentinel token value the backend would hold. The whole point of the scrub assertions
 # is that THIS string never leaks into the structured result or the command events.
@@ -110,7 +110,7 @@ def _install_fake_hf(monkeypatch, responder, *, token_box=None):
 
 
 def _load_bridge():
-    """Import scripts/capacity_check.py as a module (it is not on the package path)."""
+    """Import scripts/bridges/capacity_check.py as a module (it is not on the package path)."""
     spec = importlib.util.spec_from_file_location("capacity_check_bridge", BRIDGE_PATH)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)

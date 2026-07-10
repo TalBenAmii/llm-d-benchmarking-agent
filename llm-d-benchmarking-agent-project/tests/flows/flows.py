@@ -114,7 +114,7 @@ class Flow:
     live_eval: bool = True
     # Which LIVE-eval execution MODE(s) this flow is scored in. The live eval runs in two modes:
     #   "live"     — non-simulate: the agent makes its REAL decision from natural language (used by
-    #                `make validate-live` / `scripts/validate_flows.py --live` and the default pytest
+    #                `make validate-live` / `scripts/eval/validate_flows.py --live` and the default pytest
     #                run). The right mode for single-decision TOOL-CHOICE, ERROR-RECOVERY and SAFETY
     #                flows — the agent genuinely meets the failure/refusal and we score its reaction.
     #   "simulate" — LLM_EVAL_SIMULATE=1: the SIMULATE_NOTE tells the agent to walk the WHOLE

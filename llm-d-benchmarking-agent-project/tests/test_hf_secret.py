@@ -1,7 +1,7 @@
 """Phase 30 — HuggingFace gated-model secret provisioning.
 
 Hermetic: NO live cluster, NO real kubectl, NO network, NO GPU. The vetted
-``scripts/provision_hf_secret.py`` script is exercised with ``subprocess.run`` monkeypatched
+``scripts/bridges/provision_hf_secret.py`` script is exercised with ``subprocess.run`` monkeypatched
 to a fake that RECORDS the kubectl argv + stdin it would have run, so we assert the upstream
 two-stage `create secret ... --dry-run=client -o yaml | apply -f -` shape WITHOUT touching a
 cluster. The tool layer runs end-to-end through a ``CaptureRunner`` (no subprocess at all),
@@ -35,7 +35,7 @@ from tests.flows.harness import CaptureRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
-SCRIPT_PATH = PROJECT_ROOT / "scripts" / "provision_hf_secret.py"
+SCRIPT_PATH = PROJECT_ROOT / "scripts" / "bridges" / "provision_hf_secret.py"
 
 # A sentinel token the backend would hold. The point of the scrub assertions is that THIS
 # string never leaks into argv, command events, or the structured result.

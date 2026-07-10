@@ -51,7 +51,7 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Validate flows (readable summary)
-        run: python scripts/validate_flows.py --show
+        run: python scripts/eval/validate_flows.py --show
 
       - name: Flow replay suite (gating, hermetic)
         # The golden-transcript flow replays: the real agent loop + real allowlist + real

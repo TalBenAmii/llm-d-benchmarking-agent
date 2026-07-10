@@ -15,7 +15,7 @@
 >
 > **Increment — agent-owned host bootstrap.** The agent installs the prerequisites
 > `install.sh` does not (the Docker daemon + the kind binary) via the vetted
-> `scripts/install_prereqs.sh`, creates/deletes the kind cluster (`kind create/delete
+> `scripts/install/install_prereqs.sh`, creates/deletes the kind cluster (`kind create/delete
 > cluster`), and reaches any allowlisted command through a generic `run_command` tool plus
 > a `fetch_key_docs` doc-grounding tool — all approval-gated and widened purely through
 > `security/allowlist.yaml` (the `project-script` runner invoke type runs the pinned

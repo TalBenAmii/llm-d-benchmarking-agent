@@ -13,7 +13,7 @@ Flow (all mechanism — no judgment here):
   2. Validate that the caller-supplied results dir exists and the output dir is confined to
      the session workspace (never the read-only repos, never the results dir).
   3. Write a JSON request into the session workspace.
-  4. Run the vetted ``scripts/aggregate_runs.py`` wrapper through the allowlisted runner. The
+  4. Run the vetted ``scripts/bridges/aggregate_runs.py`` wrapper through the allowlisted runner. The
      wrapper imports the repo's OWN ``aggregate_runs`` module (never reimplements its math),
      reads the BR v0.2 reports under the results dir, and writes
      ``aggregated_summary.{txt,json}`` ONLY under the workspace output dir. Read-only ->
