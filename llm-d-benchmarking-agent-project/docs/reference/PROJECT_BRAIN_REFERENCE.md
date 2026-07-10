@@ -20,12 +20,12 @@ multi-harness compare, capacity pre-flight, history/trends, observability, one-c
 
 - **Authoritative, evidence-backed feature inventory + how to verify each →** `FEATURES.md` (read first).
 - **Remaining / deferred work →** the DEFERRED phases in `FEATURES.md` (per-phase rows in `docs/reference/BENCHMARK_FEATURE_COVERAGE.md`).
-- **Design rationale + MVP implementation-status record →** `docs/history/plan.md`.
+- **Design rationale + MVP implementation-status record →** git history only (`docs/history/plan.md`, removed 2026-07-10).
 - **Tool count is never hard-coded here** — `app/tools/registry.py` (`build_registry()`) is the only source of truth.
 
 ## Documentation map
 The full docs index lives in **[`README.md`](../README.md)** (every `docs/` page + the repo-root
-`README.md`, `docs/reference/FEATURES.md`, `knowledge/`; plus `docs/history/plan.md`). Not repeated here.
+`README.md`, `docs/reference/FEATURES.md`, `knowledge/`). Not repeated here.
 
 **Agent brain** — `knowledge/*.md|*.yaml` hold all *judgment* (loaded at runtime; not docs to edit
 casually). See `knowledge/CLAUDE.md` before editing them.

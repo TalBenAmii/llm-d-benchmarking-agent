@@ -16,8 +16,6 @@ agent + Kubernetes-native benchmark orchestrator + results analyzer for
 | [MCP.md](reference/MCP.md) | Claude Code users | Pointer: the `llm-d-bench` MCP server split into its own repo ([llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)); the stub carries the install one-liner. |
 | [SECURITY.md](reference/SECURITY.md) | operators / reviewers | Threat model: trust boundaries, the allowlist/approval model, secret scrubbing, network-exposure guidance, what requires isolation. |
 | [TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md) | operators | Symptom → what to check; debug mode; the structured logs + `corr_id`; the readiness/metrics endpoints. |
-| [CONTRIBUTING.md](project/CONTRIBUTING.md) | contributors | How to add a tool/flow/phase; the two laws (thin-code, allowlist-as-data); the hermetic-test rule. |
-| [CHANGELOG.md](project/CHANGELOG.md) | everyone | Keep-a-Changelog history (v1 phases 0-10, v2 operability phases 11-18, v3 proposal-completion phases 19-26 + token-tracking). |
 | [INTERACTIVE_TEST_GUIDE.md](guides/INTERACTIVE_TEST_GUIDE.md) | contributors / testers | Follow-along runbook to drive every feature by hand with a real LLM. |
 | [BENCHMARK_FEATURE_COVERAGE.md](reference/BENCHMARK_FEATURE_COVERAGE.md) | contributors / reviewers | Benchmark-CLI feature-coverage catalog (✅/🟡/⬜) — what's wired vs deferred. |
 | [USEFUL_REPO_DOCS.md](reference/USEFUL_REPO_DOCS.md) | contributors | Curated index of which upstream `llm-d` / `llm-d-benchmark` docs matter and why. |
@@ -30,14 +28,12 @@ Ops assets live under [`deploy/observability/`](../deploy/observability/): a Pro
 config, alert rules (`alerts.rules.yaml`), and a Grafana dashboard.
 
 Project root: [`README.md`](../../README.md) (overview — at the repo root), [`CLAUDE.md`](../CLAUDE.md) (working
-rules), [`FEATURES.md`](reference/FEATURES.md) (live, evidence-backed feature inventory + the
-remaining/deferred phases), and [`plan.md`](history/plan.md) (design + status). The agent's
-*judgment* lives in [`knowledge/`](../knowledge/).
+rules), and [`FEATURES.md`](reference/FEATURES.md) (live, evidence-backed feature inventory + the
+remaining/deferred phases). The agent's *judgment* lives in [`knowledge/`](../knowledge/).
 
-Design history is archived under [`history/`](history/) — the original proposal + plan, plus
-[`history/proposals/`](history/proposals/) (the five shipped feature proposals, kept as
-design-of-record). UI screenshots used by docs/demos live in [`images/`](images/); the informal
-working backlog is [`TODO.md`](project/TODO.md).
+UI screenshots used by docs/demos live in [`images/`](images/); the informal working backlog is
+[`TODO.md`](project/TODO.md). Design history (the original proposal + plan, and the five shipped
+feature proposals) is preserved in git history only (`docs/history/`, removed 2026-07-10).
 
 ## Design in one line
 
@@ -67,4 +63,4 @@ upstream as a module in `llm-d-benchmark` (proposal §5.3 / §10). What's in pla
   least-privilege RBAC ([DEPLOYMENT.md](guides/DEPLOYMENT.md)).
 
 Open items before a formal upstream PR are tracked in [`FEATURES.md`](reference/FEATURES.md)'s DEFERRED
-phases and [`plan.md`](history/plan.md) ("Deferred / next").
+phases.
