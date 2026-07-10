@@ -235,7 +235,7 @@ def test_system_prompt_inlines_core_and_indexes_on_demand(tool_ctx):
 
     # (a) Each CORE file's actual body must be inlined verbatim.
     for name in CORE_KNOWLEDGE:
-        body = (kdir / name).read_text()
+        body = next(kdir.rglob(name)).read_text()
         # A distinctive mid-file slice (skips the heading shared with the index line).
         chunk = body[120:300]
         assert chunk and chunk in prompt, f"core file {name} not inlined"

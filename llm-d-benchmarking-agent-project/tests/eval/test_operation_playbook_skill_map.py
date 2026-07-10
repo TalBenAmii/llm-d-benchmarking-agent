@@ -24,15 +24,16 @@ PLAYBOOK_SKILL = {
 
 
 def _refs(md_name: str) -> set[str]:
-    text = (get_settings().knowledge_dir / md_name).read_text()
+    # Playbooks are keyed by basename; resolve through the topic-folder layout (rglob).
+    text = next(get_settings().knowledge_dir.rglob(md_name)).read_text()
     return set(re.findall(r'task=["\']?(\w+_skill)["\']?', text))
 
 
 @pytest.mark.parametrize("playbook,skill", sorted(PLAYBOOK_SKILL.items()))
 def test_operation_playbook_grounds_in_its_skill(playbook, skill):
     """The operation playbook references a fetch of its own skill task."""
-    path = get_settings().knowledge_dir / playbook
-    assert path.exists(), f"missing operation playbook {playbook}"
+    path = next(get_settings().knowledge_dir.rglob(playbook), None)
+    assert path is not None, f"missing operation playbook {playbook}"
     assert skill in _refs(playbook), f"{playbook} does not ground in {skill}"
 
 
