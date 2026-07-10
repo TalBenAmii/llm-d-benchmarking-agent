@@ -21,12 +21,12 @@ import yaml
 from app.config import Settings
 from app.security.allowlist import Allowlist
 from app.tools.access.knowledge_access import read_knowledge
+from app.tools.registry import dispatch, tool_definitions
 from app.tools.setup.probe import (
     _ACCELERATOR_RESOURCE_KEYS,
     _node_accelerator_summaries,
     advise_accelerators,
 )
-from app.tools.registry import dispatch, tool_definitions
 from tests._helpers import _ctx
 
 # A GPU node advertising nvidia.com/gpu under capacity + allocatable, with real cpu/memory.

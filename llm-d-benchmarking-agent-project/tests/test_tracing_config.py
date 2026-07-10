@@ -23,6 +23,7 @@ from pathlib import Path
 
 import yaml
 
+from app.tools.registry import tool_definitions
 from app.tools.setup.config_artifact import (
     _SOFT_OPTIONAL_KNOBS,
     _build_scenario_document,
@@ -31,7 +32,6 @@ from app.tools.setup.config_artifact import (
     validate_scenario_structure,
     write_and_validate_config,
 )
-from app.tools.registry import tool_definitions
 
 # The exact dotted tracing knob paths the upstream modelservice jinja renders. Kept in lockstep
 # with config/templates/jinja/13_ms-values.yaml.j2 and knowledge/observability.md §4.

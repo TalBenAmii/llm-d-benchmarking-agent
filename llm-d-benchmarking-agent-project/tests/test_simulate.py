@@ -15,8 +15,8 @@ from app.agent.prompt import SIMULATE_NOTE, build_system_prompt
 from app.config import Settings
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunResult, SimRunner
-from app.tools.context import ApprovalRejected, ToolContext
 from app.tools.analyze.report_locate import locate_and_parse_report
+from app.tools.context import ApprovalRejected, ToolContext
 from app.tools.run.shell import run_shell
 from tests.flows.catalog_snapshot import frozen_catalog
 

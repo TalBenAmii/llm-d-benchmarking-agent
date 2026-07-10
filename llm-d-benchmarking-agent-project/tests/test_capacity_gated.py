@@ -30,8 +30,8 @@ from app.capacity.planner import (
 )
 from app.config import Settings
 from app.security.allowlist import Allowlist
-from app.tools.setup.capacity import check_capacity
 from app.tools.context import ToolContext
+from app.tools.setup.capacity import check_capacity
 from tests.flows.harness import CaptureRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

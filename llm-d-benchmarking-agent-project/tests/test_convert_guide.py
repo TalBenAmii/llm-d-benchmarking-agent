@@ -19,6 +19,7 @@ import pytest
 import yaml
 
 from app.tools.context import ToolError
+from app.tools.registry import dispatch, tool_definitions
 from app.tools.setup.convert_guide import (
     _build_scenario_sh,
     _emit_export_lines,
@@ -26,7 +27,6 @@ from app.tools.setup.convert_guide import (
     _validate_name,
     convert_guide_to_scenario,
 )
-from app.tools.registry import dispatch, tool_definitions
 
 # ---------------------------------------------------------------------------
 # Name screen (mechanism that keeps every output inside the workspace)

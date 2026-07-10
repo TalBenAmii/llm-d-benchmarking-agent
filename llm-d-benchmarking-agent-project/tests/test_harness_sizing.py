@@ -17,9 +17,9 @@ from unittest.mock import patch
 
 import pytest
 
+from app.tools.access.knowledge_access import read_knowledge
 from app.tools.context import ToolError
 from app.tools.run.execute import execute_llmdbenchmark
-from app.tools.access.knowledge_access import read_knowledge
 from app.tools.setup.probe import _parse_cpu_quantity, probe_environment
 from tests._helpers import _ctx
 from tests.flows.harness import CaptureRunner

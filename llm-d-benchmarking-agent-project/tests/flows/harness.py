@@ -38,10 +38,10 @@ from app.config import BENCH_REPO_NAME, GUIDE_REPO_NAME, Settings
 from app.llm.provider import AssistantTurn, LLMProvider, ProviderTurn, open_provider_turn
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunResult
-from app.tools.setup.catalog import catalog_for_allowlist
 from app.tools.context import ToolContext
 from app.tools.registry import _group_of
 from app.tools.run.shell import classify_shell_command
+from app.tools.setup.catalog import catalog_for_allowlist
 
 from .catalog_snapshot import frozen_catalog
 

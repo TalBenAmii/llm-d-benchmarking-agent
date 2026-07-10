@@ -42,8 +42,8 @@ import re
 import shlex
 from typing import Any
 
-from app.tools.setup.config_artifact import author_scenario
 from app.tools.context import ToolContext, ToolError
+from app.tools.setup.config_artifact import author_scenario
 
 # A scenario/guide name token: letters/digits and the three separators upstream's ``ai.`` file
 # names tolerate. No path separators, no ``..`` — the emitted file names are derived from it.

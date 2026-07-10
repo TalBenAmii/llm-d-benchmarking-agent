@@ -20,7 +20,6 @@ import pytest
 
 from app.config import Settings, get_settings
 from app.security.allowlist import Allowlist
-from app.tools.setup.capacity import check_capacity
 from app.tools.context import ToolContext, ToolError
 from app.tools.run.gated_access import (
     gated_block,
@@ -28,6 +27,7 @@ from app.tools.run.gated_access import (
     record_capacity_verdict,
 )
 from app.tools.run.shell import run_shell
+from app.tools.setup.capacity import check_capacity
 from tests._helpers import _approve_all
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.flows import _CAPACITY_GATED_NO_TOKEN

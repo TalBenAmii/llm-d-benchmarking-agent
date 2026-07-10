@@ -16,8 +16,8 @@ import pytest
 
 from app.security.allowlist import READ_ONLY
 from app.tools.context import ToolError
-from app.tools.setup.discover import _parse_components, _summarize_stack, discover_stack
 from app.tools.registry import dispatch, tool_definitions
+from app.tools.setup.discover import _parse_components, _summarize_stack, discover_stack
 from tests._helpers import _real_repo_ctx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

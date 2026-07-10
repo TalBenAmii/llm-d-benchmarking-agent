@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from app.tools.context import ToolError
+from app.tools.registry import dispatch, tool_definitions
 from app.tools.setup.config_artifact import (
     _build_scenario_document,
     _build_spec_document,
@@ -22,8 +24,6 @@ from app.tools.setup.config_artifact import (
     validate_scenario_structure,
     write_and_validate_config,
 )
-from app.tools.context import ToolError
-from app.tools.registry import dispatch, tool_definitions
 
 # ---------------------------------------------------------------------------
 # Pure mechanism: dotted-override deep-merge onto the scenario skeleton

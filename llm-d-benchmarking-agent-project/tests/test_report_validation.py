@@ -137,8 +137,8 @@ def test_locate_rejects_session_id_path_traversal(tmp_path, evil):
     must NOT let the tool escape the sessions root and locate+read a benchmark_report
     elsewhere on disk. Fails before the fix (the out-of-root report is located and read);
     passes after (a ToolError is raised, so the loop relays a clean {"error": ...})."""
-    from app.tools.context import ToolError
     from app.tools.analyze.report_locate import locate_and_parse_report
+    from app.tools.context import ToolError
 
     sessions_root = tmp_path / "sessions"
     ws = sessions_root / "sess1"

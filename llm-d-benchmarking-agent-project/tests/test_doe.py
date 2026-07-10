@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import yaml
 
-from app.tools.run.doe import generate_doe_experiment, validate_structure
 from app.tools.registry import dispatch, tool_definitions
+from app.tools.run.doe import generate_doe_experiment, validate_structure
 from app.validation.doe import DoEError, build_doe_experiment
 
 # ---------------------------------------------------------------------------

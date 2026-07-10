@@ -28,8 +28,8 @@ from typing import Any
 import yaml
 
 from app.dig import dict_or_empty as _dict
-from app.tools.setup.catalog import build_catalog
 from app.tools.context import ToolContext, ToolError
+from app.tools.setup.catalog import build_catalog
 
 # Harness search order when the caller omits the harness. inference-perf is the default harness
 # the agent reaches for first, so try it first; the rest are the remaining profile dirs.

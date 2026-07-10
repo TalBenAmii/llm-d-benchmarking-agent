@@ -174,8 +174,8 @@ def test_step_select_knowledge_is_autodiscoverable(allowlist, catalog, tmp_path)
     # read_knowledge('step_select') with NO Python registration.
     from app.config import get_settings
     from app.security.runner import CommandRunner
-    from app.tools.context import ToolContext
     from app.tools.access.knowledge_access import read_knowledge
+    from app.tools.context import ToolContext
 
     s = get_settings()
     ctx = ToolContext(

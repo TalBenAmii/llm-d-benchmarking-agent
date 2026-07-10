@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.tools.context import ToolContext
 from app.tools.access.knowledge_access import EXCLUDED_KNOWLEDGE_FILES
+from app.tools.context import ToolContext
 
 ROLE = """\
 You are the llm-d Benchmarking Assistant. You help people who do NOT know the
