@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv, execute_llmdbenchmark
+from app.tools.run.execute import build_argv, execute_llmdbenchmark
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _approve_all, _argv, _capture_ctx
 from tests.flows.harness import CaptureRunner

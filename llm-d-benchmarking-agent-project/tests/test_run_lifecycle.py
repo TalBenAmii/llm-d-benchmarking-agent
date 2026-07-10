@@ -27,7 +27,7 @@ from app.llm.provider import AssistantTurn, ToolCall
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner, RunResult
 from app.tools.context import ToolContext, ToolError
-from app.tools.manage_runs import cancel_run
+from app.tools.run.manage_runs import cancel_run
 from tests.flows.catalog_snapshot import frozen_catalog
 
 MUT = ["kind", "create", "cluster", "--name", "lc-a"]

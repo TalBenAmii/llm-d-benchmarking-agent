@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.tools.catalog import build_catalog, catalog_for_allowlist
+from app.tools.setup.catalog import build_catalog, catalog_for_allowlist
 
 
 @pytest.fixture(scope="module")

@@ -99,4 +99,4 @@ them here as fixtures and feed them to the agent at runtime via
 - `docs/guides/GPU_CLUSTER_RUNBOOK.md`: the real single-GPU path (your RTX 4060): real vLLM, real
   numbers, one replica. This harness is its mock multi-GPU counterpart.
 - `app/orchestrator/job.py`: `Scheduling` (how `gpu_count` / affinity / tolerations become a
-  manifest); `app/tools/orchestrate.py`: `orchestrate_sweep`.
+  manifest); `app/tools/run/orchestrate.py`: `orchestrate_sweep`.

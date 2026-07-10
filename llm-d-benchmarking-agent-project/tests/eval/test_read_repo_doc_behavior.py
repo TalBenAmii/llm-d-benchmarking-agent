@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.tools import knowledge_access
+from app.tools.access import knowledge_access
 from app.tools.context import ToolError
 from tests.eval._skills import SKILL_TASKS
 

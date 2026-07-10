@@ -10,9 +10,9 @@ from __future__ import annotations
 import pytest
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools import compare
-from app.tools.execute import _result_location, build_argv
+from app.tools.analyze import compare
 from app.tools.registry import dispatch, tool_definitions
+from app.tools.run.execute import _result_location, build_argv
 from app.tools.schemas import ExecuteInput
 from app.validation.report import ReportError, compare_summaries, find_reports, load_report
 from tests._helpers import write_br_report

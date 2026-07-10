@@ -115,7 +115,7 @@ deliberately, e.g. when you will poll results yourself.
 ## Mechanism vs. judgment
 
 Emitting the `--*-timeout` flags (and guarding each on the accepting subcommand) is **mechanism**
-— a static table in `app/tools/execute.py`, no `if/elif` on the value. The allowlist permits each
+— a static table in `app/tools/run/execute.py`, no `if/elif` on the value. The allowlist permits each
 flag value-pinned to a positive integer (DATA, `security/allowlist.yaml`). WHETHER to set one,
 to WHAT value, and the keep-it-below-the-runner-ceiling reconcile that stops the two layers from
 fighting — that judgment lives **here**, never in Python.

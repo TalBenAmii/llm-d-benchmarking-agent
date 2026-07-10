@@ -18,7 +18,7 @@ from typing import Any
 from app.agent.cards import build_results_card
 from app.agent.loop import CARD_RESULT_TOOLS
 from app.dig import find_last_json
-from app.tools import report_locate
+from app.tools.analyze import report_locate
 
 
 def history_items(session) -> list[dict[str, Any]]:

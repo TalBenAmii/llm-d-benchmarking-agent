@@ -29,7 +29,7 @@ per rule 7). It's still independently versioned, so `ensure_repos`' `ref` is nev
   (the SessionPlan gate + `llmdbenchmark` CLI + BR-v0.2 parsing + our tool names stay authoritative).
   The skill-step recaps were removed (dedup), so read the skill rather than expecting it restated here.
 - **Enforced, not just encouraged:** a mutating `llmdbenchmark` op is refused until its grounding doc
-  was fetched this session: the skill-grounding gate (`app/tools/skill_gate.py`), wired at the
+  was fetched this session: the skill-grounding gate (`app/tools/run/skill_gate.py`), wired at the
   command chokepoint and the plan gate. Spec-aware: the kind/CPU-sim path grounds in the `quickstart`
   runbook (`knowledge/quickstart_playbook.md`, served on demand via a `kind: knowledge`
   `key_docs.yaml` entry, a `knowledge/` file delivered through `fetch_key_docs` exactly like these

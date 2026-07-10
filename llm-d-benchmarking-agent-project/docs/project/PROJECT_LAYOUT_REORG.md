@@ -30,11 +30,11 @@ lands on main before the next starts).
   omitted **`run.sh`**.
 - Real blast radius of the app/tools move: **262 import statements** (230 dotted
   `from app.tools.<mod> import …`, 31 `from app.tools import <mod>`, 1 `import app.tools.x as`)
-  **+ 41 string literals** (`patch("app.tools.probe.shutil.which")` ×33 etc.) — not "~96".
+  **+ 41 string literals** (`patch("app.tools.setup.probe.shutil.which")` ×33 etc.) — not "~96".
 - **The sibling `llm-d-bench-mcp/` repo is coupled to moves B and D**: it flat-globs
   `knowledge/` (`llm_d_bench_mcp/content.py:35-38`, stem-keyed `doc://knowledge/<stem>`),
   hardcodes playbook basenames (`content.py:167-171`), and imports
-  `app.tools.knowledge_access` (`content.py:19`). Each of B and D needs a matching sibling
+  `app.tools.access.knowledge_access` (`content.py:19`). Each of B and D needs a matching sibling
   commit (dep-repo lands first, per the finish loop).
 - **`scripts/install_local.sh` is a published curl entry point**
   (`README.md:107` at monorepo root → raw.githubusercontent URL). It — and the canonical
@@ -67,7 +67,7 @@ lands on main before the next starts).
   ```
 
   For dotted Python module paths use word-boundary sed (`s/app\.tools\.probe\b/…/g` — `\b`
-  correctly does NOT match inside `app.tools.probe_parse` because `_` is a word char).
+  correctly does NOT match inside `app.tools.setup.probe_parse` because `_` is a word char).
 - **Stale-path gate** after each move: `git grep -nE '<old-path-regex>'` across owned repos
   must return zero hits (historical docs under `docs/history/` and `CHANGELOG` get their links
   rewritten too — broken links are worse than archive purity).
@@ -146,7 +146,7 @@ sort key (`key=lambda p: p.name`) so ordering, prompt bytes, and `knowledge_hash
 
 1. `app/agent/prompt.py:342` — `glob` → `rglob`, sort by basename (currently sorts by full
    path — switching to basename-sort is what keeps prompt bytes identical).
-2. `app/tools/knowledge_access.py:206-208` — `_knowledge_files` → `rglob` (already
+2. `app/tools/access/knowledge_access.py:206-208` — `_knowledge_files` → `rglob` (already
    basename-sorted). `_match_knowledge_basename` (:211-218) needs no change — it already
    matches by `f.name`/`f.stem` and hard-rejects `/` in requests; stems stay the contract.
 3. `app/storage/provenance.py:127-142` — `_KNOWLEDGE_GLOBS` walk → recursive.
@@ -257,7 +257,7 @@ permanent cruft guarding a one-time move).
 
 **Automated rewrite (owned repos: monorepo project + `llm-d-bench-mcp/`):**
 1. **Dotted paths** (230 imports + 41 string literals + importlib keys + the one
-   `import app.tools.execute as`): per moved module `M`→group `G`, run
+   `import app.tools.run.execute as`): per moved module `M`→group `G`, run
    `sed -E 's/\bapp\.tools\.M\b/app.tools.G.M/g'` over `git grep -l` hits. This single pass
    fixes `from app.tools.M import …`, `patch("app.tools.M.…")` (probe alone has 36 string
    sites), `tests/test_logging.py:198,217` logger names,

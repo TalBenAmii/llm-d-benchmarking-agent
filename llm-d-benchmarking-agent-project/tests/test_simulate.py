@@ -15,9 +15,9 @@ from app.agent.prompt import SIMULATE_NOTE, build_system_prompt
 from app.config import Settings
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunResult, SimRunner
+from app.tools.analyze.report_locate import locate_and_parse_report
 from app.tools.context import ApprovalRejected, ToolContext
-from app.tools.report_locate import locate_and_parse_report
-from app.tools.shell import run_shell
+from app.tools.run.shell import run_shell
 from tests.flows.catalog_snapshot import frozen_catalog
 
 
@@ -240,7 +240,7 @@ async def test_simrunner_output_does_not_fabricate_parsed_data(tmp_path, monkeyp
     success-shaped lie the agent could act on (e.g. "you already have a cluster, skipping
     standup"). The probe-honesty PROMPT cue (D5) can't undo a corrupt structured tool result.
     """
-    from app.tools.probe import probe_environment
+    from app.tools.setup.probe import probe_environment
 
     # 1) Raw contract: a SimRunner no-op carries no captured stdout (matches CaptureRunner /
     #    a real command with empty output), so output-parsing consumers see nothing to parse.
@@ -250,7 +250,7 @@ async def test_simrunner_output_does_not_fabricate_parsed_data(tmp_path, monkeyp
     assert res.lines == []
 
     # 2) End-to-end: the kind-clusters probe must NOT invent clusters in SIMULATE mode.
-    monkeypatch.setattr("app.tools.probe.shutil.which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr("app.tools.setup.probe.shutil.which", lambda name: "/usr/bin/" + name)
     ctx = _ctx(tmp_path, simulate=True, runner=SimRunner({}))
     out = await probe_environment(ctx, checks=["kind_clusters"])
     assert out["kind_clusters"]["clusters"] == []

@@ -629,7 +629,7 @@ executables:
   # approval). `python_via` runs it with the benchmark venv's interpreter (the upstream module
   # uses an optional `yaml`). The single argument is constrained to a workspace-confined .json
   # request file (no '..'), so there is no arbitrary-code surface beyond this audited script and
-  # the read-only upstream module it imports — the calling tool (app/tools/aggregate_runs.py)
+  # the read-only upstream module it imports — the calling tool (app/tools/analyze/aggregate_runs.py)
   # confines the OUTPUT dir to the session workspace. The interactive notebook + the
   # to_be_incorporated/ plot templates are deliberately NOT scripted here (pointer-only).
   # WHEN to aggregate (>=2 repeats of the same benchmark) is JUDGMENT in knowledge/analysis.md.
@@ -716,7 +716,7 @@ executables:
   # OPTIONAL richer ENVIRONMENT capture: given an OpenAI-compatible endpoint URL,
   # `llm-d-discover <url> -f benchmark-report` traces the LIVE llm-d stack behind it and emits
   # BR-v0.2 scenario.stack[] Component dicts (model/role/replicas/parallelism/accelerator). The
-  # agent feeds that into the report/scenario-capture path (app/tools/discover.py) for a richer
+  # agent feeds that into the report/scenario-capture path (app/tools/setup/discover.py) for a richer
   # picture than its own endpoint probing — but endpoint probing (probe_environment /
   # check_endpoint_readiness) stays the UNCONDITIONAL default; this only adds detail.
   #

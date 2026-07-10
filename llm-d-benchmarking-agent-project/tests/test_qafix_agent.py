@@ -529,7 +529,7 @@ def _write_min_report(path: Path, *, end: str | None) -> None:
 
 
 def test_report_generated_at_prefers_report_time(tool_ctx):
-    from app.tools.report_locate import _report_generated_at
+    from app.tools.analyze.report_locate import _report_generated_at
     from app.validation.report import load_report
     p = tool_ctx.workspace / "benchmark_report_v0.2.yaml"
     tool_ctx.workspace.mkdir(parents=True, exist_ok=True)
@@ -540,7 +540,7 @@ def test_report_generated_at_prefers_report_time(tool_ctx):
 
 
 def test_report_generated_at_falls_back_to_mtime(tool_ctx):
-    from app.tools.report_locate import _report_generated_at
+    from app.tools.analyze.report_locate import _report_generated_at
     from app.validation.report import load_report
     p = tool_ctx.workspace / "benchmark_report_v0.2.yaml"
     tool_ctx.workspace.mkdir(parents=True, exist_ok=True)
@@ -551,7 +551,7 @@ def test_report_generated_at_falls_back_to_mtime(tool_ctx):
 
 
 def test_locate_report_result_carries_generated_at(tool_ctx):
-    from app.tools.report_locate import locate_and_parse_report
+    from app.tools.analyze.report_locate import locate_and_parse_report
     p = tool_ctx.workspace / "benchmark_report_v0.2.yaml"
     tool_ctx.workspace.mkdir(parents=True, exist_ok=True)
     _write_min_report(p, end="2026-06-10T12:00:00Z")
@@ -565,7 +565,7 @@ def test_locate_report_result_carries_generated_at(tool_ctx):
 
 @pytest.mark.asyncio
 async def test_result_history_list_advertises_supported_filters(tool_ctx):
-    from app.tools.history import result_history
+    from app.tools.analyze.history import result_history
     res = await result_history(tool_ctx, action="list")
     assert "supported_filters" in res
     assert "start_date" in res["supported_filters"] and "end_date" in res["supported_filters"]
@@ -573,7 +573,7 @@ async def test_result_history_list_advertises_supported_filters(tool_ctx):
 
 def test_filter_by_date_inclusive_bounds():
     from app.storage.history import HistoryRecord
-    from app.tools.history import _filter_by_date
+    from app.tools.analyze.history import _filter_by_date
 
     def rec(epoch: float) -> HistoryRecord:
         return HistoryRecord(id=str(epoch), stored_at=epoch, label=None)
@@ -592,7 +592,7 @@ def test_filter_by_date_end_is_inclusive_of_whole_day():
     import datetime as _dt
 
     from app.storage.history import HistoryRecord
-    from app.tools.history import _filter_by_date
+    from app.tools.analyze.history import _filter_by_date
     # A record stored late on the end-date day must be INCLUDED (bare end date => 23:59:59).
     late = _dt.datetime(2026, 6, 15, 23, 30, tzinfo=_dt.UTC).timestamp()
     out, _ = _filter_by_date([HistoryRecord(id="x", stored_at=late, label=None)],
@@ -602,7 +602,7 @@ def test_filter_by_date_end_is_inclusive_of_whole_day():
 
 def test_filter_by_date_bad_input_reports_error_not_crash():
     from app.storage.history import HistoryRecord
-    from app.tools.history import _filter_by_date
+    from app.tools.analyze.history import _filter_by_date
     recs = [HistoryRecord(id="x", stored_at=time.time(), label=None)]
     out, applied = _filter_by_date(recs, "not-a-date", None)
     assert "error" in applied
@@ -612,7 +612,7 @@ def test_filter_by_date_bad_input_reports_error_not_crash():
 # ---- #5 : unrecognized_flags advisory ----------------------------------------
 
 def test_unrecognized_flags_catches_fabricated_vllm_flags(bench_repo):
-    from app.tools.config_artifact import _scenario_reference, unrecognized_flags
+    from app.tools.setup.config_artifact import _scenario_reference, unrecognized_flags
     ref = _scenario_reference(bench_repo)
     content = {
         "name": "fab",
@@ -628,7 +628,7 @@ def test_unrecognized_flags_catches_fabricated_vllm_flags(bench_repo):
 
 
 def test_unrecognized_flags_passes_real_flags(bench_repo):
-    from app.tools.config_artifact import _scenario_reference, unrecognized_flags
+    from app.tools.setup.config_artifact import _scenario_reference, unrecognized_flags
     ref = _scenario_reference(bench_repo)
     content = {
         "name": "real",
@@ -642,13 +642,13 @@ def test_unrecognized_flags_passes_real_flags(bench_repo):
 
 def test_unrecognized_flags_no_reference_returns_empty():
     # No repo truth => we don't guess (advisory stays silent rather than false-flagging).
-    from app.tools.config_artifact import unrecognized_flags
+    from app.tools.setup.config_artifact import unrecognized_flags
     assert unrecognized_flags({"foo.bar": 1}, {}) == []
 
 
 @pytest.mark.asyncio
 async def test_write_config_surfaces_unrecognized_flags_non_fatally(tool_ctx):
-    from app.tools.config_artifact import write_and_validate_config
+    from app.tools.setup.config_artifact import write_and_validate_config
     res = await write_and_validate_config(
         tool_ctx,
         artifact_type="scenario",

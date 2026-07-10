@@ -19,12 +19,12 @@ chat to a public link, a single-GPU-cluster runbook, and assorted UI/observabili
 - **Harness launcher MEMORY sizing flag**: `harness_mem` on `execute_llmdbenchmark` sets the
   backend-only env var `LLMDBENCH_HARNESS_CPU_MEM` (default `32Gi`), a Kubernetes-quantity value
   validated at the tool boundary so a typo is a clean error, not a late pod-apply failure
-  (`app/tools/execute.py`). It rides alongside the existing CPU knob; the WHEN/how-much judgment is
+  (`app/tools/run/execute.py`). It rides alongside the existing CPU knob; the WHEN/how-much judgment is
   data in `knowledge/harness_sizing.md` (raise on launcher OOM, lower on a tiny node).
 - **`read_knowledge` section addressing + truncation UX**: a `section=` arg returns one named
   markdown section verbatim, and a whole-guide read that overflows the tool-result feed-back budget
   is annotated with the `dropped_sections` (the headings past the clamp's cut) + a re-fetch note, so
-  a large guide's later sections never vanish silently (`app/tools/knowledge_access.py`,
+  a large guide's later sections never vanish silently (`app/tools/access/knowledge_access.py`,
   `app/tools/schemas/docs.py`).
 
 ### Changed
@@ -66,7 +66,7 @@ caching. The agent tool surface grows from 18 to **22 tools**.
 
 ### Added
 - **DOE experiment-file generator + token-characteristics elicitation** (Phase 19). A
-  `generate_doe_experiment` tool (`app/tools/doe.py`) cross-products agent-chosen *factors ×
+  `generate_doe_experiment` tool (`app/tools/run/doe.py`) cross-products agent-chosen *factors ×
   levels* into the full treatments matrix, emits a valid experiment YAML into the session
   workspace, and validates it structurally against the repo's experiment-example format (read
   live). *Which* factors/levels to sweep is judgment in an expanded `knowledge/sweep_playbook.md`,
@@ -161,7 +161,7 @@ changing its core behavior.
 
 ### Changed
 - The command runner sources its per-command deadline from the allowlist `Decision.timeout_s`,
-  removing the parallel `_TIMEOUTS` table in `app/tools/execute.py` (one mechanism, not two).
+  removing the parallel `_TIMEOUTS` table in `app/tools/run/execute.py` (one mechanism, not two).
 
 ### Security
 - No new runtime dependency in any v2 phase; all controls are stdlib + FastAPI/Starlette.

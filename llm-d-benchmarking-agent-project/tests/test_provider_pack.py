@@ -15,9 +15,9 @@ from unittest.mock import patch
 
 import yaml
 
-from app.tools import probe
-from app.tools.knowledge_access import read_knowledge
-from app.tools.probe import (
+from app.tools.access.knowledge_access import read_knowledge
+from app.tools.setup import probe
+from app.tools.setup.probe import (
     _PROVIDER_DEFAULT,
     _PROVIDER_LABEL_HINTS,
     _detect_provider,
@@ -108,7 +108,7 @@ async def test_openshift_provider_and_value_bearing_l40s_taint(tmp_path):
     """OpenShift node labels → provider openshift; the L40S value-bearing GPU taint is surfaced
     with its value so the agent can author an Equal+value toleration."""
     ctx, runner = _ctx(tmp_path, nodes_json=OPENSHIFT_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd["available"] is True
@@ -127,7 +127,7 @@ async def test_openshift_provider_and_value_bearing_l40s_taint(tmp_path):
 async def test_gke_provider_and_keyed_gpu_taint(tmp_path):
     """GKE cloud.google.com/* labels → provider gke; a keyed-only nvidia.com/gpu taint surfaces."""
     ctx, _ = _ctx(tmp_path, nodes_json=GKE_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd["provider"] == "gke"
@@ -141,7 +141,7 @@ async def test_gke_provider_and_keyed_gpu_taint(tmp_path):
 async def test_doks_provider_and_gpu_taint(tmp_path):
     """DOKS doks.digitalocean.com/* labels → provider doks; nvidia.com/gpu taint surfaces."""
     ctx, _ = _ctx(tmp_path, nodes_json=DOKS_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd["provider"] == "doks"
@@ -154,7 +154,7 @@ async def test_kind_default_no_cloud_labels_no_gpu_taint(tmp_path):
     """A plain kind cluster has no cloud-provider label → provider kind; the control-plane taint
     is NOT a GPU taint, so gpu_taints is empty (nothing to tolerate on the quickstart path)."""
     ctx, _ = _ctx(tmp_path, nodes_json=KIND_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd["provider"] == _PROVIDER_DEFAULT == "kind"
@@ -166,7 +166,7 @@ async def test_mixed_cluster_surfaces_providers_seen(tmp_path):
     """A mixed cluster (a GKE GPU node + an unlabeled node): provider resolves to the GPU node's
     provider; providers_seen surfaces the mix for the agent's judgment."""
     ctx, _ = _ctx(tmp_path, nodes_json=MIXED_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd["provider"] == "gke"  # the non-default provider on the GPU-bearing node wins
@@ -176,7 +176,7 @@ async def test_mixed_cluster_surfaces_providers_seen(tmp_path):
 
 async def test_no_kubectl_degrades_gracefully(tmp_path):
     ctx, runner = _ctx(tmp_path, nodes_json=OPENSHIFT_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: None):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: None):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd == {
@@ -194,7 +194,7 @@ async def test_unreachable_cluster_is_structured_not_raised(tmp_path):
         return RunResult(exit_code=1, duration_s=0.0, real_argv=list(argv), cwd=None,
                          output="The connection to the server was refused")
 
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"), \
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"), \
             patch.object(ctx, "run_readonly", side_effect=boom):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
@@ -362,4 +362,4 @@ def _read_knowledge_file(rel: str) -> str:
 
 
 def _read_probe_src() -> str:
-    return (_project_root() / "app" / "tools" / "probe.py").read_text()
+    return (_project_root() / "app" / "tools" / "setup" / "probe.py").read_text()

@@ -3,7 +3,7 @@
 The **pure, no-I/O half** of the capacity pre-flight: render the exact `plan_config` the benchmark
 repo's standup would build (scenario deep-merged over repo defaults + agent overrides), then classify
 the repo planner's own flat diagnostic strings into a structured `CapacityVerdict`. The subprocess that
-actually invokes the repo planner lives in `app/tools/capacity.py`; **this package touches no
+actually invokes the repo planner lives in `app/tools/setup/capacity.py`; **this package touches no
 network/cluster/subprocess** — it reads only on-disk repo truth. The verdict-reading *judgment* (PUBLIC
 vs GATED+AUTHORIZED, what to change to make a plan feasible, whether to offer secret-provisioning) lives
 in `knowledge/capacity.md`.

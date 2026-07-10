@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from app.tools.knowledge_access import fetch_key_docs, read_knowledge, search_knowledge
+from app.tools.access.knowledge_access import fetch_key_docs, read_knowledge, search_knowledge
 from app.tools.registry import dispatch
 
 # ---- allowlist + runner resolution for the vetted install scripts ----------

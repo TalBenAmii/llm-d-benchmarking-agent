@@ -27,7 +27,7 @@ Contract (mechanism only — no judgment lives here):
      or, on any failure (bad request, module not importable, <2 runs, …):
         {"ok": false, "error": "..."}
 
-The agent never types this command; ``app/tools/aggregate_runs.py`` builds the request file
+The agent never types this command; ``app/tools/analyze/aggregate_runs.py`` builds the request file
 inside the session workspace and runs this script through the allowlisted runner
 (``shell=False``, scrubbed env). The allowlist constrains the single argument to a ``.json``
 path with no ``..`` traversal, so there is no arbitrary-code surface beyond this audited

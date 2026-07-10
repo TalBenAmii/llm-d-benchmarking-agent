@@ -6,12 +6,12 @@ constrained at the boundaries; the gates here are the boundaries.
 ## The gates implemented here
 1. **SessionPlan + catalog gate** (`session_plan.py::validate_plan`) — the plan's spec/harness/workload
    must exist in the **live catalog**; namespace must be RFC1123. No mutation runs until a SessionPlan
-   is approved (the approval itself is wired in `app/tools/plan.py` + the loop). Reject with a catalog
+   is approved (the approval itself is wired in `app/tools/setup/plan.py` + the loop). Reject with a catalog
    hint on mismatch — never silently default.
 2. **Tool-arg schema gate** — every tool input is a Pydantic model validated at `dispatch()` (see
    `app/tools/`). Schemas are the contract; args are never scraped from prior text.
 3. **DoE / generated-config gate** (`doe.py`) — `build_doe_experiment()` is a **pure** cross-product
-   (no benchmarking judgment); `validate_structure()` (in `app/tools/doe.py`) checks the emitted YAML
+   (no benchmarking judgment); `validate_structure()` (in `app/tools/run/doe.py`) checks the emitted YAML
    against the repo's format.
 4. **Report gate** (`report.py::load_report` + `validate_report`) — results come **only** from a
    schema-validated **Benchmark Report v0.2**, never scraped from logs.

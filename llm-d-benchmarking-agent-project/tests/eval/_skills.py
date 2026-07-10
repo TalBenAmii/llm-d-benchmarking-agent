@@ -4,7 +4,7 @@ Not a test module (no test_ prefix) — importable as tests.eval._skills.
 """
 from __future__ import annotations
 
-from app.tools import knowledge_access
+from app.tools.access import knowledge_access
 
 # operation -> skill dir prefix under the read-only llm-d-skills repo (mirrors key_docs.yaml)
 SKILL_TASKS = {

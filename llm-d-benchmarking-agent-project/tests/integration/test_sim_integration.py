@@ -31,7 +31,7 @@ from typing import Any
 import pytest
 import yaml
 
-from app.tools import analyze, compare
+from app.tools.analyze import analyze, compare
 from app.validation.report import load_report, summarize_report, validate_report
 
 from .conftest import (

@@ -20,7 +20,7 @@ from collections.abc import AsyncIterator
 
 from app.orchestrator.job import LABEL_RUN
 from app.tools.context import ToolContext
-from app.tools.manage_runs import _parse_top_table
+from app.tools.run.manage_runs import _parse_top_table
 
 # The event the poller streams (kept as a literal so this module stays leaf-level and free of an
 # import cycle through app.agent.events; the UI and tests match the same string).

@@ -19,7 +19,7 @@ asserts that every name the flows reference still exists in the **live** catalog
 the repo IS present (local dev / a CI job that checks out the submodules), so drift between
 this snapshot and the upstream repo is caught loudly.
 
-Generated from ``app.tools.catalog.build_catalog`` against llm-d-benchmark @ 2026-06-25.
+Generated from ``app.tools.setup.catalog.build_catalog`` against llm-d-benchmark @ 2026-06-25.
 Regenerate with:  ``make snapshot-catalog``  (see the Makefile).
 """
 from __future__ import annotations
@@ -89,7 +89,7 @@ SCENARIOS: list[str] = list(SPECS)
 
 
 def frozen_catalog() -> dict[str, Any]:
-    """A catalog dict shaped exactly like ``app.tools.catalog.build_catalog`` returns,
+    """A catalog dict shaped exactly like ``app.tools.setup.catalog.build_catalog`` returns,
     so it can be dropped straight into ``ToolContext._catalog``."""
     return {
         "present": True,

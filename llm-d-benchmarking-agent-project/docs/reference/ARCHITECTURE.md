@@ -181,7 +181,7 @@ and `knowledge/packaging.md`.
 | Gate | Where | Enforces |
 |---|---|---|
 | **a. Tool args** | `tools/registry.py` `dispatch()` | The LLM can only act through schema-validated tool calls; bad args return errors to the model. |
-| **b. SessionPlan** | `validation/session_plan.py` + `tools/plan.py` | A structured plan (enum fields checked against the live catalog) is approved before any mutation. |
+| **b. SessionPlan** | `validation/session_plan.py` + `tools/setup/plan.py` | A structured plan (enum fields checked against the live catalog) is approved before any mutation. |
 | **c. Config preview** | allowlist `read_only_trigger` on `--dry-run`/`plan`/`--list-endpoints` | Generated configs are validated by the CLI's own preview before execution. |
 | **d. Result schema** | `validation/report.py` | Results are parsed from a validated Benchmark Report v0.2 object, never scraped from logs. |
 

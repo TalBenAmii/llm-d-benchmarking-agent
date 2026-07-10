@@ -12,7 +12,7 @@ from collections import Counter
 import yaml
 
 from app.config import get_settings
-from app.tools import knowledge_access
+from app.tools.access import knowledge_access
 
 
 def _docs():

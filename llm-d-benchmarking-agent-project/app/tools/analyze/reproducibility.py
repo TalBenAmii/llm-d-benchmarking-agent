@@ -177,7 +177,7 @@ async def _safe_env_snapshot(ctx: ToolContext, namespace: str | None) -> dict[st
     a probe failure (no cluster, allowlist denial mid-probe) degrades to None rather than
     aborting the capture — the results are still real, the env signal is just absent."""
     try:
-        from app.tools.probe import probe_environment
+        from app.tools.setup.probe import probe_environment
 
         return await probe_environment(
             ctx, checks=["container_runtime", "kube_context", "cluster_info", "stack"],

@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from app.tools import analyze
+from app.tools.analyze import analyze
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import AnalyzeResultsInput
 from app.validation.analysis import (
@@ -490,7 +490,7 @@ async def test_analyze_results_emits_next_steps_save_first(tool_ctx, br_example,
 async def test_analyze_results_next_steps_reflect_saved_history(tool_ctx, br_example, tmp_path):
     # Save this run to the cross-session store FIRST, then analyze it: the recommender should
     # see it's already stored and stop leading with save-baseline.
-    from app.tools import history as history_tool
+    from app.tools.analyze import history as history_tool
     base = load_report(br_example)
     run = tmp_path / "run"
     _write_report(run, base, ttft_s=0.15, out_rate=400.0)

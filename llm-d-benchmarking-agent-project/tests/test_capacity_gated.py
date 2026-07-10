@@ -30,8 +30,8 @@ from app.capacity.planner import (
 )
 from app.config import Settings
 from app.security.allowlist import Allowlist
-from app.tools.capacity import check_capacity
 from app.tools.context import ToolContext
+from app.tools.setup.capacity import check_capacity
 from tests.flows.harness import CaptureRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -412,7 +412,7 @@ def test_bridge_emit_contract_includes_gated_access(
     monkeypatch, tmp_path, capsys, _restore_logging_disable
 ):
     """The bridge's success stdout JSON carries the gated_access field end-to-end (the
-    contract app/tools/capacity.py reads), driven through the fake gating util."""
+    contract app/tools/setup/capacity.py reads), driven through the fake gating util."""
     _install_fake_hf(monkeypatch, _gated_denied)
     monkeypatch.setenv("HF_TOKEN", _FAKE_HF_TOKEN)
     # A self-contained plan_config + a fake run_capacity_planner so no real planner is needed.

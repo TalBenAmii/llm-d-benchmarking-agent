@@ -5,7 +5,7 @@ authoritative repo docs pinned in knowledge/key_docs.yaml, read one knowledge gu
 basename, and lexically search the knowledge corpus + the curated upstream-doc index. None of
 these mutate anything, so the agent loop runs them automatically (no approval).
 
-Split out of app/tools/probe.py (which had grown into a ~1,100-line module spanning three
+Split out of app/tools/setup/probe.py (which had grown into a ~1,100-line module spanning three
 unrelated tool families) so the doc/knowledge surface is independently navigable. probe.py
 re-exports these names for backwards compatibility; new code should import them from here.
 """
@@ -141,7 +141,7 @@ def fetch_key_docs(
         entries = [e for e in entries if e.get("task") == task]
         # Record the task as CONSULTED the instant it is requested — keyed on the task ARG,
         # independent of whether the docs actually resolve (an absent skills repo must not defeat
-        # the skill-grounding gate; see app/tools/skill_gate.py). Mechanism only.
+        # the skill-grounding gate; see app/tools/run/skill_gate.py). Mechanism only.
         ctx.consulted_skills.add(task)
 
     fetched: list[dict[str, Any]] = []

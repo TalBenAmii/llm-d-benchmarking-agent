@@ -423,7 +423,7 @@ def test_analyze_endpoints_unchanged_for_ready_case():
 
 def test_readiness_probes_knowledge_is_discoverable(tmp_path):
     """The judgment guide must be auto-discovered by read_knowledge (no CORE_KNOWLEDGE edit)."""
-    from app.tools.knowledge_access import read_knowledge
+    from app.tools.access.knowledge_access import read_knowledge
     ctx, _ = _ctx(tmp_path, canned={})
     # Point the knowledge dir at the real one (the tmp settings still resolve to the project).
     out = read_knowledge(ctx, name="readiness_probes")

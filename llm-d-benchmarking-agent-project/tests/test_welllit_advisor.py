@@ -20,7 +20,7 @@ import yaml
 
 from app.agent.prompt import CORE_KNOWLEDGE, build_system_prompt
 from app.config import get_settings
-from app.tools.knowledge_access import read_knowledge
+from app.tools.access.knowledge_access import read_knowledge
 from tests.flows.catalog_snapshot import frozen_catalog
 
 ADVISOR_NAME = "welllit_path_advisor.yaml"

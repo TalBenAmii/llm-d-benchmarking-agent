@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.tools.access.knowledge_access import EXCLUDED_KNOWLEDGE_FILES
 from app.tools.context import ToolContext
-from app.tools.knowledge_access import EXCLUDED_KNOWLEDGE_FILES
 
 ROLE = """\
 You are the llm-d Benchmarking Assistant. You help people who do NOT know the
@@ -256,7 +256,7 @@ Therefore:
 #
 # Also de-inlined here: quickstart_playbook.md — our kind/CPU-sim RUNBOOK. It now loads on demand via
 # fetch_key_docs(task="quickstart") (a `kind: knowledge` entry in key_docs.yaml), exactly like the
-# upstream guides load, and a skill-grounding GATE (app/tools/skill_gate.py) refuses a cicd/kind
+# upstream guides load, and a skill-grounding GATE (app/tools/run/skill_gate.py) refuses a cicd/kind
 # standup/run/teardown (and the plan proposing it) until that fetch has happened — so de-inlining it
 # can't regress the kind demo. It stays reachable via the on-demand index + read_knowledge too.
 CORE_KNOWLEDGE = (

@@ -18,7 +18,7 @@ from pathlib import Path
 import yaml
 
 from app.agent.prompt import CORE_KNOWLEDGE, build_system_prompt
-from app.tools.knowledge_access import read_knowledge
+from app.tools.access.knowledge_access import read_knowledge
 
 # The four header names the spec/HERMETIC-TEST require to be decoded, plus the two enum values.
 REQUIRED_HEADER_NAMES = (
@@ -201,7 +201,7 @@ def test_classification_is_data_not_python():
                    "evicted-queue-pressure"):
         assert reason in yaml_text
     prompt_src = (_project_root() / "app" / "agent" / "prompt.py").read_text()
-    probe_src = (_project_root() / "app" / "tools" / "probe.py").read_text()
+    probe_src = (_project_root() / "app" / "tools" / "setup" / "probe.py").read_text()
     # The dropped-reason enum values must not be hard-coded into Python (no if/elif on them).
     for reason in ("rejected-saturated", "evicted-priority"):
         assert reason not in prompt_src
