@@ -1,26 +1,26 @@
-# INTERACTIVE TEST GUIDE — drive every feature & flow by hand (real LLM)
+# Interactive test guide: drive every feature and flow by hand (real LLM)
 
-> A follow-along runbook for **manually** exercising every feature in this app with a **real
-> LLM** driving the agent. Companion to [`FEATURES.md`](FEATURES.md) (the *inventory*); this is
-> the *do-it-yourself* script. Check each box as you go.
+> A follow-along runbook for manually exercising every feature in this app with a real LLM
+> driving the agent. Companion to [`FEATURES.md`](FEATURES.md) (the inventory); this is the
+> do-it-yourself script. Check each box as you go.
 >
-> **What "real LLM" changes:** the agent's *judgment* (which tools to call, which spec/harness/
-> factors to pick) is now the live model, not a scripted transcript. Command *execution* is a
-> separate axis — you choose `SIMULATE=1` (mutating commands no-op, read-only run for real, no
+> What "real LLM" changes: the agent's judgment (which tools to call, which spec/harness/
+> factors to pick) is now the live model, not a scripted transcript. Command execution is a
+> separate axis: you choose `SIMULATE=1` (mutating commands no-op, read-only run for real, no
 > cluster) or real (kind cluster).
 
 ---
 
 ## Two tracks
 
-Most features are reachable **without a cluster**. Only the actual deploy/benchmark/orchestrator
+Most features are reachable without a cluster. Only the actual deploy/benchmark/orchestrator
 execution needs kind. So run the guide in two passes:
 
-- **Track A — Real LLM + `SIMULATE=1` (no cluster).** Covers the entire agent flow, DOE
+- Track A: real LLM + `SIMULATE=1` (no cluster). Covers the entire agent flow, DOE
   generation + sweep wiring, all HTTP/ops/security/observability surfaces, the whole chat UI.
-  The agent *drives* everything; commands are no-op'd and a synthetic report is produced.
-  **Do this first — it exercises ~90% of the app.**
-- **Track B — Real LLM + `SIMULATE=0` (live kind cluster).** Only for the things that must
+  The agent drives everything; commands are no-op'd and a synthetic report is produced.
+  Do this first: it exercises about 90% of the app.
+- Track B: real LLM + `SIMULATE=0` (live kind cluster). Only for the things that must
   truly execute: real standup/run/teardown, real Benchmark Report numbers, the orchestrator
   Job lifecycle, live log streaming, `kubectl top`. Needs Docker + a kind cluster (the agent
   can bootstrap both, approval-gated).
@@ -36,7 +36,7 @@ cd llm-d-benchmarking-agent-project
 cp .env.example .env          # if you don't already have one
 ```
 
-Edit `.env` for a **real LLM** (pick ONE provider):
+Edit `.env` for a real LLM (pick ONE provider):
 
 ```ini
 # Anthropic
@@ -54,15 +54,15 @@ HOST=127.0.0.1
 PORT=8000
 ```
 
-> The LLM model here is the *agent's brain*. It is **separate** from the model being
-> benchmarked (the quickstart benchmarks a CPU-sim engine). The key never leaves the backend.
+> The LLM model here is the agent's brain. It is separate from the model being benchmarked
+> (the quickstart benchmarks a CPU-sim engine). The key never leaves the backend.
 
 Install + launch with `./scripts/run.sh` (sets up the venv, installs, starts uvicorn reading
-`HOST`/`PORT` from `.env`) — full quickstart in the [root README](../../README.md#quick-start) /
+`HOST`/`PORT` from `.env`); full quickstart in the [root README](../../README.md#quick-start) /
 [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
-- [ ] **[A/B]** Server is up — open **http://127.0.0.1:8000** and the chat UI loads.
-- [ ] **[A/B]** Startup log on stdout is **JSON** (e.g. `{"timestamp":...,"message":"startup","provider":"anthropic"}`) and includes a `retention.gc` line. *(§9 structured logging + GC)*
+- [ ] **[A/B]** Server is up: open http://127.0.0.1:8000 and the chat UI loads.
+- [ ] **[A/B]** Startup log on stdout is JSON (e.g. `{"timestamp":...,"message":"startup","provider":"anthropic"}`) and includes a `retention.gc` line. *(§9 structured logging + GC)*
 
 Keep a second terminal open for the `curl` checks below.
 
@@ -90,8 +90,8 @@ curl -s 'localhost:8000/api/history/trend?metric=ttft' | jq .
   `_runs_submitted_total`, `_runs_terminal_total`. *(§7)*
 - [ ] **[A/B]** `/api/history` returns `records` + the 11 trendable `metrics`
   (`ttft, tpot, itl, request_latency, output_token_rate, total_token_rate, request_rate, success_rate_pct, kv_cache_hit_rate, gpu_utilization, schedule_delay`). *(§6)*
-- [ ] **[A/B]** `trend?metric=throughput` → graceful `200` error naming the valid metrics (the
-  real name is `total_token_rate`) — confirms input validation, not a crash. *(§6)*
+- [ ] **[A/B]** `trend?metric=throughput` → a graceful `200` error naming the valid metrics (the
+  real name is `total_token_rate`). Confirms input validation, not a crash. *(§6)*
 
 ---
 
@@ -100,16 +100,17 @@ curl -s 'localhost:8000/api/history/trend?metric=ttft' | jq .
 Before running a flow, eyeball the static UI features. *(§3)*
 
 - [ ] **[A/B]** **Theme toggle** (top-right) flips light/dark; reload → choice persists (`localStorage`).
-- [ ] **[A/B]** **Recent chats sidebar** lists prior sessions; clicking one **replays its transcript**.
+- [ ] **[A/B]** **Recent chats sidebar** lists prior sessions; clicking one replays its transcript.
 - [ ] **[A/B]** **Debug view** toggle (`>_`, top-right) filters the transcript to just executed commands.
-- [ ] **[A/B]** **Context-window chip** under the chat input, right-aligned on the hint row (`⛶ N ctx`) is present (it updates once you chat — current prompt size sent to the model). *(§12)*
+- [ ] **[A/B]** **Context-window chip** under the chat input, right-aligned on the hint row
+  (`⛶ N ctx`) is present (it updates once you chat: current prompt size sent to the model). *(§12)*
 
 You'll confirm the dynamic ones (working spinner, markdown, approval cards, per-turn token line,
 inline charts) during the flows below.
 
 ---
 
-## 3. Core agent flow — the MVP vertical *(§2)*
+## 3. Core agent flow: the MVP vertical *(§2)*
 
 In the chat, type a plain-language goal:
 
@@ -117,60 +118,61 @@ In the chat, type a plain-language goal:
 
 Then follow the agent. Watch the tool-call cards and the "Executed commands" panel.
 
-- [ ] **[A/B]** Agent **interviews** you (use case, model size, concurrency) instead of guessing.
-- [ ] **[A/B]** Read-only **sensing tools auto-run** (no approval): you see `probe_environment`,
+- [ ] **[A/B]** Agent interviews you (use case, model size, concurrency) instead of guessing.
+- [ ] **[A/B]** Read-only sensing tools auto-run (no approval): you see `probe_environment`,
   `list_catalog`, `read_knowledge`, `read_repo_doc` cards. *(§2 catalog grounding)*
 - [ ] **[A/B]** Agent proposes a **SessionPlan card** with `<spec, harness, workload>` (expect
-  `cicd/kind` + `inference-perf` + `sanity_random.yaml` for the quickstart) and **waits for
-  Approve/Reject**. Nothing mutating runs before you approve. *(§2 determinism gate)*
+  `cicd/kind` + `inference-perf` + `sanity_random.yaml` for the quickstart) and waits for
+  Approve/Reject. Nothing mutating runs before you approve. *(§2 determinism gate)*
 - [ ] **[A/B]** **Working indicator** (spinning llm-d mark + live tool name) shows while it thinks.
 - [ ] **[A/B]** **Per-turn token line** appears under the turn: `↑up ↓down · N this turn (X calls · Y cached)`. *(§12)*
 - [ ] **[A]** Approve the plan. Each mutating step (ensure_repos / setup / standup / run /
-  teardown) appears as an **approval card showing the exact argv**. Approve them. In SIMULATE,
-  the command panel shows `[simulate] (no-op) would run: …` and `exit_code=0` — **no cluster touched**. *(§9 simulate)*
-- [ ] **[A]** Flow completes with a **synthetic Benchmark results card** (parsed report summary). *(§6)*
+  teardown) appears as an approval card showing the exact argv. Approve them. In SIMULATE,
+  the command panel shows `[simulate] (no-op) would run: …` and `exit_code=0`; no cluster is
+  touched. *(§9 simulate)*
+- [ ] **[A]** Flow completes with a synthetic **Benchmark results card** (parsed report summary). *(§6)*
 - [ ] **[B]** With `SIMULATE=0`: the agent offers to install Docker + kind and `kind create
-  cluster` (each approval-gated), then really stands up the stack and runs — the results card
-  shows **real** BR v0.2 numbers, and **inline latency/throughput PNG charts** render under the
+  cluster` (each approval-gated), then really stands up the stack and runs. The results card
+  shows real BR v0.2 numbers, and inline latency/throughput PNG charts render under the
   summary. *(§6 charts)*
 
-> **Verify the read-only/mutating boundary directly:** open Debug view — every command carries a
-> read-only or **mutating** badge; only mutating ones were gated. *(§8)*
+> Verify the read-only/mutating boundary directly: open Debug view. Every command carries a
+> read-only or mutating badge; only mutating ones were gated. *(§8)*
 
 ---
 
-## 4. DOE / sweep feature — generate a matrix and drive a sweep *(§5, §6)*
+## 4. DOE / sweep feature: generate a matrix and drive a sweep *(§5, §6)*
 
-This is the Design-of-Experiments path. Two shapes — try both. Read
+This is the Design-of-Experiments path. Two shapes; try both. Read
 [`knowledge/sweep_playbook.md`](knowledge/sweep_playbook.md) first if you want to predict the
 agent's choices.
 
-### 4a. Run-parameter sweep (preferred on kind — one standup, N runs)
+### 4a. Run-parameter sweep (preferred on kind: one standup, N runs)
 
 > **"I want to see how latency scales with load. Sweep max-concurrency over 8, 16, and 32
 > against one stack, then compare the results."**
 
-- [ ] **[A/B]** Agent elicits **token characteristics** (input/output length, prefix reuse,
+- [ ] **[A/B]** Agent elicits token characteristics (input/output length, prefix reuse,
   concurrency) before designing the grid. *(§12 sweep_playbook)*
 - [ ] **[A/B]** It reads repo truth (`read_knowledge("sweep_playbook")`, `read_repo_doc(...)`)
-  to pick **real override keys** rather than inventing them.
-- [ ] **[A/B]** It calls **`generate_doe_experiment`** (auto-runs — only writes the workspace).
+  to pick real override keys rather than inventing them.
+- [ ] **[A/B]** It calls **`generate_doe_experiment`** (auto-runs; only writes the workspace).
   In the result card verify: `generated:true`, `valid:true`, `n_run_treatments` matches your
-  grid (3), `validated_against_examples` is **non-empty** (validated against the repo's real
+  grid (3), `validated_against_examples` is non-empty (validated against the repo's real
   experiment YAMLs), and a workspace `path`.
-- [ ] **[A/B]** It then calls `execute_llmdbenchmark(subcommand="run", flags={experiments:<path>, dry_run:true})`
-  — the **read-only preview** of the actual CLI invocation with your generated file. *(§5 always-preview rule)*
-- [ ] **[A]** It proposes the real (non-dry-run) sweep → **approval card** → approve → SIMULATE
+- [ ] **[A/B]** It then calls `execute_llmdbenchmark(subcommand="run", flags={experiments:<path>, dry_run:true})`,
+  the read-only preview of the actual CLI invocation with your generated file. *(§5 always-preview rule)*
+- [ ] **[A]** It proposes the real (non-dry-run) sweep → approval card → approve → SIMULATE
   no-ops each treatment.
 - [ ] **[A/B]** Finally it calls **`compare_reports`** / **`analyze_results`** on the output dir
   and reports per-metric deltas vs a baseline (synthetic numbers under SIMULATE). *(§6)*
 
-**Watch for the harness/key gotcha:** `max-concurrency` is a **vllm-benchmark** field, but the
+Watch for the harness/key gotcha: `max-concurrency` is a vllm-benchmark field, but the
 quickstart default harness is `inference-perf` (whose load knob is `rate`/QPS). A good agent
 either sets `harness="vllm-benchmark"` or switches the key to `rate`. If it blindly emits
 `max-concurrency` against inference-perf, that's a real finding worth noting.
 
-### 4b. Full DoE (the deployment itself changes — standup+teardown per treatment)
+### 4b. Full DoE (the deployment itself changes: standup+teardown per treatment)
 
 > **"Find the best prefill/decode split. Sweep decode.replicas over 1 and 2 and prefill.replicas
 > over 1 and 2, keeping the model and workload fixed."**
@@ -179,9 +181,9 @@ either sets `harness="vllm-benchmark"` or switches the key to `rate`. If it blin
   `setup × run` treatments (here 2×2 = 4), `subcommand="experiment"`.
 - [ ] **[A/B]** It warns/keeps the matrix small (full DoE re-deploys per setup treatment; the
   playbook says prefer a run-parameter sweep on a single kind cluster).
-- [ ] **[A/B]** **Open the generated file** (the `path` from the tool card, under
+- [ ] **[A/B]** Open the generated file (the `path` from the tool card, under
   `workspace/sessions/<id>/…`) and confirm the shape: top-level `experiment` / `design` /
-  `setup` / `treatments`, one named treatment per cross-product cell, **no** top-level `run:` key.
+  `setup` / `treatments`, one named treatment per cross-product cell, no top-level `run:` key.
 
 > Quick non-UI sanity check of the same mechanism (hermetic, no LLM, no cluster):
 > `.venv/bin/python -m pytest tests/test_doe.py tests/test_sweep.py -q` → covers the
@@ -194,23 +196,23 @@ either sets `harness="vllm-benchmark"` or switches the key to `rate`. If it blin
 After a run/sweep exists in the session:
 
 - [ ] **[A/B]** Ask: **"Compare those runs and tell me the best config for low latency."** →
-  `compare_reports` returns per-metric deltas + winner; the agent ties the recommendation to the
-  goal (low TTFT/TPOT for interactive).
+  `compare_reports` returns per-metric deltas + winner; the agent ties the recommendation to
+  the goal (low TTFT/TPOT for interactive).
 - [ ] **[A/B]** Ask: **"Which configs are Pareto-optimal? Use a TTFT SLO of 200ms."** →
   `analyze_results` with goodput / SLO filtering / Pareto frontier.
 - [ ] **[A/B]** Ask: **"Store this run as my baseline."** → `result_history` stores it; then
-  `curl /api/history` shows the record, and the **Stored Results sidebar + trend sparkline**
+  `curl /api/history` shows the record, and the Stored Results sidebar + trend sparkline
   populate in the UI. *(§6 — sparkline is empty until the first store, by design.)*
 - [ ] **[A/B]** `curl 'localhost:8000/api/history/trend?metric=ttft'` now returns points.
 - [ ] **[B]** (multi-harness) Run a second harness against the same stack
-  (`inference-perf` + `guidellm`), then ask to **compare across harnesses** → `compare_harness_runs`. *(§6)*
+  (`inference-perf` + `guidellm`), then ask to compare across harnesses → `compare_harness_runs`. *(§6)*
 
 ---
 
 ## 6. Security & trust surfaces *(§8)*
 
 The allowlist/approval behavior you already saw in §3. The optional trust controls need a
-restart with env flags — easiest in a **separate instance** so your main one stays usable:
+restart with env flags; easiest in a separate instance so your main one stays usable:
 
 ```bash
 AUTH_ENABLED=true AUTH_TOKEN=s3cret RATE_LIMIT_ENABLED=true RATE_LIMIT_RPS=1 RATE_LIMIT_BURST=2 \
@@ -220,9 +222,9 @@ AUTH_ENABLED=true AUTH_TOKEN=s3cret RATE_LIMIT_ENABLED=true RATE_LIMIT_RPS=1 RAT
 - [ ] **[A/B]** `curl -i localhost:8078/api/sessions` (no token) → **401** + `www-authenticate: Bearer`.
 - [ ] **[A/B]** `curl -i -H 'Authorization: Bearer s3cret' localhost:8078/api/sessions` → **200**.
 - [ ] **[A/B]** `curl -i localhost:8078/healthz` (no token) → **200** (liveness/readiness are
-  **exempt** from auth so a kubelet can probe them). `/readyz` likewise. *(FEATURES Findings: fixed)*
+  exempt from auth so a kubelet can probe them). `/readyz` likewise. *(FEATURES Findings: fixed)*
 - [ ] **[A/B]** Fire 6 rapid authed requests → first `200`, rest **429** (token bucket drained). *(§8)*
-- [ ] **[A/B]** **Secrets never reach the browser:** open DevTools → Network/WS; confirm no API
+- [ ] **[A/B]** Secrets never reach the browser: open DevTools → Network/WS; confirm no API
   key appears in any frame (the WS only carries chat text, events, approvals). *(§8)*
 - [ ] **[A/B]** (CORS) Restart with `CORS_ALLOW_ORIGINS=https://app.example.com` and confirm the
   response carries `access-control-allow-origin`; empty (default) → no CORS headers. *(§8)*
@@ -233,40 +235,40 @@ Stop this instance when done (`Ctrl-C`).
 
 ## 7. Observability & lifecycle *(§7, §9)*
 
-- [ ] **[A/B]** After running flows, `curl /metrics` again — `llmdbench_agent_commands_total`
-  has **incremented**; histograms have observations. *(§7)*
+- [ ] **[A/B]** After running flows, `curl /metrics` again: `llmdbench_agent_commands_total`
+  has incremented; histograms have observations. *(§7)*
 - [ ] **[A/B]** Server stdout stays structured JSON throughout; each request/turn carries a
-  **correlation id**. *(§9 logging)*
-- [ ] **[A/B]** **Reattach/resume:** start a turn, reload the browser mid-turn (or open the
-  session in a new tab) — the running turn (and any pending approval card) **survives**, routed
+  correlation id. *(§9 logging)*
+- [ ] **[A/B]** Reattach/resume: start a turn, reload the browser mid-turn (or open the
+  session in a new tab). The running turn (and any pending approval card) survives, routed
   to the new socket. *(§9 WS hardening, §3 approval persistence)*
-- [ ] **[B]** **Cancel a run:** while a real run is in flight, open another chat and ask to
-  **cancel it** (or use the cancel control) → `cancel_run` frees the concurrency slot and reaps
+- [ ] **[B]** Cancel a run: while a real run is in flight, open another chat and ask to
+  cancel it (or use the cancel control) → `cancel_run` frees the concurrency slot and reaps
   the subprocess/Job. *(§9 run lifecycle)*
-- [ ] **[B]** **`observe_run_metrics`:** ask **"show live cluster resource usage"** during a run
+- [ ] **[B]** `observe_run_metrics`: ask **"show live cluster resource usage"** during a run
   → `kubectl top` output (needs the in-cluster metrics-server, which kind / `cicd/kind` do NOT
-  install — add it separately). *(§7)*
-- [ ] **[A/B]** **Workspace GC:** the startup `retention.gc` log line proves the pass ran;
+  install; add it separately). *(§7)*
+- [ ] **[A/B]** Workspace GC: the startup `retention.gc` log line proves the pass ran;
   caps are honored and an active session is never pruned. *(§9)*
 
 ---
 
-## 8. Orchestrator (Kubernetes-native) — Track B *(§5)*
+## 8. Orchestrator (Kubernetes-native): Track B *(§5)*
 
 These need a real cluster. Ask the agent to use the orchestrator path:
 
 > **"Run this benchmark as a Kubernetes Job via the orchestrator, and stream the logs."**
 
 - [ ] **[B]** `orchestrate_benchmark_run` submits a **Job** (per-run / per-DOE-treatment manifest).
-- [ ] **[B]** **Live pod log streaming** — logs appear in the console panel **during** the run,
+- [ ] **[B]** **Live pod log streaming**: logs appear in the console panel during the run,
   not just at the end. *(§5 P21)*
-- [ ] **[B]** **Endpoint readiness gate** — if the target endpoint isn't ready, `check_endpoint_readiness`
+- [ ] **[B]** **Endpoint readiness gate**: if the target endpoint isn't ready, `check_endpoint_readiness`
   refuses to submit and suggests an (approval-gated) standup. *(§5 P24)*
-- [ ] **[B]** **Resource management** — pass `scheduling` (nodeSelector/tolerations/affinity/GPU
+- [ ] **[B]** **Resource management**: pass `scheduling` (nodeSelector/tolerations/affinity/GPU
   type) and confirm it lands in the rendered manifest. *(§5 P23)*
-- [ ] **[B]** **Checkpoint/resume** — start a multi-treatment sweep, interrupt it, resume with the
-  same `sweep_id` → completed treatments are **skipped** (per-sweep ConfigMap). *(§5 P22)*
-- [ ] **[B]** **Fault classification + retry** — a transient fault (e.g. unschedulable) retries;
+- [ ] **[B]** **Checkpoint/resume**: start a multi-treatment sweep, interrupt it, resume with the
+  same `sweep_id` → completed treatments are skipped (per-sweep ConfigMap). *(§5 P22)*
+- [ ] **[B]** **Fault classification + retry**: a transient fault (e.g. unschedulable) retries;
   a deterministic one (e.g. image error) goes straight to dead-letter. Surfaces as
   `llmdbench_orchestrator_run_faults_total` in `/metrics`. *(§5)*
 
@@ -282,8 +284,8 @@ helm template deploy/helm/llm-d-benchmarking-agent | grep '^kind:' | sort | uniq
 docker build -t llmd-agent:test .                  # optional: hardened non-root image
 ```
 
-- [ ] **⚪** Helm renders **6 kinds**: Deployment, Service, ServiceAccount, Role, RoleBinding, Secret.
-- [ ] **⚪** RBAC is **least-privilege** (inspect the Role rules). *(§10)*
+- [ ] **⚪** Helm renders 6 kinds: Deployment, Service, ServiceAccount, Role, RoleBinding, Secret.
+- [ ] **⚪** RBAC is least-privilege (inspect the Role rules). *(§10)*
 
 ---
 
@@ -296,7 +298,7 @@ LLMD_SIM_INTEGRATION=1 .venv/bin/python -m pytest tests/integration/ -v
 ```
 
 - [ ] **⚪** With the sim binary/image present, the integration tests run end-to-end against it;
-  otherwise they **skip cleanly** (never hang).
+  otherwise they skip cleanly (never hang).
 
 ---
 
@@ -311,30 +313,30 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
 ```
 
 - [ ] **⚪** `make test` green.
-- [ ] **[A/B] Live agent eval (real LLM, no cluster):** does the model *choose* the right
+- [ ] **[A/B] Live agent eval (real LLM, no cluster):** does the model choose the right
   commands from natural language, across the canonical flows?
   ```bash
   LLM_EVAL_LIVE=1 .venv/bin/python -m pytest tests/eval/live/test_flows_live.py -v
   # or: make validate-live
   ```
-  Treat failures as **signal** (a prompt/knowledge gap or a genuinely wrong choice), not a hard
-  build break — a live model is nondeterministic.
+  Treat failures as signal (a prompt/knowledge gap or a genuinely wrong choice), not a hard
+  build break; a live model is nondeterministic.
 
-> **What the live eval now covers:** beyond the deploy/benchmark vertical (§3), the flow set in
-> `tests/flows/flows.py` includes **tool-choice flows** for the rest of the surfaces, each scored
+> What the live eval now covers: beyond the deploy/benchmark vertical (§3), the flow set in
+> `tests/flows/flows.py` includes tool-choice flows for the rest of the surfaces, each scored
 > on the tool the model picks from natural language (a `required_tools` hint, the analogue of
 > `required_subcommands` for non-`llmdbenchmark` tools):
-> - **§4 DoE/sweep** — `doe-run-sweep` (run-parameter sweep) and `doe-full-experiment` (full DoE
+> - **§4 DoE/sweep**: `doe-run-sweep` (run-parameter sweep) and `doe-full-experiment` (full DoE
 >   with setup factors) → `generate_doe_experiment`.
-> - **§5/§6 analysis & history** — `analyze-slo-pareto` → `analyze_results`; `compare-ab-runs` →
+> - **§5/§6 analysis & history**: `analyze-slo-pareto` → `analyze_results`; `compare-ab-runs` →
 >   `compare_reports`; `result-history-baseline` → `result_history`; `multi-harness-compare` →
 >   `compare_harness_runs`; `capacity-preflight` → `check_capacity`.
-> - **§7/§8 orchestrator & lifecycle** — `orchestrate-k8s-job` → `orchestrate_benchmark_run`;
+> - **§7/§8 orchestrator & lifecycle**: `orchestrate-k8s-job` → `orchestrate_benchmark_run`;
 >   `endpoint-readiness-gate` → `check_endpoint_readiness`; `observe-live-usage` →
 >   `observe_run_metrics`; `cancel-stuck-run` → `cancel_run`.
 >
 > These run in the SAME hermetic sandbox as §3 (no cluster/repos), so they score the model's
-> *choice*, not real numbers — the manual click-throughs above still own end-to-end execution.
+> choice, not real numbers; the manual click-throughs above still own end-to-end execution.
 > Each is also replayed deterministically (a golden transcript) by `make test`, so the loop +
 > approval gating are CI-gated even though the live scoring is opt-in.
 
@@ -358,7 +360,7 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
 
 ---
 
-### Quick reference — what needs what
+### Quick reference: what needs what
 
 | Capability | Real LLM | SIMULATE=1 ok | Needs cluster |
 |---|:--:|:--:|:--:|
@@ -366,6 +368,6 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
 | DOE generation + sweep wiring (preview) | ✅ | ✅ | ❌ |
 | Real benchmark numbers + inline charts | ✅ | ❌ | ✅ |
 | Orchestrator Job lifecycle / log stream | ✅ | ❌ | ✅ |
-| HTTP ops / auth / rate-limit / metrics | — | ✅ | ❌ |
-| Deploy artifacts (helm/docker) | — | — | ❌ |
-| Hermetic suite / flows | — | — | ❌ |
+| HTTP ops / auth / rate-limit / metrics | n/a | ✅ | ❌ |
+| Deploy artifacts (helm/docker) | n/a | n/a | ❌ |
+| Hermetic suite / flows | n/a | n/a | ❌ |

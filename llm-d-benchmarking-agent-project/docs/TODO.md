@@ -1,4 +1,4 @@
-# TODO — informal working backlog
+# TODO: informal working backlog
 
 > Promoted from the loose monorepo-root `todo` scratchpad (2026-07-02). Author's shorthand,
 > kept verbatim; prune items as they ship.

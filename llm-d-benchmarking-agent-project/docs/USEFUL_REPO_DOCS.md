@@ -1,6 +1,6 @@
-# Useful upstream docs — llm-d & llm-d-benchmark
+# Useful upstream docs: llm-d & llm-d-benchmark
 
-> A curated relevance map of (essentially) every `*.md` documentation file in both upstream repos — **llm-d** and **llm-d-benchmark** — judged for usefulness when building **this** project, the *llm-d-benchmarking-agent* (a chat agent that drives the `llmdbenchmark` CLI to deploy llm-d stacks and run/parse benchmarks for non-experts). This is a curated map, **not a mirror**: each file is tiered, summarised, and annotated with *why it matters for us*.
+> A relevance map of (essentially) every `*.md` documentation file in both upstream repos, **llm-d** and **llm-d-benchmark**, judged for usefulness when building this project, the *llm-d-benchmarking-agent* (a chat agent that drives the `llmdbenchmark` CLI to deploy llm-d stacks and run/parse benchmarks for non-experts). This is a curated map, not a mirror: each file is tiered, summarised, and annotated with why it matters for us.
 >
 > Generated from per-file reader entries (195 *.md: 58 in llm-d-benchmark, 137 in llm-d).
 >
@@ -10,34 +10,34 @@
 
 | Glyph | Tier | Meaning |
 |-------|------|---------|
-| ⭐⭐⭐ | high | Must-read / directly drives agent behavior — read before touching the related feature. |
-| ⭐⭐ | medium | Useful context — read when working in this area. |
-| ⭐ | low | Marginal — skim only if a specific question points here. |
+| ⭐⭐⭐ | high | Must-read / directly drives agent behavior; read before touching the related feature. |
+| ⭐⭐ | medium | Useful context; read when working in this area. |
+| ⭐ | low | Marginal; skim only if a specific question points here. |
 | — | skip | Not useful for this agent (kept listed so nothing is silently dropped). |
 
-Counts: 52 ⭐⭐⭐ · 56 ⭐⭐ · 63 ⭐ · 24 — across 195 files (a 196th entry in the skip/low appendix is a byte-identical `util/` duplicate, listed so nothing is silently dropped).
+Counts: 52 ⭐⭐⭐ · 56 ⭐⭐ · 63 ⭐ · 24 skip (—) across 195 files (a 196th entry in the skip/low appendix is a byte-identical `util/` duplicate, listed so nothing is silently dropped).
 
 ## Start here
 
-The single most essential docs across both repos — the high-tier must-reads. Read these first.
+The most essential docs across both repos, the high-tier must-reads. Read these first.
 
-1. `llm-d-benchmark/README.md` — the canonical CLI reference: every `llmdbenchmark` subcommand, flag, and `LLMDBENCH_*` env var the agent shells out with, plus the spec/scenario/harness/profile vocabulary it must speak.
-2. `llm-d-benchmark/llmdbenchmark/interface/README.md` — the authoritative per-subcommand flag/env-var reference; the single best source for the agent's deny-by-default command allowlist.
-3. `llm-d-benchmark/llmdbenchmark/README.md` — the package map of the exact CLI the agent drives: seven subcommands and the standup→smoketest→run→teardown lifecycle.
-4. `llm-d-benchmark/docs/developer-guide.md` — how scenarios, experiments, harnesses, profiles, and the four-phase lifecycle fit together; the mental model for authoring/validating scenario+experiment YAML.
-5. `llm-d-benchmark/config/README.md` — the source of truth for every config knob a scenario exposes and the scenario→env-var→CLI→experiment override chain (model, replicas, namespace, monitoring).
-6. `llm-d-benchmark/docs/standup.md` — the full scenario-parameter vocabulary (model, TP, max-model-len, accelerator, namespace, gateway class) the agent sets/validates when deploying a stack.
-7. `llm-d-benchmark/docs/run.md` — the use-case→workload-profile + harness mapping table and the candidate-metrics table: powers the agent's two hardest jobs (pick a workload, explain the metrics).
-8. `llm-d-benchmark/docs/quickstart.md` — the exact local-Kind (CPU-only, simulated) path for non-experts: precise commands, the 4-CPU/8-GiB precondition, and the failure modes the agent must diagnose.
-9. `llm-d-benchmark/docs/doe.md` — the Design-of-Experiments experiment YAML model (factors/levels/treatments) the agent generates for multi-config sweep requests.
-10. `llm-d-benchmark/docs/metrics_collection.md` — source of truth for every metric under `results.observability` and the env vars/flags that turn collection on during deploy/run.
-11. `llm-d-benchmark/llmdbenchmark/analysis/benchmark_report/README.md` — THE report schema (Benchmark Report v0.2) the agent parses: names every field (TTFT/TPOT/ITL/E2E, throughput, counts) plus the converter CLI.
-12. `llm-d-benchmark/skills/convert-guide/references/mappings.md` — the definitive lookup translating any llm-d guide value into the correct `LLMDBENCH_*` knob (and which to leave default) when generating scenario files.
-13. `llm-d/docs/well-lit-paths/README.md` — the menu of every deploy path the agent can stand up; tells it which guide matches a user's use case.
-14. `llm-d/guides/optimized-baseline/README.md` — THE primary guide the agent runs to stand up an llm-d stack: exact env vars, helm/kubectl commands, monitoring toggle, and benchmark workflow.
-15. `llm-d/helpers/benchmark.md` — mirrors what the agent automates against an already-deployed stack: the benchmark `config.yaml` keys, the run/analyze lifecycle, and harness pod + PVC mechanics.
-16. `llm-d/docs/operations/observability/metrics.md` — the exact llm-d metric names (TTFT/ITL histograms, `kv_cache_usage`, `num_requests_waiting`, EPP latency/error) the agent reads/explains and how to enable monitoring before a run.
-17. `llm-d/docs/operations/readiness-probes.md` — drives deploy-and-wait logic: poll `/v1/models` (not `/health`) to know a model server is truly Ready before benchmarking, and diagnose pods stuck Not Ready.
+1. `llm-d-benchmark/README.md`: the canonical CLI reference, covering every `llmdbenchmark` subcommand, flag, and `LLMDBENCH_*` env var the agent shells out with, plus the spec/scenario/harness/profile vocabulary it must speak.
+2. `llm-d-benchmark/llmdbenchmark/interface/README.md`: the authoritative per-subcommand flag/env-var reference; the single best source for the agent's deny-by-default command allowlist.
+3. `llm-d-benchmark/llmdbenchmark/README.md`: the package map of the exact CLI the agent drives: seven subcommands and the standup→smoketest→run→teardown lifecycle.
+4. `llm-d-benchmark/docs/developer-guide.md`: how scenarios, experiments, harnesses, profiles, and the four-phase lifecycle fit together; the mental model for authoring/validating scenario+experiment YAML.
+5. `llm-d-benchmark/config/README.md`: the source of truth for every config knob a scenario exposes and the scenario→env-var→CLI→experiment override chain (model, replicas, namespace, monitoring).
+6. `llm-d-benchmark/docs/standup.md`: the full scenario-parameter vocabulary (model, TP, max-model-len, accelerator, namespace, gateway class) the agent sets/validates when deploying a stack.
+7. `llm-d-benchmark/docs/run.md`: the use-case→workload-profile + harness mapping table and the candidate-metrics table: powers the agent's two hardest jobs (pick a workload, explain the metrics).
+8. `llm-d-benchmark/docs/quickstart.md`: the exact local-Kind (CPU-only, simulated) path for non-experts: precise commands, the 4-CPU/8-GiB precondition, and the failure modes the agent must diagnose.
+9. `llm-d-benchmark/docs/doe.md`: the Design-of-Experiments experiment YAML model (factors/levels/treatments) the agent generates for multi-config sweep requests.
+10. `llm-d-benchmark/docs/metrics_collection.md`: source of truth for every metric under `results.observability` and the env vars/flags that turn collection on during deploy/run.
+11. `llm-d-benchmark/llmdbenchmark/analysis/benchmark_report/README.md`: THE report schema (Benchmark Report v0.2) the agent parses: names every field (TTFT/TPOT/ITL/E2E, throughput, counts) plus the converter CLI.
+12. `llm-d-benchmark/skills/convert-guide/references/mappings.md`: the definitive lookup translating any llm-d guide value into the correct `LLMDBENCH_*` knob (and which to leave default) when generating scenario files.
+13. `llm-d/docs/well-lit-paths/README.md`: the menu of every deploy path the agent can stand up; tells it which guide matches a user's use case.
+14. `llm-d/guides/optimized-baseline/README.md`: THE primary guide the agent runs to stand up an llm-d stack: exact env vars, helm/kubectl commands, monitoring toggle, and benchmark workflow.
+15. `llm-d/helpers/benchmark.md`: mirrors what the agent automates against an already-deployed stack: the benchmark `config.yaml` keys, the run/analyze lifecycle, and harness pod + PVC mechanics.
+16. `llm-d/docs/operations/observability/metrics.md`: the exact llm-d metric names (TTFT/ITL histograms, `kv_cache_usage`, `num_requests_waiting`, EPP latency/error) the agent reads/explains and how to enable monitoring before a run.
+17. `llm-d/docs/operations/readiness-probes.md`: drives deploy-and-wait logic: poll `/v1/models` (not `/health`) to know a model server is truly Ready before benchmarking, and diagnose pods stuck Not Ready.
 
 ---
 ## llm-d-benchmark
@@ -49,7 +49,7 @@ The `llm-d-benchmark` repo is the CLI our agent shells out to: it stands up llm-
 | Doc | Covers | Why useful for us | Reference points |
 | --- | --- | --- | --- |
 | `README.md` ⭐⭐⭐ | Full CLI lifecycle (standup/run/teardown/smoketest/experiment); every flag + LLMDBENCH_* env var; specs, well-lit-path guides, deployment methods; step tables; multi-model/-stack; run-only mode; harnesses/profiles/scenarios; Benchmark Report v0.1/v0.2 | Single most important reference: enumerates every subcommand, flag, and env var the agent shells out with, plus the spec/scenario/harness/profile vocabulary it must speak and parse | `llmdbenchmark standup⎮run⎮teardown⎮smoketest⎮experiment`; `--spec gpu⎮guides/optimized-baseline⎮cicd/kind`; `-l/--harness` (inference-perf, guidellm, vllm-benchmark); `-w sanity_random.yaml`; `-U` run-only; `--monitoring/-f`; `--analyze`; standup/run steps 00-11, teardown 00-04; `model_id_label {first8}-{sha256_8}-{last8}` |
-| `docs/lifecycle.md` ⭐⭐⭐ | Lifecycle ordering; cluster auth + HF token (gated vs public); standup step listing + filtering (-s); dry-run (-n); standalone vs modelservice; smoketest steps 00/01/02; run + teardown | Describes exactly the sequence and semantics the agent orchestrates (when to standup/smoketest/run/teardown; how HF tokens + namespaces are auto-handled) — informs interview + precondition logic | `standup -n` dry-run; `-s 10⎮3-5⎮5,7`; `deploy.methods` (modelservice default); `LLMDBENCH_HF_TOKEN`/`huggingface.enabled:false` auto-skip; smoketest 00 `/health` `/v1/models`, 01 `/v1/completions`, 02 config validation; `run --harness inference-perf --workload chatbot_synthetic.yaml` |
+| `docs/lifecycle.md` ⭐⭐⭐ | Lifecycle ordering; cluster auth + HF token (gated vs public); standup step listing + filtering (-s); dry-run (-n); standalone vs modelservice; smoketest steps 00/01/02; run + teardown | Describes exactly the sequence and semantics the agent orchestrates (when to standup/smoketest/run/teardown; how HF tokens + namespaces are auto-handled); informs interview + precondition logic | `standup -n` dry-run; `-s 10⎮3-5⎮5,7`; `deploy.methods` (modelservice default); `LLMDBENCH_HF_TOKEN`/`huggingface.enabled:false` auto-skip; smoketest 00 `/health` `/v1/models`, 01 `/v1/completions`, 02 config validation; `run --harness inference-perf --workload chatbot_synthetic.yaml` |
 | `docs/quickstart.md` ⭐⭐⭐ | Kind local CPU-only deploy; cicd/kind scenario; facebook/opt-125m + llm-d-inference-sim; modelservice vs standalone; 4 CPU / 8 GiB reqs; Pending-pod / Insufficient-cpu troubleshooting; sanity_random.yaml; teardown vs kind delete | Exact path the agent uses for non-experts with no GPU/cluster: precise cicd/kind commands, the 4-CPU/8-GiB precondition, and the failure modes it must check and explain | `kind create cluster --name llmd-quickstart`; `--spec cicd/kind standup⎮smoketest⎮run⎮teardown -p $NS`; `-t standalone`; 4 CPUs / 8 GiB (~2.5 CPU / ~7 pods); `FailedScheduling Insufficient cpu`; `kubectl logs job/download-model`; kind v0.31.0 |
 | `docs/run.md` ⭐⭐⭐ | Harness launcher pod + workload-pvc + result extraction; metrics catalog (TTFT/TPOT/ITL/NTPOT/throughput/failure rate); workload use-case table; profile template + overrides; run flags; multi-stack + --stack/--list-endpoints; harnesses | Powers the agent's two hardest jobs: mapping a described use case to the right workload profile + harness, and explaining the metrics; gives profile keys/overrides and run flags | `llmdbench-${HARNESS}-launcher` pod, `workload-pvc`; TTFT/TPOT/ITL/NTPOT, tokens/s, requests/s, failure rate; use-case table (ISL/OSL/...); `workload/profiles/<harness>/*.yaml.in`; `-o key=value`; `load.stages rate/duration`; `--stack`/`--list-endpoints`; nop harness |
 | `docs/standup.md` ⭐⭐⭐ | Standup methods (standalone/modelservice); scenario file + defaults.yaml overrides; multi-stack + shared: block + --stack; common vLLM params (TP/DP, max_model_len, accelerator/memory, PVC); gateway provider/className; --gateway-class; epponly; GAIE/InferencePool/EPP params | Full scenario-parameter vocabulary the agent must set/validate when deploying (model, TP, max-model-len, accelerator, namespace, gateway class) + capacity sanity-check + gateway topologies | methods `standalone⎮modelservice`; `LLMDBENCH_DEPLOY_MODEL_LIST(-m)`; `_TENSOR_PARALLELISM`/`_MAX_MODEL_LEN`/`_ACCELERATOR_RESOURCE`; `gateway.className: istio⎮agentgateway⎮gke⎮epponly`; `--gateway-class`; `shared:` block, `--stack`; `examples/multi-model-wva` |
@@ -73,7 +73,7 @@ The `llm-d-benchmark` repo is the CLI our agent shells out to: it stands up llm-
 | `docs/doe.md` ⭐⭐⭐ | Experiment files; factors/levels/treatments; parameter sweeps; setup vs run treatments; treatment execution lifecycle; step ordering; parallelism; GAIE plugin sweep; PD disaggregation sweep | Defines the experiment command for multi-config comparisons; gives the exact yaml structure (factors/levels/treatments) and env-var factors the agent generates for a user's sweep request | `llmdbenchmark experiment`; `-e/--experiments`; `setup:` vs `run:` factors/levels/treatments; `LLMDBENCH_VLLM_COMMON_REPLICAS`; `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS`; `max-concurrency`/`num-prompts`; `-j/--parallelism`; `--parallel N`; `NA` placeholder |
 | `docs/tutorials/kubecon/README.md` ⭐⭐⭐ | standup/run/teardown scripts; e2e.sh; experiments (smoke, pd-disaggregation, precise-prefix-cache-aware); harness selection; scenario .sh files; profiles; expected output trees; gateway/GAIE/kgateway CRD logs; capacity planner | Concrete worked example of the exact lifecycle and file layout the agent automates; real commands, scenario/workload pairings per harness, and the output tree it must locate and parse | `./setup/standup.sh⎮run.sh⎮teardown.sh -c <scenario>`; `./setup/e2e.sh -c <scenario> -e <experiment>`; `experiments/smoke.yaml`; `scenarios/pd-disaggregation.sh`; `workload/profiles/guidellm/concurrent_sweep.yaml.in`; `llmdbench-inference-perf-launcher` |
 | `llmdbenchmark/analysis/README.md` ⭐⭐⭐ | Benchmark report conversion; summary.txt extraction; cross-treatment comparison CSV+charts; Prometheus metric viz; per-request distribution plots; supported harnesses | Tells the agent exactly which artifacts a run produces (benchmark_report*.yaml, summary.txt, graphs/, distributions/, treatment_comparison.csv) so it can locate, parse, and explain results | `run_analysis(harness_name, results_dir)`; `generate_cross_treatment_summary()`; `benchmark_report_v0.2,_<file>.yaml`; `analysis/summary.txt`; `treatment_comparison.csv`; `--analyze`; `AnalyzeResultsStep` (step 11); harnesses inference-perf/guidellm/vllm-benchmark/inferencemax/nop |
-| `llmdbenchmark/analysis/benchmark_report/README.md` ⭐⭐⭐ | Benchmark report v0.2 schema; version/run/scenario/results fields; request_performance latencies+throughput; session_performance; stack/load standardized vs native; converter CLI; JSON schema | THE report schema the agent parses (BR v0.2) and explains; names every field (TTFT/TPOT/ITL/E2E, throughput, counts) and the converter command — core to results-explanation | `version 0.2`; `run.uid`; `scenario.stack`/`scenario.load`; `results.request_performance`/`session_performance`; TTFT/TPOT/ITL/E2E; `standardized.kind=inference_engine`; `BenchmarkReportV02`; `python3 -m llmdbenchmark.analysis.benchmark_report.cli -w <gen> -b 0.2`; `br_v0_2_json_schema.json` |
+| `llmdbenchmark/analysis/benchmark_report/README.md` ⭐⭐⭐ | Benchmark report v0.2 schema; version/run/scenario/results fields; request_performance latencies+throughput; session_performance; stack/load standardized vs native; converter CLI; JSON schema | THE report schema the agent parses (BR v0.2) and explains; names every field (TTFT/TPOT/ITL/E2E, throughput, counts) and the converter command; core to results-explanation | `version 0.2`; `run.uid`; `scenario.stack`/`scenario.load`; `results.request_performance`/`session_performance`; TTFT/TPOT/ITL/E2E; `standardized.kind=inference_engine`; `BenchmarkReportV02`; `python3 -m llmdbenchmark.analysis.benchmark_report.cli -w <gen> -b 0.2`; `br_v0_2_json_schema.json` |
 | `llmdbenchmark/experiment/README.md` ⭐⭐⭐ | Experiment YAML schema; setup treatments (dotted overrides); run/workload treatments; DoE matrix; experiment-summary.yaml; --stop-on-error/--skip-teardown | The agent's 'sweep / multi-config benchmark' use cases map directly onto this experiment file format and the `experiment` command; gives exact YAML keys + matrix semantics | `experiment:/setup:/treatments:(or run:)`; `setup.constants`; `setup.treatments`; dotted keys e.g. `decode.parallelism.tensor`; `total_matrix = setup x run`; `experiment-summary.yaml`; `--stop-on-error`; `--skip-teardown`; `parse_experiment()` |
 | `docs/analysis/README.md` ⭐⭐ | Jupyter notebook analysis; python venv setup; requirements-analysis.txt; Pandas DataFrame of benchmark reports; interactive exploration | Background for the optional interactive notebook path; the agent drives the CLI and parses reports programmatically, so this matters only if we offer notebook-style exploration | `analysis.ipynb`; `build/requirements-analysis.txt`; `pip install jupyterlab`; `jupyter lab analysis.ipynb`; `python -m venv`; Python >=3.12 |
 
@@ -88,11 +88,11 @@ The `llm-d-benchmark` repo is the CLI our agent shells out to: it stands up llm-
 
 | Doc | Covers | Why useful for us | Reference points |
 | --- | --- | --- | --- |
-| `docs/developer-guide.md` ⭐⭐⭐ | Four-phase lifecycle; Step abstraction + numbering; experiment/DoE orchestrator; scenario authoring (specification + scenario YAML, shared: block, multi-stack); harness authoring + profile templates; analysis pipeline (BR v0.1/v0.2 converters, cross-treatment); smoketest validators; ExecutionContext | Single best map of how scenarios, experiments, harnesses, profiles, and the four-phase lifecycle fit together — exactly the structure the agent needs to drive the CLI and author/validate scenario+experiment YAML | `Phase.STANDUP/SMOKETEST/RUN/TEARDOWN`; `setup.treatments` vs run `treatments`; `scenario:` list, `shared:` block; `vllmCommon.tensorParallelism`, `decode.replicas`; `harness.name`/`harness.experimentProfile`; `--steps "0,3-5,9"`; `METRICS_OF_INTEREST` (BR v0.2 dotted paths -> CSV); `config/scenarios/`, `workload/profiles/` |
+| `docs/developer-guide.md` ⭐⭐⭐ | Four-phase lifecycle; Step abstraction + numbering; experiment/DoE orchestrator; scenario authoring (specification + scenario YAML, shared: block, multi-stack); harness authoring + profile templates; analysis pipeline (BR v0.1/v0.2 converters, cross-treatment); smoketest validators; ExecutionContext | Single best map of how scenarios, experiments, harnesses, profiles, and the four-phase lifecycle fit together; exactly the structure the agent needs to drive the CLI and author/validate scenario+experiment YAML | `Phase.STANDUP/SMOKETEST/RUN/TEARDOWN`; `setup.treatments` vs run `treatments`; `scenario:` list, `shared:` block; `vllmCommon.tensorParallelism`, `decode.replicas`; `harness.name`/`harness.experimentProfile`; `--steps "0,3-5,9"`; `METRICS_OF_INTEREST` (BR v0.2 dotted paths -> CSV); `config/scenarios/`, `workload/profiles/` |
 | `docs/kustomize.md` ⭐⭐⭐ | -t kustomize deploy method; deploying llm-d guides (e.g. optimized-baseline) verbatim from README; kustomize: config keys; guide/helm overrides/patches/overlays; why scenario/CLI/-m overrides are ignored; multi-model unsupported | The agent deploys the optimized-baseline/quickstart guides; this is the exact mechanism (`-t kustomize --spec guides/<name>`) plus every knob, and the critical caveat that -m/model.name and DoE setup sweeps do NOT apply | `--spec guides/optimized-baseline standup -t kustomize -p NS`; `kustomize.guideName`; `kustomize.repoPath/repoRef`; `kustomize.acceleratorBackend (gpu/vllm)`; `kustomize.monitoring`; `kustomize.patches/overlayPath`; `kustomize.guideVariableOverrides`; `step_06_kustomize_deploy.py`; `{guideName}-epp` endpoint |
-| `docs/resource_requirements.md` ⭐⭐⭐ | Benchmark launcher CPU sizing; LLMDBENCH_HARNESS_CPU_NR default (16); multi-process vs single-process harness CPU needs | Direct capacity/precondition input: on small kind clusters the default 16-CPU launcher request can fail to schedule — the agent must know to lower LLMDBENCH_HARNESS_CPU_NR and which harness benefits from more vCPUs | `LLMDBENCH_HARNESS_CPU_NR` (default 16); `run.md#use`; inference-perf (multi-process); vllm-benchmark (single-process) |
+| `docs/resource_requirements.md` ⭐⭐⭐ | Benchmark launcher CPU sizing; LLMDBENCH_HARNESS_CPU_NR default (16); multi-process vs single-process harness CPU needs | Direct capacity/precondition input: on small kind clusters the default 16-CPU launcher request can fail to schedule; the agent must know to lower LLMDBENCH_HARNESS_CPU_NR and which harness benefits from more vCPUs | `LLMDBENCH_HARNESS_CPU_NR` (default 16); `run.md#use`; inference-perf (multi-process); vllm-benchmark (single-process) |
 | `docs/reproducibility.md` ⭐⭐ | LLMDBENCH_CONTROL_WORK_DIR layout; where run parameters are recorded (environment/variables); results/analysis/setup/workload directory structure | Tells the agent the on-disk work-dir layout it can read back to explain/replay a run and locate result artifacts after a benchmark completes | `LLMDBENCH_CONTROL_WORK_DIR`; `${WORK_DIR}/environment/variables`; `./analysis/plots/{latency,throughput}_analysis.png`; `./results/*.csv`; `./setup/yamls/`, `./setup/commands/`; `./workload/profiles/` |
-| `docs/upstream-versions.md` ⭐⭐ | Pinned tool versions (helm/helmfile/kustomize/yq/jq/oc/crane); Helm chart pins (infra, modelservice, inferencePool, wva, istio, prometheusAdapter); container image pins (vllm, benchmark, inferenceScheduler, routingSidecar); Python deps | Reference for the exact versions the deployed stack pulls (vLLM image, charts, InferencePool/GAIE, benchmark image v0.6.7) and required CLI tool versions — useful for precondition checks and version-mismatch troubleshooting | `chartVersions.{llmDInfra,llmDModelservice,inferencePool,wva,prometheusAdapter}`; benchmark image `ghcr.io/llm-d/llm-d-benchmark v0.6.7`; `inferencePool v1.5.0`; `helm v3.19.0`/`helmfile 1.5.1`/`kustomize v5.8.1`; `config/templates/values/defaults.yaml` |
+| `docs/upstream-versions.md` ⭐⭐ | Pinned tool versions (helm/helmfile/kustomize/yq/jq/oc/crane); Helm chart pins (infra, modelservice, inferencePool, wva, istio, prometheusAdapter); container image pins (vllm, benchmark, inferenceScheduler, routingSidecar); Python deps | Reference for the exact versions the deployed stack pulls (vLLM image, charts, InferencePool/GAIE, benchmark image v0.6.7) and required CLI tool versions; useful for precondition checks and version-mismatch troubleshooting | `chartVersions.{llmDInfra,llmDModelservice,inferencePool,wva,prometheusAdapter}`; benchmark image `ghcr.io/llm-d/llm-d-benchmark v0.6.7`; `inferencePool v1.5.0`; `helm v3.19.0`/`helmfile 1.5.1`/`kustomize v5.8.1`; `config/templates/values/defaults.yaml` |
 | `docs/workload-variant-autoscaler.md` ⭐⭐ | WVA enable methods (-u/--wva, guides/workload-autoscaling, examples/multi-model-wva); wva: scenario knobs; VariantAutoscaling + HPA + prometheus-adapter flow; WVA smoketest; teardown policy; multi-model run cookbook; failure modes | WVA is OpenShift-only and not driven by default, but Section 10's run cookbook (--stack, --list-endpoints, --endpoint-url, -m, -l/-w/-j) gives reusable run-phase CLI patterns, and the wva: knobs matter for autoscaling scenarios | `--spec guides/workload-autoscaling standup`; `-u/--wva`; `wva.variantAutoscaling.{min,max}Replicas`; `wva.hpa.{min,max}Replicas`; `slo.{tpot,ttft}`; `run --list-endpoints`/`--stack`/`--endpoint-url`; `VariantAutoscaling`/`HorizontalPodAutoscaler` CRDs; `prometheus-adapter external.metrics.k8s.io` |
 
 ### CLI module internals
@@ -102,9 +102,9 @@ The `llm-d-benchmark` repo is the CLI our agent shells out to: it stands up llm-
 | `llmdbenchmark/README.md` ⭐⭐⭐ | CLI subcommands; benchmark lifecycle; plan/standup/smoketest/run/teardown/experiment; telemetry env vars; submodule relationships | Canonical map of the exact CLI the agent shells out to (subcommands + lifecycle), so it knows the full standup/run/teardown/experiment flow and step counts it must drive | `plan`; `standup`; `smoketest`; `run`; `teardown`; `experiment`; standup steps 00-09; run 00-11; teardown 00-04; `LLMDBENCH_TELEMETRY_ENABLED`/`_ENDPOINT`/`_API_KEY` |
 | `llmdbenchmark/interface/README.md` ⭐⭐⭐ | All CLI flags per subcommand; LLMDBENCH_* env var defaults; deploy methods (standalone/modelservice/fma); monitoring flag; timeout flags; Command enum | Single most directly-actionable doc for the agent's deny-by-default allowlist and command construction: enumerates exactly which flags/env vars exist for each subcommand | `--namespace/-p`; `--scenario/-c`; `--methods/-t (standalone⎮modelservice⎮fma)`; `--monitoring`; `--harness/-l`; `--workload/-w`; `--experiments/-e`; `--overrides/-o`; `--parallelism/-j`; `--endpoint-url/-U`; `--deep/-d` (teardown); `--skip-smoketest`; `env()/env_bool()/env_int()` |
 | `llmdbenchmark/run/README.md` ⭐⭐⭐ | Run command usage; run-only mode (-U endpoint); all run flags; harness selection; workload profiles; override/experiment treatments; --monitoring output; result collection paths; run steps 00-11 | Most load-bearing doc for the agent's core action: concrete invocation patterns, harness/workload names, run-only mode against an existing endpoint, and where results/metrics/logs land | `--spec guides/... run -p <NS> -l <harness> -w <profile>`; profiles `sanity_random.yaml`/`chatbot_synthetic.yaml`/`random_concurrent.yaml`/`nop.yaml`; `-U` run-only; `-o 'concurrency=32,duration=300,max_tokens=512'`; `results/{experiment_id}/metrics/raw⎮processed`; `logs/epp_pods.log`; `role=llm-d-benchmark-data-access` |
-| `llmdbenchmark/standup/README.md` ⭐⭐⭐ | Standup steps 00-10; deploy methods (standalone/modelservice/FMA); model/harness namespace prep + PVCs; gateway/GAIE deploy; --monitoring (PodMonitor); dry-run | When the agent must deploy a stack before benchmarking, this is the step-by-step of what `standup` does (PVCs, gateway, GAIE, modelservice helm) — lets it set expectations, timeouts, and method choice | `get_standup_steps()`; `EnsureInfraStep(00)`; `WorkloadMonitoringStep(03)`; `DeployGaieStep(09)`; `DeployModelserviceStep(10)`; `--monitoring` (PodMonitor, EPP log level 4); `--skip-smoketest`; `modelservice.uriProtocol: pvc` |
+| `llmdbenchmark/standup/README.md` ⭐⭐⭐ | Standup steps 00-10; deploy methods (standalone/modelservice/FMA); model/harness namespace prep + PVCs; gateway/GAIE deploy; --monitoring (PodMonitor); dry-run | When the agent must deploy a stack before benchmarking, this is the step-by-step of what `standup` does (PVCs, gateway, GAIE, modelservice helm); lets it set expectations, timeouts, and method choice | `get_standup_steps()`; `EnsureInfraStep(00)`; `WorkloadMonitoringStep(03)`; `DeployGaieStep(09)`; `DeployModelserviceStep(10)`; `--monitoring` (PodMonitor, EPP log level 4); `--skip-smoketest`; `modelservice.uriProtocol: pvc` |
 | `llmdbenchmark/smoketests/README.md` ⭐⭐⭐ | Smoketest steps 00-02; health/inference/config-validation checks; per-scenario validators; shared HTTPRoute path prefix; --skip-smoketest; what config validation checks | The agent's 'is my deploy healthy' check maps onto `smoketest`; lists exactly what is validated (pods, /health, /v1/models, config drift) and per-scenario validator names so it can verify a stack before benchmarking | `smoketest -p <ns> [-s 0⎮1⎮2]`; step 00 `health_check`; 01 `inference_test` (/v1/completions); 02 `validate_config`; validators pd-disaggregation/precise-prefix-cache-aware/inference-scheduling/...; `httpRoute.mode: shared`; `SmoketestReport/CheckResult` |
-| `llmdbenchmark/teardown/README.md` ⭐⭐⭐ | Teardown steps 00-04; helm uninstall; harness cleanup; normal vs --deep delete; WVA teardown policy; cluster role cleanup; dry-run | The agent's cleanup action maps directly to `teardown`; clarifies normal vs --deep semantics and what is/isn't removed — matters for safely cleaning up a non-expert's cluster | `TeardownPreflightStep(00)`; `UninstallHelmStep(01)`; `CleanHarnessStep(02)`; `DeleteResourcesStep(03)`; `CleanClusterRolesStep(04)`; `--deep` (delete ALL incl pvc); `--stack` partial; WVA VariantAutoscaling/HPA always deleted |
+| `llmdbenchmark/teardown/README.md` ⭐⭐⭐ | Teardown steps 00-04; helm uninstall; harness cleanup; normal vs --deep delete; WVA teardown policy; cluster role cleanup; dry-run | The agent's cleanup action maps directly to `teardown`; clarifies normal vs --deep semantics and what is/isn't removed; matters for safely cleaning up a non-expert's cluster | `TeardownPreflightStep(00)`; `UninstallHelmStep(01)`; `CleanHarnessStep(02)`; `DeleteResourcesStep(03)`; `CleanClusterRolesStep(04)`; `--deep` (delete ALL incl pvc); `--stack` partial; WVA VariantAutoscaling/HPA always deleted |
 | `llmdbenchmark/executor/README.md` ⭐⭐ | Step orchestration model; ExecutionContext fields; CommandExecutor (kube/helm/wait); system dependency requirements; step filtering spec; kind/openshift/minikube detection | Component-internal, but ExecutionContext fields and the REQUIRED_TOOLS list tell the agent the exact preconditions to check before invoking the CLI | `REQUIRED_TOOLS=[kubectl,helm,helmfile,jq,yq]`; `OPTIONAL_TOOLS=[oc,kustomize,skopeo,...]`; `check_python_version() >=3.11`; `step_spec '0,3-5,9'`; `is_kind/is_openshift/is_minikube`; `harness_name/_profile/_parallelism`; `wait_for_pods/_job/_pvc` |
 | `llmdbenchmark/parser/README.md` ⭐⭐ | Spec+plan rendering; deep_merge precedence; resolver chain; version/image resolution; cluster resource auto-detection; BenchmarkConfig schema sections; monitoring/namespace/model resolution | Explains how 'auto' values and config keys resolve into manifests; useful when the agent edits scenario/defaults YAML or needs to know which config keys are valid and how overrides merge | `RenderSpecification.eval()`; `RenderPlans.deep_merge() defaults->shared->stack`; `validate_config()`; `BenchmarkConfig (extra=allow)`; `ModelConfig/DecodeConfig/...`; `accelerator.resource auto`; `model_id_label {first8}-{sha256_8}-{last8}`; `VersionResolver (skopeo/podman/helm)` |
 | `llmdbenchmark/result_store/README.md` ⭐⭐ | Results store init; remote management (gs://, etc.); stage/push/pull workflow; wildcards; ad-hoc store-less transfers; workspace reconstruction; run-uid taxonomy | If the agent offers 'save/share/retrieve past results', these are the exact `llmdbenchmark results` commands to drive; otherwise an optional results-management surface beyond the core run flow | `results init`; `results remote add/ls/rm`; `results add <workspace>`; `results push staging`; `results ls prod -m 'llama-*'`; `results pull prod --run-uid c6bc210e`; `.result_store/`; scenario/model/hardware/run-uid taxonomy |
@@ -114,11 +114,11 @@ The `llm-d-benchmark` repo is the CLI our agent shells out to: it stands up llm-
 
 | Doc | Covers | Why useful for us | Reference points |
 | --- | --- | --- | --- |
-| `config/README.md` ⭐⭐⭐ | Config override chain (scenario/env/CLI/experiment); defaults.yaml sections; scenario file + shared block; LLMDBENCH_* env vars; model artifact protocol (pvc/hf); chart versions; KV transfer; resources/accelerators/affinity; monitoring + --monitoring; vLLM command generation; specs & scenarios layout | Single source of truth the agent must read to know what knobs a scenario exposes, how to override model/replicas/namespace/monitoring, and how config flows into a deploy — maps user requests to llmdbenchmark config | `--spec gpu standup -c config/scenarios/my-gpu-custom.yaml`; `LLMDBENCH_SPEC/NAMESPACE/HF_TOKEN/AFFINITY/DRY_RUN`; `--monitoring/--no-monitoring` (tri-state); `monitoring.installPrometheusCrds` (Kind); `modelservice.uriProtocol: pvc⎮hf`; `chartVersions.*`; `accelerator.count vs parallelism.tensor`; `scenarios/{guides,examples,cicd}` |
-| `skills/convert-guide/SKILL.md` ⭐⭐⭐ | Guide -> scenario/experiment conversion; Helm values & kustomize parsing; LLMDBENCH_* mapping; REPLACE_ENV_* placeholders; standard practices (custom command, preprocess, volumes); harness/profile defaults | Describes how a deploy guide becomes a runnable benchmark scenario — the exact translation the agent performs when a user points at a guide or asks to benchmark a given config; the canonical guide->config playbook | `/convert-guide <url-or-path> with <harness> <profile>`; `/convert-guide ... varying <param> from <start> to <end>`; default harness inference-perf / profile sanity_random.yaml; `setup/env.sh`; `LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom`; `scenarios/guides/ai.<name>.sh`; `experiments/ai.<name>.yaml` |
-| `skills/convert-guide/references/mappings.md` ⭐⭐⭐ | Helm path -> LLMDBENCH_* mapping; GAIE/InferencePool config; decode/prefill stage settings; parallelism/accelerator vars; vLLM launch args; chart versions; port architecture (8000 proxy / 8200 vLLM); REPLACE_ENV placeholders | Definitive lookup the agent uses to translate any guide value into the correct LLMDBENCH_* knob (and which to leave default) — essential for generating correct scenario files and explaining what a config does | `LLMDBENCH_DEPLOY_MODEL_LIST`; `_MODELSERVICE_DECODE_REPLICAS/_TENSOR_PARALLELISM`; `_COMMON_MAX_MODEL_LEN/_METRICS_PORT(8200)/_INFERENCE_PORT(8000)`; `_GAIE_PLUGINS_CONFIGFILE`; `_MODELSERVICE_MULTINODE (LWS)`; `_INFRA/_MODELSERVICE/_GAIE_CHART_VERSION`; `ACCELERATOR_NR=auto`; `setup/presets/gaie/*` |
-| `skills/convert-guide/references/patterns.md` ⭐⭐⭐ | Custom command + preprocess pattern; extra volumes/mounts; env var capture rules; GAIE pluginsCustomConfig; LWS / multinode; XPU (Intel) accel; P/D disaggregation (kv_producer/kv_consumer) | Encodes the non-obvious rules the agent must follow to produce a working scenario (never drop env vars, always inject preprocess, MULTINODE=true for LWS, pd-config for P/D) — governs correctness of agent-generated deploy configs | `LLMDBENCH_VLLM_COMMON_PREPROCESS`/`set_llmdbench_environment.py`; preprocesses configMap; `_DECODE_ENVVARS_TO_YAML`; `_GAIE_CUSTOM_PLUGINS`; `_MULTINODE=true` (LWS); `DP_SIZE_LOCAL/TP_SIZE`; `kv-transfer-config NixlConnector kv_producer/kv_consumer`; `pd-config.yaml`; EndpointPickerConfig plugins |
-| `skills/convert-guide/references/templates.md` ⭐⭐⭐ | Scenario file template; experiment file template (setup/run, constants/factors/treatments); SOURCE traceability comments; kustomize patch mappings; conversion output format | Gives the agent the exact output shape for generated scenario/experiment files plus the experiment YAML structure (constants vs factors vs treatments) — needed whenever it writes or explains a scenario/experiment file | scenario file `SOURCE:` comment block; setup/run constants/factors/levels/treatments; `experiments/<guide_name>.yaml`; `scenarios/guides/<guide_name>.sh`; kustomize patch -> LLMDBENCH (`/spec/replicas`, `containers/0/args`, `env/-`, `volumes/-`); `./setup/standup.sh -c`; `LLMDBENCH_CONTROL_WORK_DIR` |
+| `config/README.md` ⭐⭐⭐ | Config override chain (scenario/env/CLI/experiment); defaults.yaml sections; scenario file + shared block; LLMDBENCH_* env vars; model artifact protocol (pvc/hf); chart versions; KV transfer; resources/accelerators/affinity; monitoring + --monitoring; vLLM command generation; specs & scenarios layout | Single source of truth the agent must read to know what knobs a scenario exposes, how to override model/replicas/namespace/monitoring, and how config flows into a deploy; maps user requests to llmdbenchmark config | `--spec gpu standup -c config/scenarios/my-gpu-custom.yaml`; `LLMDBENCH_SPEC/NAMESPACE/HF_TOKEN/AFFINITY/DRY_RUN`; `--monitoring/--no-monitoring` (tri-state); `monitoring.installPrometheusCrds` (Kind); `modelservice.uriProtocol: pvc⎮hf`; `chartVersions.*`; `accelerator.count vs parallelism.tensor`; `scenarios/{guides,examples,cicd}` |
+| `skills/convert-guide/SKILL.md` ⭐⭐⭐ | Guide -> scenario/experiment conversion; Helm values & kustomize parsing; LLMDBENCH_* mapping; REPLACE_ENV_* placeholders; standard practices (custom command, preprocess, volumes); harness/profile defaults | Describes how a deploy guide becomes a runnable benchmark scenario; the exact translation the agent performs when a user points at a guide or asks to benchmark a given config; the canonical guide->config playbook | `/convert-guide <url-or-path> with <harness> <profile>`; `/convert-guide ... varying <param> from <start> to <end>`; default harness inference-perf / profile sanity_random.yaml; `setup/env.sh`; `LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom`; `scenarios/guides/ai.<name>.sh`; `experiments/ai.<name>.yaml` |
+| `skills/convert-guide/references/mappings.md` ⭐⭐⭐ | Helm path -> LLMDBENCH_* mapping; GAIE/InferencePool config; decode/prefill stage settings; parallelism/accelerator vars; vLLM launch args; chart versions; port architecture (8000 proxy / 8200 vLLM); REPLACE_ENV placeholders | Definitive lookup the agent uses to translate any guide value into the correct LLMDBENCH_* knob (and which to leave default); essential for generating correct scenario files and explaining what a config does | `LLMDBENCH_DEPLOY_MODEL_LIST`; `_MODELSERVICE_DECODE_REPLICAS/_TENSOR_PARALLELISM`; `_COMMON_MAX_MODEL_LEN/_METRICS_PORT(8200)/_INFERENCE_PORT(8000)`; `_GAIE_PLUGINS_CONFIGFILE`; `_MODELSERVICE_MULTINODE (LWS)`; `_INFRA/_MODELSERVICE/_GAIE_CHART_VERSION`; `ACCELERATOR_NR=auto`; `setup/presets/gaie/*` |
+| `skills/convert-guide/references/patterns.md` ⭐⭐⭐ | Custom command + preprocess pattern; extra volumes/mounts; env var capture rules; GAIE pluginsCustomConfig; LWS / multinode; XPU (Intel) accel; P/D disaggregation (kv_producer/kv_consumer) | Encodes the non-obvious rules the agent must follow to produce a working scenario (never drop env vars, always inject preprocess, MULTINODE=true for LWS, pd-config for P/D); governs correctness of agent-generated deploy configs | `LLMDBENCH_VLLM_COMMON_PREPROCESS`/`set_llmdbench_environment.py`; preprocesses configMap; `_DECODE_ENVVARS_TO_YAML`; `_GAIE_CUSTOM_PLUGINS`; `_MULTINODE=true` (LWS); `DP_SIZE_LOCAL/TP_SIZE`; `kv-transfer-config NixlConnector kv_producer/kv_consumer`; `pd-config.yaml`; EndpointPickerConfig plugins |
+| `skills/convert-guide/references/templates.md` ⭐⭐⭐ | Scenario file template; experiment file template (setup/run, constants/factors/treatments); SOURCE traceability comments; kustomize patch mappings; conversion output format | Gives the agent the exact output shape for generated scenario/experiment files plus the experiment YAML structure (constants vs factors vs treatments); needed whenever it writes or explains a scenario/experiment file | scenario file `SOURCE:` comment block; setup/run constants/factors/levels/treatments; `experiments/<guide_name>.yaml`; `scenarios/guides/<guide_name>.sh`; kustomize patch -> LLMDBENCH (`/spec/replicas`, `containers/0/args`, `env/-`, `volumes/-`); `./setup/standup.sh -c`; `LLMDBENCH_CONTROL_WORK_DIR` |
 | `skills/convert-guide/references/harnesses.md` ⭐⭐⭐ | Harness list; profiles per harness; workload selection; convert-guide defaults | (also listed under Workloads) The menu of valid harness+profile choices and use cases that drives convert-guide's harness selection | `inference-perf⎮guidellm⎮vllm-benchmark⎮nop`; `sanity_random.yaml`; `chatbot_synthetic.yaml`; `random_concurrent.yaml`; `summarization_synthetic.yaml`; `LLMDBENCH_HARNESS_NAME`/`_EXPERIMENT_PROFILE` |
 
 ### Stack discovery
@@ -138,7 +138,7 @@ The [llm-d](https://github.com/llm-d/llm-d) repo is the stack our agent stands u
 
 | Doc | Covers | Why useful for us | Reference points |
 | --- | --- | --- | --- |
-| `README.md` ⭐⭐⭐ | project overview, well-lit path guides, optimized-baseline + quickstart pointers, intelligent routing / KV-cache / P-D disagg / autoscaling, architecture pointer | Authoritative entry map for the stack our agent deploys/targets — names and links optimized-baseline, quickstart, guides, and accelerator docs the agent must read and run. | guides/README.md; Optimized Baseline; getting-started/quickstart; well-lit path guides; docs/accelerators/README.md; docs/architecture; prefix-cache-aware routing; P/D disaggregation; wide expert-parallelism |
+| `README.md` ⭐⭐⭐ | project overview, well-lit path guides, optimized-baseline + quickstart pointers, intelligent routing / KV-cache / P-D disagg / autoscaling, architecture pointer | Authoritative entry map for the stack our agent deploys/targets; names and links optimized-baseline, quickstart, guides, and accelerator docs the agent must read and run. | guides/README.md; Optimized Baseline; getting-started/quickstart; well-lit path guides; docs/accelerators/README.md; docs/architecture; prefix-cache-aware routing; P/D disaggregation; wide expert-parallelism |
 | `guides/README.md` ⭐⭐⭐ | well-lit paths catalog, optimized-baseline, intelligent routing, KV-cache mgmt, rollouts, benchmark helper | The menu our agent maps a user's use case onto when choosing which deploy guide to run; also points at helpers/benchmark.md the benchmarking flow uses. | optimized-baseline; predicted-latency-routing; precise-prefix-cache-routing; tiered-prefix-cache; pd-disaggregation; wide-ep-lws; flow-control; workload-autoscaling; ../helpers/benchmark.md |
 | `guides/optimized-baseline/README.md` ⭐⭐⭐ | optimized-baseline deploy, helm router install, kustomize modelserver overlays, env vars, InferencePool/Gateway/standalone modes, monitoring enable, benchmarking via run_only.sh, report comparison | THE primary guide our agent runs to stand up a stack: exact env vars, helm/kubectl commands, namespace conventions, monitoring toggle, and the run_only.sh benchmark workflow. | GAIE_VERSION=v1.5.0; GUIDE_NAME=optimized-baseline; NAMESPACE=llm-d-optimized-baseline; INFRA_PROVIDER=base\|gke; llm-d-router-standalone-dev; run_only.sh -c config.yaml -o ./results; benchmark-templates/guide.yaml; Qwen/Qwen3-32B |
 | `guides/no-kubernetes-deployment/README.md` ⭐⭐ | no-k8s deployment, EPP/Envoy/vLLM Docker run, file-discovery endpoints.yaml, EPP flags, Prometheus scrape config, scheduling profile | Relevant only if the agent ever deploys off-cluster; documents EPP CLI flags, scoring profile, and metrics endpoints (secondary since we target kind/real clusters). | file-discovery plugin; endpoints.yaml; --config-file; --pool-name=file-discovery; --metrics-port=9090; prefix-cache-scorer; max-score-picker; EPP_IMAGE; VLLM_IMAGE; --tensor-parallel-size |
@@ -169,7 +169,7 @@ The [llm-d](https://github.com/llm-d/llm-d) repo is the stack our agent stands u
 | `docs/well-lit-paths/optimized-baseline.md` ⭐⭐⭐ | prefix-aware scheduling, load-aware scheduling, EPP scoring, /metrics scraping, default routing baseline | The primary stack our agent deploys for non-experts; defines the baseline routing behavior the agent explains and benchmarks against, and points to the EPP scorer config. | prefix-cache affinity; load-aware scheduling; EPP /metrics scrape (50ms default); queue depth; running requests; KV-cache utilization; session affinity; guides/optimized-baseline; architecture/core/router/epp/configuration.md |
 | `guides/precise-prefix-cache-routing/README.md` ⭐⭐⭐ | precise prefix-cache routing, vLLM KV-cache events over ZMQ, router scorers, hardware backend overlays, inference-perf benchmark via run_only.sh, report metrics, UDS tokenizer sidecar | Directly maps a deployable guide to a runnable benchmark: the exact run_only.sh + workload-template + envsubst flow and the report metrics our agent must drive and explain. | run_only.sh -c config.yaml -o ./results; inference-perf; envsubst < guide.yaml > config.yaml; precise-prefix-cache-scorer; --block-size 64; max-score-picker; GUIDE_NAME=precise-prefix-cache-routing; Output tokens/sec; TTFT p90; ITL mean (ms) |
 | `guides/predicted-latency-routing/README.md` ⭐⭐⭐ | predicted-latency routing, SLO-aware scheduling headers, router values files (default vs slo), reuse of optimized-baseline model servers, prediction/SLO metrics, streamingMode tuning, troubleshooting | An SLO-driven deploy path the agent could pick when a user states latency targets: the exact router values file, x-llm-d-slo headers, and metrics to verify SLO honoring. | router/predicted-latency.values.yaml; router/predicted-latency-slo.values.yaml; x-llm-d-slo-ttft-ms; x-llm-d-slo-tpot-ms; inference_objective_request_predicted_ttft_seconds; inference_objective_request_ttft_slo_violation_total; PREDICTION_SERVER_URL |
-| `guides/tiered-prefix-cache/cpu/README.md` ⭐⭐⭐ | CPU RAM KV-cache offloading, vLLM native / LMCache connectors, tiered EPP prefix scorers (GPU+CPU), GPU & TPU overlays, inference-perf benchmark via run_only.sh, high vs low cache scenario results | A deployable long-context guide with an explicit benchmark flow and report tables — the agent can both deploy it and explain TTFT/throughput deltas vs the HBM-only baseline. | CONNECTOR=offloading-connector\|lmcache-connector; INFRA_PROVIDER=base\|gke; lruCapacityPerServer; run_only.sh -c config.yaml -o ./results; GUIDE_NAME=tiered-prefix-cache-cpu; Mean TTFT; P90 TTFT; Throughput (tok/s); CPU Cache Offload Size 100 GB |
+| `guides/tiered-prefix-cache/cpu/README.md` ⭐⭐⭐ | CPU RAM KV-cache offloading, vLLM native / LMCache connectors, tiered EPP prefix scorers (GPU+CPU), GPU & TPU overlays, inference-perf benchmark via run_only.sh, high vs low cache scenario results | A deployable long-context guide with an explicit benchmark flow and report tables; the agent can both deploy it and explain TTFT/throughput deltas vs the HBM-only baseline. | CONNECTOR=offloading-connector\|lmcache-connector; INFRA_PROVIDER=base\|gke; lruCapacityPerServer; run_only.sh -c config.yaml -o ./results; GUIDE_NAME=tiered-prefix-cache-cpu; Mean TTFT; P90 TTFT; Throughput (tok/s); CPU Cache Offload Size 100 GB |
 | `guides/pd-disaggregation/README.md` ⭐⭐⭐ | P/D disaggregation deploy, llm-d Router standalone/gateway, Kustomize modelserver overlays, inference-perf benchmarking, run_only.sh harness, Benchmark Report schema (v0.1) sample, monitoring overlay, aggregated-vs-disaggregated comparison | Directly maps a deploy guide to a benchmark workload our agent runs: the run_only.sh/inference-perf flow, workload-template envsubst, and the exact report metrics it parses/explains. | run_only.sh -c config.yaml -o ./results; benchmark-templates/20_1_isl_osl.yaml; GUIDE_NAME=pd-disaggregation; INFRA_PROVIDER=base\|coreweave\|gke; report metrics.latency.time_to_first_token/inter_token_latency; throughput.output_tokens_per_sec; ../../helpers/benchmark.md |
 | `guides/wide-ep-lws/README.md` ⭐⭐⭐ | Wide EP / LWS deploy, DeepEP RDMA networking, LeaderWorkerSet controller, topology-aware scheduling (Kueue), inference-perf benchmarking, run_only.sh harness, Benchmark Report schema (v0.2) sample, monitoring overlay | Another deploy-guide-to-benchmark mapping the agent can drive, and notably carries the v0.2 report schema (results.request_performance.aggregate + scenario.load.standardized) our agent parses. | run_only.sh -c config.yaml -o ./results; benchmark-templates/2048_concurrent_2k_isl_2k_osl.yaml; GUIDE_NAME=wide-ep-lws; MODEL=deepseek-ai/DeepSeek-R1-0528; report version: '0.2'; results.request_performance.aggregate.throughput.output_token_rate; scenario.load.standardized |
 | `docs/well-lit-paths/flow-control.md` ⭐⭐ | request queuing, multi-tenant fairness, priority/SLO scheduling, no-regret scheduling, EPP queues, saturation-based admission | Useful context when a user's benchmark scenario is multi-tenant or mixed-priority; explains the FlowKey/Priority/Fairness headers the agent would surface in a flow-control deploy. | FlowKey; FairnessID; Priority; PriorityBand; Fairness Policy; Ordering Policy; FCFS; SLO-aware; tenant ID / traffic priority headers; guides/flow-control |
@@ -179,7 +179,7 @@ The [llm-d](https://github.com/llm-d/llm-d) repo is the stack our agent stands u
 | `docs/well-lit-paths/tiered-prefix-cache.md` ⭐⭐ | KV offloading, CPU/NVMe/storage tiers, OffloadingConnector, prefix-cache-scorer per tier, cross-pod cache sharing | Useful context for multi-turn/agentic reuse benchmarks; describes the OffloadingConnector config and large CPU-memory requests the agent must account for as resource preconditions. | OffloadingConnector; prefix-cache-scorer (CPU tier); ReadWriteMany PVC; /mnt/files-storage; llmd_fs_backend.spec; CPU memory request (e.g. 400 GB); guides/tiered-prefix-cache |
 | `docs/well-lit-paths/workload-autoscaling.md` ⭐⭐ | HPA + EPP metrics, Workload Variant Autoscaler, VariantAutoscaling CRD, KEDA, SLO-aware scaling, scale-to-zero | Useful context when a benchmark explores capacity/scaling behavior; gives the two autoscaling paths, the signals (queue depth, KV pressure) the agent surfaces, and the WVA CRD it would deploy. | HPA; EPP metrics (queue depth, running request count); Prometheus Adapter; Workload Variant Autoscaler (WVA); VariantAutoscaling CRD; KEDA; scale to zero; guides/workload-autoscaling |
 | `guides/flow-control/README.md` ⭐⭐ | flow control / EPP queuing, multi-tenancy & priority bands, backpressure / saturation detection, router + model-server deploy, InferenceObjective CRDs, load testing with hey, flow-control metrics | If the agent supports a multi-tenant/QoS use case it would deploy this stack and set InferenceObjective bands + x-llm-d-inference headers; otherwise a specialized routing variant. | flowControl feature gate; InferenceObjective; global-strict-fairness-policy; fcfs-ordering-policy; utilization-detector; maxConcurrency=132; x-llm-d-inference-fairness-id; inference_extension_flow_control_queue_size; MODEL_NAME=Qwen/Qwen3-32B; hey -c 150 -n 150 |
-| `guides/flow-control/tuning.md` ⭐⭐ | maxConcurrency derivation, compute-bound vs memory-bound limits, tuning_wizard.py inputs, vLLM --max-num-seqs, saturation detector choice, KV-cache/prefix-caching trap, benchmark-report-sourced inputs | Shows how benchmark-report fields (mean throughput, mean latency, ISL/OSL) feed capacity tuning — useful when the agent explains results or advises concurrency limits (niche sizing task). | tuning_wizard.py; --throughput; --latency-sec; --isl-mean; --osl-mean; --shared-prefix; --enable-prefix-caching; --max-num-seqs; concurrency-detector; maxRequests=200; vllm:cache_config_info; :8000/metrics; TTFT; TPOT |
+| `guides/flow-control/tuning.md` ⭐⭐ | maxConcurrency derivation, compute-bound vs memory-bound limits, tuning_wizard.py inputs, vLLM --max-num-seqs, saturation detector choice, KV-cache/prefix-caching trap, benchmark-report-sourced inputs | Shows how benchmark-report fields (mean throughput, mean latency, ISL/OSL) feed capacity tuning; useful when the agent explains results or advises concurrency limits (niche sizing task). | tuning_wizard.py; --throughput; --latency-sec; --isl-mean; --osl-mean; --shared-prefix; --enable-prefix-caching; --max-num-seqs; concurrency-detector; maxRequests=200; vllm:cache_config_info; :8000/metrics; TTFT; TPOT |
 | `guides/tiered-prefix-cache/README.md` ⭐⭐ | KV/prefix cache offloading concepts, storage tier selection (CPU/disk/shared/P2P), cache tiering strategy, vLLM connectors, workload suitability guidance | Conceptual selector the agent can read to advise which cache-offloading sub-guide fits a user's long-context/multi-turn workload before deploying. | CPU RAM tier; local disk tier; shared storage tier; P2P cache sharing; vLLM connectors; HBM + CPU RAM tiering; cpu/README.md; storage/README.md |
 | `guides/tiered-prefix-cache/storage/README.md` ⭐⭐ | shared-storage KV-cache offloading, llm-d FS vs LMCache connectors, RWX PVC (Lustre/EFS/CephFS), model-server overlays, offload verification, inference-perf long-context benchmark + results | Relevant only for cluster-scale long-context deployments needing shared storage; gives the connector/PVC config and inference-perf workload knobs (not a kind/local path). | CONNECTOR=llm-d-fs-connector\|lmcache-connector; manifests/pvc.yaml; STORAGE_CLASS=lustre\|efs-sc; ReadWriteMany / RWX; vllm:kv_offload_total_bytes; LMCACHE_MAX_LOCAL_CPU_SIZE; system_prompt_len; question_len; output_len; /mnt/files-storage/kv-cache |
 | `guides/pd-disaggregation/README.tpu.md` ⭐⭐ | TPU 7x P/D deploy, TPU model-server overlay, tensor-parallel-size for TPU, inference-perf benchmarking, run_only.sh harness, Benchmark Report sample | Useful when the agent targets TPU: same benchmark flow as the main P/D guide but with TPU-specific model name, parallelism, and template; lower since it defers to README.md. | run_only.sh -c config.yaml -o ./results; benchmark-templates/tpu_v7_qwen3_5.yaml; MODEL_NAME=Qwen/Qwen3.5-397B-A17B-FP8; modelserver/tpu/vllm/; --tensor-parallel-size=8 |
@@ -235,7 +235,7 @@ The [llm-d](https://github.com/llm-d/llm-d) repo is the stack our agent stands u
 ---
 ## API & feature reference points
 
-The concrete API surface — flags, env vars, CRD kinds, report field paths, and metric names — that the agent should be able to COVER (offer/explain) or USE (drive/parse) when deploying llm-d stacks and running benchmarks. Distilled from every doc's `reference_points` and deduplicated.
+The concrete API surface (flags, env vars, CRD kinds, report field paths, and metric names) that the agent should be able to COVER (offer/explain) or USE (drive/parse) when deploying llm-d stacks and running benchmarks. Distilled from every doc's `reference_points` and deduplicated.
 
 ### Benchmark CLI & lifecycle (`llmdbenchmark`)
 - Subcommands: `plan`, `standup`, `smoketest`, `run`, `teardown`, `experiment`, `results`.
@@ -314,81 +314,81 @@ The concrete API surface — flags, env vars, CRD kinds, report field paths, and
 
 ## External references
 
-- [llm-d main repo](https://github.com/llm-d/llm-d) — core project
-- [llm-d docs site](https://www.llm-d.ai) — project site/docs
-- [Quickstart guide](https://llm-d.ai/docs/getting-started/quickstart) — getting started
-- [Optimized-baseline guide](https://llm-d.ai/docs/guides/optimized-baseline) — recommended path
-- [llm-d prereqs README](https://github.com/llm-d/llm-d/blob/main/README.md#pre-requisites) — prerequisites
-- [llm-d guides README](https://github.com/llm-d/llm-d/blob/main/guides/README.md) — well-lit paths
-- [llm-d-benchmark repo](https://github.com/llm-d/llm-d-benchmark) — benchmark CLI source
-- [benchmark install.sh](https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh) — installer
-- [existing_stack run_only.sh](https://github.com/llm-d/llm-d-benchmark/blob/main/existing_stack/run_only.sh) — run against existing stack
-- [Benchmark Report doc](https://github.com/llm-d/llm-d-benchmark/blob/main/docs/benchmark_report.md) — v0.2 report spec
-- [analysis.ipynb](https://github.com/llm-d/llm-d-benchmark/blob/main/docs/analysis/analysis.ipynb) — results notebook
-- [benchmark issues](https://github.com/llm-d/llm-d-benchmark/issues) — bug tracker
-- [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) — infra charts
-- [llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) — modelservice chart
-- [llm-d-model-service](https://github.com/llm-d/llm-d-model-service.git) — model service repo
-- [llm-d-router](https://github.com/llm-d/llm-d-router) — EPP / router source
-- [llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) — scheduler / EPP
-- [scheduler ContextLengthAware](https://github.com/llm-d/llm-d-inference-scheduler/blob/main/docs/architecture.md#contextlengthaware) — scorer doc
-- [llm-d-inference-sim](https://github.com/llm-d/llm-d-inference-sim) — CPU model simulator
-- [llm-d-kv-cache](https://github.com/llm-d/llm-d-kv-cache) — KV indexer/offload
-- [kv-cache architecture](https://github.com/llm-d/llm-d-kv-cache/blob/main/docs/architecture.md) — KV design
-- [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) — capacity planner
-- [llm-d-latency-predictor](https://github.com/llm-d/llm-d-latency-predictor) — predicted-latency routing
-- [workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) — WVA controller
-- [WVA guide](https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md) — autoscaling setup
-- [router recipe](https://github.com/llm-d/llm-d/blob/main/guides/recipes/router/README.md) — router values
-- [fast-model-actuation (FMA)](https://github.com/llm-d-incubation/llm-d-fast-model-actuation) — fma deploy method
-- [batch-gateway](https://github.com/llm-d-incubation/batch-gateway) — batch API
-- [llm-d-async](https://github.com/llm-d-incubation/llm-d-async) — async processor
-- [llm-d-prism](https://github.com/llm-d/llm-d-prism) — perf analysis
-- [Prism site](https://prism.llm-d.ai) — results explorer
-- [gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) — GAIE CRDs/charts
-- [GAIE metrics & observability](https://gateway-api-inference-extension.sigs.k8s.io/guides/metrics-and-observability/) — exposed metrics
-- [EPP protocol proposal](https://github.com/kubernetes-sigs/gateway-api-inference-extension/tree/main/docs/proposals/004-endpoint-picker-protocol) — ext-proc spec
-- [inference_gateway.json dashboard](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/tools/dashboards/inference_gateway.json) — Grafana dashboard
-- [gateway-api](https://gateway-api.sigs.k8s.io/) — Gateway API
-- [observability setup](https://github.com/llm-d/llm-d/blob/main/docs/operations/observability/setup.md) — Prometheus/Grafana install
-- [observability promql](https://github.com/llm-d/llm-d/blob/main/docs/operations/observability/promql.md) — query recipes
-- [observability tracing](https://github.com/llm-d/llm-d/blob/main/docs/operations/observability/tracing.md) — OTel tracing
-- [Grafana dashboards](https://github.com/llm-d/llm-d/tree/main/guides/recipes/observability/grafana/dashboards) — prebuilt dashboards
-- [running without Kubernetes](https://llm-d.ai/blog/running-llm-d-without-kubernetes) — no-k8s mode
-- [predicted-latency blog](https://llm-d.ai/blog/predicted-latency-based-scheduling-for-llms) — latency scheduling
-- [inference-perf](https://github.com/kubernetes-sigs/inference-perf) — load harness
-- [inference-perf loadgen docs](https://github.com/kubernetes-sigs/inference-perf/blob/main/docs/loadgen.md) — load generator
-- [inference-perf config](https://github.com/kubernetes-sigs/inference-perf/blob/main/docs/config.md) — config schema
-- [guidellm](https://github.com/vllm-project/guidellm) — guidellm harness
-- [vLLM](https://github.com/vllm-project/vllm) — model server
-- [vLLM benchmarks](https://github.com/vllm-project/vllm/tree/main/benchmarks) — vllm-benchmark harness
-- [vLLM docs](https://docs.vllm.ai) — vLLM reference
-- [vLLM OpenAI server](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html) — API endpoints
-- [vLLM automatic prefix caching](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching.html) — prefix cache
-- [vLLM data-parallel deployment](https://docs.vllm.ai/en/latest/serving/data_parallel_deployment/) — DP serving
-- [vLLM expert-parallel deployment](https://docs.vllm.ai/en/latest/serving/expert_parallel_deployment/) — wide-EP
-- [vLLM NIXL connector usage](https://docs.vllm.ai/en/stable/features/nixl_connector_usage/) — KV transfer
-- [InferenceMAX](https://github.com/InferenceMAX/InferenceMAX) — inferencemax harness
-- [NIXL](https://github.com/ai-dynamo/nixl) — KV-transfer lib
-- [LMCache](https://lmcache.ai) — KV offload backend
-- [LeaderWorkerSet docs](https://lws.sigs.k8s.io/docs/installation/) — multi-node serving
-- [kind](https://kind.sigs.k8s.io/) — local cluster
-- [kind v0.31 binary](https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64) — kind download
-- [helm install](https://helm.sh/docs/intro/install/) — Helm CLI
-- [helmfile](https://github.com/helmfile/helmfile) — helmfile CLI
-- [yq](https://github.com/mikefarah/yq) — YAML CLI
-- [stern](https://github.com/stern/stern) — multi-pod log tailing
-- [helm-diff plugin](https://github.com/databus23/helm-diff) — diff plugin
-- [HF security tokens](https://huggingface.co/docs/hub/en/security-tokens) — HF token setup
-- [Qwen3-32B](https://huggingface.co/Qwen/Qwen3-32B) — default guide model
-- [GKE inference gateway](https://cloud.google.com/kubernetes-engine/docs/how-to/deploy-gke-inference-gateway) — GKE provider
-- [GKE managed Prometheus](https://cloud.google.com/stackdriver/docs/managed-prometheus) — GMP
-- [istio](https://istio.io/) — gateway provider
-- [agentgateway](https://agentgateway.dev/) — gateway provider
-- [OpenTelemetry](https://opentelemetry.io/) — tracing standard
-- [OTel GenAI semconv](https://opentelemetry.io/docs/specs/semconv/gen-ai/) — span conventions
-- [PD-disaggregation paper](https://arxiv.org/html/2506.05508v1) — P/D background
-- [llm-d releases](https://github.com/llm-d/llm-d/releases) — version tracking
+- [llm-d main repo](https://github.com/llm-d/llm-d): core project
+- [llm-d docs site](https://www.llm-d.ai): project site/docs
+- [Quickstart guide](https://llm-d.ai/docs/getting-started/quickstart): getting started
+- [Optimized-baseline guide](https://llm-d.ai/docs/guides/optimized-baseline): recommended path
+- [llm-d prereqs README](https://github.com/llm-d/llm-d/blob/main/README.md#pre-requisites): prerequisites
+- [llm-d guides README](https://github.com/llm-d/llm-d/blob/main/guides/README.md): well-lit paths
+- [llm-d-benchmark repo](https://github.com/llm-d/llm-d-benchmark): benchmark CLI source
+- [benchmark install.sh](https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh): installer
+- [existing_stack run_only.sh](https://github.com/llm-d/llm-d-benchmark/blob/main/existing_stack/run_only.sh): run against existing stack
+- [Benchmark Report doc](https://github.com/llm-d/llm-d-benchmark/blob/main/docs/benchmark_report.md): v0.2 report spec
+- [analysis.ipynb](https://github.com/llm-d/llm-d-benchmark/blob/main/docs/analysis/analysis.ipynb): results notebook
+- [benchmark issues](https://github.com/llm-d/llm-d-benchmark/issues): bug tracker
+- [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra): infra charts
+- [llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice): modelservice chart
+- [llm-d-model-service](https://github.com/llm-d/llm-d-model-service.git): model service repo
+- [llm-d-router](https://github.com/llm-d/llm-d-router): EPP / router source
+- [llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler): scheduler / EPP
+- [scheduler ContextLengthAware](https://github.com/llm-d/llm-d-inference-scheduler/blob/main/docs/architecture.md#contextlengthaware): scorer doc
+- [llm-d-inference-sim](https://github.com/llm-d/llm-d-inference-sim): CPU model simulator
+- [llm-d-kv-cache](https://github.com/llm-d/llm-d-kv-cache): KV indexer/offload
+- [kv-cache architecture](https://github.com/llm-d/llm-d-kv-cache/blob/main/docs/architecture.md): KV design
+- [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner): capacity planner
+- [llm-d-latency-predictor](https://github.com/llm-d/llm-d-latency-predictor): predicted-latency routing
+- [workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler): WVA controller
+- [WVA guide](https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md): autoscaling setup
+- [router recipe](https://github.com/llm-d/llm-d/blob/main/guides/recipes/router/README.md): router values
+- [fast-model-actuation (FMA)](https://github.com/llm-d-incubation/llm-d-fast-model-actuation): fma deploy method
+- [batch-gateway](https://github.com/llm-d-incubation/batch-gateway): batch API
+- [llm-d-async](https://github.com/llm-d-incubation/llm-d-async): async processor
+- [llm-d-prism](https://github.com/llm-d/llm-d-prism): perf analysis
+- [Prism site](https://prism.llm-d.ai): results explorer
+- [gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension): GAIE CRDs/charts
+- [GAIE metrics & observability](https://gateway-api-inference-extension.sigs.k8s.io/guides/metrics-and-observability/): exposed metrics
+- [EPP protocol proposal](https://github.com/kubernetes-sigs/gateway-api-inference-extension/tree/main/docs/proposals/004-endpoint-picker-protocol): ext-proc spec
+- [inference_gateway.json dashboard](https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/tools/dashboards/inference_gateway.json): Grafana dashboard
+- [gateway-api](https://gateway-api.sigs.k8s.io/): Gateway API
+- [observability setup](https://github.com/llm-d/llm-d/blob/main/docs/operations/observability/setup.md): Prometheus/Grafana install
+- [observability promql](https://github.com/llm-d/llm-d/blob/main/docs/operations/observability/promql.md): query recipes
+- [observability tracing](https://github.com/llm-d/llm-d/blob/main/docs/operations/observability/tracing.md): OTel tracing
+- [Grafana dashboards](https://github.com/llm-d/llm-d/tree/main/guides/recipes/observability/grafana/dashboards): prebuilt dashboards
+- [running without Kubernetes](https://llm-d.ai/blog/running-llm-d-without-kubernetes): no-k8s mode
+- [predicted-latency blog](https://llm-d.ai/blog/predicted-latency-based-scheduling-for-llms): latency scheduling
+- [inference-perf](https://github.com/kubernetes-sigs/inference-perf): load harness
+- [inference-perf loadgen docs](https://github.com/kubernetes-sigs/inference-perf/blob/main/docs/loadgen.md): load generator
+- [inference-perf config](https://github.com/kubernetes-sigs/inference-perf/blob/main/docs/config.md): config schema
+- [guidellm](https://github.com/vllm-project/guidellm): guidellm harness
+- [vLLM](https://github.com/vllm-project/vllm): model server
+- [vLLM benchmarks](https://github.com/vllm-project/vllm/tree/main/benchmarks): vllm-benchmark harness
+- [vLLM docs](https://docs.vllm.ai): vLLM reference
+- [vLLM OpenAI server](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html): API endpoints
+- [vLLM automatic prefix caching](https://docs.vllm.ai/en/latest/features/automatic_prefix_caching.html): prefix cache
+- [vLLM data-parallel deployment](https://docs.vllm.ai/en/latest/serving/data_parallel_deployment/): DP serving
+- [vLLM expert-parallel deployment](https://docs.vllm.ai/en/latest/serving/expert_parallel_deployment/): wide-EP
+- [vLLM NIXL connector usage](https://docs.vllm.ai/en/stable/features/nixl_connector_usage/): KV transfer
+- [InferenceMAX](https://github.com/InferenceMAX/InferenceMAX): inferencemax harness
+- [NIXL](https://github.com/ai-dynamo/nixl): KV-transfer lib
+- [LMCache](https://lmcache.ai): KV offload backend
+- [LeaderWorkerSet docs](https://lws.sigs.k8s.io/docs/installation/): multi-node serving
+- [kind](https://kind.sigs.k8s.io/): local cluster
+- [kind v0.31 binary](https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64): kind download
+- [helm install](https://helm.sh/docs/intro/install/): Helm CLI
+- [helmfile](https://github.com/helmfile/helmfile): helmfile CLI
+- [yq](https://github.com/mikefarah/yq): YAML CLI
+- [stern](https://github.com/stern/stern): multi-pod log tailing
+- [helm-diff plugin](https://github.com/databus23/helm-diff): diff plugin
+- [HF security tokens](https://huggingface.co/docs/hub/en/security-tokens): HF token setup
+- [Qwen3-32B](https://huggingface.co/Qwen/Qwen3-32B): default guide model
+- [GKE inference gateway](https://cloud.google.com/kubernetes-engine/docs/how-to/deploy-gke-inference-gateway): GKE provider
+- [GKE managed Prometheus](https://cloud.google.com/stackdriver/docs/managed-prometheus): GMP
+- [istio](https://istio.io/): gateway provider
+- [agentgateway](https://agentgateway.dev/): gateway provider
+- [OpenTelemetry](https://opentelemetry.io/): tracing standard
+- [OTel GenAI semconv](https://opentelemetry.io/docs/specs/semconv/gen-ai/): span conventions
+- [PD-disaggregation paper](https://arxiv.org/html/2506.05508v1): P/D background
+- [llm-d releases](https://github.com/llm-d/llm-d/releases): version tracking
 
 ---
 ## Lower-relevance & skipped
@@ -398,99 +398,99 @@ Listed so no enumerated doc is silently dropped; ⭐ = low/background, — = ski
 ### llm-d-benchmark
 
 **Low (⭐):**
-- `CONTRIBUTING.md` — governance, but incidentally documents the install.sh bootstrap and a render-debug command we could surface.
-- `docs/analysis/to_be_incorporated/README.md` — staging one-off plotting script with no stable interface to depend on.
-- `llmdbenchmark/exceptions/README.md` — internal Python error hierarchy; we treat the CLI as a black box (exit codes/logs).
-- `llmdbenchmark/logging/README.md` — internal logging, but the combined log filenames/line format help us tail progress.
-- `llmdbenchmark/telemetry/README.md` — optional usage-reporting, relevant only to disable/route telemetry.
-- `skills/add-metadata-to-results-in-gcs/SKILL.md` — niche post-run GCS report backfill, outside our local/kind parse flow.
-- `util/experimental/multi-turn/README.md` — byte-identical duplicate of `experimental/multi-turn/README.md` (indexed at medium); listed here so the copy isn't silently dropped.
+- `CONTRIBUTING.md`: governance, but incidentally documents the install.sh bootstrap and a render-debug command we could surface.
+- `docs/analysis/to_be_incorporated/README.md`: staging one-off plotting script with no stable interface to depend on.
+- `llmdbenchmark/exceptions/README.md`: internal Python error hierarchy; we treat the CLI as a black box (exit codes/logs).
+- `llmdbenchmark/logging/README.md`: internal logging, but the combined log filenames/line format help us tail progress.
+- `llmdbenchmark/telemetry/README.md`: optional usage-reporting, relevant only to disable/route telemetry.
+- `skills/add-metadata-to-results-in-gcs/SKILL.md`: niche post-run GCS report backfill, outside our local/kind parse flow.
+- `util/experimental/multi-turn/README.md`: byte-identical duplicate of `experimental/multi-turn/README.md` (indexed at medium); listed here so the copy isn't silently dropped.
 
 **Skip (—):**
-- `.github/PULL_REQUEST_TEMPLATE/pull_request_template.md` — PR contribution meta; lifecycle order is already driven by our CLI calls.
-- `CODE_OF_CONDUCT.md` — Contributor Covenant boilerplate with zero bearing on the agent.
-- `PR_SIGNOFF.md` — DCO/GPG sign-off contributor process; nothing the agent acts on.
-- `SECURITY.md` — vulnerability-disclosure policy; no feature-building value.
-- `docs/faq.md` — empty stub ("To be populated.").
-- `docs/flexibility.md` — empty placeholder ("To be populated.").
-- `util/rbac_audit_report.md` — empty generated artifact (H1 only, no body).
+- `.github/PULL_REQUEST_TEMPLATE/pull_request_template.md`: PR contribution meta; lifecycle order is already driven by our CLI calls.
+- `CODE_OF_CONDUCT.md`: Contributor Covenant boilerplate with zero bearing on the agent.
+- `PR_SIGNOFF.md`: DCO/GPG sign-off contributor process; nothing the agent acts on.
+- `SECURITY.md`: vulnerability-disclosure policy; no feature-building value.
+- `docs/faq.md`: empty stub ("To be populated.").
+- `docs/flexibility.md`: empty placeholder ("To be populated.").
+- `util/rbac_audit_report.md`: empty generated artifact (H1 only, no body).
 
 ### llm-d
 
 **Low (⭐):**
-- `.github/workflows/README.md` — the nightly-name→guide table enumerates deploy guides, but the trigger mechanism is irrelevant.
-- `CONTRIBUTING.md` — governance, but its deploy-verification kubectl checks could be mirrored when verifying a deploy.
-- `SIGS.md` — governance, but the SIG table doubles as a directory of the canonical upstream repos.
-- `docs/api-reference/endpointpickerconfig.md` — deep EPP internals we don't author; only for flow-control/priority-band tuning.
-- `docs/api-reference/inferencemodelrewrite.md` — traffic-splitting CRD off the core benchmark path; only for canary/A-B variants.
-- `docs/architecture/README.md` — deep-dive index page; read once for vocabulary, not for deploy/CLI/report detail.
-- `docs/architecture/advanced/autoscaling/README.md` — explains mid-run replica changes to caveat throughput, but we don't drive it.
-- `docs/architecture/advanced/autoscaling/hpa-keda.md` — names EPP demand metrics, but autoscaler wiring is outside our lifecycle.
-- `docs/architecture/advanced/batch/README.md` — batch/offline serving, not the interactive path we benchmark.
-- `docs/architecture/advanced/batch/async-processor.md` — offline-dispatch component unrelated to standup/run/teardown.
-- `docs/architecture/advanced/batch/batch-gateway.md` — batch job lifecycle, a different surface from the online benchmark CLI.
-- `docs/architecture/advanced/disaggregation/README.md` — P/D internals aren't config we set; only to explain disaggregated-benchmark behavior.
-- `docs/architecture/advanced/disaggregation/operations-vllm.md` — deep vLLM/NIXL operational tuning far below our deploy-guide+CLI level.
-- `docs/architecture/advanced/kv-management/README.md` — orients the KV-cache feature set but holds no CLI/config/report detail.
-- `docs/architecture/advanced/kv-management/kv-indexer.md` — internal EPP routing-precision machinery; only to explain approximate vs precise differences.
-- `docs/architecture/advanced/kv-management/prefix-cache-aware-routing.md` — explains why cache hit rates affect TTFT, but the deploy choice comes from the guide.
-- `docs/architecture/core/router/README.md` — conceptual routing-layer overview; read just for Router/EPP/Inference-Gateway naming.
-- `docs/architecture/core/router/epp/README.md` — component-internal EPP architecture; we rely on guide defaults, not hand-built EPP pipelines.
-- `docs/architecture/core/router/epp/datalayer.md` — deep design of EPP metric collection we neither configure nor read at runtime.
-- `docs/infra-providers/README.md` — directory signpost with no CLI/deploy steps we would run.
-- `docs/infra-providers/minikube/README.md` — essentially empty (install steps TBD); not a deploy path we can drive.
-- `docs/infra-providers/openshift-aws/README.md` — external-link signposting only; real ROSA steps live in upstream RH/NVIDIA docs.
-- `docs/proposals/autoscaler.md` — design history; the current WVA/autoscaling docs matter more if we ever surface autoscaling.
-- `docs/proposals/batch-gateway.md` — org/migration meta for batch serving, marginal to interactive benchmarking.
-- `docs/proposals/coordinator.md` — future-design sandbox with no usable surface.
-- `docs/proposals/distributed-tracing.md` — design history; the canonical live config is observability/tracing.md.
-- `docs/proposals/inference-resilience-operator.md` — future design for an unbuilt operator we neither deploy nor benchmark.
-- `docs/proposals/llm-d-async.md` — org/migration meta for async messaging, outside the interactive-serving path.
-- `docs/proposals/llm-d-inference-payload-processor.md` — component-internal/migration meta; not a guide, CLI, or report schema.
-- `docs/proposals/llm-d-planner.md` — directional sibling (NL→SLO→deploy→benchmark), but a future design, not a tool/schema we consult.
-- `docs/proposals/llm-d-skills.md` — the upstream proposal that became the **`llm-d-skills`** repo, now ADOPTED: we consume its deploy/teardown/benchmark/compare/autoscale `SKILL.md` live via `knowledge/key_docs.yaml` (`fetch_key_docs(task='*_skill')`); the `knowledge/` adapters record how each runs through our tooling.
-- `docs/proposals/llm-d.md` — founding design orientation; the current architecture/getting-started docs are the canonical read.
-- `docs/proposals/modelservice.md` — superseded; the load-bearing bit is that model servers now deploy via guides/recipes Kustomize layers.
-- `docs/proposals/non-kubernetes-mode.md` — non-K8s direction out of scope; only background on K8s-overhead reproducibility.
-- `docs/proposals/prism-performance-analysis.md` — adjacent visualization UI we don't drive; useful only as a v0.1/v0.2 schema pointer.
-- `docs/proposals/rl-time-slicing-platform.md` — RL-training infra entirely outside our inference-benchmarking scope.
-- `docs/infrastructure/rdma/README.md` — advanced multi-node RDMA/disaggregation tuning irrelevant to kind/CPU deploys.
-- `docs/well-lit-paths/asynchronous-processing.md` — experimental async path we're unlikely to drive for non-experts.
-- `docs/well-lit-paths/experimental/batch-gateway.md` — experimental batch-API path; only its prereqs list is of marginal use.
-- `docs/well-lit-paths/no-kubernetes-deployment.md` — non-K8s path rarely relevant since we deploy on kind/real clusters.
-- `docs/well-lit-paths/wide-expert-parallelism.md` — heavyweight multi-node GPU path far outside the kind/non-expert scope.
-- `guides/asynchronous-processing/README.md` — experimental add-on serving pattern, not a benchmark workload we run.
-- `guides/asynchronous-processing/gcp-pubsub/README.md` — cloud-specific async backend wiring outside the benchmark CLI lifecycle.
-- `guides/asynchronous-processing/redis/README.md` — Redis async-queue backend wiring outside the benchmark lifecycle.
-- `guides/batch-gateway/README.md` — experimental batch-serving product, not inference-perf/fmperf benchmarking.
-- `guides/prereq/gateways/README.md` — 10-line directory index; the linked gateway guides carry the real content.
-- `guides/prereq/multi-node-serving/README.md` — only for large multi-node models a non-expert on kind would not run.
-- `guides/recipes/gateway/README.md` — 15-line pointer to the kustomize gateway recipes; minimal standalone value.
-- `guides/recipes/modelserver/components/disable-gke-nccl-tuner-patch/README.md` — narrow GKE+TP NCCL-tuner fix, noise for the kind/local path.
-- `guides/rollouts/README.md` — day-2 strategy overview; our core job is standup/benchmark/teardown.
-- `guides/rollouts/adapter-rollout.md` — specialized day-2 LoRA workflow, out of scope unless we add adapter-rollout.
-- `guides/rollouts/blue-green-update.md` — day-2 canary/upgrade strategy, background unless a blue-green feature is added.
-- `guides/tiered-prefix-cache/storage/manifests/backends/aws/README.md` — EKS-specific shared-storage plumbing, out of scope for kind/local.
-- `guides/tiered-prefix-cache/storage/manifests/backends/lustre/README.md` — GKE/GCP Lustre storage plumbing, out of scope for kind/local.
-- `guides/wide-ep-lws/experimental-dp-aware/README.md` — deep experimental EPP/vLLM scheduling internals with no benchmark integration yet.
-- `guides/workload-autoscaling/README.md` — chooser/overview page with no commands or report fields we act on.
-- `release/README.md` — gives the canonical guide list and ghcr image-tag pattern, but release mechanics are out of scope.
+- `.github/workflows/README.md`: the nightly-name→guide table enumerates deploy guides, but the trigger mechanism is irrelevant.
+- `CONTRIBUTING.md`: governance, but its deploy-verification kubectl checks could be mirrored when verifying a deploy.
+- `SIGS.md`: governance, but the SIG table doubles as a directory of the canonical upstream repos.
+- `docs/api-reference/endpointpickerconfig.md`: deep EPP internals we don't author; only for flow-control/priority-band tuning.
+- `docs/api-reference/inferencemodelrewrite.md`: traffic-splitting CRD off the core benchmark path; only for canary/A-B variants.
+- `docs/architecture/README.md`: deep-dive index page; read once for vocabulary, not for deploy/CLI/report detail.
+- `docs/architecture/advanced/autoscaling/README.md`: explains mid-run replica changes to caveat throughput, but we don't drive it.
+- `docs/architecture/advanced/autoscaling/hpa-keda.md`: names EPP demand metrics, but autoscaler wiring is outside our lifecycle.
+- `docs/architecture/advanced/batch/README.md`: batch/offline serving, not the interactive path we benchmark.
+- `docs/architecture/advanced/batch/async-processor.md`: offline-dispatch component unrelated to standup/run/teardown.
+- `docs/architecture/advanced/batch/batch-gateway.md`: batch job lifecycle, a different surface from the online benchmark CLI.
+- `docs/architecture/advanced/disaggregation/README.md`: P/D internals aren't config we set; only to explain disaggregated-benchmark behavior.
+- `docs/architecture/advanced/disaggregation/operations-vllm.md`: deep vLLM/NIXL operational tuning far below our deploy-guide+CLI level.
+- `docs/architecture/advanced/kv-management/README.md`: orients the KV-cache feature set but holds no CLI/config/report detail.
+- `docs/architecture/advanced/kv-management/kv-indexer.md`: internal EPP routing-precision machinery; only to explain approximate vs precise differences.
+- `docs/architecture/advanced/kv-management/prefix-cache-aware-routing.md`: explains why cache hit rates affect TTFT, but the deploy choice comes from the guide.
+- `docs/architecture/core/router/README.md`: conceptual routing-layer overview; read just for Router/EPP/Inference-Gateway naming.
+- `docs/architecture/core/router/epp/README.md`: component-internal EPP architecture; we rely on guide defaults, not hand-built EPP pipelines.
+- `docs/architecture/core/router/epp/datalayer.md`: deep design of EPP metric collection we neither configure nor read at runtime.
+- `docs/infra-providers/README.md`: directory signpost with no CLI/deploy steps we would run.
+- `docs/infra-providers/minikube/README.md`: essentially empty (install steps TBD); not a deploy path we can drive.
+- `docs/infra-providers/openshift-aws/README.md`: external-link signposting only; real ROSA steps live in upstream RH/NVIDIA docs.
+- `docs/proposals/autoscaler.md`: design history; the current WVA/autoscaling docs matter more if we ever surface autoscaling.
+- `docs/proposals/batch-gateway.md`: org/migration meta for batch serving, marginal to interactive benchmarking.
+- `docs/proposals/coordinator.md`: future-design sandbox with no usable surface.
+- `docs/proposals/distributed-tracing.md`: design history; the canonical live config is observability/tracing.md.
+- `docs/proposals/inference-resilience-operator.md`: future design for an unbuilt operator we neither deploy nor benchmark.
+- `docs/proposals/llm-d-async.md`: org/migration meta for async messaging, outside the interactive-serving path.
+- `docs/proposals/llm-d-inference-payload-processor.md`: component-internal/migration meta; not a guide, CLI, or report schema.
+- `docs/proposals/llm-d-planner.md`: directional sibling (NL→SLO→deploy→benchmark), but a future design, not a tool/schema we consult.
+- `docs/proposals/llm-d-skills.md`: the upstream proposal that became the **`llm-d-skills`** repo, now ADOPTED: we consume its deploy/teardown/benchmark/compare/autoscale `SKILL.md` live via `knowledge/key_docs.yaml` (`fetch_key_docs(task='*_skill')`); the `knowledge/` adapters record how each runs through our tooling.
+- `docs/proposals/llm-d.md`: founding design orientation; the current architecture/getting-started docs are the canonical read.
+- `docs/proposals/modelservice.md`: superseded; the load-bearing bit is that model servers now deploy via guides/recipes Kustomize layers.
+- `docs/proposals/non-kubernetes-mode.md`: non-K8s direction out of scope; only background on K8s-overhead reproducibility.
+- `docs/proposals/prism-performance-analysis.md`: adjacent visualization UI we don't drive; useful only as a v0.1/v0.2 schema pointer.
+- `docs/proposals/rl-time-slicing-platform.md`: RL-training infra entirely outside our inference-benchmarking scope.
+- `docs/infrastructure/rdma/README.md`: advanced multi-node RDMA/disaggregation tuning irrelevant to kind/CPU deploys.
+- `docs/well-lit-paths/asynchronous-processing.md`: experimental async path we're unlikely to drive for non-experts.
+- `docs/well-lit-paths/experimental/batch-gateway.md`: experimental batch-API path; only its prereqs list is of marginal use.
+- `docs/well-lit-paths/no-kubernetes-deployment.md`: non-K8s path rarely relevant since we deploy on kind/real clusters.
+- `docs/well-lit-paths/wide-expert-parallelism.md`: heavyweight multi-node GPU path far outside the kind/non-expert scope.
+- `guides/asynchronous-processing/README.md`: experimental add-on serving pattern, not a benchmark workload we run.
+- `guides/asynchronous-processing/gcp-pubsub/README.md`: cloud-specific async backend wiring outside the benchmark CLI lifecycle.
+- `guides/asynchronous-processing/redis/README.md`: Redis async-queue backend wiring outside the benchmark lifecycle.
+- `guides/batch-gateway/README.md`: experimental batch-serving product, not inference-perf/fmperf benchmarking.
+- `guides/prereq/gateways/README.md`: 10-line directory index; the linked gateway guides carry the real content.
+- `guides/prereq/multi-node-serving/README.md`: only for large multi-node models a non-expert on kind would not run.
+- `guides/recipes/gateway/README.md`: 15-line pointer to the kustomize gateway recipes; minimal standalone value.
+- `guides/recipes/modelserver/components/disable-gke-nccl-tuner-patch/README.md`: narrow GKE+TP NCCL-tuner fix, noise for the kind/local path.
+- `guides/rollouts/README.md`: day-2 strategy overview; our core job is standup/benchmark/teardown.
+- `guides/rollouts/adapter-rollout.md`: specialized day-2 LoRA workflow, out of scope unless we add adapter-rollout.
+- `guides/rollouts/blue-green-update.md`: day-2 canary/upgrade strategy, background unless a blue-green feature is added.
+- `guides/tiered-prefix-cache/storage/manifests/backends/aws/README.md`: EKS-specific shared-storage plumbing, out of scope for kind/local.
+- `guides/tiered-prefix-cache/storage/manifests/backends/lustre/README.md`: GKE/GCP Lustre storage plumbing, out of scope for kind/local.
+- `guides/wide-ep-lws/experimental-dp-aware/README.md`: deep experimental EPP/vLLM scheduling internals with no benchmark integration yet.
+- `guides/workload-autoscaling/README.md`: chooser/overview page with no commands or report fields we act on.
+- `release/README.md`: gives the canonical guide list and ghcr image-tag pattern, but release mechanics are out of scope.
 
 **Skip (—):**
-- `.github/ISSUE_TEMPLATE/new-release.md` — release-meta; the agent never cuts releases or pushes tags.
-- `.github/workflows/link-checker.md` — repo CI doc-link checker with no bearing on benchmarks or deploys.
-- `.github/workflows/typo-checker.md` — repo CI meta; its domain-term glossary isn't actionable for us.
-- `.github/workflows/upstream-monitor.md` — repo maintenance automation; does nothing for the agent.
-- `ADOPTERS.md` — marketing/community roster with no technical content.
-- `CODE_OF_CONDUCT.md` — governance boilerplate with no technical relevance.
-- `MAINTAINERS.md` — people/governance roster the agent never uses.
-- `ONBOARDING.md` — org-membership governance with no deployment content.
-- `PROJECT.md` — governance meta on how the project is run.
-- `PR_SIGNOFF.md` — contributor git mechanics irrelevant to the agent.
-- `SECURITY-INSIGHTS.md` — security/compliance metadata manifest not consumed by the agent.
-- `SECURITY.md` — security-disclosure policy with no deploy/benchmark content.
-- `SECURITY_CONTACTS.md` — contact roster meta with no agent relevance.
-- `THREAT-MODEL.md` — empty placeholder with no usable content.
-- `docs/proposals/PROPOSAL_TEMPLATE.md` — meta scaffolding with no feature/CLI/deploy content.
-- `guides/wide-ep-lws/experimental-dp-aware/benchmarks/README.md` — near-empty placeholder; benchmarking isn't integrated yet.
-- `scripts/ENVVARS.md` — internal contributor dev-tooling convention for upstream's own build scripts.
+- `.github/ISSUE_TEMPLATE/new-release.md`: release-meta; the agent never cuts releases or pushes tags.
+- `.github/workflows/link-checker.md`: repo CI doc-link checker with no bearing on benchmarks or deploys.
+- `.github/workflows/typo-checker.md`: repo CI meta; its domain-term glossary isn't actionable for us.
+- `.github/workflows/upstream-monitor.md`: repo maintenance automation; does nothing for the agent.
+- `ADOPTERS.md`: marketing/community roster with no technical content.
+- `CODE_OF_CONDUCT.md`: governance boilerplate with no technical relevance.
+- `MAINTAINERS.md`: people/governance roster the agent never uses.
+- `ONBOARDING.md`: org-membership governance with no deployment content.
+- `PROJECT.md`: governance meta on how the project is run.
+- `PR_SIGNOFF.md`: contributor git mechanics irrelevant to the agent.
+- `SECURITY-INSIGHTS.md`: security/compliance metadata manifest not consumed by the agent.
+- `SECURITY.md`: security-disclosure policy with no deploy/benchmark content.
+- `SECURITY_CONTACTS.md`: contact roster meta with no agent relevance.
+- `THREAT-MODEL.md`: empty placeholder with no usable content.
+- `docs/proposals/PROPOSAL_TEMPLATE.md`: meta scaffolding with no feature/CLI/deploy content.
+- `guides/wide-ep-lws/experimental-dp-aware/benchmarks/README.md`: near-empty placeholder; benchmarking isn't integrated yet.
+- `scripts/ENVVARS.md`: internal contributor dev-tooling convention for upstream's own build scripts.
