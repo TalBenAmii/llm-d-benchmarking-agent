@@ -6,7 +6,7 @@ what you want in plain language and the agent does the rest, asking for your app
 anything changes your system.
 
 For installing/running the agent, see [`DEPLOYMENT.md`](DEPLOYMENT.md). For what's under the
-hood, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+hood, see [`ARCHITECTURE.md`](../reference/ARCHITECTURE.md).
 
 ## What it does
 
@@ -114,12 +114,12 @@ benchmark keeps running in the background and its result shows up when you retur
 | "LLM provider not configured" | No API key in `.env`. Add `ANTHROPIC_API_KEY` (or OpenAI-compatible creds) and restart. |
 | `install_prereqs.sh` can't install Docker | It needs root or passwordless sudo; on WSL the Docker daemon may not auto-start. The agent relays the exact message: start Docker yourself and re-probe. |
 | Standup fails with OOM / won't load | Ask for a capacity pre-flight first ("will this fit?"); use a lighter model/spec. |
-| "command denied by allowlist" | The agent tried something outside the deny-by-default policy. That's the safety net working; widening it is a reviewed config change (see [`API.md`](API.md)). |
+| "command denied by allowlist" | The agent tried something outside the deny-by-default policy. That's the safety net working; widening it is a reviewed config change (see [`API.md`](../reference/API.md)). |
 | A run seems stuck | Use `observe_run_metrics` to see live CPU/memory; orchestrated runs are wall-clock bounded and classify timeouts/OOM/eviction automatically. |
 
 ## Want to change how the agent reasons?
 
-The agent's judgment lives in editable Markdown/YAML under [`knowledge/`](../knowledge/):
+The agent's judgment lives in editable Markdown/YAML under [`knowledge/`](../../knowledge/):
 playbooks, heuristics, and interpretation guides. Editing those changes the agent's behavior
 without touching code. The mechanism (security, validation, the tools) is fixed; the brain is
 yours to tune.

@@ -66,7 +66,7 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
     kernel-level `timeout`, so a stuck flow is killed, logged `TIMEOUT`, and the run continues. The
     in-process per-call watchdog (`LLM_EVAL_CALL_TIMEOUT`) and per-flow cap (`LLM_EVAL_FLOW_TIMEOUT`)
     are first-line only and DEFEATABLE (a frozen event loop never fires them; the shared SDK subprocess
-    can deadlock between flows) — the force-kill mechanics + full rationale live in `docs/VALIDATION.md`
+    can deadlock between flows) — the force-kill mechanics + full rationale live in `docs/reference/VALIDATION.md`
     §"Isolated eval runner". `FLOWS="a b"` runs a subset; logs → `workspace/eval-logs/`; ⚠️ in a
     worktree set `REPOS_DIR` to the primary checkout (empty siblings).
   - **`load_tools` group scoring** (`score_flow`): the live eval verifies the model loaded the

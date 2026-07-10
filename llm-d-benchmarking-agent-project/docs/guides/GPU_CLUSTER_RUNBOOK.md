@@ -169,7 +169,7 @@ Notes:
    `~/.kube/config` already points at minikube. (Set `HF_TOKEN` only for a gated model.)
 
 2. **Start the app**: `./scripts/run.sh` (or any launch path from the
-   [root README quickstart](../../README.md#quick-start) / [`DEPLOYMENT.md`](DEPLOYMENT.md)); it
+   [root README quickstart](../../../README.md#quick-start) / [`DEPLOYMENT.md`](DEPLOYMENT.md)); it
    comes up at http://127.0.0.1:8000.
 
 3. **Drive the real GPU run.** The agent defaults to the `cicd/kind` quickstart, so be explicit
@@ -252,5 +252,5 @@ point the agent at one with `KUBECONFIG=…` and the same flow applies.
   hands-on companion for making it real on a small GPU.
 - `knowledge/vllm_overrides.md`: the per-knob scenario-override guide (the judgment behind §3).
 - `knowledge/capacity.md` / `knowledge/accelerators.yaml`: GPU sizing + accelerator detection.
-- `docs/INTERACTIVE_TEST_GUIDE.md`: the by-hand feature walk-through (CPU/kind oriented; this runbook
+- `docs/guides/INTERACTIVE_TEST_GUIDE.md`: the by-hand feature walk-through (CPU/kind oriented; this runbook
   is its GPU counterpart).

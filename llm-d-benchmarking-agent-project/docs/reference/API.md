@@ -3,9 +3,9 @@
 Two interfaces: the HTTP/WebSocket API the browser (or any client) speaks to the
 backend, and the agent tool surface, the schema-validated tools that are the LLM's
 entire set of actions. The tool input schemas are defined in the
-[`app/tools/schemas/`](../app/tools/schemas/) package (the single source of truth, emitted to
+[`app/tools/schemas/`](../../app/tools/schemas/) package (the single source of truth, emitted to
 the LLM as JSON Schema); the registry and descriptions live in
-[`app/tools/registry.py`](../app/tools/registry.py).
+[`app/tools/registry.py`](../../app/tools/registry.py).
 
 ---
 
@@ -181,7 +181,7 @@ Every tool call is validated against its Pydantic input model before the handler
 ## The `SessionPlan` (determinism gate b)
 
 The structured contract the agent proposes and the user approves before any deployment
-([`app/validation/session_plan.py`](../app/validation/session_plan.py)). Every enum field is
+([`app/validation/session_plan.py`](../../app/validation/session_plan.py)). Every enum field is
 cross-checked against the live catalog before the card is shown.
 
 | Field | Type | Notes |

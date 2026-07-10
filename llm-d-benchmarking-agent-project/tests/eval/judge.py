@@ -12,7 +12,7 @@ Quota: only :func:`judge_session` spends quota, and only when called from the OP
 Provider call: we reuse the existing ``get_provider(...).chat(...)`` signature unchanged (no
 ``temperature``/JSON-mode kwarg threaded through the providers) so the agent's prompt-cache
 byte-stability is untouched — the JSON-only, low-variance contract is carried entirely in the
-prompt. See ``docs/VALIDATION.md``.
+prompt. See ``docs/reference/VALIDATION.md``.
 """
 from __future__ import annotations
 

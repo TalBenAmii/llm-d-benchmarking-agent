@@ -46,7 +46,7 @@ Three boundaries matter:
    command; it cannot widen what is allowed or auto-run a mutation.
 3. **Backend ↔ host/cluster.** Commands run as argv lists with `shell=False`, a scrubbed
    environment, and a timeout (`app/security/runner.py`). In-cluster, the deploy grants a
-   namespaced least-privilege Role (see `docs/DEPLOYMENT.md` and the packaging contract).
+   namespaced least-privilege Role (see `docs/guides/DEPLOYMENT.md` and the packaging contract).
 
 ## The allowlist + approval model (the core control)
 
@@ -106,7 +106,7 @@ Every validated command is executed by `CommandRunner`:
   leak into a log line. The auth token is constant-time compared and never logged.
 - **In-cluster**, secrets are mounted from a Kubernetes `Secret` via `secretKeyRef` (never
   inline manifest values); the Helm chart manages the Secret from values, or points at a
-  pre-existing one via `secret.existingSecret`. See `docs/DEPLOYMENT.md`.
+  pre-existing one via `secret.existingSecret`. See `docs/guides/DEPLOYMENT.md`.
 
 ## Network exposure (pairs with Phase 12: auth + rate-limit + CORS)
 
@@ -137,7 +137,7 @@ acceptable:
   agent can create/delete kind clusters, build images, and `kubectl apply` Jobs.
 - **In-cluster, grant only the namespaced least-privilege Role** the deploy ships (the exact
   kubectl verbs `RealKubeClient` uses; no `*`, no `secrets`/`exec`, no cluster scope). See the
-  packaging contract and `docs/DEPLOYMENT.md`.
+  packaging contract and `docs/guides/DEPLOYMENT.md`.
 - **Isolate the target cluster.** Point the agent at a throwaway/dev cluster (the `cicd/kind`
   quickstart path) for experimentation; do not aim it at production from an untrusted prompt
   source.

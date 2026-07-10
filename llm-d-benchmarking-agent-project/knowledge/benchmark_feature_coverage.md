@@ -60,4 +60,4 @@ user-centric steady-state mode), so `read_knowledge('multi_harness')` for the pe
 capabilities before telling a user a harness can't do something. For the live, harness-scoped workload set, see
 `usecase_to_profile.yaml` / `list_catalog` — that is the source of truth for what's runnable.
 
-Full catalog: docs/BENCHMARK_FEATURE_COVERAGE.md
+Full catalog: docs/reference/BENCHMARK_FEATURE_COVERAGE.md

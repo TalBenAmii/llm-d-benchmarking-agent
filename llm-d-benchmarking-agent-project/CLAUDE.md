@@ -13,7 +13,7 @@ user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, 
 ## Non-negotiable rules (always apply)
 1. **`llm-d/` + `llm-d-benchmark/` + `llm-d-skills/` are READ-ONLY** upstream repos — read their
    docs/specs/schemas/skills and shell out to their CLI; never edit (clone if missing). Hard-enforced
-   by `permissions.deny`. (How the skills library is wired into the agent → `docs/UPSTREAM_REUSE_PATHS.md`.)
+   by `permissions.deny`. (How the skills library is wired into the agent → `docs/reference/UPSTREAM_REUSE_PATHS.md`.)
 2. **All new code lives under `llm-d-benchmarking-agent-project/` only** — except the split-out
    **`llm-d-bench-mcp/`** repo (the standalone MCP server; an OWNED sibling of this project, its own
    git repo — see the monorepo-root `CLAUDE.md` map).
@@ -56,26 +56,26 @@ llm-d-benchmarking-agent-project/
 ├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ ui/                   static chat UI (index.html, app.js, styles.css)
-├─ docs/                 documentation (README index + FEATURES.md inventory + CONTEXT.md glossary + TODO.md backlog + history/ design archive + images/ UI stills)
+├─ docs/                 documentation (README index + guides/ how-to · reference/ API·ARCHITECTURE·FEATURES·CONTEXT · project/ CHANGELOG·TODO·CONTRIBUTING·CONFIG_AUDIT_LOG + history/ design archive + images/ UI stills)
 └─ workspace/            gitignored runtime scratch (per-session state, generated configs, logs)
 ```
 Knowledge is loaded by `app/config.py` + `app/agent/prompt.py` from the root `knowledge/` dir — there is
 no `app/knowledge/` package.
 
 ## Reference — fetch on demand (NOT inlined here)
-- **What's built / status / feature set** → `docs/FEATURES.md` (read first; how to verify each) + `docs/PROJECT_BRAIN_REFERENCE.md`; gaps → the DEFERRED phases in `docs/FEATURES.md`
+- **What's built / status / feature set** → `docs/reference/FEATURES.md` (read first; how to verify each) + `docs/reference/PROJECT_BRAIN_REFERENCE.md`; gaps → the DEFERRED phases in `docs/reference/FEATURES.md`
 - **Coding conventions** (+ what the finish-time review checks) → **`coding-guidelines`** skill
 - **Finish loop** (commit → review → `--no-ff` merge to main; the `main`-only git hook gates ruff+pytest) → **`finish-implementation`** skill
 - **Test env + run commands + gotchas** → `tests/CLAUDE.md`
-- **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/UPSTREAM_REUSE_PATHS.md`
-- **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `docs/CONTEXT.md`
-- **Full doc map** → `docs/README.md`; **run-locally quickstart** → root `README.md` / `docs/DEPLOYMENT.md`
-- **SIMULATE=1** — dry-run toggle (walk the whole workflow; read-only commands run for real, mutations no-op) → `docs/CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
+- **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/reference/UPSTREAM_REUSE_PATHS.md`
+- **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `docs/reference/CONTEXT.md`
+- **Full doc map** → `docs/README.md`; **run-locally quickstart** → root `README.md` / `docs/guides/DEPLOYMENT.md`
+- **SIMULATE=1** — dry-run toggle (walk the whole workflow; read-only commands run for real, mutations no-op) → `docs/reference/CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
 
 ## Capturing recurring conclusions (standing instruction to future-me)
 When you derive a conclusion you'd otherwise re-investigate later (env/build gotchas, locked decisions),
 put it where it belongs — tightly: a **folder-level fact** → that folder's `CLAUDE.md`; a **cross-cutting
 rule** → the right skill / global `~/.claude/CLAUDE.md`; **status / reference** →
-`docs/PROJECT_BRAIN_REFERENCE.md`; a **dated config/model-drift audit entry** → `docs/CONFIG_AUDIT_LOG.md`.
+`docs/reference/PROJECT_BRAIN_REFERENCE.md`; a **dated config/model-drift audit entry** → `docs/project/CONFIG_AUDIT_LOG.md`.
 Keep THIS file a map (structure + non-negotiables + pointers only).
 Consolidate, don't duplicate.

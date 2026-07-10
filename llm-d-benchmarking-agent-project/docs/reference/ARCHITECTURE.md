@@ -12,12 +12,12 @@ boundaries, and the two invariants that keep the system safe and reliable.
 
 ## The two governing principles
 
-Everything below follows from two rules (see [`CLAUDE.md`](../CLAUDE.md)):
+Everything below follows from two rules (see [`CLAUDE.md`](../../CLAUDE.md)):
 
 1. **Thin code, thick agent.** Python is mechanism only: a chat UI, an agent loop, a
    set of tools, a command allowlist, and schema validation. All judgment (which
    spec/harness/workload to use, what flags to pass, how to read a result) lives in the LLM
-   plus editable Markdown/YAML under [`knowledge/`](../knowledge/). There are no
+   plus editable Markdown/YAML under [`knowledge/`](../../knowledge/). There are no
    `if/elif` decision branches encoding benchmarking expertise in Python.
 2. **Determinism via validation, not scripting.** The LLM is free-form, so the system is
    constrained at its boundaries: tool-call arguments validated against schemas, a
@@ -173,7 +173,7 @@ tool, which reads live cluster CPU/memory via `kubectl top`.)
 ### Packaging: `Dockerfile` + `deploy/` + `app/packaging/`
 A hardened non-root image and a one-command Helm chart that renders the
 Deployment + Service + ServiceAccount + a namespaced least-privilege Role/RoleBinding
-granting exactly the `kubectl` verbs `RealKubeClient` uses. See [`DEPLOYMENT.md`](DEPLOYMENT.md)
+granting exactly the `kubectl` verbs `RealKubeClient` uses. See [`DEPLOYMENT.md`](../guides/DEPLOYMENT.md)
 and `knowledge/packaging.md`.
 
 ## The four determinism gates
@@ -228,6 +228,6 @@ and `knowledge/packaging.md`.
 ## Where to go next
 
 - Tool & HTTP/WS reference: [`API.md`](API.md)
-- Deploying to Kubernetes: [`DEPLOYMENT.md`](DEPLOYMENT.md)
-- Using the agent end-to-end: [`USER_GUIDE.md`](USER_GUIDE.md)
+- Deploying to Kubernetes: [`DEPLOYMENT.md`](../guides/DEPLOYMENT.md)
+- Using the agent end-to-end: [`USER_GUIDE.md`](../guides/USER_GUIDE.md)
 - Flow validation (does the agent run the right commands?): [`VALIDATION.md`](VALIDATION.md)

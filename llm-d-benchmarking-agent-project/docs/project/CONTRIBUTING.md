@@ -19,7 +19,7 @@ The security policy is data (`security/allowlist.yaml`); `app/security/allowlist
 pure validator with no per-command knowledge. You widen what the agent can run by editing the
 YAML, never by adding a per-command branch in Python. Commands run as argv lists with
 `shell=False`; read-only probes auto-run, mutating commands require explicit approval. See
-`docs/SECURITY.md` for the full model.
+`docs/reference/SECURITY.md` for the full model.
 
 A change that adds a Python special-case for one command, or hard-codes a benchmarking
 decision, will be rejected on principle even if it "works."
@@ -95,7 +95,7 @@ call it lives in the prompt + `knowledge/`.
 ## How to add a flow
 
 A "flow" is an end-to-end conversation path (probe → plan → deploy → run → analyze). Flows
-are validated by the harness in `tests/flows/` (see `docs/VALIDATION.md`): a scripted
+are validated by the harness in `tests/flows/` (see `docs/reference/VALIDATION.md`): a scripted
 provider drives the agent and the harness asserts the right commands were issued (captured,
 not executed) and the right tools were called in order. Add a flow scenario there rather than
 a bespoke integration test.
@@ -121,7 +121,7 @@ implementing one:
   deliberately small (the metrics exporter is hand-rolled rather than pulling
   `prometheus_client`, for example). Dev-only tooling is the exception.
 - Secrets never reach the browser, child processes (LLM/auth keys), or logs. See
-  `docs/SECURITY.md`.
+  `docs/reference/SECURITY.md`.
 - Fail loudly on a misconfiguration (e.g. a missing repo path, a malformed allowlist) rather
   than silently degrading.
 

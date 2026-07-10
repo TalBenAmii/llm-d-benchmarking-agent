@@ -3,12 +3,12 @@
 All notable changes to the **llm-d Benchmarking Agent** are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Versions correspond to the
-phased build-out, now summarized in [`FEATURES.md`](FEATURES.md) (the live feature
+phased build-out, now summarized in [`FEATURES.md`](../reference/FEATURES.md) (the live feature
 inventory), whose DEFERRED phases track the remaining work.
 
 ## [Unreleased] - v4: benchmark/deploy-coverage gaps + UX (Roadmap v4)
 
-Post-v3 work tracked live in [`FEATURES.md`](FEATURES.md);
+Post-v3 work tracked live in [`FEATURES.md`](../reference/FEATURES.md);
 the only outstanding roadmap items are the 7 DEFERRED phases. The agent tool surface has grown from
 22 to **36 tools** (`app/tools/registry.py` is authoritative). Landed since v3 (representative, not
 exhaustive; see `FEATURES.md` for the evidence-backed inventory): interactive spec + workload
@@ -145,10 +145,10 @@ changing its core behavior.
   `extra="forbid"`); a malformed frame yields a structured `protocol_error` and the socket stays
   alive. A bounded per-turn live ring buffer lets a client reconnecting mid-turn replay the
   missed stream and continue live.
-- **Operability docs + Prometheus alert rules** (Phase 17). `docs/SECURITY.md` (threat model:
+- **Operability docs + Prometheus alert rules** (Phase 17). `docs/reference/SECURITY.md` (threat model:
   trust boundaries, the allowlist/approval model, secret scrubbing, network-exposure guidance),
-  `docs/TROUBLESHOOTING.md` (symptom → what to check, debug mode, which logs to read),
-  `docs/CONTRIBUTING.md` (how to add a tool/flow/phase; the two laws; the hermetic-test rule),
+  `docs/guides/TROUBLESHOOTING.md` (symptom → what to check, debug mode, which logs to read),
+  `docs/project/CONTRIBUTING.md` (how to add a tool/flow/phase; the two laws; the hermetic-test rule),
   and this changelog. Ships `deploy/observability/alerts.rules.yaml`, Prometheus alert rules
   over the existing metrics (slow commands, elevated run-failure / fault rates, stuck in-flight
   runs, target down).

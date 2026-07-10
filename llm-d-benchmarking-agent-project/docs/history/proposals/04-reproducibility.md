@@ -109,7 +109,7 @@ New `app/packaging/report_card.py` (`app/packaging/` exists) holds `render_repor
 Add `ExportRunBundleInput` + `ReproduceRunInput` (gate 2). Field descriptions cue `read_knowledge('reproducibility')`.
 
 ### 4.4 Changed: `app/tools/registry.py`
-Import `reproducibility`; two `_DESCRIPTIONS` entries (cue `read_knowledge('reproducibility')` + the dry-run-first sequence); two `ToolSpec` rows. (These two tools landed; the registry now exposes **36 tools** total. As built, count refs were updated in `CLAUDE.md`, `app/tools/CLAUDE.md`, `docs/API.md`, `FEATURES.md`.)
+Import `reproducibility`; two `_DESCRIPTIONS` entries (cue `read_knowledge('reproducibility')` + the dry-run-first sequence); two `ToolSpec` rows. (These two tools landed; the registry now exposes **36 tools** total. As built, count refs were updated in `CLAUDE.md`, `app/tools/CLAUDE.md`, `docs/reference/API.md`, `FEATURES.md`.)
 
 ### 4.5 New knowledge: `knowledge/reproducibility.md` (judgment, on-demand)
 When to offer a bundle; how to explain dirty-repo caveats to non-experts; the exact reproduce sequence (generate-config → bundle → for replay: propose_session_plan → dry-run → approve `-c`); env-drift caveats; the boundary that `-c` is run-only (needs a live stack — cross-ref `read_knowledge('runconfig_roundtrip')`). On-demand only — NOT CORE.

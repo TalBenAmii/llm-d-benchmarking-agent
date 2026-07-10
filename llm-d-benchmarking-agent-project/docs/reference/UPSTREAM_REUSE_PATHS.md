@@ -34,4 +34,4 @@ reproducibility). It's still independently versioned, so `ensure_repos`' `ref` i
   runbook (`knowledge/quickstart_playbook.md`, served on demand via a `kind: knowledge`
   `key_docs.yaml` entry, a `knowledge/` file delivered through `fetch_key_docs` exactly like these
   guides); every other op grounds in its `*_skill`. WVA autoscaling is description-driven (no command
-  chokepoint, so no gate). Mechanism detail + how-to-verify → `docs/FEATURES.md` §8.
+  chokepoint, so no gate). Mechanism detail + how-to-verify → `docs/reference/FEATURES.md` §8.
