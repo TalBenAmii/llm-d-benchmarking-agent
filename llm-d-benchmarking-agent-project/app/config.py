@@ -46,8 +46,7 @@ class Settings(BaseSettings):
     # deep-reasoning level) and ``thinking`` selects the extended-thinking mode — "adaptive"
     # (Claude decides when/how much to think, exactly what Sonnet 4.6 in Claude Code uses), a
     # positive integer (a fixed per-turn thinking-token budget, forces thinking every turn), or
-    # "off"/"disabled" to turn extended thinking off. When thinking is active the agent loop
-    # captures the model's reasoning into the per-session trace (see app/observability/cot_trace.py).
+    # "off"/"disabled" to turn extended thinking off.
     # Bound via AGENT_SDK_EFFORT/AGENT_SDK_THINKING or the provider-neutral LLM_EFFORT/LLM_THINKING
     # aliases — so an .env that set LLM_EFFORT actually takes effect instead of silently using the
     # default.
