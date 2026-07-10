@@ -176,7 +176,7 @@ def test_experiment_local_output_still_accepted(allowlist, catalog):
 def test_cloud_results_sink_knowledge_is_discoverable():
     from pathlib import Path
 
-    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "cloud_results_sink.md"
+    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "run/cloud_results_sink.md"
     assert kfile.is_file(), "knowledge/cloud_results_sink.md must exist (auto-indexed by prompt glob)"
     text = kfile.read_text().lower()
     # It must carry the do-you-have-a-bucket / default-local judgment, not just mention the flag.

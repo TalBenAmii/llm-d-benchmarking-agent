@@ -353,7 +353,7 @@ def test_local_history_store_is_untouched():
 def test_history_knowledge_documents_the_two_stores():
     from pathlib import Path
 
-    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "history.md"
+    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "persistence/history.md"
     text = kfile.read_text().lower()
     # It must explain the CLI store, its independence from the local store, and WHEN to use it.
     assert "results store" in text

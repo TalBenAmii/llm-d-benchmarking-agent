@@ -250,7 +250,7 @@ def test_infra_providers_knowledge_loads_via_read_knowledge(tool_ctx):
 def test_python_label_table_mirrors_knowledge_detection_table():
     """The Python _PROVIDER_LABEL_HINTS table is a MIRROR of the knowledge file's detection map —
     they must stay in lockstep so the mechanism never diverges from the documented mapping."""
-    data = yaml.safe_load(_read_knowledge_file("knowledge/infra_providers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/infra_providers.yaml"))
     knowledge_pairs = {
         (e["prefix"], e["provider"]) for e in data["detection"]["label_prefix_to_provider"]
     }
@@ -260,7 +260,7 @@ def test_python_label_table_mirrors_knowledge_detection_table():
 
 
 def test_infra_providers_carries_oc_vs_kubectl_cli_judgment():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/infra_providers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/infra_providers.yaml"))
     by_provider = data["cli"]["by_provider"]
     assert by_provider["openshift"]["cli"] == "oc"
     for prov in ("gke", "doks", "aks", "kind"):
@@ -269,7 +269,7 @@ def test_infra_providers_carries_oc_vs_kubectl_cli_judgment():
 
 
 def test_infra_providers_carries_gpu_tolerations_per_provider():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/infra_providers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/infra_providers.yaml"))
     tol = data["gpu_tolerations"]
     # OpenShift: an Equal+value toleration for the value-bearing L40S taint.
     osp = tol["openshift"]["toleration_value_bearing"]
@@ -282,7 +282,7 @@ def test_infra_providers_carries_gpu_tolerations_per_provider():
 
 def test_infra_providers_flags_gke_known_issues_gmp_undetected_nvshmem():
     """The GKE known-issue notes the acceptance criterion names: GMP, 'Undetected platform', NVSHMEM."""
-    data = yaml.safe_load(_read_knowledge_file("knowledge/infra_providers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/infra_providers.yaml"))
     gke_ids = {i["id"] for i in data["known_issues"]["gke"]}
     assert "google-managed-prometheus" in gke_ids
     assert "undetected-platform-vllm-0.10.0" in gke_ids
@@ -290,7 +290,7 @@ def test_infra_providers_flags_gke_known_issues_gmp_undetected_nvshmem():
 
 
 def test_infra_providers_flags_openshift_servicemesh_conflict():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/infra_providers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/infra_providers.yaml"))
     gw = data["gateway"]["openshift_servicemesh_conflict"]
     assert "ServiceMesh" in gw["symptom"] or "Istio" in gw["symptom"]
     assert "ServiceMesh" in gw["advice"] or "Istio" in gw["advice"]

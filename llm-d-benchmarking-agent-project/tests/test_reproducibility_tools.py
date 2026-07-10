@@ -273,5 +273,5 @@ def test_knowledge_file_exists_and_is_on_demand(tool_ctx):
     from app.agent.prompt import CORE_KNOWLEDGE
 
     kdir = tool_ctx.settings.knowledge_dir
-    assert (kdir / "reproducibility.md").is_file()
+    assert (kdir / "persistence/reproducibility.md").is_file()
     assert "reproducibility.md" not in CORE_KNOWLEDGE

@@ -16,7 +16,7 @@ from app.tools import knowledge_access
 
 
 def _docs():
-    path = get_settings().knowledge_dir / "key_docs.yaml"
+    path = get_settings().knowledge_dir / "reference/key_docs.yaml"
     return yaml.safe_load(path.read_text())["docs"]
 
 

@@ -70,7 +70,7 @@ def _stat(metric: Any) -> dict[str, Any] | None:
 # candidate, NEVER fabricating a value the report doesn't carry (thin code / thick agent).
 
 _STANDARD_METRICS_CATALOG = (
-    Path(__file__).resolve().parents[2] / "knowledge" / "standard_metrics.yaml"
+    Path(__file__).resolve().parents[2] / "knowledge" / "analysis" / "standard_metrics.yaml"
 )
 
 

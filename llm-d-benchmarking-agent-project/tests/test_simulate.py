@@ -204,10 +204,10 @@ def test_simulate_note_carries_honesty_cues(tmp_path):
     # (b) a simulated mutation's outcome is synthetic — never narrate it as deployed/benchmarked
     assert "nothing was actually deployed or benchmarked" in low
     # and a pointer to the full rule so the model can load the rest on demand
-    assert "knowledge/sim_integration.md" in on_prompt
+    assert "knowledge/reference/sim_integration.md" in on_prompt
     # entirely absent when SIMULATE is off (it rides on SIMULATE_NOTE)
     assert "real host state" not in off_prompt.lower()
-    assert "knowledge/sim_integration.md" not in off_prompt
+    assert "knowledge/reference/sim_integration.md" not in off_prompt
 
 
 def test_locate_report_synthesizes_in_simulate(tmp_path):

@@ -7,7 +7,7 @@ and observability wiring.
 
 The mechanism (the `Dockerfile`, the Helm chart under
 `deploy/helm/llm-d-benchmarking-agent/`)
-is data; the operational judgment lives in [`knowledge/packaging.md`](../../knowledge/packaging.md).
+is data; the operational judgment lives in [`knowledge/reference/packaging.md`](../../knowledge/reference/packaging.md).
 This guide ties them together.
 
 ---
@@ -212,5 +212,5 @@ then the agent correctly falls back to the local CLI path (`execute_llmdbenchmar
 - LLM/HF keys come from a Kubernetes Secret (chart-managed or pre-existing), surfaced as env
   to the backend only: never baked into the image, never sent to the browser.
 
-See [`knowledge/packaging.md`](../../knowledge/packaging.md) for the operational reasoning and
+See [`knowledge/reference/packaging.md`](../../knowledge/reference/packaging.md) for the operational reasoning and
 [`ARCHITECTURE.md`](../reference/ARCHITECTURE.md) for how packaging fits the whole system.

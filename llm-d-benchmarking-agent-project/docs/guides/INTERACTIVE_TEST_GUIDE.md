@@ -144,7 +144,7 @@ Then follow the agent. Watch the tool-call cards and the "Executed commands" pan
 ## 4. DOE / sweep feature: generate a matrix and drive a sweep *(§5, §6)*
 
 This is the Design-of-Experiments path. Two shapes; try both. Read
-[`knowledge/sweep_playbook.md`](../../knowledge/sweep_playbook.md) first if you want to predict the
+[`knowledge/sweeps/sweep_playbook.md`](../../knowledge/sweeps/sweep_playbook.md) first if you want to predict the
 agent's choices.
 
 ### 4a. Run-parameter sweep (preferred on kind: one standup, N runs)

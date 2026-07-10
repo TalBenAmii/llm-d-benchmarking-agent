@@ -154,7 +154,7 @@ KNOWLEDGE_DIR = Path(__file__).resolve().parents[1] / "knowledge"
 
 
 def test_step_select_knowledge_exists_and_steers_rerun():
-    guide = KNOWLEDGE_DIR / "step_select.md"
+    guide = KNOWLEDGE_DIR / "run/step_select.md"
     assert guide.is_file(), "knowledge/step_select.md must hold the which-step judgment"
     text = guide.read_text()
     # It steers the re-run use case and names the modeled flag (not extra), and tells the

@@ -151,7 +151,7 @@ def test_de_inlined_guides_not_inlined_but_reachable(tool_ctx):
     for name, topic in [("key_docs.yaml", "key_docs"),
                         ("deploy_path_playbook.md", "deploy_path_playbook"),
                         ("quickstart_playbook.md", "quickstart_playbook")]:
-        body = (kdir / name).read_text()
+        body = next(kdir.rglob(name)).read_text()
         assert body[300:480] not in prompt, f"{name} should no longer be inlined"
         assert name in prompt, f"{name} must still appear in the on-demand index"
         out = knowledge_access.read_knowledge(ctx, name=topic)
