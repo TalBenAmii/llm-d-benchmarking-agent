@@ -17,7 +17,7 @@
 #     loop; -k escalates to SIGKILL after a grace window)                          → kills mode 1.
 # One stuck flow can never stall the run: timeout kills it, we reap its orphaned SDK subprocess, and
 # we move to the next flow. The in-process caps stay as a faster first-line defense; THIS is the
-# guarantee. (Background: docs/VALIDATION.md §"Isolated eval runner".)
+# guarantee. (Background: docs/reference/VALIDATION.md §"Isolated eval runner".)
 #
 # Usage:
 #   scripts/run_eval_isolated.sh [live|simulate] [flow-name …]

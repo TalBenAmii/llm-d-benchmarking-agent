@@ -45,7 +45,7 @@ the next such review).
 - **2026-06-22 (follow-up) — reference debloat + split.** Restored two memories pruned earlier the same
   day (`moonshot-poc`, `llm-d-benchmark-quickstart`). Debloated `PROJECT_BRAIN_REFERENCE.md` (dropped the
   feature-list prose + stale "36 tools"/"35-tool" counts → point at `FEATURES.md` + `registry.py`; the
-  doc-map and run-locally blocks duplicated `docs/README.md`/`docs/DEPLOYMENT.md` → collapsed to pointers)
+  doc-map and run-locally blocks duplicated `docs/README.md`/`docs/guides/DEPLOYMENT.md` → collapsed to pointers)
   and **split it** into this `CONFIG_AUDIT_LOG.md` + `UPSTREAM_REUSE_PATHS.md`, leaving the brain-ref a slim
   orientation hub. Added the seven missing per-folder `app/{capacity,readiness,packaging,observability,llm,
   storage,web}/CLAUDE.md` files (file-level detail, per the new folder-map convention).
@@ -81,6 +81,6 @@ the next such review).
 - **2026-07-05 — model ids gained a 4th home: `scripts/setup-claude-plan.sh`'s interactive menu.** The new
   Claude-plan wiring script hardcodes its model picker (`claude-sonnet-4-6` recommended · `claude-haiku-4-5` ·
   `claude-opus-4-8` + custom), alongside `app/config.py`'s `AGENT_SDK_MODEL` default, `.env.example`, and
-  `docs/DEPLOYMENT.md`'s "the setup script recommends sonnet-4-6" note. On the next model-generation bump,
+  `docs/guides/DEPLOYMENT.md`'s "the setup script recommends sonnet-4-6" note. On the next model-generation bump,
   update all four together — `git grep -l 'claude-sonnet-4-6\|claude-haiku-4-5\|claude-opus-4-8' -- scripts
   docs .env.example app/config.py` finds them.

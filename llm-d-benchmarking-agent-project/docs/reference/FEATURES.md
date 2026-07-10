@@ -36,7 +36,7 @@ auth/rate-limit/CORS**, **run lifecycle** (cancel/reattach/readiness), **workspa
 ## 1. How to launch it and see everything yourself
 
 Launch it with `./scripts/run.sh` (then open http://127.0.0.1:8000) — full quickstart in the
-[root README](../../README.md#quick-start) / [`DEPLOYMENT.md`](DEPLOYMENT.md).
+[root README](../../../README.md#quick-start) / [`DEPLOYMENT.md`](../guides/DEPLOYMENT.md).
 
 The browser chat is where the **user-facing** features live. The HTTP endpoints
 (`/healthz`, `/readyz`, `/metrics`, `/api/sessions`, `/api/history`) are where the
@@ -224,7 +224,7 @@ result.
 | **Helm chart** (Deployment, Service, SA, RBAC Role/Binding, Secret) | `deploy/helm/llm-d-benchmarking-agent/` | 🟢 `helm template deploy/helm/llm-d-benchmarking-agent` renders all 6 kinds. |
 | Least-privilege RBAC | `deploy/helm/llm-d-benchmarking-agent/templates/rbac.yaml` | ⚪ Inspect the rendered Role rules. |
 | Single source of truth for image/port/SA across artifacts | `app/packaging/assets.py` | ⚪ `tests/test_packaging.py`. |
-| **In-cluster service deploy** — run the agent ITSELF as a Kubernetes service (alongside the laptop install) via a self-contained **full-bake** image (bundles the `llmdbenchmark` CLI + 3 sibling repos + client toolchain) + Helm | `Dockerfile` (full-bake), `scripts/install_service.sh` (published image by default, `--build` for local), `deploy/helm/*`, `docs/CLUSTER_SERVICE_DEPLOY.md` | 🟢 Keyless end-to-end on kind **PASSED** via `testing/cluster-service-sim/run.sh` (`/healthz`+`/readyz` green, `/api/provider`, in-Pod RBAC 403 = least-privilege holds); the live-chat step needs either a Claude subscription `CLAUDE_CODE_OAUTH_TOKEN` (the default `claude-agent-sdk` path — `claude` CLI baked in) or an `ANTHROPIC_API_KEY` fallback. |
+| **In-cluster service deploy** — run the agent ITSELF as a Kubernetes service (alongside the laptop install) via a self-contained **full-bake** image (bundles the `llmdbenchmark` CLI + 3 sibling repos + client toolchain) + Helm | `Dockerfile` (full-bake), `scripts/install_service.sh` (published image by default, `--build` for local), `deploy/helm/*`, `docs/guides/CLUSTER_SERVICE_DEPLOY.md` | 🟢 Keyless end-to-end on kind **PASSED** via `testing/cluster-service-sim/run.sh` (`/healthz`+`/readyz` green, `/api/provider`, in-Pod RBAC 403 = least-privilege holds); the live-chat step needs either a Claude subscription `CLAUDE_CODE_OAUTH_TOKEN` (the default `claude-agent-sdk` path — `claude` CLI baked in) or an `ANTHROPIC_API_KEY` fallback. |
 
 ---
 
@@ -234,7 +234,7 @@ result.
 |---|---|---|
 | Pytest suite (unit + integration of mechanism) | `tests/` (40+ files) | ⚪ `make test` → green (a handful of env-gated tests skip by default). |
 | **Quality gates: ruff + mypy + coverage** (P14) | `pyproject.toml`, `Makefile` | ⚪ `make quality` (= `lint` + `typecheck` + `coverage`). |
-| **Flow-validation harness** (hermetic walk of the whole agent flow) | `tests/flows/`, `docs/VALIDATION.md` | ⚪ `make flows` / `make validate`. |
+| **Flow-validation harness** (hermetic walk of the whole agent flow) | `tests/flows/`, `docs/reference/VALIDATION.md` | ⚪ `make flows` / `make validate`. |
 | Catalog snapshot test (guards against repo drift) | `tests/flows/catalog_snapshot.py` | ⚪ `make snapshot-catalog`. |
 | **llm-d-inference-sim integration tests** (opt-in, env-gated, skipped by default) (P26) | `tests/integration/` (+ non-gating CI job) | ⚪ Enable the env gate to run against the CPU mock; hermetic sim-shaped coverage always runs. |
 | CI pipeline (GitHub Actions, hermetic flow + opt-in live eval) | repo-root `.github/workflows/agent-flow-validation.yml` | ⚪ Pushes to `origin` trigger it. |
@@ -335,4 +335,4 @@ drift; ambiguous latency units) were all **fixed on 2026-06-02** (`1515959`, mer
 (authoritative: `registry.py:build_registry`; `run_shell` is the agent's always-on ad-hoc command tool), **11 trendable history metrics** (incl. `kv_cache_hit_rate`,
 `gpu_utilization`, `schedule_delay`), **15 allowlisted executables**, **7 `/metrics` families**.
 All ROADMAP_V4 active phases (27–66) are merged; 7 are explicitly deferred (34/43/44/47/52/57/58 —
-their per-phase rows are in `docs/BENCHMARK_FEATURE_COVERAGE.md`).
+their per-phase rows are in `docs/reference/BENCHMARK_FEATURE_COVERAGE.md`).

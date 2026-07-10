@@ -73,7 +73,7 @@ def _normalize_metric_token(tok: str) -> str:
 # ===========================================================================
 
 @pytest.mark.parametrize("doc_path,needles", [
-    (DOCS / "SECURITY.md", (
+    (DOCS / "reference/SECURITY.md", (
         "Trust boundaries",
         "allowlist",            # the allowlist/approval model
         "approval",
@@ -85,7 +85,7 @@ def _normalize_metric_token(tok: str) -> str:
         "AUTH_ENABLED",
         "requires isolation",
     )),
-    (DOCS / "TROUBLESHOOTING.md", (
+    (DOCS / "guides/TROUBLESHOOTING.md", (
         "/healthz",
         "/readyz",
         "Debug",                # debug mode (Phase 1 command trail)
@@ -95,7 +95,7 @@ def _normalize_metric_token(tok: str) -> str:
         # references real metric families for the run-failure path
         "llmdbench_orchestrator_run_faults_total",
     )),
-    (DOCS / "CONTRIBUTING.md", (
+    (DOCS / "project/CONTRIBUTING.md", (
         "Thin code, thick agent",
         "security/allowlist.yaml",   # allowlist-as-data
         "hermetic",
@@ -111,7 +111,7 @@ def test_operability_doc_has_expected_sections(doc_path, needles):
 
 
 def test_changelog_is_keep_a_changelog_with_both_eras():
-    text = _read(DOCS / "CHANGELOG.md")
+    text = _read(DOCS / "project/CHANGELOG.md")
     assert "Keep a Changelog" in text
     assert "[Unreleased]" in text, "Keep-a-Changelog needs an Unreleased section"
     assert "[0.1.0]" in text, "v1 release section expected"

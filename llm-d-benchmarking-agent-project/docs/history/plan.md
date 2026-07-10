@@ -2,7 +2,7 @@
 
 > **Status — implemented & verified; grown well past the MVP.** All MVP steps below are
 > done, and the project has since landed the full roadmap feature set (see
-> [`FEATURES.md`](../FEATURES.md) for the live inventory): a **Kubernetes-native
+> [`FEATURES.md`](../reference/FEATURES.md) for the live inventory): a **Kubernetes-native
 > benchmark orchestrator** (Job lifecycle, fault classification, retry/dead-letter, parallel
 > sweeps), a **results analyzer** (goodput, SLO filtering, Pareto/DoE), **multi-harness
 > comparison**, a **capacity pre-flight**, **cross-session result history + trends**,
@@ -25,8 +25,8 @@
 
 > The MVP was built and verified end-to-end, and the project has since grown well past it.
 > This block used to duplicate the status record; that record is now carried authoritatively by
-> [`../FEATURES.md`](../FEATURES.md) §2 (current feature inventory) and
-> [`../CHANGELOG.md`](../CHANGELOG.md) v1 entry (shipped-phase history) — see those two.
+> [`../FEATURES.md`](../reference/FEATURES.md) §2 (current feature inventory) and
+> [`../CHANGELOG.md`](../project/CHANGELOG.md) v1 entry (shipped-phase history) — see those two.
 
 ---
 

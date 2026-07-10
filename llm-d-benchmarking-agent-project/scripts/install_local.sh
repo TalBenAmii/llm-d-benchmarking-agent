@@ -36,7 +36,7 @@
 # Notes:
 #   • Step 2 installs SYSTEM packages and uses sudo internally; step 4's Docker/kind install
 #     (--prereqs) needs root or passwordless sudo (the agent runs non-interactively).
-#   • For a real GPU cluster (beyond the CPU/kind quickstart) see docs/GPU_CLUSTER_RUNBOOK.md.
+#   • For a real GPU cluster (beyond the CPU/kind quickstart) see docs/guides/GPU_CLUSTER_RUNBOOK.md.
 set -euo pipefail
 
 usage() { sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'; }

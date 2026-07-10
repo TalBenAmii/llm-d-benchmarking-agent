@@ -7,7 +7,7 @@ stacks, drive the benchmark lifecycle, and parse/explain results.
 
 **Legend:** ⭐⭐⭐ must-read · ⭐⭐ feature-specific reference · ⭐ background · — skip (governance/CI/stub).
 Counts: 52 ⭐⭐⭐ · 56 ⭐⭐ · 63 ⭐ · 24 — across 195 files (58 llm-d-benchmark, 137 llm-d); the appendix also lists one byte-identical `util/` duplicate so nothing is silently dropped.
-**Full annotated index (tables, reference points, external links, skip appendix):** `docs/USEFUL_REPO_DOCS.md`.
+**Full annotated index (tables, reference points, external links, skip appendix):** `docs/reference/USEFUL_REPO_DOCS.md`.
 
 **Skills library (a 3rd read-only repo):** `llm-d-skills` holds the canonical operational `SKILL.md`
 procedures — deploy / teardown / benchmark / compare / autoscale. Consumed live via
@@ -54,4 +54,4 @@ For the distilled **API/CLI/CRD/flag/report-field reference points** (benchmark 
 lifecycle flags, workload & scenario keys, Benchmark Report v0.2 fields, llm-d CRDs & EPP
 config, observability knobs), the **medium/low-tier** per-feature docs (CRD reference,
 well-lit-path internals, infra providers, CLI module internals), the **external references**,
-and the **skipped** files — see the full index: `docs/USEFUL_REPO_DOCS.md`.
+and the **skipped** files — see the full index: `docs/reference/USEFUL_REPO_DOCS.md`.
