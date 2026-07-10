@@ -202,7 +202,7 @@ After a run/sweep exists in the session:
   `analyze_results` with goodput / SLO filtering / Pareto frontier.
 - [ ] **[A/B]** Ask: **"Store this run as my baseline."** → `result_history` stores it; then
   `curl /api/history` shows the record, and the Stored Results sidebar + trend sparkline
-  populate in the UI. *(§6 — sparkline is empty until the first store, by design.)*
+  populate in the UI. *(§6: sparkline is empty until the first store, by design.)*
 - [ ] **[A/B]** `curl 'localhost:8000/api/history/trend?metric=ttft'` now returns points.
 - [ ] **[B]** (multi-harness) Run a second harness against the same stack
   (`inference-perf` + `guidellm`), then ask to compare across harnesses → `compare_harness_runs`. *(§6)*
@@ -307,7 +307,7 @@ LLMD_SIM_INTEGRATION=1 .venv/bin/python -m pytest tests/integration/ -v
 Independent of manual driving, you can confirm nothing regressed:
 
 ```bash
-make test            # full hermetic suite (no LLM/cluster) — expect ~all pass, a few skips
+make test            # full hermetic suite (no LLM/cluster); expect ~all pass, a few skips
 make quality         # ruff + mypy + coverage
 make flows           # hermetic walk of the whole agent flow (scripted provider)
 ```
