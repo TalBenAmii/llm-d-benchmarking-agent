@@ -18,7 +18,7 @@ backend-only live resource poller. What a metric *means* / when to act on it liv
   `_MAX_CONSECUTIVE_FAILURES` (3) bad polls it STOPS `kubectl top` for the rest of the run (a good sample
   re-arms). Never enters the LLM stream; a failing poll never breaks the benchmark. `RESOURCE_STATS` is a bare
   string literal (NOT imported from `app.agent.events`) deliberately to avoid an import cycle — the UI and tests
-  match the same literal. It reuses the private `app.tools.manage_runs._parse_top_table` — keep it stable.
+  match the same literal. It reuses the private `app.tools.run.manage_runs._parse_top_table` — keep it stable.
 - `cot_trace.event` never raises into the caller (best-effort, swallowed); a `disabled()` instance is a cheap
   no-op; `_clip` truncates oversized model-emitted bodies (`_BODY_LIMIT` 200k, depth-bounded).
 

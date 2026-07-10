@@ -17,7 +17,7 @@
   - `reconstruct()` (`controller.py:255-268`) rebuilds in-flight run state purely from cluster labels (`managed-by` + optional session/sweep).
   - `reconstruct_sweep()` (`controller.py:270-278`) + `checkpoint.py` persist sweep progress to a **ConfigMap** (`llmd-bench-sweep-<sweep_id>`), the single source of truth; completed treatments are skipped on resume (`controller.py:451-460`), and `record_in_flight` never downgrades a completed record (`checkpoint.py:92-97`).
   - "Orchestrator restart" here means: **a fresh `BenchmarkOrchestrator` object (or process) holding NO local state, pointed at the same cluster, calls `reconstruct*` and resumes** (`controller.py:5-9`).
-- **The tool**: `orchestrate_benchmark_run` (`app/tools/orchestrate.py:71-174`) builds a `JobSpec`, gates on endpoint readiness (`orchestrate.py:119-133`), then calls `run_with_retries`; `cancel_run` (`app/tools/cancel.py`) cancels an in-flight turn. There is **no sweep tool and no list/reconstruct tool** exposed to the agent (`registry.py:449-479`).
+- **The tool**: `orchestrate_benchmark_run` (`app/tools/run/orchestrate.py:71-174`) builds a `JobSpec`, gates on endpoint readiness (`orchestrate.py:119-133`), then calls `run_with_retries`; `cancel_run` (`app/tools/cancel.py`) cancels an in-flight turn. There is **no sweep tool and no list/reconstruct tool** exposed to the agent (`registry.py:449-479`).
 - **Test harness**: `tests/orchestrator_fakes.py` is a programmable in-memory `FakeKubeClient` — `program(run_id, phases=[...], pods=[...])`; `make_job`/`make_pod` build the exact JSON shapes `classify_failure` consumes (e.g. `make_pod(..., terminated="OOMKilled", exit_code=137)` at `orchestrator_fakes.py:50-71`). The checkpoint tests (`test_orchestrator_checkpoint.py:110-179`) already demonstrate "interrupt → fresh store → resume" with two separate orchestrator instances against one fake cluster.
 - **Metrics**: `app/observability/instrument.py:115-123` records run outcome + fault kind. **No existing chaos/resilience code anywhere** (grep confirmed).
 - **Card surfacing**: deterministic cards are built by `app/agent/results_card.py::build_results_card` and emitted by `loop.py:191-193` as a `results_card` event; `ui/app.js:1276` renders them. Today only `analyze_results` yields a card.
@@ -214,5 +214,5 @@ The `KubeClient` Protocol seam (`kube.py:50-64`): production constructs `RealKub
 - `app/orchestrator/kube.py` (the Protocol seam)
 - `app/orchestrator/controller.py` (unchanged target: `run_with_retries`, `reconstruct`, `run_sweep`)
 - `tests/orchestrator_fakes.py` (FakeKubeClient + make_job/make_pod)
-- `app/tools/orchestrate.py` (pattern the new tool mirrors)
+- `app/tools/run/orchestrate.py` (pattern the new tool mirrors)
 - `app/agent/results_card.py` (resilience card render model)

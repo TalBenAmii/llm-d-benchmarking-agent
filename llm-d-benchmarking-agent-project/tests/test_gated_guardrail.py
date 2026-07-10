@@ -1,4 +1,4 @@
-"""Deterministic gated-model access guardrail (app/tools/gated_access.py).
+"""Deterministic gated-model access guardrail (app/tools/run/gated_access.py).
 
 Steering alone (system-prompt HARD_RULE + knowledge/capacity.md + check_capacity's gated_note)
 could not RELIABLY stop a flaky model from deploying a gated model whose weights the backend HF
@@ -20,14 +20,14 @@ import pytest
 
 from app.config import Settings, get_settings
 from app.security.allowlist import Allowlist
-from app.tools.capacity import check_capacity
+from app.tools.setup.capacity import check_capacity
 from app.tools.context import ToolContext, ToolError
-from app.tools.gated_access import (
+from app.tools.run.gated_access import (
     gated_block,
     gated_block_message,
     record_capacity_verdict,
 )
-from app.tools.shell import run_shell
+from app.tools.run.shell import run_shell
 from tests._helpers import _approve_all
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.flows import _CAPACITY_GATED_NO_TOKEN

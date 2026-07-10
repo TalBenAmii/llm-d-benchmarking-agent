@@ -472,7 +472,7 @@ async def test_loop_usage_total_equals_all_billed_tokens(tmp_path):
 def test_read_knowledge_dedups_exact_repeat_within_session(tmp_path):
     """The FIRST read of a guide returns full content; an EXACT repeat in the SAME session returns
     a short 'already_provided' back-reference (not the full text again)."""
-    from app.tools import knowledge_access
+    from app.tools.access import knowledge_access
 
     ctx = _ctx(tmp_path)
     first = knowledge_access.read_knowledge(ctx, name="analysis")
@@ -486,7 +486,7 @@ def test_read_knowledge_dedups_exact_repeat_within_session(tmp_path):
 def test_read_knowledge_dedup_is_per_session(tmp_path):
     """De-dup is scoped to one session: a DIFFERENT ctx (a new/resumed session) gets full content
     on its first read."""
-    from app.tools import knowledge_access
+    from app.tools.access import knowledge_access
 
     ctx_a = _ctx(tmp_path / "a")
     ctx_b = _ctx(tmp_path / "b")
@@ -498,7 +498,7 @@ def test_read_knowledge_dedup_is_per_session(tmp_path):
 
 def test_different_docs_are_not_deduped(tmp_path):
     """Only EXACT repeats are short-circuited — two different guides each return full content."""
-    from app.tools import knowledge_access
+    from app.tools.access import knowledge_access
 
     ctx = _ctx(tmp_path)
     a = knowledge_access.read_knowledge(ctx, name="analysis")
@@ -509,7 +509,7 @@ def test_different_docs_are_not_deduped(tmp_path):
 def test_fetch_key_docs_dedups_repeat_doc_body(tmp_path):
     """fetch_key_docs returns each doc's full body on the first fetch and omits the body (keeping
     the metadata + an already_provided marker) on an EXACT repeat in the same session."""
-    from app.tools import knowledge_access
+    from app.tools.access import knowledge_access
 
     ctx = _ctx(tmp_path)
     first = knowledge_access.fetch_key_docs(ctx, task="quickstart")

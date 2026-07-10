@@ -39,7 +39,7 @@ from app.capacity.planner import (
 )
 from app.dig import dig, parse_bridge_dict
 from app.tools.context import ToolContext, ToolError
-from app.tools.gated_access import record_capacity_verdict
+from app.tools.run.gated_access import record_capacity_verdict
 
 _REQUEST_FILENAME = "capacity_request.json"
 
@@ -109,7 +109,7 @@ async def check_capacity(
     merge_gated_access(verdict, bridge.get("gated_access"))
     verdict_facts = verdict.as_dict()
     # Record the gated-access verdict for the model just checked so the command guardrail can
-    # REFUSE deploying it while it's gated+unauthorized (mechanism — see app/tools/gated_access.py).
+    # REFUSE deploying it while it's gated+unauthorized (mechanism — see app/tools/run/gated_access.py).
     # Key by the model the agent explicitly checked (overrides['model']); fall back to the spec's
     # resolved model name so a default-model check is also tracked.
     checked_model = (overrides or {}).get("model") or dig(plan_config, "model", "name")

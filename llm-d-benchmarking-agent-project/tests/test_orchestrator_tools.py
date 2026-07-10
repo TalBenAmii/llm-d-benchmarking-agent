@@ -19,7 +19,7 @@ from app.orchestrator.controller import BenchmarkOrchestrator
 from app.orchestrator.job import LABEL_SESSION, JobSpec, job_name
 from app.security.allowlist import Allowlist
 from app.tools.context import ToolContext, ToolError
-from app.tools.orchestrate import _sweep_run_id, orchestrate_benchmark_run, orchestrate_sweep
+from app.tools.run.orchestrate import _sweep_run_id, orchestrate_benchmark_run, orchestrate_sweep
 from app.tools.registry import dispatch
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner

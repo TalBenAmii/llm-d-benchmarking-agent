@@ -220,7 +220,7 @@ TOP_NODES = (
 
 
 async def test_observe_pods_parses_top_output(tmp_path):
-    from app.tools.manage_runs import observe_run_metrics
+    from app.tools.run.manage_runs import observe_run_metrics
 
     ctx, runner = _ctx(tmp_path)
     runner._canned = {"top pods": TOP_PODS}
@@ -235,7 +235,7 @@ async def test_observe_pods_parses_top_output(tmp_path):
 
 
 async def test_observe_nodes_scope(tmp_path):
-    from app.tools.manage_runs import observe_run_metrics
+    from app.tools.run.manage_runs import observe_run_metrics
 
     ctx, runner = _ctx(tmp_path)
     runner._canned = {"top nodes": TOP_NODES}
@@ -250,7 +250,7 @@ async def test_observe_handles_metrics_server_absent(tmp_path):
     """If `kubectl top` fails (no metrics-server), the tool reports unavailable read-only —
     never raising, never claiming numbers it doesn't have."""
     from app.security.runner import RunResult
-    from app.tools.manage_runs import observe_run_metrics
+    from app.tools.run.manage_runs import observe_run_metrics
 
     ctx, runner = _ctx(tmp_path)
 

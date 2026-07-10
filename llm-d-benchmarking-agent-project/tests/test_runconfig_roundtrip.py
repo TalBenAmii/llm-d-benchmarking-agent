@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv
+from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 
 # A workspace-relative run-config path of the shape --generate-config writes under --workspace.

@@ -82,7 +82,7 @@ exercise. Forward-lookup map (use it to find "which tests cover X"; `git grep` t
     SKILL_EVAL_RUNS=1 .venv/bin/python -m pytest tests/eval/simulate/test_skill_usage_live.py -v`.
   - **Skill-gate is INERT under pytest, LIVE under the non-pytest harness** — the autouse
     `_ground_skills_by_default` fixture (`conftest.py`) pre-grounds every `ToolContext`, so the
-    skill-grounding gate (`app/tools/skill_gate.py`) never fires in `pytest`. But `scripts/eval/validate_flows.py`
+    skill-grounding gate (`app/tools/run/skill_gate.py`) never fires in `pytest`. But `scripts/eval/validate_flows.py`
     / `scripts/eval/run_eval_isolated.sh` load NO conftest, so the gate runs LIVE there: a MUTATING flow must
     ground ITSELF (fetch the skill) or its plan/standup/run is refused. The golden transcripts now do
     (`fetch_key_docs(task="quickstart")` on `cicd/kind`; `deploy_skill`+`benchmark_skill` on a guide) and

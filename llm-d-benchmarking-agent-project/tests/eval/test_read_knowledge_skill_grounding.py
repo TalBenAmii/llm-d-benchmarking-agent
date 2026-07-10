@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.tools import knowledge_access
+from app.tools.access import knowledge_access
 
 # operation playbook topic -> the skill task its body must reference
 PLAYBOOK_TOPIC_SKILL = {

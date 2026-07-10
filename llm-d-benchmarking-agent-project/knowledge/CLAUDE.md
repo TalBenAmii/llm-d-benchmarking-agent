@@ -40,7 +40,7 @@ knowledge/
   phases reached BEFORE the agent would know to ask for a specific guide. NOTE: `key_docs.yaml`
   (its content is delivered live by the `fetch_key_docs` tool), `deploy_path_playbook.md` (a
   post-interview deploy-path-choice guide), and `quickstart_playbook.md` (our kind RUNBOOK, now
-  served by `fetch_key_docs(task="quickstart")` and enforced by the `app/tools/skill_gate.py`
+  served by `fetch_key_docs(task="quickstart")` and enforced by the `app/tools/run/skill_gate.py`
   skill-grounding gate) are deliberately ON-DEMAND, not CORE.
 - **On-demand** files (everything else) are auto-discovered by a RECURSIVE `*.md`/`*.yaml`/`*.yml`
   glob (`rglob`, across the topic subfolders) and listed in a one-line **index**; the model pulls one
@@ -74,7 +74,7 @@ knowledge/
   spec/workload isn't in the snapshot yet requires running `make snapshot-catalog` in the SAME change. (The other
   advisor files — `usecase_to_profile.yaml`/`key_docs.yaml`/`deploy_path_playbook.md` — are free text, not gated.)
 - **`CLAUDE.md` / `README.md` here are NOT knowledge** — they're filtered out of the glob in
-  `app/agent/prompt.py::_knowledge_sections` and `app/tools/knowledge_access.py::_knowledge_files`
+  `app/agent/prompt.py::_knowledge_sections` and `app/tools/access/knowledge_access.py::_knowledge_files`
   (and `read_knowledge` won't return them). Locked by `tests/test_knowledge_meta_excluded.py`. If you add
   another meta/doc file here, add its name to that exclusion set or it leaks into the agent's prompt.
 

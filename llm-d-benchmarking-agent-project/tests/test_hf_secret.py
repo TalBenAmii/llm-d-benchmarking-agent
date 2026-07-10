@@ -30,7 +30,7 @@ from app.security.allowlist import MUTATING, Allowlist
 from app.security.runner import CommandRunner
 from app.tools.context import ToolContext
 from app.tools.registry import REGISTRY, tool_definitions
-from app.tools.repos import provision_hf_secret
+from app.tools.setup.repos import provision_hf_secret
 from tests.flows.harness import CaptureRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

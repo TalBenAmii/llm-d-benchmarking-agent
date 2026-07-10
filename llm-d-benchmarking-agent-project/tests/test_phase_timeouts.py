@@ -20,7 +20,7 @@ from __future__ import annotations
 import pytest
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import _PHASE_TIMEOUT_FLAGS, build_argv
+from app.tools.run.execute import _PHASE_TIMEOUT_FLAGS, build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 

@@ -1503,7 +1503,7 @@ function renderResourceSide() {
     // button historically collided with the single-turn-in-flight guard (a 2nd message mid-run is
     // now STEERED into the running turn, not run as its own action — so a button still wouldn't fit).
     // Live stats need the in-cluster metrics-server, which the agent now PROACTIVELY offers to
-    // install BEFORE the run — driven by a deterministic probe fact (app/tools/probe.py
+    // install BEFORE the run — driven by a deterministic probe fact (app/tools/setup/probe.py
     // `metrics_server`) + a HARD_RULE (app/agent/prompt.py). A passive hint is enough here.
     body.appendChild(el("div", "resource-note resource-note-hint",
       "Live CPU/memory needs the in-cluster metrics-server — the assistant offers to install it " +

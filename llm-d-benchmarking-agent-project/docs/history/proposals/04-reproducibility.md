@@ -1,7 +1,7 @@
 # SPEC: Reproducibility artifact — "Reproduce this run" + provenance bundle
 
 > **Status (2026-06): IMPLEMENTED & merged.** This spec is preserved as the design record for
-> shipped code. The capability now lives in `app/storage/provenance.py`, `app/tools/reproducibility.py`
+> shipped code. The capability now lives in `app/storage/provenance.py`, `app/tools/analyze/reproducibility.py`
 > (tools `export_run_bundle` + `reproduce_run`), `app/packaging/report_card.py`, and
 > `knowledge/reproducibility.md`. File-level details below reflect the original design intent and may
 > differ slightly from the final code (e.g. the agent now exposes **36 tools**, not the 28→30 noted
@@ -9,7 +9,7 @@
 
 ## 0. Confirmation of invariants
 
-- **Thin code, thick agent** — `CLAUDE.md:31-35`; mechanism/judgment split enforced (e.g. `app/tools/execute.py` is pure argv mechanism, `knowledge/runconfig_roundtrip.md` is the judgment).
+- **Thin code, thick agent** — `CLAUDE.md:31-35`; mechanism/judgment split enforced (e.g. `app/tools/run/execute.py` is pure argv mechanism, `knowledge/runconfig_roundtrip.md` is the judgment).
 - **Determinism gates** — four gates in `app/validation/CLAUDE.md`: SessionPlan+catalog (`session_plan.py`), tool-arg schema (`registry.py:dispatch`), DoE/config, BR-v0.2 report (`report.py`). Reproduce must pass through gate 1 + the CLI `--dry-run` gate.
 - **Deny-by-default allowlist (DATA)** — `security/allowlist.yaml`; `app/security/allowlist.py` is a pure validator.
 - **Sibling repos READ-ONLY** — writes hard-blocked. The bundle only WRITES under `ctx.workspace`, only READS `git rev-parse` against the repos.
@@ -74,7 +74,7 @@ No new managed area: `workspace/bundles/` lives under the per-session dir (GC'd 
 The "exact resolved config" is **already** produced by `run --generate-config` (`execute.py` `_SUBCOMMAND_FLAGS["generate_config"]` at line 156, anchored under the session workspace at `execute.py:484-486`). Provenance capture **references/inlines** that YAML — it does NOT build its own serializer. Guarantees byte-identical config for replay.
 
 ### 3b. Reuse report parsing (gate d)
-`report_digest`/`report_summary` come from existing `load_report` + `validate_report` + `summarize_report`. The bundle **refuses to capture** an unvalidated report — as `history.py::_store` refuses (`app/tools/history.py:71-78`). Honest: only certifies a schema-valid run.
+`report_digest`/`report_summary` come from existing `load_report` + `validate_report` + `summarize_report`. The bundle **refuses to capture** an unvalidated report — as `history.py::_store` refuses (`app/tools/analyze/history.py:71-78`). Honest: only certifies a schema-valid run.
 
 ### 3c. "Regenerate" maps to the existing run/orchestrate path
 `reproduce_run` does **not** shell out directly. It:
@@ -101,7 +101,7 @@ New `app/packaging/report_card.py` (`app/packaging/` exists) holds `render_repor
 - `build_bundle(...)` — pure assembly from gathered inputs (only I/O = reading the run-config the CLI wrote). Refuses if the report-validation object isn't valid.
 - `BundleStore` — `write(ctx.workspace, bundle)` + `read(workspace, bundle_id)` under `workspace/bundles/`, with the same `_safe_id`-style guard as `history.py:231`.
 
-### 4.2 New tool: `app/tools/reproducibility.py` (one tool, action-dispatched, mirrors `result_history`)
+### 4.2 New tool: `app/tools/analyze/reproducibility.py` (one tool, action-dispatched, mirrors `result_history`)
 - `export_run_bundle(ctx, *, source, namespace=None, label=None, env_snapshot=None)` — locates+validates the report (reuse `find_reports`/`load_report`/`validate_report`), reads the session's generated run-config (or notes its absence → tells the agent to run `--generate-config` first), captures both repo SHAs via `ctx.run_readonly`, captures `agent_version`/`knowledge_version`, writes the bundle, optionally attaches to a history record, returns `bundle_id` + `regenerate_command` + a `dirty` flag. Auto-runs (read-only: git reads + a workspace write).
 - `reproduce_run(ctx, *, bundle_id)` — reads the bundle, returns the structured rerun proposal (spec/harness/workload/namespace/slo + run-config path + dry-run-first instruction + dirty-state caveat). Auto-runs (proposes, mutates nothing). The agent then drives `propose_session_plan` → dry-run → approved `-c` replay.
 
@@ -128,7 +128,7 @@ Add `@app.get("/api/sessions/{sid}/bundle/{bundle_id}/report-card.html", depende
 - Minimal CSS for `.report-actions`, `.prov-dirty-banner`.
 
 ### 4.9 Changed: `app/storage/history.py`
-Add `bundle_id: str | None = None` + `provenance: dict | None = None` to `HistoryRecord` (additive; `_read` tolerates). `add()` stores them; `_record_view` in `app/tools/history.py:27` + `main.py:270` surface `bundle_id`.
+Add `bundle_id: str | None = None` + `provenance: dict | None = None` to `HistoryRecord` (additive; `_read` tolerates). `add()` stores them; `_record_view` in `app/tools/analyze/history.py:27` + `main.py:270` surface `bundle_id`.
 
 ### 4.10 Changed: `app/config.py`
 Add `agent_version` property: `importlib.metadata.version("llm-d-benchmarking-agent")` with a `"0.0.0+unknown"` fallback.
@@ -187,7 +187,7 @@ Extend: `test_schemas.py` (two new models), `test_new_tools.py` (registry + desc
 - **Knowledge-hash sensitivity.** Any knowledge edit bumps the version even if behavior-neutral — acceptable (coarse provenance signal); document in the knowledge file.
 
 ### Critical files
-- `app/tools/execute.py` (the `--generate-config`/`-c` round-trip the bundle reuses; lines 156, 273-283, 484-486)
+- `app/tools/run/execute.py` (the `--generate-config`/`-c` round-trip the bundle reuses; lines 156, 273-283, 484-486)
 - `app/storage/history.py` (record model + content-hash pattern; additive `bundle_id`)
 - `app/validation/report.py` (the report gate — `load_report`/`validate_report`/`summarize_report`)
 - `app/main.py` (export endpoint; reuse `session_artifact` traversal hardening at 368-381)

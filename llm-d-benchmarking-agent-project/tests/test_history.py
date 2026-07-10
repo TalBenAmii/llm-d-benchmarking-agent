@@ -24,7 +24,7 @@ from app.storage.history import (
     compute_record_id,
     trend,
 )
-from app.tools import history as history_tool
+from app.tools.analyze import history as history_tool
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import ResultHistoryInput
 from app.validation.report import load_report

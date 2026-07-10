@@ -1,4 +1,4 @@
-"""Skill-grounding gate (app/tools/skill_gate.py).
+"""Skill-grounding gate (app/tools/run/skill_gate.py).
 
 De-inlining the kind runbook (knowledge/quickstart_playbook.md is no longer in CORE; it loads via
 fetch_key_docs(task="quickstart")) removed the always-on steering that kept the kind demo on
@@ -19,11 +19,11 @@ import pytest
 
 from app.security.allowlist import MUTATING
 from app.tools.context import ToolError
-from app.tools.execute import _SUBCOMMANDS
-from app.tools.knowledge_access import fetch_key_docs
-from app.tools.plan import propose_session_plan
-from app.tools.shell import run_shell
-from app.tools.skill_gate import _TASK_BY_SUBCOMMAND, plan_skill_gate_block, skill_gate_block
+from app.tools.run.execute import _SUBCOMMANDS
+from app.tools.access.knowledge_access import fetch_key_docs
+from app.tools.setup.plan import propose_session_plan
+from app.tools.run.shell import run_shell
+from app.tools.run.skill_gate import _TASK_BY_SUBCOMMAND, plan_skill_gate_block, skill_gate_block
 from tests._helpers import _approve_all, _capture_ctx
 
 _KIND_PLAN = {

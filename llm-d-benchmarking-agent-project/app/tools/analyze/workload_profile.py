@@ -28,7 +28,7 @@ from typing import Any
 import yaml
 
 from app.dig import dict_or_empty as _dict
-from app.tools.catalog import build_catalog
+from app.tools.setup.catalog import build_catalog
 from app.tools.context import ToolContext, ToolError
 
 # Harness search order when the caller omits the harness. inference-perf is the default harness
@@ -47,7 +47,7 @@ _HARNESS_SEARCH_ORDER = (
 
 def _profiles_root(ctx: ToolContext) -> Path:
     """``<bench-repo>/workload/profiles`` — the one place real profiles live (REUSES the same
-    layout app/tools/catalog.py discovers, so the two never drift)."""
+    layout app/tools/setup/catalog.py discovers, so the two never drift)."""
     return ctx.settings.bench_repo / "workload" / "profiles"
 
 

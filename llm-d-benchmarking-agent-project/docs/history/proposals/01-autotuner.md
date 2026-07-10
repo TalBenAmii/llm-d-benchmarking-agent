@@ -9,13 +9,13 @@
 
 The whole loop the feature needs already exists *as discrete pieces*; the only missing piece is the **result → next-config feedback step** and the **search-state tracker**. Concretely:
 
-- **DoE generator** — `generate_doe_experiment` tool (`app/tools/doe.py:144`), backed by pure cross-product mechanism `build_doe_experiment` (`app/validation/doe.py:194`). The agent supplies `run_factors`/`setup_factors` (each `{name, key, levels}` — schema `DoEFactor` at `app/tools/schemas.py:683`); it cross-products them into a treatments matrix and writes a structurally-validated experiment YAML to the workspace. **This is a static, full-grid generator** — it expands *all* levels upfront. There is no "give me the next single point" entry.
-- **Run execution** — two paths: `execute_llmdbenchmark` (`app/tools/execute.py:547`, returns `results_dir`) drives the local CLI (`run`/`experiment` subcommands); `orchestrate_benchmark_run` (`app/tools/orchestrate.py:71`) drives a single K8s Job. The orchestrator *also* has a fully-built **parallel sweep** path `BenchmarkOrchestrator.run_sweep` (`app/orchestrator/controller.py:350`) with checkpoint/resume — **but it is NOT exposed as an agent tool** (verified: no registry entry). Today sweeps go through the CLI `experiment`/`run --experiments` path.
-- **Results analyzer** — `analyze_results` tool (`app/tools/analyze.py:88`) → pure math in `app/validation/analysis.py`: `evaluate_slo` (`:181`, per-run SLO verdict + bounded goodput estimate), `pareto_analysis` (`:378`, frontier + `slo_feasible` + `slo_frontier`). SLO contract is `SLOTargets` (`app/validation/analysis.py:69`) — exactly the goal-seeking target object, already embedded in `SessionPlan.slo` (`app/validation/session_plan.py:20`).
-- **History/trend store** — `HistoryStore` (`app/storage/history.py:127`) persists validated summaries cross-session (content-addressed, idempotent), with `trend()` math. Tool: `result_history` (`app/tools/history.py`).
+- **DoE generator** — `generate_doe_experiment` tool (`app/tools/run/doe.py:144`), backed by pure cross-product mechanism `build_doe_experiment` (`app/validation/doe.py:194`). The agent supplies `run_factors`/`setup_factors` (each `{name, key, levels}` — schema `DoEFactor` at `app/tools/schemas.py:683`); it cross-products them into a treatments matrix and writes a structurally-validated experiment YAML to the workspace. **This is a static, full-grid generator** — it expands *all* levels upfront. There is no "give me the next single point" entry.
+- **Run execution** — two paths: `execute_llmdbenchmark` (`app/tools/run/execute.py:547`, returns `results_dir`) drives the local CLI (`run`/`experiment` subcommands); `orchestrate_benchmark_run` (`app/tools/run/orchestrate.py:71`) drives a single K8s Job. The orchestrator *also* has a fully-built **parallel sweep** path `BenchmarkOrchestrator.run_sweep` (`app/orchestrator/controller.py:350`) with checkpoint/resume — **but it is NOT exposed as an agent tool** (verified: no registry entry). Today sweeps go through the CLI `experiment`/`run --experiments` path.
+- **Results analyzer** — `analyze_results` tool (`app/tools/analyze/analyze.py:88`) → pure math in `app/validation/analysis.py`: `evaluate_slo` (`:181`, per-run SLO verdict + bounded goodput estimate), `pareto_analysis` (`:378`, frontier + `slo_feasible` + `slo_frontier`). SLO contract is `SLOTargets` (`app/validation/analysis.py:69`) — exactly the goal-seeking target object, already embedded in `SessionPlan.slo` (`app/validation/session_plan.py:20`).
+- **History/trend store** — `HistoryStore` (`app/storage/history.py:127`) persists validated summaries cross-session (content-addressed, idempotent), with `trend()` math. Tool: `result_history` (`app/tools/analyze/history.py`).
 - **Tool registry** — `ToolSpec` + `build_registry()` + `dispatch()` (`app/tools/registry.py:76,449,508`). Adding a tool = handler + Pydantic schema + `ToolSpec` row + `_DESCRIPTIONS` entry.
 - **Agent loop** — `app/agent/loop.py:34` (`run_turn`): LLM → validated dispatch → approval-gated exec → feed result back, `MAX_STEPS = 24` (`:23`). Plan approval wired at `:171` (`propose_session_plan` → `session.approved_plan`).
-- **SessionPlan approval** — `propose_session_plan` (`app/tools/plan.py:12`) validates against live catalog then routes through `ctx.request_approval`.
+- **SessionPlan approval** — `propose_session_plan` (`app/tools/setup/plan.py:12`) validates against live catalog then routes through `ctx.request_approval`.
 - **Results card UI** — deterministic card built in `app/agent/results_card.py:33` from `analyze_results` output, emitted as `RESULTS_CARD` event (`app/agent/events.py:87`), rendered in `ui/app.js`.
 
 **Tunable knobs available today** (the autotuner's search space — all already expressible as DoE factor `key`s, grounded in knowledge):
@@ -96,7 +96,7 @@ The Python tracker returns **facts only**: `trials_used`, `budget_remaining`, `s
 
 ### New tool: `app/tools/autotune.py` (mechanism — the search-state tracker)
 
-One tool, action-dispatched (mirrors `result_history`'s single-tool/multi-action shape at `app/tools/history.py:100`). Auto-runs (read-only w.r.t. cluster/repos — it only reads/writes a JSON trial log under `ctx.workspace`, like the history store). **Contains no benchmarking decision logic.**
+One tool, action-dispatched (mirrors `result_history`'s single-tool/multi-action shape at `app/tools/analyze/history.py:100`). Auto-runs (read-only w.r.t. cluster/repos — it only reads/writes a JSON trial log under `ctx.workspace`, like the history store). **Contains no benchmarking decision logic.**
 
 **Name:** `autotune_search` · **Schema:** `AutotuneSearchInput` in `app/tools/schemas.py`.
 
@@ -150,7 +150,7 @@ action="status"                  # the convergence-fact surface (FACTS, no verdi
       knobs: list[AutotuneKnob]   # each: {name, key (dotted, reuses DoEFactor.key rules), min, max, resolution?}
       budget: int = Field(ge=1, le=…)   # max trials — the bounded search budget for ONE approval
   ```
-  This rides the **existing** plan-approval path (`app/tools/plan.py`, loop `:171`) — so the bounded search gets **one upfront approval**, not per-trial. `knobs[].key` reuses the dotted-key validation already in `app/validation/doe.py:_KEY_RE`. **(S)**
+  This rides the **existing** plan-approval path (`app/tools/setup/plan.py`, loop `:171`) — so the bounded search gets **one upfront approval**, not per-trial. `knobs[].key` reuses the dotted-key validation already in `app/validation/doe.py:_KEY_RE`. **(S)**
 
 ### Registry wiring: `app/tools/registry.py`
 

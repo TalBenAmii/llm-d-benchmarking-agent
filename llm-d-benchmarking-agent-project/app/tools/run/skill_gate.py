@@ -9,7 +9,7 @@ at the plan gate (``propose_session_plan``) unless its grounding task is in ``ct
 — the per-session ledger ``fetch_key_docs`` writes keyed on the task ARG (so an absent skills repo
 can't defeat the gate).
 
-Same shape/rationale as the gated-model access guardrail (``app/tools/gated_access.py``): MECHANISM
+Same shape/rationale as the gated-model access guardrail (``app/tools/run/gated_access.py``): MECHANISM
 enforcing a stated boundary on facts the agent already produced, never domain judgment (thin code,
 thick agent). It acts ONLY on which tasks were fetched — it never decides *what* to benchmark.
 

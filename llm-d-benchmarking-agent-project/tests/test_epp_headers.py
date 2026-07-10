@@ -18,7 +18,7 @@ from pathlib import Path
 import yaml
 
 from app.agent.prompt import CORE_KNOWLEDGE, build_system_prompt
-from app.tools.knowledge_access import read_knowledge
+from app.tools.access.knowledge_access import read_knowledge
 
 # The four header names the spec/HERMETIC-TEST require to be decoded, plus the two enum values.
 REQUIRED_HEADER_NAMES = (

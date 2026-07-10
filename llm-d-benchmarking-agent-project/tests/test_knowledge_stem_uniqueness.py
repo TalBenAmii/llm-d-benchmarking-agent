@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections import Counter
 
 from app.config import get_settings
-from app.tools.knowledge_access import EXCLUDED_KNOWLEDGE_FILES
+from app.tools.access.knowledge_access import EXCLUDED_KNOWLEDGE_FILES
 
 
 def _knowledge_paths():

@@ -23,7 +23,7 @@ Thin-code / thick-agent split (the whole point of this module):
      (sorted, shell-quoted, each with its optional ``# SOURCE:`` provenance comment), the
      upstream-shaped artifact.
   2. a VALIDATABLE companion ``ai.<name>.yaml`` scenario + ``ai.<name>.spec.yaml`` — by
-     REUSING the Phase-45 mechanism in ``app/tools/config_artifact.py`` so the REQUIRED
+     REUSING the Phase-45 mechanism in ``app/tools/setup/config_artifact.py`` so the REQUIRED
      "validate via plan/--dry-run" determinism gate actually has a YAML ``--spec`` to target
      (a bare ``.sh`` is not consumable by the allowlisted gate, which takes a YAML ``--spec``
      whose ``scenario_file.path`` is a YAML). The ``.sh`` is the upstream-shaped artifact; the
@@ -42,7 +42,7 @@ import re
 import shlex
 from typing import Any
 
-from app.tools.config_artifact import author_scenario
+from app.tools.setup.config_artifact import author_scenario
 from app.tools.context import ToolContext, ToolError
 
 # A scenario/guide name token: letters/digits and the three separators upstream's ``ai.`` file

@@ -26,7 +26,7 @@ from app.orchestrator.job import (
 )
 from app.security.allowlist import Allowlist
 from app.tools.context import ToolContext, ToolError
-from app.tools.orchestrate import orchestrate_benchmark_run
+from app.tools.run.orchestrate import orchestrate_benchmark_run
 from app.tools.registry import dispatch
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner

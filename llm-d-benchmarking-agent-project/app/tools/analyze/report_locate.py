@@ -4,7 +4,7 @@ Find the newest Benchmark Report v0.2 under a results dir (or the session worksp
 it against the repo's live schema, summarize it for non-experts, and surface any chart images
 the harness rendered next to it. Read-only, auto-runs (no approval).
 
-Split out of app/tools/probe.py (which had grown into a ~1,100-line module spanning three
+Split out of app/tools/setup/probe.py (which had grown into a ~1,100-line module spanning three
 unrelated tool families) so the report surface is independently navigable. probe.py re-exports
 ``locate_and_parse_report`` (and ``_discover_charts``, used by tests) for backwards
 compatibility; new code should import them from here.

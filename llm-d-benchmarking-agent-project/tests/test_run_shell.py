@@ -12,7 +12,7 @@ import pytest
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.context import ApprovalRejected
 from app.tools.registry import build_registry, dispatch, tool_definitions
-from app.tools.shell import classify_shell_command, run_shell
+from app.tools.run.shell import classify_shell_command, run_shell
 from tests._helpers import _capture_ctx
 
 # ---- the read/write classifier -------------------------------------------

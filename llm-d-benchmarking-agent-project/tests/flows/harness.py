@@ -38,10 +38,10 @@ from app.config import BENCH_REPO_NAME, GUIDE_REPO_NAME, Settings
 from app.llm.provider import AssistantTurn, LLMProvider, ProviderTurn, open_provider_turn
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunResult
-from app.tools.catalog import catalog_for_allowlist
+from app.tools.setup.catalog import catalog_for_allowlist
 from app.tools.context import ToolContext
 from app.tools.registry import _group_of
-from app.tools.shell import classify_shell_command
+from app.tools.run.shell import classify_shell_command
 
 from .catalog_snapshot import frozen_catalog
 
@@ -421,7 +421,7 @@ class FlowRun:
     def subcommands(self, exe: str = "llmdbenchmark") -> list[str]:
         """The CLI subcommand of each captured invocation of ``exe`` (best-effort:
         first non-flag token after the executable / after a global flag value)."""
-        from app.tools.execute import _SUBCOMMANDS  # the known subcommand set
+        from app.tools.run.execute import _SUBCOMMANDS  # the known subcommand set
         out = []
         for c in self.commands:
             if c.exe != exe:
@@ -569,7 +569,7 @@ async def run_flow(
         return f"/usr/bin/{name}" if name in flow.tools_present else None
 
     # Patch the environment-sensing layer so probe behaviour is identical on every host.
-    with patch("app.tools.probe.shutil.which", side_effect=fake_which):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=fake_which):
         loop = AgentLoop(provider)
         await loop.run_turn(session, flow.mock_user_input, emit=emit, request_approval=request_approval)
 
@@ -581,7 +581,7 @@ async def run_flow(
         argv = call["argv"]
         # run_shell (the agent's always-on ad-hoc `bash -lc` surface) is governed by the
         # read-only/mutating CLASSIFIER + approval gate, NOT the allowlist — which governs only the
-        # DEDICATED command tools (see app/tools/shell.py + app/tools/CLAUDE.md). Validating a
+        # DEDICATED command tools (see app/tools/run/shell.py + app/tools/CLAUDE.md). Validating a
         # run_shell command against the allowlist wrongly marks it "denied", which would trip the
         # bypass check in gating_problems and falsely fail any LIVE flow where the real model
         # improvises with run_shell. Classify it the way production does, so the SAME safety

@@ -1,7 +1,7 @@
 # Step selection / re-run (`-s` / `--step`)
 
 This is the JUDGMENT half of Phase 31. The mechanism (emitting `-s <spec>`, value-pinning the
-spec in the allowlist) is in `app/tools/execute.py` + `security/allowlist.yaml`. WHICH step to
+spec in the allowlist) is in `app/tools/run/execute.py` + `security/allowlist.yaml`. WHICH step to
 re-run — and the per-phase step numbering — is your call, grounded here. Set
 `ExecuteInput.flags['step']` (NOT `extra`).
 

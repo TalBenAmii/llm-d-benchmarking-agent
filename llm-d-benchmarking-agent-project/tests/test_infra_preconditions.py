@@ -11,7 +11,7 @@ go/no-go verdict lives entirely in knowledge/infrastructure_preconditions.yaml. 
     that exact argv is permitted read-only by the allowlist;
   * assert the threshold DATA (K8s 1.29 / 1.33 / 1.28 sidecar gotcha; vLLM 0.10.0 / NIXL 0.5.0
     / UCX 0.19.0 / NVSHMEM 3.3.9) lives in knowledge/infrastructure_preconditions.yaml — NOT in
-    Python (no version-comparison if/elif in app/tools/probe.py).
+    Python (no version-comparison if/elif in app/tools/setup/probe.py).
 """
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def _probe_ctx(tmp_path: Path, *, canned, spec: str | None = None, scenario_yaml
 
 @pytest.fixture(autouse=True)
 def _kubectl_present(monkeypatch):
-    kubectl_present(monkeypatch, target="app.tools.probe")
+    kubectl_present(monkeypatch, target="app.tools.setup.probe")
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +181,7 @@ def test_image_tags_spec_rejects_path_traversal(tmp_path):
     """BUG-028: a `spec` that traverses out of the scenarios dir (e.g. '../../evil') must NOT be
     read, even when the target exists and is a parseable image-tag YAML. Containment returns []
     (the same 'unknown' the agent treats as 'not a pass'), never the out-of-tree file's tags."""
-    from app.tools.probe import _parse_image_tags
+    from app.tools.setup.probe import _parse_image_tags
     ctx, _ = _probe_ctx(tmp_path, canned={"version --output json": VER_133})
     # Plant a parseable, image-tag-shaped file OUTSIDE the scenarios dir (at the bench-repo root).
     outside = ctx.settings.bench_repo / "evil.yaml"
@@ -228,7 +228,7 @@ def test_verdict_wording_present_for_127_129_133():
 def test_no_version_comparison_logic_in_python():
     """Thin-code guard: the DECISION must live in knowledge/, not as if/elif thresholds in the
     probe. Assert no threshold NUMBER appears in executable code (string/number literals) of
-    app/tools/probe.py — only in docstrings/comments, which are allowed to *describe* and point
+    app/tools/setup/probe.py — only in docstrings/comments, which are allowed to *describe* and point
     to knowledge/. We strip docstrings + comments via the AST so prose pointers don't trip it."""
     import ast
     import io

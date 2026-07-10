@@ -24,7 +24,7 @@ from app.capacity.planner import (
 from app.dig import parse_bridge_dict
 from app.security.allowlist import READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunnerError
-from app.tools.capacity import check_capacity
+from app.tools.setup.capacity import check_capacity
 from app.tools.context import ToolError
 from app.tools.registry import dispatch, tool_definitions
 from tests._helpers import _real_repo_ctx

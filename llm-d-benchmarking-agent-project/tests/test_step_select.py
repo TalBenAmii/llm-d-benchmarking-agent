@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv
+from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 
@@ -175,7 +175,7 @@ def test_step_select_knowledge_is_autodiscoverable(allowlist, catalog, tmp_path)
     from app.config import get_settings
     from app.security.runner import CommandRunner
     from app.tools.context import ToolContext
-    from app.tools.knowledge_access import read_knowledge
+    from app.tools.access.knowledge_access import read_knowledge
 
     s = get_settings()
     ctx = ToolContext(

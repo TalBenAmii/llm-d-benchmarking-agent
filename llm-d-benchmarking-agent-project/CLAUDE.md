@@ -38,7 +38,7 @@ llm-d-benchmarking-agent-project/
 ├─ app/                   FastAPI backend — mechanism only (no judgment)
 │  ├─ main.py·config.py·paths.py·dig.py   app entry · settings+knowledge load · path resolve · safe dict/JSON accessors
 │  ├─ agent/         📁   the agent loop + system prompt (prompt-cache byte-stability)
-│  ├─ tools/         📁   the tool registry (registry.py is authoritative); schemas/ = tool I/O + SessionPlan JSON schemas
+│  ├─ tools/         📁   the tool registry (registry.py authoritative); handlers in setup/·run/·analyze/·access/ subpackages; schemas/ = tool I/O + SessionPlan JSON schemas
 │  ├─ validation/    📁   the four determinism gates
 │  ├─ security/      📁   allowlist validator (pure; the policy itself is data in /security)
 │  ├─ orchestrator/  📁   Kubernetes-native benchmark Job lifecycle + fault classification

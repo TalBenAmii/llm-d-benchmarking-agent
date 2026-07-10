@@ -17,8 +17,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv
-from app.tools.knowledge_access import read_knowledge
+from app.tools.run.execute import build_argv
+from app.tools.access.knowledge_access import read_knowledge
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 

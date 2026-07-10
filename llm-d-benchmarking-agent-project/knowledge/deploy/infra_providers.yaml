@@ -5,7 +5,7 @@
 # labels/taints) into provider-specific COMMANDS and UNSTICK ADVICE — so the agent fits
 # OpenShift / DOKS / GKE / AKS, not just kind.
 #
-# The probe (app/tools/probe.py:_probe_provider_detection) reports FACTS only:
+# The probe (app/tools/setup/probe.py:_probe_provider_detection) reports FACTS only:
 #   - provider: the detected provider name (openshift / gke / doks / aks / minikube / kind / unknown)
 #   - providers_seen: every provider hint seen across nodes (mixed/migrating clusters)
 #   - gpu_taints: the per-node taints whose key names a GPU (e.g. nvidia.com/gpu) — these are

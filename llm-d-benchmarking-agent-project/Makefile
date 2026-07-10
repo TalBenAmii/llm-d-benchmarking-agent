@@ -105,7 +105,7 @@ image-publish: image
 # Print the live catalog so you can refresh tests/flows/catalog_snapshot.py when the
 # upstream repo changes (the drift guard flags when a refresh is due).
 snapshot-catalog:
-	@$(PY) -c "import json; from app.tools.catalog import build_catalog; \
+	@$(PY) -c "import json; from app.tools.setup.catalog import build_catalog; \
 c = build_catalog('../llm-d-benchmark'); \
 print('present:', c['present']); \
 print('SPECS =', json.dumps(c['specs'])); \

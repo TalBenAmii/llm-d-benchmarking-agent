@@ -20,13 +20,7 @@ from app.config import Settings, get_settings
 from app.llm.provider import AssistantTurn, ToolCall
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
-from app.tools.registry import (
-    _GROUPED_TOOLS,
-    _TOOL_GROUPS,
-    REGISTRY,
-    STARTER_KIT,
-    tool_definitions,
-)
+from app.tools.registry import _GROUPED_TOOLS, _TOOL_GROUPS, REGISTRY, STARTER_KIT, tool_definitions
 from app.tools.schemas import LoadToolsInput
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -143,7 +137,7 @@ def test_fat_guides_de_inlined_from_core():
 
 
 def test_de_inlined_guides_not_inlined_but_reachable(tool_ctx):
-    from app.tools import knowledge_access
+    from app.tools.access import knowledge_access
 
     ctx = tool_ctx
     prompt = build_system_prompt(ctx)

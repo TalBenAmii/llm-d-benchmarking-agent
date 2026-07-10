@@ -21,7 +21,7 @@ import pytest
 
 from app.capacity.planner import _OVERRIDE_PATHS, apply_overrides
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv
+from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 
