@@ -1,7 +1,9 @@
 # Project layout reorg — execution plan (approved: all four moves)
 
 Status: **approved 2026-07-10 — all four moves, automation-first. Move A (docs/) EXECUTED
-2026-07-10 (branch `reorg/docs` → main); B/C/D pending.** Supersedes the earlier
+2026-07-10 (branch `reorg/docs` → main); move B (knowledge/) EXECUTED 2026-07-10 (branch
+`reorg/knowledge` → main, sibling `llm-d-bench-mcp` merged first; knowledge_hash + prompt
+bytes verified bit-identical); C/D pending.** Supersedes the earlier
 "proposed, not executed" menu version. Owner decision: do docs/, knowledge/, scripts/ AND
 app/tools/, using tools (`git mv` + scripted path rewrites) rather than manual edits.
 `app/` proper (other than `app/tools/`) stays untouched. (This doc now lives at
