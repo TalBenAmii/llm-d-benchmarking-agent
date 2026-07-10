@@ -19,7 +19,7 @@ import copy
 import pytest
 import yaml
 
-from app.tools import analyze
+from app.tools.analyze import analyze
 from app.validation.report import (
     extract_session_performance,
     load_report,

@@ -16,7 +16,7 @@ _SKILL_REF = re.compile(r'task=["\']?(\w+_skill)["\']?')
 
 
 def _knowledge_md():
-    return sorted(get_settings().knowledge_dir.glob("*.md"))
+    return sorted(get_settings().knowledge_dir.rglob("*.md"), key=lambda p: p.name)
 
 
 def test_playbook_skill_task_references_are_real():
@@ -34,5 +34,5 @@ def test_playbook_skill_task_references_are_real():
 
 def test_quickstart_playbook_grounds_in_quickstart_first():
     """quickstart_playbook.md tells the agent to fetch the quickstart runbook before planning."""
-    text = (get_settings().knowledge_dir / "quickstart_playbook.md").read_text()
+    text = (get_settings().knowledge_dir / "deploy/quickstart_playbook.md").read_text()
     assert 'fetch_key_docs task="quickstart"' in text

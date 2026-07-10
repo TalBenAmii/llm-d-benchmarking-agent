@@ -3,7 +3,7 @@
 # scratch, local tooling, or docs that don't belong in the image.
 #
 # NOTE: scripts/ is NOT excluded — it now SHIPS in the image (the Dockerfile `COPY scripts
-# ./scripts`), because the allowlist runs scripts/capacity_check.py + aggregate_runs.py +
+# ./scripts`), because the allowlist runs scripts/bridges/capacity_check.py + aggregate_runs.py +
 # provision_hf_secret.py via the bundled CLI venv. Do not add a scripts/ exclusion here.
 
 # Secrets — never copy .env (or any local override) into an image layer.
@@ -50,5 +50,4 @@ testing/
 # Docs / planning that don't belong in the image.
 *.md
 !README.md
-plan.md
 docs/

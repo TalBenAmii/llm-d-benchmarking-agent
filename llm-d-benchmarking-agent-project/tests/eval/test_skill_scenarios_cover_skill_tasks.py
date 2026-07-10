@@ -16,7 +16,7 @@ from tests.eval.simulate.test_skill_usage_live import SCENARIOS
 
 
 def _key_docs() -> list[dict]:
-    path = get_settings().knowledge_dir / "key_docs.yaml"
+    path = get_settings().knowledge_dir / "reference/key_docs.yaml"
     spec = yaml.safe_load(path.read_text())
     return spec["docs"]
 

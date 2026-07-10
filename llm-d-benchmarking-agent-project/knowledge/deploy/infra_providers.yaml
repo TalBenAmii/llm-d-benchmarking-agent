@@ -1,0 +1,226 @@
+# Provider-aware precondition pack — "which CLI, which toleration, which known issue applies?"
+#
+# PURE DATA the LLM reasons over to turn the provider_detection probe's facts (the detected
+# cloud provider + each node's GPU taints, extracted from `kubectl get nodes -o json` node
+# labels/taints) into provider-specific COMMANDS and UNSTICK ADVICE — so the agent fits
+# OpenShift / DOKS / GKE / AKS, not just kind.
+#
+# The probe (app/tools/setup/probe.py:_probe_provider_detection) reports FACTS only:
+#   - provider: the detected provider name (openshift / gke / doks / aks / minikube / kind / unknown)
+#   - providers_seen: every provider hint seen across nodes (mixed/migrating clusters)
+#   - gpu_taints: the per-node taints whose key names a GPU (e.g. nvidia.com/gpu) — these are
+#     what leave a model-server pod Pending until a matching toleration is authored.
+# NO which-CLI / which-toleration / which-known-issue branch lives in Python. Every decision
+# below is the agent's to apply from this table.
+#
+# Transcribed from upstream llm-d/docs/infrastructure/providers/{openshift,gke,digitalocean,aks}/README.md
+# (read them live with read_repo_doc path='llm-d/docs/infrastructure/providers/openshift/README.md'
+# etc. if you need the source of truth). Cross-linked from knowledge/preconditions.md.
+
+source: "llm-d/docs/infrastructure/providers/openshift/README.md (+ gke/digitalocean/aks siblings)"
+
+# ---------------------------------------------------------------------------
+# (0) HOW THE PROBE DETECTS THE PROVIDER. The probe maps a node-label PREFIX to a provider
+# name; this is the SAME table the Python probe mirrors as a pure membership lookup (mechanism).
+# A node carrying ANY label whose key starts with one of these prefixes is attributed to that
+# provider. `kind` is the local default (kind nodes carry no cloud-provider labels). The
+# JUDGMENT — what to DO once a provider is detected — is everything below, not the mapping.
+detection:
+  label_prefix_to_provider:
+    - prefix: "node.openshift.io/"      # OpenShift machine-config / node labels
+      provider: openshift
+    - prefix: "machine.openshift.io/"   # OpenShift MachineSet-managed nodes
+      provider: openshift
+    - prefix: "cloud.google.com/"       # GKE (e.g. cloud.google.com/gke-nodepool, gce-topology-block)
+      provider: gke
+    - prefix: "doks.digitalocean.com/"  # DigitalOcean Kubernetes (DOKS) node pool labels
+      provider: doks
+    - prefix: "kubernetes.azure.com/"   # AKS node labels (e.g. kubernetes.azure.com/agentpool)
+      provider: aks
+    - prefix: "minikube.k8s.io/"        # local minikube
+      provider: minikube
+  default_provider: kind
+  note: >-
+    A node attributed to NO known prefix counts toward the `kind` default (the local quickstart
+    runs on kind, whose nodes carry no cloud-provider labels). If providers_seen has more than one
+    cloud provider the cluster is mixed/migrating — surface that and prefer the provider of the
+    GPU-bearing nodes the model server will land on.
+
+# ---------------------------------------------------------------------------
+# (1) WHICH CLI. OpenShift ships `oc`, a kubectl-equivalent. The agent's read-only `oc` allowlist
+# entry carries the SAME constrained read-only subcommands as kubectl, so on a detected OpenShift
+# cluster the agent can prefer `oc` for the read-only probes/diagnostics it would otherwise run
+# with kubectl — without any Python oc-vs-kubectl branch (the allowlist is DATA-equivalent).
+# Every OTHER provider uses `kubectl`. Mutating actions stay approval-gated regardless of CLI.
+cli:
+  by_provider:
+    openshift:
+      cli: oc
+      note: >-
+        Use `oc` in place of `kubectl` for OpenShift commands (or `oc login` and keep kubectl).
+        The agent's `oc` allowlist entry mirrors kubectl's read-only subcommands exactly.
+    gke:        { cli: kubectl }
+    doks:       { cli: kubectl }
+    aks:        { cli: kubectl }
+    minikube:   { cli: kubectl }
+    kind:       { cli: kubectl }
+  default_cli: kubectl
+
+# ---------------------------------------------------------------------------
+# (2) GPU TAINTS → TOLERATIONS. GPU nodes on most managed providers carry a taint that keeps
+# non-GPU workloads off them; a model-server pod stays Pending until its deployment carries a
+# MATCHING toleration. The probe surfaces gpu_taints (the per-node taints whose key names a GPU);
+# below is the per-provider toleration the agent should AUTHOR (into the session workspace) and
+# propose as an APPROVAL-GATED mutating patch — never silently. The exact toleration shape per
+# provider:
+gpu_tolerations:
+  # OpenShift GPU nodes may carry a VALUE-bearing taint (e.g. key nvidia.com/gpu, value
+  # NVIDIA-L40S-PRIVATE) — match it with operator Equal + the observed value. The probe surfaces
+  # the taint's value so the agent can fill it in; when the value is absent use Exists.
+  openshift:
+    when: "a gpu_taint on an OpenShift node leaves model-server pods Pending"
+    toleration_value_bearing:   # e.g. taint nvidia.com/gpu=NVIDIA-L40S-PRIVATE:NoSchedule
+      key: "nvidia.com/gpu"
+      operator: "Equal"
+      value: "<observed taint value, e.g. NVIDIA-L40S-PRIVATE>"
+      effect: "NoSchedule"
+    toleration_keyed_only:      # taint with no value
+      key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+    apply_via: >-
+      Author the toleration into the session workspace as a scenario override (Phase 45
+      write_and_validate_config affinity/tolerations path) OR propose an approval-gated
+      `oc patch deployment <name> -p '{...tolerations...}'`. Never patch the sibling repos.
+  # DOKS GPU nodes carry a keyed-only nvidia.com/gpu taint — Exists toleration unsticks them.
+  doks:
+    when: "Pods Fail to Schedule on GPU Nodes — `untolerated taint {nvidia.com/gpu}`"
+    toleration:
+      key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+    apply_via: >-
+      Author into the session workspace (scenario override) and apply as an approval-gated
+      `kubectl patch`. Verify with `kubectl describe pod <pod> | grep Tolerations`.
+  # GKE / AKS GPU nodes likewise gate non-GPU pods; the nvidia.com/gpu Exists toleration is the
+  # general unstick. GKE additionally uses node selectors for RDMA topology (cloud.google.com/
+  # gce-topology-block) — that is scheduling, not a taint, so it is a node-selector affinity job.
+  gke:
+    when: "model-server pods Pending against a tainted GPU node pool"
+    toleration:
+      key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+    apply_via: >-
+      Author into the session workspace and propose an approval-gated `kubectl patch`.
+  aks:
+    when: "model-server pods Pending against a tainted GPU node pool"
+    toleration:
+      key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+    apply_via: >-
+      Author into the session workspace and propose an approval-gated `kubectl patch`.
+  general_note: >-
+    The toleration is ADVICE the user approves. ALWAYS author it into the session workspace and
+    gate the mutation; the sibling repos stay read-only. Prefer the Phase 45 scenario-override
+    path (vllmCommon tolerations/affinity) so the toleration is validated via plan/--dry-run
+    before any mutating apply.
+
+# ---------------------------------------------------------------------------
+# (3) GATEWAY CONFLICTS. On OpenShift a pre-existing ServiceMesh (OSSM) or Istio install can
+# CONFLICT with the llm-d gateway component (their CRDs collide). On DOKS a `PROGRAMMED:False`
+# Gateway usually means Istio isn't up or the LoadBalancer IP hasn't been assigned yet. These are
+# config/precondition checks, not auto-fixes — surface them so the user can resolve them.
+gateway:
+  openshift_servicemesh_conflict:
+    symptom: "llm-d gateway CRDs conflict with an existing ServiceMesh (OSSM) / Istio install"
+    advice: >-
+      BEFORE standup, ensure NO ServiceMesh(OSSM) or Istio install exists on the cluster — the
+      included gateway CRDs may conflict. If one exists, remove it or pick a gateway mode that
+      avoids the conflict. Requires cluster-admin to install the cluster-scoped gateway resources.
+  doks_gateway_not_programmed:
+    symptom: "Gateway shows PROGRAMMED:False"
+    advice: >-
+      Verify Istio is running (`kubectl get pods -n istio-system`) and the LoadBalancer IP has
+      been assigned (`kubectl get gateway -n <ns>`); a DOKS LoadBalancer can sit `<pending>` for
+      2-3 minutes under API rate-limiting — sequential deploys avoid conflicts.
+
+# ---------------------------------------------------------------------------
+# (4) KNOWN ISSUES, per provider. Flag these so the user isn't surprised mid-standup. These are
+# the GMP / "Undetected platform" / NVSHMEM notes the acceptance criterion names, plus siblings.
+known_issues:
+  gke:
+    - id: "google-managed-prometheus"
+      title: "Google Managed Prometheus (GMP) for metrics"
+      note: >-
+        GKE recommends enabling Google Managed Prometheus + automatic application monitoring for
+        automatic vLLM metrics collection and dashboards. If the user wants observability on GKE,
+        point them at GMP rather than assuming a self-managed Prometheus operator. (This interacts
+        with the --monitoring producer: on GKE the metrics path is GMP, not PodMonitor/ServiceMonitor.)
+    - id: "undetected-platform-vllm-0.10.0"
+      title: '"Undetected platform" on vLLM 0.10.0 on GKE'
+      symptom: >-
+        vLLM startup fails with "No platform detected, vLLM is running on UnspecifiedPlatform" /
+        "Failed to infer device type" — the GKE managed driver mounts CUDA at /usr/local/nvidia
+        but CUDA 12.8/12.9 base images moved drivers to /usr/local/cuda and changed LD_LIBRARY_PATH.
+      remedy: >-
+        Fixed in llm-d images and vLLM after commit 5546acb. Custom vLLM images must include
+        /usr/local/nvidia/lib64 in LD_LIBRARY_PATH.
+    - id: "nvshmem-unable-to-create-ah"
+      title: "NVSHMEM reports `Unable to create ah.` on init for DeepEP"
+      symptom: >-
+        NVSHMEM 3.3.20–3.4.5 has a bug where ibv_ah_attr isn't zeroed; kernels validating
+        static_rate fail with EINVAL / `Unable to create ah.` for wide expert parallelism (DeepEP).
+      remedy: "llm-d applies a memset patch (llm-d/llm-d PR 407). Use a patched llm-d image."
+    - id: "nvshmem-ibgda-no-active-ib-device"
+      title: "NVSHMEM fails to init IBGDA transport (`no active IB device …`) for DeepEP"
+      symptom: >-
+        DeepEP wide-EP on non-Mellanox-OFED-compiled images (esp. Ubuntu) fails with
+        "no active IB device that supports GPU-initiated communication".
+      remedy: "Default llm-d RHEL-UBI images are unaffected; custom Ubuntu images need the Mellanox OFED repo."
+    - id: "gib-1.10-for-vllm-0.11.0"
+      title: "Google InfiniBand 1.10 required for vLLM 0.11.0 (gIB)"
+      note: "vLLM 0.11.0+ needs NCCL 2.27 (gIB 1.10+) — update the RDMA installer DaemonSet."
+  doks:
+    - id: "loadbalancer-pending"
+      title: "LoadBalancer Pending or API Errors"
+      note: >-
+        DigitalOcean API rate-limiting / concurrent LoadBalancer ops can leave a LoadBalancer
+        `<pending>`; wait 2-3 minutes and deploy sequentially.
+    - id: "gpu-driver-managed"
+      title: "GPU drivers are DOKS-managed"
+      note: "DOKS auto-installs the NVIDIA device plugin + drivers + DCGM metrics — no manual driver step."
+  openshift:
+    - id: "ocp-vs-rosa"
+      title: "Self-managed OCP vs ROSA (OpenShift on AWS) — both detect as openshift"
+      note: >-
+        OpenShift may be self-managed OCP or ROSA (Red Hat OpenShift Service on AWS); both
+        detect as `openshift` here. On ROSA, GPU worker nodes are added via a MachineSet using
+        GPU AWS instance types (rosa CLI / OpenShift console), and NFD + the NVIDIA GPU Operator
+        remain prerequisites (see gpu-operator-prereq). Source:
+        llm-d/docs/infrastructure/providers/openshift-aws/README.md.
+    - id: "servicemesh-istio-conflict"
+      title: "ServiceMesh/Istio CRD conflict with the llm-d gateway"
+      note: "Ensure no OSSM/Istio install exists before standup (see gateway.openshift_servicemesh_conflict)."
+    - id: "gpu-operator-prereq"
+      title: "NFD + NVIDIA GPU Operator prerequisite"
+      note: "Install Node Feature Discovery + the NVIDIA GPU Operator before deploying llm-d workloads."
+  aks:
+    - id: "nri-locked-memory"
+      title: "NRI / locked-memory ulimit for NIXL"
+      note: >-
+        AKS default ulimit -l of 64 KiB/container is too low for vLLM's NIXL connector — enable
+        NRI in containerd and deploy the ulimit-adjuster plugin.
+    - id: "nvidia-peermem-rdma"
+      title: "nvidia-peermem kernel module for RDMA"
+      note: "AKS-managed drivers don't load nvidia-peermem by default — deploy nvidia-peermem-reloader for GPUDirect RDMA over IB."
+
+# ---------------------------------------------------------------------------
+# How to apply this (the agent's judgment — NOT Python branches):
+verdict_guidance:
+  - "OpenShift detected (provider == openshift): prefer `oc` for read-only diagnostics (the oc allowlist entry mirrors kubectl's read-only subcommands); BEFORE standup confirm no ServiceMesh/Istio install conflicts with the gateway; if a gpu_taint leaves model-server pods Pending, author the matching nvidia.com/gpu toleration (Equal+value if the taint is value-bearing, else Exists) into the session workspace and propose it as an approval-gated patch."
+  - "DOKS / GKE / AKS detected: keep using kubectl; if a gpu_taint leaves pods Pending, author the nvidia.com/gpu Exists toleration into the session workspace and propose an approval-gated patch; surface the provider's known_issues (GKE: GMP for metrics, 'Undetected platform' on vLLM 0.10.0, NVSHMEM; DOKS: LoadBalancer-pending; AKS: NRI locked-memory, nvidia-peermem)."
+  - "GKE specifically: when the user wants observability, the metrics path is Google Managed Prometheus (GMP) + automatic application monitoring — NOT a self-managed PodMonitor/ServiceMonitor. Mention the 'Undetected platform' vLLM 0.10.0 fix and the NVSHMEM DeepEP caveats if they run wide expert parallelism."
+  - "kind / minikube / unknown (no cloud-provider labels): use kubectl; no managed GPU taints to tolerate on the local quickstart path (cicd/kind runs the CPU sim)."
+  - "Every toleration/patch is ADVICE the user approves — author into the session workspace, gate the mutation, never touch the sibling repos. Prefer the Phase 45 scenario-override path so the toleration is validated via plan/--dry-run before any mutating apply."

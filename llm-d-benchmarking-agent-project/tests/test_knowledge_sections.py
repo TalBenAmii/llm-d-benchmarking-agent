@@ -16,7 +16,7 @@ from app.agent.context_mgmt import (
     DEFAULT_TOOL_RESULT_BUDGET,
     clamp_tool_result_content,
 )
-from app.tools import knowledge_access
+from app.tools.access import knowledge_access
 
 
 def _kctx(kdir):

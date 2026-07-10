@@ -17,8 +17,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv
-from app.tools.knowledge_access import read_knowledge
+from app.tools.access.knowledge_access import read_knowledge
+from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 
@@ -131,7 +131,7 @@ def test_recollect_argv_is_a_complete_allowed_readonly_run(allowlist, catalog):
 
 
 def test_collect_only_knowledge_exists_and_describes_the_run_only_flow():
-    guide = KNOWLEDGE_DIR / "collect_only.md"
+    guide = KNOWLEDGE_DIR / "run/collect_only.md"
     assert guide.is_file(), "knowledge/collect_only.md must hold the WHEN-to-collect-only judgment"
     text = guide.read_text()
     # It names the mechanism it governs and the run-only constraint + the re-collect intent.

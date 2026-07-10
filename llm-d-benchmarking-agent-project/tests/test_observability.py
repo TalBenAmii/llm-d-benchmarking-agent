@@ -220,7 +220,7 @@ TOP_NODES = (
 
 
 async def test_observe_pods_parses_top_output(tmp_path):
-    from app.tools.manage_runs import observe_run_metrics
+    from app.tools.run.manage_runs import observe_run_metrics
 
     ctx, runner = _ctx(tmp_path)
     runner._canned = {"top pods": TOP_PODS}
@@ -235,7 +235,7 @@ async def test_observe_pods_parses_top_output(tmp_path):
 
 
 async def test_observe_nodes_scope(tmp_path):
-    from app.tools.manage_runs import observe_run_metrics
+    from app.tools.run.manage_runs import observe_run_metrics
 
     ctx, runner = _ctx(tmp_path)
     runner._canned = {"top nodes": TOP_NODES}
@@ -250,7 +250,7 @@ async def test_observe_handles_metrics_server_absent(tmp_path):
     """If `kubectl top` fails (no metrics-server), the tool reports unavailable read-only —
     never raising, never claiming numbers it doesn't have."""
     from app.security.runner import RunResult
-    from app.tools.manage_runs import observe_run_metrics
+    from app.tools.run.manage_runs import observe_run_metrics
 
     ctx, runner = _ctx(tmp_path)
 
@@ -301,7 +301,7 @@ def test_observability_knowledge_documents_streaming_unimplemented_and_substitut
     config-only assertion). Read the file directly: no app behavior changed."""
     from app.config import get_settings
 
-    md = (get_settings().knowledge_dir / "observability_streaming.md").read_text()
+    md = (get_settings().knowledge_dir / "observability/observability_streaming.md").read_text()
     lower = md.lower()
 
     # The upstream gap is stated as unimplemented (not the agent's fault to apologize for).
@@ -336,7 +336,7 @@ def test_observability_knowledge_documents_grafana_vs_metrics_server_offer():
     in-panel embed, not whether the stack exists). That judgment lives in knowledge, not Python."""
     from app.config import get_settings
 
-    md = (get_settings().knowledge_dir / "observability_grafana.md").read_text()
+    md = (get_settings().knowledge_dir / "observability/observability_grafana.md").read_text()
     lower = md.lower()
 
     # Both options are named together as a pair.

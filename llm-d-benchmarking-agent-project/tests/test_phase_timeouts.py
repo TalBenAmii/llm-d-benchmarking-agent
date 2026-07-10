@@ -20,7 +20,7 @@ from __future__ import annotations
 import pytest
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import _PHASE_TIMEOUT_FLAGS, build_argv
+from app.tools.run.execute import _PHASE_TIMEOUT_FLAGS, build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 
@@ -235,7 +235,7 @@ def test_runner_deadline_still_bounds_the_process(allowlist, catalog, subcommand
 def test_phase_timeouts_knowledge_is_discoverable():
     from pathlib import Path
 
-    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "phase_timeouts.md"
+    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "run/phase_timeouts.md"
     assert kfile.is_file(), "knowledge/phase_timeouts.md must exist (auto-indexed by prompt glob)"
     text = kfile.read_text().lower()
     # It must carry the actual reconcile judgment, not just name the flags.

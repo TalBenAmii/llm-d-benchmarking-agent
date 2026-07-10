@@ -25,8 +25,8 @@ from typing import TYPE_CHECKING
 from app.observability import metrics as instrument
 from app.security.allowlist import MUTATING, READ_ONLY, Decision
 from app.security.runner import RunResult, simulated_run_result
-from app.tools import gated_access, skill_gate
 from app.tools.context import ApprovalRejected, ToolError
+from app.tools.run import gated_access, skill_gate
 
 if TYPE_CHECKING:
     from app.tools.context import ToolContext
@@ -153,14 +153,14 @@ class CommandExecutor:
         # Gated-model access guardrail (a SAFETY gate, like the approval gate below): refuse to
         # stand up / run / smoketest a model the backend HF token can't pull, once check_capacity
         # has reported it gated+unauthorized. Mechanism enforcing a stated boundary on the
-        # bridge's own facts — see app/tools/gated_access.py. Fires before approval so a
+        # bridge's own facts — see app/tools/run/gated_access.py. Fires before approval so a
         # blocked deploy never prompts; only deploy subcommands are affected.
         if decision.mode == MUTATING:
             block = gated_access.gated_block(ctx, decision.argv)
             if block is not None:
                 raise ToolError(gated_access.gated_block_message(*block))
             # Skill-grounding gate: refuse an llmdbenchmark standup/run/teardown/etc. until its
-            # grounding doc was fetched this session (app/tools/skill_gate.py). run_shell is NOT
+            # grounding doc was fetched this session (app/tools/run/skill_gate.py). run_shell is NOT
             # skill-gated (ad-hoc shell is intentionally exempt) — only this chokepoint applies it.
             sblock = skill_gate.skill_gate_block(ctx, decision)
             if sblock:

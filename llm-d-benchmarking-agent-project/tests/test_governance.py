@@ -10,7 +10,7 @@ second):
       YAML number changes the deadline);
   (c) a malformed allowlist RAISES at load.
 
-Plus structural guarantees: the old ``app/tools/execute.py::_TIMEOUTS`` dict is gone, and the
+Plus structural guarantees: the old ``app/tools/run/execute.py::_TIMEOUTS`` dict is gone, and the
 real shipped allowlist sources llmdbenchmark subcommand timeouts purely from its YAML.
 """
 from __future__ import annotations
@@ -195,7 +195,7 @@ async def test_no_policy_timeout_uses_caller_fallback(tmp_path):
 # ---- structural: the Python timeout table is GONE --------------------------
 
 def test_execute_timeouts_dict_removed():
-    import app.tools.execute as execute_mod
+    import app.tools.run.execute as execute_mod
     assert not hasattr(execute_mod, "_TIMEOUTS"), \
         "the hardcoded _TIMEOUTS dict must be gone — timeouts live in the allowlist YAML"
     src = Path(execute_mod.__file__).read_text()

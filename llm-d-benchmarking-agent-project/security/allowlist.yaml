@@ -561,7 +561,7 @@ executables:
   install_prereqs.sh:
     flat: true
     mode: mutating
-    runner: { invoke: "project-script", script: "scripts/install_prereqs.sh" }
+    runner: { invoke: "project-script", script: "scripts/install/install_prereqs.sh" }
     flags:
       "--docker": {}
       "--kind": {}
@@ -584,7 +584,7 @@ executables:
     flat: true
     mode: mutating
     timeout_s: 300
-    runner: { invoke: "project-script", script: "scripts/install_metrics_server.sh" }
+    runner: { invoke: "project-script", script: "scripts/install/install_metrics_server.sh" }
     flags:
       "--kubelet-insecure-tls": {}
       "--version": { takes_value: true, value: { ref: metrics_server_version } }
@@ -604,7 +604,7 @@ executables:
     mode: read_only
     runner:
       invoke: "project-script"
-      script: "scripts/capacity_check.py"
+      script: "scripts/bridges/capacity_check.py"
       python_via: "repo:llm-d-benchmark/.venv"
     positionals:
       - { value: { ref: json_path } }
@@ -619,7 +619,7 @@ executables:
   # approval). `python_via` runs it with the benchmark venv's interpreter (the upstream module
   # uses an optional `yaml`). The single argument is constrained to a workspace-confined .json
   # request file (no '..'), so there is no arbitrary-code surface beyond this audited script and
-  # the read-only upstream module it imports — the calling tool (app/tools/aggregate_runs.py)
+  # the read-only upstream module it imports — the calling tool (app/tools/analyze/aggregate_runs.py)
   # confines the OUTPUT dir to the session workspace. The interactive notebook + the
   # to_be_incorporated/ plot templates are deliberately NOT scripted here (pointer-only).
   # WHEN to aggregate (>=2 repeats of the same benchmark) is JUDGMENT in knowledge/analysis.md.
@@ -628,7 +628,7 @@ executables:
     mode: read_only
     runner:
       invoke: "project-script"
-      script: "scripts/aggregate_runs.py"
+      script: "scripts/bridges/aggregate_runs.py"
       python_via: "repo:llm-d-benchmark/.venv"
     positionals:
       - { value: { ref: json_path } }
@@ -657,7 +657,7 @@ executables:
     timeout_s: 120
     runner:
       invoke: "project-script"
-      script: "scripts/provision_hf_secret.py"
+      script: "scripts/bridges/provision_hf_secret.py"
     flags:
       "--namespace": { takes_value: true, value: { ref: namespace } }
       "-p":          { takes_value: true, value: { ref: namespace } }
@@ -706,7 +706,7 @@ executables:
   # OPTIONAL richer ENVIRONMENT capture: given an OpenAI-compatible endpoint URL,
   # `llm-d-discover <url> -f benchmark-report` traces the LIVE llm-d stack behind it and emits
   # BR-v0.2 scenario.stack[] Component dicts (model/role/replicas/parallelism/accelerator). The
-  # agent feeds that into the report/scenario-capture path (app/tools/discover.py) for a richer
+  # agent feeds that into the report/scenario-capture path (app/tools/setup/discover.py) for a richer
   # picture than its own endpoint probing — but endpoint probing (probe_environment /
   # check_endpoint_readiness) stays the UNCONDITIONAL default; this only adds detail.
   #

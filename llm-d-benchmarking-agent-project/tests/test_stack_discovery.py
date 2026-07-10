@@ -16,8 +16,8 @@ import pytest
 
 from app.security.allowlist import READ_ONLY
 from app.tools.context import ToolError
-from app.tools.discover import _parse_components, _summarize_stack, discover_stack
 from app.tools.registry import dispatch, tool_definitions
+from app.tools.setup.discover import _parse_components, _summarize_stack, discover_stack
 from tests._helpers import _real_repo_ctx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -252,7 +252,7 @@ def test_allowlist_discover_rejects_metacharacters(allowlist):
 # ---- knowledge discoverability --------------------------------------------------
 
 def test_stack_discovery_knowledge_is_loadable(tmp_path):
-    from app.tools.knowledge_access import read_knowledge
+    from app.tools.access.knowledge_access import read_knowledge
 
     ctx, _, _ = _real_repo_ctx(tmp_path)
     out = read_knowledge(ctx, name="stack_discovery")

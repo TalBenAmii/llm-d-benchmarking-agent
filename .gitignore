@@ -5,10 +5,11 @@
 # Git history already preserves the deleted originals; no need to re-commit them here.
 .claude/archive/
 
-# Nested upstream repos — managed by their own git, not this one
+# Nested repos (read-only upstreams + the owned llm-d-bench-mcp sibling) — managed by their own git, not this one
 /llm-d/
 /llm-d-benchmark/
 /llm-d-skills/
+/llm-d-bench-mcp/
 
 # Local-only scratch todo list — kept on disk, never committed
 /todo

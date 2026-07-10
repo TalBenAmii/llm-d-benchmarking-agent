@@ -68,14 +68,14 @@ def tool_ctx(tmp_path):
 @pytest.fixture(autouse=True)
 def _ground_skills_by_default(monkeypatch):
     """Pre-ground every ToolContext built during a test so the skill-grounding gate
-    (app/tools/skill_gate.py) is INERT by default. That gate refuses a mutating operation (and the
+    (app/tools/run/skill_gate.py) is INERT by default. That gate refuses a mutating operation (and the
     plan proposing it) until its grounding task is in ``ctx.consulted_skills`` — a per-session ledger
     the real agent fills by calling ``fetch_key_docs``. Tests that aren't ABOUT the gate assume the
     agent already grounded (exactly as they assume no gated-model block by default), so seed every
     context here; the gate's own tests (``tests/test_skill_gate.py``) clear ``consulted_skills`` to
     exercise it. Auto-reverts after each test."""
-    from app.tools import skill_gate
     from app.tools.context import ToolContext
+    from app.tools.run import skill_gate
 
     all_tasks = {"quickstart"} | set(skill_gate._TASK_BY_SUBCOMMAND.values())
     orig_init = ToolContext.__init__

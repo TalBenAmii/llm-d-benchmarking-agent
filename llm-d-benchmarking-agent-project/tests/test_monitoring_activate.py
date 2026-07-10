@@ -21,10 +21,10 @@ import yaml
 
 from app.config import Settings
 from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
-from app.tools import analyze
+from app.tools.analyze import analyze
 from app.tools.context import ToolContext
-from app.tools.execute import build_argv
 from app.tools.registry import dispatch
+from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from app.validation.report import summarize_report
 from tests._helpers import _argv, kubectl_present
@@ -150,7 +150,7 @@ def _probe_ctx(tmp_path, *, canned):
 
 @pytest.fixture(autouse=True)
 def _kubectl_present(monkeypatch):
-    kubectl_present(monkeypatch, target="app.tools.probe")
+    kubectl_present(monkeypatch, target="app.tools.setup.probe")
 
 
 async def test_probe_prometheus_crds_present(tmp_path):

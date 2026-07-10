@@ -7,7 +7,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from app.agent.prompt import _knowledge_sections
-from app.tools.knowledge_access import (
+from app.tools.access.knowledge_access import (
     EXCLUDED_KNOWLEDGE_FILES,
     _knowledge_files,
     read_knowledge,

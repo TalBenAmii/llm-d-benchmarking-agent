@@ -22,7 +22,7 @@ from __future__ import annotations
 import pytest
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv
+from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 
@@ -225,7 +225,7 @@ def test_stack_and_parallel_keep_read_only_preview(allowlist, catalog):
 def test_multi_stack_knowledge_is_discoverable():
     from pathlib import Path
 
-    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "multi_stack.md"
+    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "deploy/multi_stack.md"
     assert kfile.is_file(), "knowledge/multi_stack.md must exist (auto-indexed by prompt glob)"
     text = kfile.read_text()
     # First line must be a heading (the on-demand index uses it as the one-line purpose).

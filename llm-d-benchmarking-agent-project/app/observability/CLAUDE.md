@@ -18,7 +18,7 @@ metric definitions wired into central record points, and a backend-only live res
   `_MAX_CONSECUTIVE_FAILURES` (3) bad polls it STOPS `kubectl top` for the rest of the run (a good sample
   re-arms). Never enters the LLM stream; a failing poll never breaks the benchmark. `RESOURCE_STATS` is a bare
   string literal (NOT imported from `app.agent.events`) deliberately to avoid an import cycle — the UI and tests
-  match the same literal. It reuses the private `app.tools.manage_runs._parse_top_table` — keep it stable.
+  match the same literal. It reuses the private `app.tools.run.manage_runs._parse_top_table` — keep it stable.
 
 ## Key files
 - `metrics.py` — `MetricsRegistry` / `Counter` / `Gauge` / `Histogram` + `render_prometheus`; also owns the

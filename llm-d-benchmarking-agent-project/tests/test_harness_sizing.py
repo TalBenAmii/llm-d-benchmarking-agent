@@ -17,10 +17,10 @@ from unittest.mock import patch
 
 import pytest
 
+from app.tools.access.knowledge_access import read_knowledge
 from app.tools.context import ToolError
-from app.tools.execute import execute_llmdbenchmark
-from app.tools.knowledge_access import read_knowledge
-from app.tools.probe import _parse_cpu_quantity, probe_environment
+from app.tools.run.execute import execute_llmdbenchmark
+from app.tools.setup.probe import _parse_cpu_quantity, probe_environment
 from tests._helpers import _ctx
 from tests.flows.harness import CaptureRunner
 
@@ -59,7 +59,7 @@ def _last_run_call(runner: CaptureRunner):
 
 async def test_probe_node_capacity_small_node(tmp_path):
     ctx, _ = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["node_capacity"])
     cap = out["node_capacity"]
     assert cap["available"] is True
@@ -71,7 +71,7 @@ async def test_probe_node_capacity_small_node(tmp_path):
 
 async def test_probe_node_capacity_large_cluster_min_is_smallest(tmp_path):
     ctx, _ = _ctx(tmp_path, nodes_json=LARGE_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["node_capacity"])
     cap = out["node_capacity"]
     # The binding constraint is the SMALLEST allocatable node (the scheduler picks one node).
@@ -83,7 +83,7 @@ async def test_probe_node_capacity_in_all_and_uses_allowlisted_readonly(tmp_path
     """node_capacity runs as part of 'all' and reaches the runner via the read-only,
     already-allowlisted `kubectl get nodes -o json` (no allowlist change needed)."""
     ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, namespace="llmd")  # checks defaults to "all"
     assert "node_capacity" in out
     assert ["kubectl", "get", "nodes", "-o", "json"] in [c["argv"] for c in runner.calls]
@@ -91,7 +91,7 @@ async def test_probe_node_capacity_in_all_and_uses_allowlisted_readonly(tmp_path
 
 async def test_probe_node_capacity_no_kubectl(tmp_path):
     ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: None):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: None):
         out = await probe_environment(ctx, checks=["node_capacity"])
     assert out["node_capacity"] == {"available": False, "nodes": [], "min_allocatable_cpu": None}
     # Nothing ran (no kubectl on PATH) — the probe degraded gracefully.
@@ -107,7 +107,7 @@ async def test_probe_node_capacity_unreachable_cluster(tmp_path):
         return RunResult(exit_code=1, duration_s=0.0, real_argv=list(argv), cwd=None,
                          output="The connection to the server was refused")
 
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"), \
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"), \
             patch.object(ctx, "run_readonly", side_effect=boom):
         out = await probe_environment(ctx, checks=["node_capacity"])
     assert out["node_capacity"]["available"] is False
@@ -126,7 +126,7 @@ def test_parse_cpu_quantity_handles_millicore_and_bare():
 
 async def test_probe_node_capacity_parses_millicore_node(tmp_path):
     ctx, _ = _ctx(tmp_path, nodes_json=MILLICORE_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["node_capacity"])
     cap = out["node_capacity"]
     assert cap["min_allocatable_cpu"] == 1.5
@@ -139,7 +139,7 @@ async def test_small_node_run_carries_lowered_harness_cpu_nr(tmp_path):
     """On a small node the agent lowers the request: the launcher subprocess child_env carries
     the chosen LLMDBENCH_HARNESS_CPU_NR so the run schedules instead of going Pending."""
     ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         await execute_llmdbenchmark(
             ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
             harness="inference-perf", workload="sanity_random.yaml",
@@ -155,7 +155,7 @@ async def test_large_node_run_omits_harness_cpu_nr_default_16(tmp_path):
     """On a large node the agent omits harness_cpu_nr; the launcher keeps the default 16,
     so no LLMDBENCH_HARNESS_CPU_NR override is placed in the child env."""
     ctx, runner = _ctx(tmp_path, nodes_json=LARGE_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         await execute_llmdbenchmark(
             ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
             harness="inference-perf", workload="sanity_random.yaml",
@@ -186,7 +186,7 @@ async def test_run_carries_harness_mem_env(tmp_path):
     """harness_mem plumbs the launcher pod's memory request as LLMDBENCH_HARNESS_CPU_MEM on the
     subprocess child_env (a backend-only ENV VAR, never a CLI flag), alongside the CPU request."""
     ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         await execute_llmdbenchmark(
             ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
             harness="inference-perf", workload="sanity_random.yaml",
@@ -203,7 +203,7 @@ async def test_run_carries_harness_mem_env(tmp_path):
 async def test_harness_mem_default_omitted_when_unset(tmp_path):
     """Omit harness_mem and the launcher keeps the upstream default 32Gi — no env override."""
     ctx, runner = _ctx(tmp_path, nodes_json=LARGE_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         await execute_llmdbenchmark(
             ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
             harness="inference-perf", workload="sanity_random.yaml", flags={},
@@ -215,7 +215,7 @@ async def test_harness_mem_rejects_malformed_quantity(tmp_path):
     """A value that is not a Kubernetes memory quantity is rejected AT THE BOUNDARY with a clean,
     self-correctable ToolError — never forwarded to become a late pod-apply failure."""
     ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         with pytest.raises(ToolError, match="Kubernetes memory quantity"):
             await execute_llmdbenchmark(
                 ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
@@ -235,7 +235,7 @@ async def test_harness_mem_never_appears_in_browser_command_events(tmp_path):
         events.append((t, p))
 
     ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON, emit=emit)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         await execute_llmdbenchmark(
             ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
             harness="inference-perf", workload="sanity_random.yaml",
@@ -260,7 +260,7 @@ async def test_harness_cpu_nr_never_appears_in_browser_command_events(tmp_path):
         events.append((t, p))
 
     ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON, emit=emit)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         await execute_llmdbenchmark(
             ctx, subcommand="run", spec="cicd/kind", namespace="llmd",
             harness="inference-perf", workload="sanity_random.yaml",

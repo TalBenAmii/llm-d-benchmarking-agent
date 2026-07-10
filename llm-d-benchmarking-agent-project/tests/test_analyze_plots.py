@@ -22,9 +22,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv
-from app.tools.knowledge_access import read_knowledge
-from app.tools.report_locate import _discover_charts
+from app.tools.access.knowledge_access import read_knowledge
+from app.tools.analyze.report_locate import _discover_charts
+from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 
@@ -221,7 +221,7 @@ def test_agent_analysis_math_is_independent_of_analyze_plots():
 
 
 def test_analysis_knowledge_documents_the_three_families_as_supplementary():
-    guide = KNOWLEDGE_DIR / "analysis.md"
+    guide = KNOWLEDGE_DIR / "analysis/analysis.md"
     assert guide.is_file()
     text = guide.read_text().lower()
     assert "--analyze" in text

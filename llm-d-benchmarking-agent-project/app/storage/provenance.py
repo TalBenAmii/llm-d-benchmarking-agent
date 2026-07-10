@@ -135,7 +135,7 @@ def knowledge_hash(knowledge_dir: str | Path) -> str:
     files: list[Path] = []
     if kdir.is_dir():
         for pat in _KNOWLEDGE_GLOBS:
-            files.extend(kdir.glob(pat))
+            files.extend(kdir.rglob(pat))
     files = sorted(
         {f for f in files if f.name not in _EXCLUDED_KNOWLEDGE_FILES},
         key=lambda f: f.name,

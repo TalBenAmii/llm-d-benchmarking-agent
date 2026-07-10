@@ -1,7 +1,7 @@
 """Agent self-eval harness — two OPT-IN, quota-spending LLM layers + their always-on
 deterministic shadow/oracle guards.
 
-See ``docs/VALIDATION.md`` for the full picture. In brief:
+See ``docs/reference/VALIDATION.md`` for the full picture. In brief:
 
   * **(A) LLM-judge quality eval** — a judge LLM scores each agent session transcript against
     the versioned ``rubric.md`` and emits an aggregate AGENT-QUALITY SCORE

@@ -16,7 +16,7 @@ from app.config import Settings
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner, RunResult
 from app.storage.history import HistoryStore
-from app.tools.catalog import build_catalog, catalog_for_allowlist
+from app.tools.setup.catalog import build_catalog, catalog_for_allowlist
 
 
 class ToolError(RuntimeError):
@@ -65,17 +65,17 @@ class ToolContext:
     # doc within a session would re-inject identical full text into the replayed transcript on
     # every later turn; instead the knowledge-access tools record each doc's identity here on the
     # FIRST fetch and short-circuit an EXACT repeat to a tiny back-reference (see
-    # app/tools/knowledge_access.py). RUNTIME-ONLY (not persisted) — a resumed chat starts with an
+    # app/tools/access/knowledge_access.py). RUNTIME-ONLY (not persisted) — a resumed chat starts with an
     # empty set, so the first fetch in the new process always returns full content. Mechanism only.
     fetched_docs: set[str] = field(default_factory=set, repr=False)
     # Per-session ledger of which key_docs TASKS were fetched (skill-grounding gate). Populated by
     # fetch_key_docs on the task ARG — regardless of read success, so an absent skills repo can't
-    # defeat the gate — and read by app/tools/skill_gate.py to REFUSE a mutating operation (and the
+    # defeat the gate — and read by app/tools/run/skill_gate.py to REFUSE a mutating operation (and the
     # plan that proposes it) until its grounding doc was fetched this session. RUNTIME-ONLY (not
     # persisted), like fetched_docs/gated_access: a resumed chat re-grounds on its next fetch.
     consulted_skills: set[str] = field(default_factory=set, repr=False)
     # Per-session gated-model access verdicts: model_id -> {gated, authorized, gated_reason},
-    # recorded by check_capacity and read by the command guardrail (app/tools/gated_access.py) to
+    # recorded by check_capacity and read by the command guardrail (app/tools/run/gated_access.py) to
     # REFUSE a standup/run/smoketest of a model the backend HF token can't pull — a safety gate
     # like the approval gate, not judgment. RUNTIME-ONLY (not persisted), like fetched_docs: it
     # lives for the session process; a resumed chat re-establishes it on its next check_capacity

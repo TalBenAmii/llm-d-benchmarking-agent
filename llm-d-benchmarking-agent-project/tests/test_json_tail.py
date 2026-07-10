@@ -105,7 +105,7 @@ def test_large_nested_blob_after_noise_is_handled():
 
 
 # ---- parse_bridge_dict: the shared bridge-stdout wrapper ----------------------
-# This is the shared helper app/tools/capacity.py and app/tools/aggregate_runs.py both
+# This is the shared helper app/tools/setup/capacity.py and app/tools/analyze/aggregate_runs.py both
 # call directly. It locks the unified empty/no-json/malformed error policy + label text.
 
 

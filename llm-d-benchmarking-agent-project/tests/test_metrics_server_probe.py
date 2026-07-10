@@ -14,7 +14,7 @@ from app.agent.prompt import HARD_RULES
 from app.config import Settings
 from app.security.allowlist import Allowlist
 from app.tools.context import ToolContext
-from app.tools.probe import probe_environment
+from app.tools.setup.probe import probe_environment
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CannedResult, CaptureRunner
 
@@ -48,7 +48,7 @@ async def test_metrics_server_available(tmp_path):
         "top nodes": "NAME   CPU   MEM\nnode1  100m  500Mi\n",
         "get deployment": _DEPLOY_READY,
     })
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["metrics_server"])
     assert out["metrics_server"] == {"available": True, "installed": True, "ready_replicas": 1}
     argvs = [c["argv"] for c in runner.calls]
@@ -62,7 +62,7 @@ async def test_metrics_server_absent(tmp_path):
         "top nodes": CannedResult(output="error: Metrics API not available", exit_code=1),
         "get deployment": _DEPLOY_ABSENT,
     })
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["metrics_server"])
     assert out["metrics_server"] == {"available": False, "installed": False, "ready_replicas": None}
 
@@ -74,7 +74,7 @@ async def test_metrics_server_installed_but_not_ready(tmp_path):
         "top nodes": CannedResult(output="error: Metrics API not available", exit_code=1),
         "get deployment": _DEPLOY_NOTREADY,
     })
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["metrics_server"])
     assert out["metrics_server"] == {"available": False, "installed": True, "ready_replicas": 0}
 
@@ -82,7 +82,7 @@ async def test_metrics_server_installed_but_not_ready(tmp_path):
 async def test_metrics_server_no_kubectl(tmp_path):
     """No kubectl on PATH → degrade to all-absent, no raise, no command issued."""
     ctx, runner = _ctx(tmp_path, canned={})
-    with patch("app.tools.probe.shutil.which", return_value=None):
+    with patch("app.tools.setup.probe.shutil.which", return_value=None):
         out = await probe_environment(ctx, checks=["metrics_server"])
     assert out["metrics_server"] == {"available": False, "installed": False, "ready_replicas": None}
     assert runner.calls == []

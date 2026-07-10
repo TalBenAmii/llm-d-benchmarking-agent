@@ -23,7 +23,7 @@ import pytest
 
 from app.security.allowlist import MUTATING, READ_ONLY
 from app.tools.context import ApprovalRejected, ToolError
-from app.tools.execute import _RESULTS_STORE_COMMANDS, build_argv, execute_llmdbenchmark
+from app.tools.run.execute import _RESULTS_STORE_COMMANDS, build_argv, execute_llmdbenchmark
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _capture_ctx
 from tests.flows.harness import CaptureRunner
@@ -331,7 +331,7 @@ def test_local_history_store_is_untouched():
     from pathlib import Path
 
     from app.storage import history as hist
-    from app.tools import history as history_tool  # the result_history handler module
+    from app.tools.analyze import history as history_tool  # the result_history handler module
 
     # The local HistoryStore contract (add/get/list/delete) + the module-level trend() are intact.
     for method in ("add", "get", "list", "delete"):
@@ -353,7 +353,7 @@ def test_local_history_store_is_untouched():
 def test_history_knowledge_documents_the_two_stores():
     from pathlib import Path
 
-    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "history.md"
+    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "persistence/history.md"
     text = kfile.read_text().lower()
     # It must explain the CLI store, its independence from the local store, and WHEN to use it.
     assert "results store" in text

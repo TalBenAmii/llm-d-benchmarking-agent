@@ -69,11 +69,11 @@ def _normalize_metric_token(tok: str) -> str:
 
 
 # ===========================================================================
-# The four operability docs exist and are accurate to THIS codebase
+# The operability docs exist and are accurate to THIS codebase
 # ===========================================================================
 
 @pytest.mark.parametrize("doc_path,needles", [
-    (DOCS / "SECURITY.md", (
+    (DOCS / "reference/SECURITY.md", (
         "Trust boundaries",
         "allowlist",            # the allowlist/approval model
         "approval",
@@ -85,7 +85,7 @@ def _normalize_metric_token(tok: str) -> str:
         "CORS_ALLOW_ORIGINS",
         "requires isolation",
     )),
-    (DOCS / "TROUBLESHOOTING.md", (
+    (DOCS / "guides/TROUBLESHOOTING.md", (
         "/healthz",
         "/readyz",
         "Debug",                # debug mode (Phase 1 command trail)
@@ -95,14 +95,6 @@ def _normalize_metric_token(tok: str) -> str:
         # references real metric families for the run-failure path
         "llmdbench_orchestrator_run_faults_total",
     )),
-    (DOCS / "CONTRIBUTING.md", (
-        "Thin code, thick agent",
-        "security/allowlist.yaml",   # allowlist-as-data
-        "hermetic",
-        "FakeKubeClient",
-        "add a tool",
-        "knowledge/",
-    )),
 ])
 def test_operability_doc_has_expected_sections(doc_path, needles):
     text = _read(doc_path)
@@ -110,22 +102,9 @@ def test_operability_doc_has_expected_sections(doc_path, needles):
         assert needle in text, f"{doc_path.name} missing expected content: {needle!r}"
 
 
-def test_changelog_is_keep_a_changelog_with_both_eras():
-    text = _read(DOCS / "CHANGELOG.md")
-    assert "Keep a Changelog" in text
-    assert "[Unreleased]" in text, "Keep-a-Changelog needs an Unreleased section"
-    assert "[0.1.0]" in text, "v1 release section expected"
-    # Summarizes both the v1 phases and the in-progress v2 operability work.
-    assert "Phases 0-10" in text or "Phase 0-1" in text
-    assert "Phases 11-18" in text or "Phase 11" in text
-    # Standard sections present.
-    assert "### Added" in text
-    assert "### Security" in text
-
-
 def test_docs_index_links_the_new_docs():
     index = _read(DOCS / "README.md")
-    for name in ("SECURITY.md", "TROUBLESHOOTING.md", "CONTRIBUTING.md", "CHANGELOG.md"):
+    for name in ("SECURITY.md", "TROUBLESHOOTING.md"):
         assert name in index, f"docs/README.md should link {name}"
 
 

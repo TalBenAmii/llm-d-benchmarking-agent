@@ -22,7 +22,7 @@ MCP_IMPORT_SURFACE = {
     "app.security.allowlist": ["Allowlist"],
     "app.security.runner": ["CommandRunner"],
     "app.tools.context": ["ApproveFn", "EmitFn", "ToolContext", "ApprovalRejected", "ToolError"],
-    "app.tools.knowledge_access": ["EXCLUDED_KNOWLEDGE_FILES"],
+    "app.tools.access.knowledge_access": ["EXCLUDED_KNOWLEDGE_FILES"],
     "app.tools.registry": ["dispatch", "tool_definitions"],
 }
 

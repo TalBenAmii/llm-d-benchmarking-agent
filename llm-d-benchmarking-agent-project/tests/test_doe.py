@@ -1,7 +1,7 @@
 """Hermetic tests for the DoE experiment-file generator (Phase 19).
 
 Cover the pure cross-product mechanism (``app/validation/doe.py``) and the
-``generate_doe_experiment`` tool (``app/tools/doe.py``): a 2-factor × (3,2)-level sweep
+``generate_doe_experiment`` tool (``app/tools/run/doe.py``): a 2-factor × (3,2)-level sweep
 yields 6 correctly-named treatments; an empty/invalid factor set is rejected; the emitted
 YAML parses and matches the repo's experiment structure. No network, no cluster — the only
 on-disk dependency is the read-only sibling repo's experiment EXAMPLES (used as the
@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import yaml
 
-from app.tools.doe import generate_doe_experiment, validate_structure
 from app.tools.registry import dispatch, tool_definitions
+from app.tools.run.doe import generate_doe_experiment, validate_structure
 from app.validation.doe import DoEError, build_doe_experiment
 
 # ---------------------------------------------------------------------------

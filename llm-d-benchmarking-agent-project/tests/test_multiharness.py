@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from app.tools import compare
+from app.tools.analyze import compare
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import CompareHarnessRunsInput
 from app.validation.report import (

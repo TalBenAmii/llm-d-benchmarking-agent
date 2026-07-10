@@ -1,4 +1,4 @@
-"""Reproducibility — the export_run_bundle + reproduce_run tools (app/tools/reproducibility.py).
+"""Reproducibility — the export_run_bundle + reproduce_run tools (app/tools/analyze/reproducibility.py).
 
 Hermetic: real BR v0.2 report fixtures under a tmp run dir + the tool's own isolated tmp
 workspace (the conftest ``tool_ctx``). The env snapshot is monkeypatched to a no-cluster stub so
@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from app.tools import reproducibility
+from app.tools.analyze import reproducibility
 from app.tools.context import ToolContext
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.schemas import ExportRunBundleInput, ReproduceRunInput
@@ -130,7 +130,7 @@ async def test_export_attach_to_history(tool_ctx, br_example, tmp_path):
     _write_report(run, base, uid="run-hist")
     _write_run_config(tool_ctx)
     # First store the result in history (so there's a record to attach to).
-    from app.tools import history as history_tool
+    from app.tools.analyze import history as history_tool
 
     stored = await history_tool.result_history(tool_ctx, action="store", source=str(run))
     rid = stored["record"]["id"]
@@ -273,5 +273,5 @@ def test_knowledge_file_exists_and_is_on_demand(tool_ctx):
     from app.agent.prompt import CORE_KNOWLEDGE
 
     kdir = tool_ctx.settings.knowledge_dir
-    assert (kdir / "reproducibility.md").is_file()
+    assert (kdir / "persistence/reproducibility.md").is_file()
     assert "reproducibility.md" not in CORE_KNOWLEDGE

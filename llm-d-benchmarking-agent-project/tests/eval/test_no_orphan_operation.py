@@ -14,7 +14,7 @@ from __future__ import annotations
 import yaml
 
 from app.config import PROJECT_ROOT
-from app.tools.skill_gate import _TASK_BY_SUBCOMMAND
+from app.tools.run.skill_gate import _TASK_BY_SUBCOMMAND
 from tests.eval._skills import SKILL_TASKS
 
 # Derived from the canonical skill-gate map so this test can't drift from the gate the runner

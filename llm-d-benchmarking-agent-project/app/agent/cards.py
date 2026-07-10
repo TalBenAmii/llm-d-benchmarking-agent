@@ -29,7 +29,7 @@ from app.tools.context import ToolContext
 # (the UI then falls back to its suggestion chips / plain note). Pure parsing — no judgment, no
 # per-field knowledge baked in here.
 
-_WELCOME_FILE = "welcome.md"
+_WELCOME_FILE = "conversation/welcome.md"
 
 
 def build_welcome(ctx: ToolContext) -> dict[str, Any] | None:
