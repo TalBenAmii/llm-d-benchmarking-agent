@@ -15,7 +15,7 @@ cross-session history & trends, shareable HTML reports, Prometheus/Grafana obser
 one-command Helm deploy, and a companion **MCP server**
 ([`llm-d-bench-mcp`](https://github.com/TalBenAmii/llm-d-bench-mcp)) that plugs the whole toolset
 into Claude Code. The evidence-backed feature inventory is
-[`FEATURES.md`](llm-d-benchmarking-agent-project/docs/FEATURES.md).
+[`FEATURES.md`](llm-d-benchmarking-agent-project/docs/reference/FEATURES.md).
 
 All code lives in [`llm-d-benchmarking-agent-project/`](llm-d-benchmarking-agent-project/); the
 sibling folders are read-only upstream repos the agent reads at runtime
@@ -58,7 +58,7 @@ The `llm-d-benchmark` expertise lives in the agent's editable brain
 > path below). Running it against a **real** (remote / multi-node / GPU) cluster is **not yet
 > tested** — but it uses the *same* service deploy, so the delta should be minimal: point `kubectl`
 > at your real cluster and pull the image from a registry instead of `kind load`. See
-> [docs/CLUSTER_SERVICE_DEPLOY.md](llm-d-benchmarking-agent-project/docs/CLUSTER_SERVICE_DEPLOY.md).
+> [docs/guides/CLUSTER_SERVICE_DEPLOY.md](llm-d-benchmarking-agent-project/docs/guides/CLUSTER_SERVICE_DEPLOY.md).
 
 ### Run the service on your laptop · recommended
 
@@ -154,7 +154,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-bench-mcp/m
 No API key needed — it authenticates through your `claude` CLI login. It runs over stdio on your
 machine; mutations are gated by Claude Code's own approval prompt. Full tool list, manual config,
 and security model live in that repo (quick pointer:
-[`docs/MCP.md`](llm-d-benchmarking-agent-project/docs/MCP.md)).
+[`docs/reference/MCP.md`](llm-d-benchmarking-agent-project/docs/reference/MCP.md)).
 
 ---
 
@@ -307,7 +307,7 @@ Reliability comes from **schema-validated handoffs**, not hard-coded scripts:
 
 The quickstart is CPU-simulated. For **real vLLM inference and real numbers** on a single
 NVIDIA GPU (e.g. a laptop card under WSL2), follow
-[`docs/GPU_CLUSTER_RUNBOOK.md`](llm-d-benchmarking-agent-project/docs/GPU_CLUSTER_RUNBOOK.md) —
+[`docs/guides/GPU_CLUSTER_RUNBOOK.md`](llm-d-benchmarking-agent-project/docs/guides/GPU_CLUSTER_RUNBOOK.md) —
 host enablement, a GPU-capable minikube, and a tiny-model scenario sized for 8 GB. The agent is
 cluster-agnostic; it targets whatever your kubeconfig points at.
 
@@ -344,13 +344,13 @@ make image-publish                       # or build+push to your own registry
 ```
 
 Full operator runbook:
-[`docs/CLUSTER_SERVICE_DEPLOY.md`](llm-d-benchmarking-agent-project/docs/CLUSTER_SERVICE_DEPLOY.md).
+[`docs/guides/CLUSTER_SERVICE_DEPLOY.md`](llm-d-benchmarking-agent-project/docs/guides/CLUSTER_SERVICE_DEPLOY.md).
 
 Runs **non-root** with a read-only root filesystem, sources keys from a Kubernetes Secret,
 probes `/healthz`, exposes `/metrics`, and grants a **namespaced least-privilege Role**.
 Optional Bearer-token auth (`AUTH_ENABLED`/`AUTH_TOKEN`) and a token-bucket rate limit
 (`RATE_LIMIT_*`) harden a shared instance. See
-[`docs/DEPLOYMENT.md`](llm-d-benchmarking-agent-project/docs/DEPLOYMENT.md).
+[`docs/guides/DEPLOYMENT.md`](llm-d-benchmarking-agent-project/docs/guides/DEPLOYMENT.md).
 
 ---
 
@@ -396,14 +396,14 @@ All paths under [`llm-d-benchmarking-agent-project/`](llm-d-benchmarking-agent-p
 
 | Doc | For |
 |---|---|
-| [docs/USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/USER_GUIDE.md) | Using the agent end-to-end |
-| [docs/MCP.md](llm-d-benchmarking-agent-project/docs/MCP.md) | Pointer to the standalone MCP server repo ([llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)) |
-| [docs/GPU_CLUSTER_RUNBOOK.md](llm-d-benchmarking-agent-project/docs/GPU_CLUSTER_RUNBOOK.md) | From CPU-sim to a real single-GPU cluster |
-| [docs/ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/ARCHITECTURE.md) | Layers, components, determinism gates, trust boundaries |
-| [docs/API.md](llm-d-benchmarking-agent-project/docs/API.md) | The HTTP/WebSocket API + tool surface + `SessionPlan` |
-| [docs/DEPLOYMENT.md](llm-d-benchmarking-agent-project/docs/DEPLOYMENT.md) | Local and in-cluster (Helm), config, secrets, RBAC |
-| [docs/VALIDATION.md](llm-d-benchmarking-agent-project/docs/VALIDATION.md) | The flow-validation harness |
-| [docs/FEATURES.md](llm-d-benchmarking-agent-project/docs/FEATURES.md) | The evidence-backed feature inventory + how to verify each |
+| [docs/guides/USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/guides/USER_GUIDE.md) | Using the agent end-to-end |
+| [docs/reference/MCP.md](llm-d-benchmarking-agent-project/docs/reference/MCP.md) | Pointer to the standalone MCP server repo ([llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)) |
+| [docs/guides/GPU_CLUSTER_RUNBOOK.md](llm-d-benchmarking-agent-project/docs/guides/GPU_CLUSTER_RUNBOOK.md) | From CPU-sim to a real single-GPU cluster |
+| [docs/reference/ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/reference/ARCHITECTURE.md) | Layers, components, determinism gates, trust boundaries |
+| [docs/reference/API.md](llm-d-benchmarking-agent-project/docs/reference/API.md) | The HTTP/WebSocket API + tool surface + `SessionPlan` |
+| [docs/guides/DEPLOYMENT.md](llm-d-benchmarking-agent-project/docs/guides/DEPLOYMENT.md) | Local and in-cluster (Helm), config, secrets, RBAC |
+| [docs/reference/VALIDATION.md](llm-d-benchmarking-agent-project/docs/reference/VALIDATION.md) | The flow-validation harness |
+| [docs/reference/FEATURES.md](llm-d-benchmarking-agent-project/docs/reference/FEATURES.md) | The evidence-backed feature inventory + how to verify each |
 
 Full index: [`docs/README.md`](llm-d-benchmarking-agent-project/docs/README.md).
 

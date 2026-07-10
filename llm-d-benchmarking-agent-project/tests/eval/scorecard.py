@@ -24,7 +24,7 @@ def build_scorecard(
     judge_model: str,
     mode: str = "live",
 ) -> dict[str, Any]:
-    """Aggregate judged sessions into the scorecard dict (see ``docs/VALIDATION.md`` for the
+    """Aggregate judged sessions into the scorecard dict (see ``docs/reference/VALIDATION.md`` for the
     shape). Pure: identical inputs → identical output (modulo ``generated_at``).
 
     ``gate.passed`` = (min per-session ``overall`` ≥ the rubric's ``min_overall_threshold``).

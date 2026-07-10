@@ -1,7 +1,7 @@
 # INTERACTIVE TEST GUIDE — drive every feature & flow by hand (real LLM)
 
 > A follow-along runbook for **manually** exercising every feature in this app with a **real
-> LLM** driving the agent. Companion to [`FEATURES.md`](FEATURES.md) (the *inventory*); this is
+> LLM** driving the agent. Companion to [`FEATURES.md`](../reference/FEATURES.md) (the *inventory*); this is
 > the *do-it-yourself* script. Check each box as you go.
 >
 > **What "real LLM" changes:** the agent's *judgment* (which tools to call, which spec/harness/
@@ -58,7 +58,7 @@ PORT=8000
 > benchmarked (the quickstart benchmarks a CPU-sim engine). The key never leaves the backend.
 
 Install + launch with `./scripts/run.sh` (sets up the venv, installs, starts uvicorn reading
-`HOST`/`PORT` from `.env`) — full quickstart in the [root README](../../README.md#quick-start) /
+`HOST`/`PORT` from `.env`) — full quickstart in the [root README](../../../README.md#quick-start) /
 [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 - [ ] **[A/B]** Server is up — open **http://127.0.0.1:8000** and the chat UI loads.
@@ -142,7 +142,7 @@ Then follow the agent. Watch the tool-call cards and the "Executed commands" pan
 ## 4. DOE / sweep feature — generate a matrix and drive a sweep *(§5, §6)*
 
 This is the Design-of-Experiments path. Two shapes — try both. Read
-[`knowledge/sweep_playbook.md`](knowledge/sweep_playbook.md) first if you want to predict the
+[`knowledge/sweep_playbook.md`](../../knowledge/sweep_playbook.md) first if you want to predict the
 agent's choices.
 
 ### 4a. Run-parameter sweep (preferred on kind — one standup, N runs)

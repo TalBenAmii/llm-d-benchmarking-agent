@@ -5,7 +5,7 @@
 > `explorer.py`, `bug_report.py`, `app_driver.py`, the `rubric.md`/`oracle.md` data assets, and
 > the `test_scorecard_shadow.py` / `test_oracle_unit.py` hermetic + `test_judge_live.py` /
 > `test_bughunt_live.py` opt-in tests) and is documented as VALIDATION Layers 3 & 4
-> (`docs/VALIDATION.md`). File-level details below reflect the original design intent; one item
+> (`docs/reference/VALIDATION.md`). File-level details below reflect the original design intent; one item
 > changed in delivery — the bug-hunter now *requires* `BUGHUNT=1` in addition to `LLM_EVAL_LIVE=1`
 > (see §5 open questions, since resolved as "yes").
 
@@ -17,7 +17,7 @@
 ## 0. Confirmed invariants
 
 - **THIN CODE, THICK AGENT** (`CLAUDE.md:31-35`): the rubric and the bug-oracle policy are *judgment* → they live in editable assets, not Python `if/elif`. Python is mechanism only.
-- **Determinism gates / opt-in live eval** (`docs/VALIDATION.md:9-13`): `LLM_EVAL_LIVE=1` gates `tests/flows/test_flows_live.py`; `make validate-live` is the only entry that spends quota; CI's `live-eval` job is `workflow_dispatch`-only + `continue-on-error` (`.github/workflows/agent-flow-validation.yml:99-120`).
+- **Determinism gates / opt-in live eval** (`docs/reference/VALIDATION.md:9-13`): `LLM_EVAL_LIVE=1` gates `tests/flows/test_flows_live.py`; `make validate-live` is the only entry that spends quota; CI's `live-eval` job is `workflow_dispatch`-only + `continue-on-error` (`.github/workflows/agent-flow-validation.yml:99-120`).
 - **Sibling repos READ-ONLY**; all new code under the project.
 - **CRITICAL COST RULE:** plain `pytest` MUST stay hermetic (~baseline **1650 passed / ~32 skipped in ~15-50s**). Anything LLM-driven is **off by default**, behind an explicit env flag, with documented quota cost — mirroring `LLM_EVAL_LIVE`.
 
@@ -146,7 +146,7 @@ Assembles `findings[]` from oracle hits + LLM triage; dedups by `(category, inva
 ## 4. Exact new / changed files
 
 ### New eval package — `tests/eval/` (mirrors `tests/flows/`)
-- `tests/eval/__init__.py` — points at `docs/VALIDATION.md`.
+- `tests/eval/__init__.py` — points at `docs/reference/VALIDATION.md`.
 - `tests/eval/rubric.md` — **(A)** versioned rubric asset (dimensions, anchors, weights, hard-fail rules, `min_overall_threshold`). Data.
 - `tests/eval/oracle.md` — **(B)** versioned oracle policy. Data.
 - `tests/eval/judge.py` — **(A)** `transcript_for_judge(run, flow)`, judge prompt builder, `judge_session(...) -> ScoreResult`. Mechanism.
@@ -165,7 +165,7 @@ Assembles `findings[]` from oracle hits + LLM triage; dedups by `(category, inva
 - `app/config.py` — *additive* optional `judge_model: str | None = None` (defaults to the agent model). Optional.
 - `Makefile` — add `eval-shadow:` (hermetic), `eval-judge:` (`LLM_EVAL_LIVE=1 ... --timeout=600`), `bughunt:` (`LLM_EVAL_LIVE=1 BUGHUNT=1 ... --timeout=600`); update `help:` + `.PHONY`.
 - `.github/workflows/agent-flow-validation.yml` — hermetic shadow/oracle tests run inside the existing "Full test suite" step (no change). Optionally add judge/bughunt to the existing `live-eval` `workflow_dispatch` job (already `continue-on-error`, already sets `LLM_EVAL_LIVE=1`). No new always-on job.
-- `docs/VALIDATION.md` — add "Layer 3: agent-quality eval (LLM judge) + Layer 4: exploratory bug-hunter", extending the existing table (Deterministic? / Needs / Gates-CI?), documenting **quota cost** + opt-in flags prominently. Add artifact sketches.
+- `docs/reference/VALIDATION.md` — add "Layer 3: agent-quality eval (LLM judge) + Layer 4: exploratory bug-hunter", extending the existing table (Deterministic? / Needs / Gates-CI?), documenting **quota cost** + opt-in flags prominently. Add artifact sketches.
 - `tests/CLAUDE.md` — one line: judge + bughunt share `LLM_EVAL_LIVE` and spend quota; `make eval-shadow` is the hermetic always-safe entry.
 - `pyproject.toml` — pin `pytest.mark.timeout(600)` on the live judge/bughunt modules (as `test_flows_live.py:60` does); no global change.
 
@@ -197,4 +197,4 @@ Assembles `findings[]` from oracle hits + LLM triage; dedups by `(category, inva
 - `tests/flows/test_flows_live.py`
 - `tests/test_selfplay_fuzz.py`
 - `app/llm/provider.py`
-- `docs/VALIDATION.md`
+- `docs/reference/VALIDATION.md`

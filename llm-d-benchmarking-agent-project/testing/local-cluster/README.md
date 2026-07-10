@@ -26,7 +26,7 @@ scheduler.
 |---|---|
 | Agent's **scheduling / placement / orchestration** logic (incl. `orchestrate_sweep` fan-out, retry/dead-letter, checkpoint, multi-replica topology) | ✅ **yes, free** |
 | Multi-replica topologies that **actually respond** (CPU sim engine) → a real BR-v0.2 report | ✅ yes (kind mode + sim engine) |
-| **Real performance numbers** (true TTFT/TPOT/throughput under a multi-GPU topology) | ❌ no — needs real GPUs (see `docs/GPU_CLUSTER_RUNBOOK.md` for a single real GPU; rent a 2-GPU box for real multi-GPU) |
+| **Real performance numbers** (true TTFT/TPOT/throughput under a multi-GPU topology) | ❌ no — needs real GPUs (see `docs/guides/GPU_CLUSTER_RUNBOOK.md` for a single real GPU; rent a 2-GPU box for real multi-GPU) |
 
 ## Which mode
 
@@ -95,7 +95,7 @@ them here as fixtures and feed them to the agent at runtime via
 
 ## Related
 
-- `docs/GPU_CLUSTER_RUNBOOK.md` — the real **single**-GPU path (your RTX 4060): real vLLM, real
+- `docs/guides/GPU_CLUSTER_RUNBOOK.md` — the real **single**-GPU path (your RTX 4060): real vLLM, real
   numbers, one replica. This harness is its mock multi-GPU counterpart.
 - `app/orchestrator/job.py` — `Scheduling` (how `gpu_count` / affinity / tolerations become a
   manifest); `app/tools/orchestrate.py` — `orchestrate_sweep`.

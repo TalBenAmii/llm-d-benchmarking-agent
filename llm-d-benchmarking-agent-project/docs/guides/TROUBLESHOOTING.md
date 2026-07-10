@@ -45,7 +45,7 @@ trail is replayed in its original transcript position on reconnect/resume.
 - The allowlist (`security/allowlist.yaml`) is **deny-by-default**. A denial means the
   executable, a subcommand, a flag value, or a token failed validation. The denial `reason`
   appears in the surfaced error and the log. **Fix by widening the YAML policy — never by
-  editing Python.** See `docs/SECURITY.md` for the model.
+  editing Python.** See `docs/reference/SECURITY.md` for the model.
 - A token containing a shell metacharacter is rejected on principle (defense in depth), even
   though the runner uses `shell=False`.
 
@@ -99,7 +99,7 @@ trail is replayed in its original transcript position on reconnect/resume.
 - These come from the Phase 12 controls when enabled. **401** → missing/bad
   `Authorization: Bearer <AUTH_TOKEN>` (WS may use `?token=`). **429** → the `/api/*` token
   bucket is empty (tune `RATE_LIMIT_RPS` / `RATE_LIMIT_BURST`). `/healthz` + `/metrics` are
-  never throttled. See `docs/SECURITY.md`.
+  never throttled. See `docs/reference/SECURITY.md`.
 
 ### Metrics are missing or reset to zero
 - The agent's counters are **process-lifetime** — they reset on a backend restart, so a sudden

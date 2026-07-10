@@ -137,7 +137,7 @@ def build_bug_report(
     total_actions: int,
     no_findings_note: str = "",
 ) -> dict[str, Any]:
-    """Assemble the bug-report dict (see ``docs/VALIDATION.md`` for the shape). Pure: dedups,
+    """Assemble the bug-report dict (see ``docs/reference/VALIDATION.md`` for the shape). Pure: dedups,
     numbers the findings BUG-NNN, and records the run's provenance (oracle version, model, seeds,
     budget)."""
     deduped = dedup_findings(findings)

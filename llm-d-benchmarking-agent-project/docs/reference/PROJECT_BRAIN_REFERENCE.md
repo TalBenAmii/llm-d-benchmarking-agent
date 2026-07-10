@@ -5,7 +5,7 @@ always-on `CLAUDE.md`. Read it when you need orientation; it is not loaded every
 active `CLAUDE.md` keeps the non-negotiable rules, the folder map, and the on-demand pointers.
 
 Two focused references were split out of this file (load whichever the task needs):
-- **[`CONFIG_AUDIT_LOG.md`](CONFIG_AUDIT_LOG.md)** — dated config / model-drift audit entries
+- **[`CONFIG_AUDIT_LOG.md`](../project/CONFIG_AUDIT_LOG.md)** — dated config / model-drift audit entries
   (the per-turn-config reorganizations + post-model-release reviews). Read before the next such review.
 - **[`UPSTREAM_REUSE_PATHS.md`](UPSTREAM_REUSE_PATHS.md)** — where to look in the READ-ONLY
   `llm-d-benchmark/` repo (CLI entry, specs, harnesses/workloads, report schema, safe-preview commands).
@@ -19,17 +19,17 @@ end-to-end (probe → ensure repo → `install.sh --uv` → `standup --spec cicd
 multi-harness compare, capacity pre-flight, history/trends, observability, one-command deploy).
 
 - **Authoritative, evidence-backed feature inventory + how to verify each →** `FEATURES.md` (read first).
-- **Remaining / deferred work →** the DEFERRED phases in `FEATURES.md` (per-phase rows in `docs/BENCHMARK_FEATURE_COVERAGE.md`).
+- **Remaining / deferred work →** the DEFERRED phases in `FEATURES.md` (per-phase rows in `docs/reference/BENCHMARK_FEATURE_COVERAGE.md`).
 - **Design rationale + MVP implementation-status record →** `docs/history/plan.md`.
 - **Tool count is never hard-coded here** — `app/tools/registry.py` (`build_registry()`) is the only source of truth.
 
 ## Documentation map
-The full docs index lives in **[`README.md`](README.md)** (every `docs/` page + the repo-root
-`README.md`, `docs/FEATURES.md`, `knowledge/`; plus `docs/history/plan.md`). Not repeated here.
+The full docs index lives in **[`README.md`](../README.md)** (every `docs/` page + the repo-root
+`README.md`, `docs/reference/FEATURES.md`, `knowledge/`; plus `docs/history/plan.md`). Not repeated here.
 
 **Agent brain** — `knowledge/*.md|*.yaml` hold all *judgment* (loaded at runtime; not docs to edit
 casually). See `knowledge/CLAUDE.md` before editing them.
 
 ## Run locally
-See **[`DEPLOYMENT.md`](DEPLOYMENT.md)** for running locally and in-cluster (config, secrets, RBAC,
+See **[`DEPLOYMENT.md`](../guides/DEPLOYMENT.md)** for running locally and in-cluster (config, secrets, RBAC,
 observability); `scripts/run.sh` is the quickest launch.

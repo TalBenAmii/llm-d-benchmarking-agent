@@ -68,7 +68,7 @@ validate-live:
 
 # Isolated variants: each flow runs in its OWN process under an EXTERNAL `timeout -s TERM -k`, so a
 # wedged event loop / deadlocked SDK subprocess can never stall the whole run (the in-process asyncio
-# caps in validate_flows.py can be defeated by a frozen loop — see docs/VALIDATION.md). Optional
+# caps in validate_flows.py can be defeated by a frozen loop — see docs/reference/VALIDATION.md). Optional
 # FLOWS="name1 name2" re-runs just a subset (e.g. confirming suspected-infra failures flip to PASS).
 # In a git WORKTREE the sibling repos are empty, so point REPOS_DIR at the primary checkout.
 validate-live-iso:
