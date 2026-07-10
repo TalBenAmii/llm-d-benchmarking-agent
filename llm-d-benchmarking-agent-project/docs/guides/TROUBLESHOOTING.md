@@ -68,6 +68,16 @@ transcript position on reconnect/resume.
   hand? Bump those limits first (best-effort `sudo sysctl -w …`), then retry
   `kind create cluster`.
 
+### A running kind cluster wedges after a reboot (`kube-proxy` CrashLoopBackOff: "too many open files")
+- Same inotify root cause, different symptom: a reboot resets unpersisted limits, and several
+  kind clusters sharing the kernel exhaust root's 128 `fs.inotify.max_user_instances`.
+  `kube-proxy` (and `local-path-provisioner`) crash-loop with
+  `failed complete: too many open files`; with kube-proxy dead, ClusterIP routing dies, so
+  every in-cluster API client panics on `dial tcp 10.96.0.1:443: i/o timeout` — which mimics
+  the unrelated bridge-iptables wipe. Check `kube-proxy` before touching iptables. Fix: bump
+  the limits as above (re-running `install.sh` now re-verifies persistence even when reusing a
+  cluster), then delete the crash-looped pods.
+
 ### Repos not found / catalog or report tools fail
 - The two read-only sibling repos (`llm-d/`, `llm-d-benchmark/`) must resolve under
   `REPOS_DIR` (defaults to the parent of the project dir). `GET /readyz` reports
