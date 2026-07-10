@@ -244,7 +244,7 @@ def test_repo_path_value_constraint_present():
 
 
 def test_deploy_path_playbook_documents_the_kustomize_block():
-    guide = KNOWLEDGE_DIR / "deploy_path_playbook.md"
+    guide = KNOWLEDGE_DIR / "deploy/deploy_path_playbook.md"
     assert guide.is_file()
     text = guide.read_text()
     # The block's knob family and the --llmd-repo-path thread are documented as judgment.

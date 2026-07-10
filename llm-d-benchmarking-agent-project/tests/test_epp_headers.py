@@ -39,7 +39,7 @@ def _read_knowledge_file(rel: str) -> str:
 
 
 def _epp_data() -> dict:
-    data = yaml.safe_load(_read_knowledge_file("knowledge/epp_headers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/workload/epp_headers.yaml"))
     assert isinstance(data, dict)
     return data
 

@@ -37,7 +37,8 @@ def _kdir() -> Path:
 
 
 def _kread(name: str) -> str:
-    return (_kdir() / name).read_text(encoding="utf-8")
+    # Resolve by basename through the topic-folder layout (basenames stay globally unique).
+    return next(_kdir().rglob(name)).read_text(encoding="utf-8")
 
 
 # ---- absent-metric / P99 fabrication (findings sim-1 ×3, sim-2 ×2) -------------------
@@ -138,7 +139,7 @@ def test_standard_metrics_yaml_still_parses() -> None:
     ],
 )
 def test_edited_markdown_nonempty(name: str) -> None:
-    assert len((_kdir() / name).read_text(encoding="utf-8").strip()) > 0
+    assert len(next(_kdir().rglob(name)).read_text(encoding="utf-8").strip()) > 0
 
 
 # ── test_qafix_security_governance.py ──
@@ -162,7 +163,7 @@ KNOWLEDGE = PROJECT_ROOT / "knowledge"
 
 
 def _read(name: str) -> str:
-    return (KNOWLEDGE / name).read_text()
+    return next(KNOWLEDGE.rglob(name)).read_text()
 
 
 # ---- first-turn behavior is wired into the byte-stable prefix (#1/#2) --------

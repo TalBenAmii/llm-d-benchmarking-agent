@@ -317,7 +317,7 @@ def test_observability_knowledge_documents_config_only_limitation():
     observability knowledge file states it explicitly and documents the dotted keys + the gate."""
     from app.config import get_settings
 
-    md = (get_settings().knowledge_dir / "observability_tracing.md").read_text()
+    md = (get_settings().knowledge_dir / "observability/observability_tracing.md").read_text()
     lower = md.lower()
     # The section exists and states CONFIGURE-not-COLLECT.
     assert "tracing" in lower

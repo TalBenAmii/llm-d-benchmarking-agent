@@ -85,7 +85,7 @@ def test_read_knowledge_returns_content_for_valid_topic(tool_ctx):
     assert out["name"] == "capacity.md"
     assert out["topic"] == "capacity"
     # The on-demand guide must come back with its real, full content.
-    expected = (tool_ctx.settings.knowledge_dir / "capacity.md").read_text()
+    expected = (tool_ctx.settings.knowledge_dir / "deploy/capacity.md").read_text()
     assert out["content"] == expected
     assert "capacity" in out["content"].lower()
 
@@ -221,7 +221,7 @@ async def test_search_knowledge_dispatch_requires_query(tool_ctx):
 
 def test_search_knowledge_when_to_use_is_in_knowledge(tool_ctx):
     # Judgment (WHEN to reach for it) lives in knowledge/, not in Python branches.
-    style = (tool_ctx.settings.knowledge_dir / "conversation_style.md").read_text()
+    style = (tool_ctx.settings.knowledge_dir / "conversation/conversation_style.md").read_text()
     assert "search_knowledge" in style
 
 
@@ -246,7 +246,7 @@ def test_system_prompt_inlines_core_and_indexes_on_demand(tool_ctx):
                  "history.md", "observability.md", "packaging.md", "orchestrator.md"]
     assert 'read_knowledge("<topic>")' in prompt
     for name in on_demand:
-        body = (kdir / name).read_text()
+        body = next(kdir.rglob(name)).read_text()
         chunk = body[300:480]
         assert chunk and chunk not in prompt, f"on-demand file {name} should NOT be inlined"
         assert name in prompt, f"on-demand file {name} missing from the index"
@@ -258,7 +258,7 @@ def test_multi_harness_full_body_absent_but_indexed(tool_ctx):
     from app.agent.prompt import build_system_prompt
 
     prompt = build_system_prompt(tool_ctx)
-    body = (tool_ctx.settings.knowledge_dir / "multi_harness.md").read_text()
+    body = (tool_ctx.settings.knowledge_dir / "analysis/multi_harness.md").read_text()
     # The bulk of the file (everything past the first heading) is not present.
     assert body[200:] not in prompt
     assert "multi_harness" in prompt

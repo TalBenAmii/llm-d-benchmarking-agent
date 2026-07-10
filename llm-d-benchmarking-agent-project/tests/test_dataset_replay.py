@@ -143,7 +143,7 @@ def test_dataset_flag_keeps_read_only_preview(allowlist, catalog):
 def test_dataset_replay_knowledge_is_discoverable():
     from pathlib import Path
 
-    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "dataset_replay.md"
+    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "workload/dataset_replay.md"
     assert kfile.is_file(), "knowledge/dataset_replay.md must exist (auto-indexed by prompt glob)"
     text = kfile.read_text()
     # It must actually carry the dataset-vs-synthetic judgment, not just mention the flag.

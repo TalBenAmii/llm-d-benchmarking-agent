@@ -67,7 +67,7 @@ def test_read_repo_doc_reaches_the_analysis_pipeline_overview(tool_ctx):
 def test_knowledge_analysis_surfaces_notebook_and_scripts():
     """knowledge/analysis.md (the agent's brain) carries the real artifact paths + the
     judgment that these are pointer-only exploration, NOT part of the automated flow."""
-    text = (PROJECT_ROOT / "knowledge" / "analysis.md").read_text()
+    text = (PROJECT_ROOT / "knowledge" / "analysis/analysis.md").read_text()
     # The interactive notebook + its setup doc + the pipeline overview are named.
     assert "analysis.ipynb" in text
     assert "docs/analysis/README.md" in text

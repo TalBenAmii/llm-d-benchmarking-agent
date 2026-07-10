@@ -20,8 +20,12 @@ skips corrupt files rather than crash. All share one workspace root (`settings.r
   `_compute_bundle_id` (provenance) deliberately mirror each other's collision-avoidance (the report digest is
   mixed in so two `run_uid=None` runs to a reused path don't silently overwrite). `bundle_id` / `provenance_view`
   thread onto a `HistoryRecord`. Re-storing the same report is idempotent.
-- **`provenance.knowledge_hash` glob (`*.md`/`*.yaml`/`*.yml` minus `CLAUDE.md`/`README.md`) MUST mirror**
-  `app/agent/prompt.py::_knowledge_sections` + `knowledge_access.EXCLUDED_KNOWLEDGE_FILES`. `build_bundle`
+- **`provenance.knowledge_hash` RECURSIVE glob (`rglob` `*.md`/`*.yaml`/`*.yml` minus `CLAUDE.md`/`README.md`,
+  sorted by basename) MUST mirror the other FOUR enumeration sites** — `app/agent/prompt.py::_knowledge_sections`,
+  `knowledge_access._knowledge_files` (+ `EXCLUDED_KNOWLEDGE_FILES`), the sibling `llm-d-bench-mcp`'s
+  `content._knowledge_files`, and `tests/eval/test_playbook_skill_grounding.py`. knowledge/ is organized
+  into topic subfolders (`rglob`, not `glob`); the hash stays bit-identical to the pre-folder tree because
+  it keys on `f.name` + bytes, not path. `build_bundle`
   refuses to certify an unvalidated report (`InvalidReportError`); a missing/empty repo (worktree case) degrades
   to `{unavailable: True}` — never fabricates a SHA.
 - **`share.py` tokens are uuid4 hex** (the unguessable bearer credential); `_TOKEN_RE`

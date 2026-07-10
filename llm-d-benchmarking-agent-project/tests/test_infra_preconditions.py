@@ -197,7 +197,7 @@ def test_image_tags_spec_rejects_path_traversal(tmp_path):
 # the threshold DATA lives in knowledge/, and the probe is read-only-allowlisted
 # ---------------------------------------------------------------------------
 
-KNOWLEDGE = Path(__file__).resolve().parents[1] / "knowledge" / "infrastructure_preconditions.yaml"
+KNOWLEDGE = Path(__file__).resolve().parents[1] / "knowledge" / "deploy/infrastructure_preconditions.yaml"
 
 
 def test_thresholds_live_in_knowledge_yaml():
