@@ -28,7 +28,7 @@ from app.agent.ws_schemas import ValidationError
 from app.config import Settings
 from app.dig import scrub_strings
 from app.llm.model_catalog import model_views
-from app.llm.provider import AGENT_SDK_PROVIDERS, OPENAI_PROVIDERS
+from app.llm.provider import AGENT_SDK_PROVIDERS
 from app.storage.provenance import BundleStore
 
 # ── inbound-frame validation-error formatting (WS protocol ``error`` event) ─────────────────
@@ -68,8 +68,6 @@ def provider_view(settings: Settings, provider_error: str | None) -> dict[str, A
     switchable = provider in AGENT_SDK_PROVIDERS
     if switchable:
         model = settings.agent_sdk_model
-    elif provider in OPENAI_PROVIDERS:
-        model = settings.openai_model
     elif provider == "anthropic":
         model = settings.anthropic_model
     else:

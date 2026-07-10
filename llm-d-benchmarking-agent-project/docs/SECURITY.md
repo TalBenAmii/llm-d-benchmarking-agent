@@ -83,7 +83,7 @@ Every validated command is executed by `CommandRunner`:
   is structurally impossible — there is no shell to inject into.
 - **Scrubbed environment.** The child process gets only an allowlisted passthrough set
   (`PATH`, `HOME`, `KUBECONFIG`, locale/TLS vars, `LLMDBENCH_*` config) plus any explicitly
-  configured `HF_TOKEN`. **`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / the auth token are excluded
+  configured `HF_TOKEN`. **`ANTHROPIC_API_KEY` / the auth token are excluded
   by construction** — they are never in the child's environment.
 - **Pinned working directory.** A command that must run inside a repo is confined to that repo
   path (`cwd_must_be`), resolved through a `repo:<name>` reference, not a caller-supplied path.
@@ -96,7 +96,7 @@ Every validated command is executed by `CommandRunner`:
 ## Secret handling & scrubbing
 
 - **Secrets live only in the backend env / `.env`** (gitignored): `ANTHROPIC_API_KEY`,
-  `OPENAI_API_KEY`, `HF_TOKEN`, and (Phase 12) `AUTH_TOKEN`. `app/config.py` reads them from the
+  `HF_TOKEN`, and (Phase 12) `AUTH_TOKEN`. `app/config.py` reads them from the
   environment — never from the browser.
 - **The browser never sees them.** No secret is sent in any WS/HTTP response.
 - **Child processes never see LLM/auth secrets** — see the env scrub above. Only `HF_TOKEN`

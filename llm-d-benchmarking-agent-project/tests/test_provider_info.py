@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.llm.model_catalog import model_views
-from app.llm.provider import AGENT_SDK_PROVIDERS, OPENAI_PROVIDERS
+from app.llm.provider import AGENT_SDK_PROVIDERS
 from app.web import provider_view
 
 _BADGE_FIELDS = {"provider", "model", "configured"}
@@ -24,9 +24,6 @@ _ROUTE_TO_MODEL_ATTR = {
     "claude-agent-sdk": "agent_sdk_model",
     "agent-sdk": "agent_sdk_model",
     "claude-max": "agent_sdk_model",
-    "openai": "openai_model",
-    "openai-compatible": "openai_model",
-    "vllm": "openai_model",
     "anthropic": "anthropic_model",
 }
 
@@ -34,7 +31,7 @@ _ROUTE_TO_MODEL_ATTR = {
 def test_alias_tables_in_sync_with_dispatcher():
     # provider_view shares get_provider's constants; this pins the constants themselves so a
     # new alias forces a conscious update of the badge expectations (and this table).
-    assert set(_ROUTE_TO_MODEL_ATTR) == AGENT_SDK_PROVIDERS | OPENAI_PROVIDERS | {"anthropic"}
+    assert set(_ROUTE_TO_MODEL_ATTR) == AGENT_SDK_PROVIDERS | {"anthropic"}
 
 
 def test_provider_view_resolves_model_per_route():
@@ -96,7 +93,7 @@ def test_provider_view_agent_sdk_switchable_carries_catalog():
 
 def test_provider_view_non_switchable_has_empty_models():
     s = get_settings()
-    for provider in ("anthropic", "openai", "vllm"):
+    for provider in ("anthropic",):
         view = provider_view(s.model_copy(update={"llm_provider": provider}), None)
         assert view["switchable"] is False
         assert view["effort"] is None

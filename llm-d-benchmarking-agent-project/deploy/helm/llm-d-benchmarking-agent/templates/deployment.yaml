@@ -66,10 +66,6 @@ spec:
               value: {{ .Values.config.agentSdkThinking | quote }}
             - name: ANTHROPIC_MODEL
               value: {{ .Values.config.anthropicModel | quote }}
-            - name: OPENAI_BASE_URL
-              value: {{ .Values.config.openaiBaseUrl | quote }}
-            - name: OPENAI_MODEL
-              value: {{ .Values.config.openaiModel | quote }}
             - name: MAX_CONCURRENT_RUNS
               value: {{ .Values.config.maxConcurrentRuns | quote }}
             - name: ORCHESTRATOR_IMAGE
@@ -89,12 +85,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "agent.secretName" . }}
                   key: ANTHROPIC_API_KEY
-                  optional: true
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "agent.secretName" . }}
-                  key: OPENAI_API_KEY
                   optional: true
             - name: HF_TOKEN
               valueFrom:

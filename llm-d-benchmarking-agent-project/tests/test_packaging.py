@@ -218,10 +218,9 @@ def test_helm_values_pin_image_and_default_safely():
     # The cluster-service default provider is the Claude Agent SDK (subscription / OAuth-token auth);
     # the API-key path is the fallback. Pin it so flipping this default can't happen silently again.
     assert vals["config"]["llmProvider"] == "claude-agent-sdk"
-    # No secret material is baked into the chart defaults (the OAuth token and both API keys).
+    # No secret material is baked into the chart defaults (the OAuth token and the API key).
     assert vals["secret"]["claudeCodeOauthToken"] == ""
     assert vals["secret"]["anthropicApiKey"] == ""
-    assert vals["secret"]["openaiApiKey"] == ""
     # Non-root hardening defaults.
     assert vals["podSecurityContext"]["runAsNonRoot"] is True
     assert vals["securityContext"]["readOnlyRootFilesystem"] is True

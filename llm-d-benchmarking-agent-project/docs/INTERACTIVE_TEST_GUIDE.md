@@ -44,11 +44,6 @@ LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...          # your real key
 ANTHROPIC_MODEL=claude-opus-4-8
 
-# …or OpenAI-compatible
-# LLM_PROVIDER=openai
-# OPENAI_API_KEY=sk-...
-# OPENAI_MODEL=gpt-4o
-
 SIMULATE=1                            # Track A. Set 0 for Track B.
 HOST=127.0.0.1
 PORT=8000

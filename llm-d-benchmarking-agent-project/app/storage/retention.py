@@ -406,9 +406,6 @@ def _check_workspace_writable(settings: Settings) -> CheckOutcome:
 # provider name — NOT decision logic; the self-check below just looks the requirement up.
 _PROVIDER_KEY_ATTR: dict[str, str] = {
     "anthropic": "anthropic_api_key",
-    "openai": "openai_api_key",
-    "openai-compatible": "openai_api_key",
-    "vllm": "openai_api_key",
 }
 
 # Keyless providers: they authenticate via the local ``claude`` CLI subscription login, not an

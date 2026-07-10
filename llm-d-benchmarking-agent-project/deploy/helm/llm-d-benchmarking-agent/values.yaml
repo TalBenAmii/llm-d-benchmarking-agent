@@ -25,8 +25,6 @@ config:
   agentSdkEffort: high         # low | medium | high | xhigh | max
   agentSdkThinking: adaptive   # adaptive | <budget_tokens> | off
   anthropicModel: claude-opus-4-8
-  openaiBaseUrl: https://api.openai.com/v1
-  openaiModel: gpt-4o
   maxConcurrentRuns: 2
   # Container image used for ORCHESTRATED (K8s Job) benchmark runs. Leave empty to use the
   # in-Pod local-CLI path (default) — the agent runs llmdbenchmark inside its own Pod and the
@@ -39,13 +37,12 @@ config:
 # By default the chart creates a Secret from the values below. To use a pre-existing Secret
 # instead (recommended for real deployments), set secret.create=false and secret.existingSecret
 # to its name; it must contain the same keys (CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY /
-# OPENAI_API_KEY / HF_TOKEN).
+# HF_TOKEN).
 secret:
   create: true
   existingSecret: ""
   claudeCodeOauthToken: ""   # `claude setup-token` — primary auth for the claude-agent-sdk default
   anthropicApiKey: ""
-  openaiApiKey: ""
   hfToken: ""
 
 # --- RBAC / ServiceAccount --------------------------------------------------------------

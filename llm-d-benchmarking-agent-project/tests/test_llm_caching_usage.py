@@ -1,11 +1,9 @@
 """Token-tracking + provider-agnostic prompt-caching unit tests.
 
-Three concerns, all hermetic (no network, no live cluster, no repo dependency):
+Two concerns, all hermetic (no network, no live cluster, no repo dependency):
   1. Anthropic provider attaches ephemeral cache_control at the 3 prefix breakpoints (tools,
      system, rolling conversation tail) AND parses real usage from resp.usage.
-  2. OpenAI provider normalizes resp.usage to the cross-provider Usage contract and only sends
-     prompt_cache_key when the setting is on.
-  3. The agent loop accumulates per-call Usage into the running turn + persisted session tally,
+  2. The agent loop accumulates per-call Usage into the running turn + persisted session tally,
      emits a `usage` event per step, and the session totals survive persist()/load().
 """
 from __future__ import annotations
@@ -13,14 +11,11 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 from app.agent import events
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
 from app.config import Settings, get_settings
 from app.llm.anthropic_provider import AnthropicProvider, _mark_last_cacheable
-from app.llm.openai_provider import OpenAIProvider, _usage_from
 from app.llm.provider import AssistantTurn, Usage
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
@@ -56,46 +51,10 @@ class _FakeAnthropicClient:
         self.messages = _FakeAnthropicMessages(self)
 
 
-class _FakeOpenAICompletions:
-    def __init__(self, parent):
-        self._parent = parent
-
-    async def create(self, **kwargs):
-        self._parent.captured = kwargs
-        msg = SimpleNamespace(content="hello", tool_calls=None)
-        choice = SimpleNamespace(message=msg, finish_reason="stop")
-        # OpenAI reports cached as a SUBSET of prompt_tokens.
-        usage = SimpleNamespace(
-            prompt_tokens=5000,
-            completion_tokens=80,
-            prompt_tokens_details=SimpleNamespace(cached_tokens=4500),
-        )
-        return SimpleNamespace(choices=[choice], usage=usage)
-
-
-class _FakeOpenAIChat:
-    def __init__(self, parent):
-        self.completions = _FakeOpenAICompletions(parent)
-
-
-class _FakeOpenAIClient:
-    def __init__(self):
-        self.captured = None
-        self.chat = _FakeOpenAIChat(self)
-
-
 def _anthropic_provider() -> AnthropicProvider:
     p = AnthropicProvider.__new__(AnthropicProvider)
     p._client = _FakeAnthropicClient()
     p._model = "claude-test"
-    return p
-
-
-def _openai_provider(send_cache_key: bool) -> OpenAIProvider:
-    p = OpenAIProvider.__new__(OpenAIProvider)
-    p._client = _FakeOpenAIClient()
-    p._model = "gpt-test"
-    p._send_cache_key = send_cache_key
     return p
 
 
@@ -157,67 +116,6 @@ def test_mark_last_cacheable_handles_list_content():
     _mark_last_cacheable(out)
     assert out[-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
     assert "cache_control" not in out[-1]["content"][0]  # only the LAST block is marked
-
-
-# ---- OpenAI: usage normalization + prompt_cache_key gating ----------------------------------
-
-def test_openai_usage_normalization():
-    u = SimpleNamespace(
-        prompt_tokens=5000,
-        completion_tokens=80,
-        prompt_tokens_details=SimpleNamespace(cached_tokens=4500),
-    )
-    usage = _usage_from(u)
-    assert usage.input_tokens == 500       # prompt - cached
-    assert usage.cache_read_tokens == 4500
-    assert usage.output_tokens == 80
-    assert usage.cache_write_tokens == 0
-    assert usage.total_input == 5000
-
-
-def test_openai_usage_none_is_zeroed():
-    assert _usage_from(None) == Usage()
-
-
-async def test_openai_does_not_send_cache_key_by_default():
-    p = _openai_provider(send_cache_key=False)
-    turn = await p.chat(system="s", messages=[{"role": "user", "content": "x"}], tools=_TOOLS, cache_key="sess1")
-    assert "prompt_cache_key" not in p._client.captured
-    # usage still parsed from the fake response.
-    assert turn.usage.input_tokens == 500
-    assert turn.usage.cache_read_tokens == 4500
-    assert turn.usage.output_tokens == 80
-
-
-async def test_openai_sends_cache_key_when_enabled():
-    p = _openai_provider(send_cache_key=True)
-    await p.chat(system="s", messages=[{"role": "user", "content": "x"}], tools=_TOOLS, cache_key="sess1")
-    assert p._client.captured["prompt_cache_key"] == "sess1"
-
-
-async def test_openai_empty_choices_raises_clear_provider_error():
-    """An OpenAI-compatible server (vLLM / llm-d under content-filter or error conditions) can
-    return a 200 with an EMPTY choices array. The provider must surface a clear ProviderError
-    instead of leaking an opaque IndexError from choices[0] — mirroring _usage_from's
-    never-crash-on-a-degenerate-response contract."""
-    from app.llm.provider import ProviderError
-
-    p = _openai_provider(send_cache_key=False)
-
-    async def _create(**kwargs):
-        p._client.captured = kwargs
-        return SimpleNamespace(choices=[], usage=None)
-
-    p._client.chat.completions.create = _create  # type: ignore[assignment]
-    with pytest.raises(ProviderError, match="no choices"):
-        await p.chat(system="s", messages=[{"role": "user", "content": "x"}], tools=_TOOLS)
-
-
-def test_openai_provider_reads_setting_from_config():
-    s = Settings(openai_send_prompt_cache_key=True, openai_api_key="k")
-    assert s.openai_send_prompt_cache_key is True
-    s2 = get_settings()
-    assert s2.openai_send_prompt_cache_key is False  # default OFF
 
 
 # ---- loop accumulation + persist/load ------------------------------------------------------

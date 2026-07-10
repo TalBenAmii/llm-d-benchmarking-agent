@@ -202,7 +202,6 @@ reference it:
 kubectl -n <ns> create secret generic bench-agent-llm \
   --from-literal=CLAUDE_CODE_OAUTH_TOKEN=<TOKEN> \
   --from-literal=ANTHROPIC_API_KEY= \
-  --from-literal=OPENAI_API_KEY= \
   --from-literal=HF_TOKEN=
 helm upgrade --install bench-agent deploy/helm/llm-d-benchmarking-agent \
   -n <ns> --create-namespace \
@@ -210,7 +209,7 @@ helm upgrade --install bench-agent deploy/helm/llm-d-benchmarking-agent \
 ```
 
 (`secret.existingSecret` must carry the keys `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` /
-`OPENAI_API_KEY` / `HF_TOKEN`.)
+`HF_TOKEN`.)
 
 **Fallback — a metered Anthropic API key.** To bill per-token against the API instead of a
 subscription, pass an API key; the installer then selects `LLM_PROVIDER=anthropic` +

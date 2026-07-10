@@ -54,13 +54,6 @@ class Settings(BaseSettings):
         default="high", validation_alias=AliasChoices("agent_sdk_effort", "llm_effort"))
     agent_sdk_thinking: str = Field(
         default="adaptive", validation_alias=AliasChoices("agent_sdk_thinking", "llm_thinking"))
-    openai_api_key: str | None = None
-    openai_base_url: str = "https://api.openai.com/v1"
-    openai_model: str = "gpt-4o"
-    # When True, send an OpenAI ``prompt_cache_key`` (the session id) to improve prompt-cache
-    # hit-rate routing on OpenAI proper. Default OFF — some OpenAI-compatible servers (vLLM,
-    # some gateways) reject unknown params; they still get *implicit* prefix caching for free.
-    openai_send_prompt_cache_key: bool = False
 
     # Paths (defaults computed from PROJECT_ROOT when unset)
     repos_dir: Path | None = None
