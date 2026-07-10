@@ -56,8 +56,6 @@ pass/fail + reason). Probes:
 - **runner_ok** — the deny-by-default allowlist policy loads + schema-validates. Without it the
   command runner can validate nothing and every command would be refused. Config-only — it never
   executes anything.
-- **auth_coherent** — if `AUTH_ENABLED` is set, `AUTH_TOKEN` must be non-empty (else every
-  request 401s). Mirrors the fail-loud startup guard as a structured readiness signal.
 
 `/readyz` returns **200** when ready, **503** with the structured reasons when not. Liveness stays
 on `/healthz`; readiness is the deploy/orchestrator gate. `readiness()` folds this self-check into

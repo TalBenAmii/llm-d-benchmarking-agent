@@ -135,7 +135,7 @@ changing its core behavior.
   auth (constant-time compare; guards every HTTP route and the `/ws` handshake — 401 / WS close
   1008), an in-memory token-bucket rate limiter on `/api/*` (empty bucket → 429; `/healthz` +
   `/metrics` never throttled), and `CORSMiddleware` wired only when `CORS_ALLOW_ORIGINS` is set.
-  Judgment in `knowledge/api_trust.md`.
+  (The Bearer auth + rate-limit controls were later removed as unused — CORS remains.)
 - **Allowlist governance: per-command timeouts + quotas** (Phase 13). Execution limits moved
   into `security/allowlist.yaml` as DATA — optional `timeout_s` and `quota {per_session,
   per_day}` per executable/subcommand, schema-validated at startup. An over-quota command is

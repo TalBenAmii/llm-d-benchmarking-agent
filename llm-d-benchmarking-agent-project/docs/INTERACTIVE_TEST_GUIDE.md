@@ -204,23 +204,18 @@ After a run/sweep exists in the session:
 
 ## 6. Security & trust surfaces *(§8)*
 
-The allowlist/approval behavior you already saw in §3. The optional trust controls need a
-restart with env flags — easiest in a **separate instance** so your main one stays usable:
+The allowlist/approval behavior you already saw in §3. This is a single-user in-cluster service
+with no Bearer auth or rate limiting — CORS is the one optional trust control, and it needs a
+restart with an env flag — easiest in a **separate instance** so your main one stays usable:
 
 ```bash
-AUTH_ENABLED=true AUTH_TOKEN=s3cret RATE_LIMIT_ENABLED=true RATE_LIMIT_RPS=1 RATE_LIMIT_BURST=2 \
-  PORT=8078 .venv/bin/uvicorn app.main:app
+CORS_ALLOW_ORIGINS=https://app.example.com PORT=8078 .venv/bin/uvicorn app.main:app
 ```
 
-- [ ] **[A/B]** `curl -i localhost:8078/api/sessions` (no token) → **401** + `www-authenticate: Bearer`.
-- [ ] **[A/B]** `curl -i -H 'Authorization: Bearer s3cret' localhost:8078/api/sessions` → **200**.
-- [ ] **[A/B]** `curl -i localhost:8078/healthz` (no token) → **200** (liveness/readiness are
-  **exempt** from auth so a kubelet can probe them). `/readyz` likewise. *(FEATURES Findings: fixed)*
-- [ ] **[A/B]** Fire 6 rapid authed requests → first `200`, rest **429** (token bucket drained). *(§8)*
 - [ ] **[A/B]** **Secrets never reach the browser:** open DevTools → Network/WS; confirm no API
   key appears in any frame (the WS only carries chat text, events, approvals). *(§8)*
-- [ ] **[A/B]** (CORS) Restart with `CORS_ALLOW_ORIGINS=https://app.example.com` and confirm the
-  response carries `access-control-allow-origin`; empty (default) → no CORS headers. *(§8)*
+- [ ] **[A/B]** (CORS) Confirm the response carries `access-control-allow-origin`; restart with no
+  `CORS_ALLOW_ORIGINS` (default) and confirm no CORS headers. *(§8)*
 
 Stop this instance when done (`Ctrl-C`).
 

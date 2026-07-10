@@ -6,9 +6,8 @@ Two layers, both hermetic (no cluster, no network):
   token guard, write/read/delete — on a tmp workspace;
 * the HTTP surface over the REAL ``app.main`` wiring with a tmp workspace (the
   ``client_with_share`` fixture mirrors ``test_artifacts.client_with_workspace``): minting an
-  immutable snapshot, the PUBLIC read viewer, revocation, the not-found/empty paths, the
-  pending-approval filter, and — with auth ON — that the public GET viewer bypasses Bearer auth
-  while minting/revoking stay gated.
+  immutable snapshot, the PUBLIC read viewer, revocation, the not-found/empty paths, and the
+  pending-approval filter.
 """
 from __future__ import annotations
 
@@ -23,8 +22,6 @@ from fastapi.testclient import TestClient
 import app.main as main_mod
 from app.config import get_settings
 from app.storage.share import ShareStore, _is_valid_token
-
-TOKEN = "super-secret-token"
 
 # Distinctive bytes for a fake chart PNG (only the .png suffix matters to resolve_artifact); tests
 # assert these exact bytes come back base64-inlined in the share snapshot.
@@ -103,7 +100,7 @@ def test_create_writes_atomically_leaving_no_tmp(tmp_path):
 @pytest.fixture
 def client_with_share(tmp_path, monkeypatch):
     """A TestClient whose app resolves its workspace (sessions + shares) to tmp_path. Yields
-    ``(client, settings)`` so a test can also flip auth on via dependency_overrides."""
+    ``(client, settings)`` so a test can also inspect the resolved workspace."""
     settings = get_settings().model_copy(update={"workspace_dir": tmp_path / "ws"})
     monkeypatch.setattr(main_mod, "get_settings", lambda: settings)
     with TestClient(main_mod.app) as client:
@@ -624,31 +621,3 @@ def test_share_page_serves_the_spa_shell(client_with_share):
     assert "/static/app.js" in r.text
 
 
-def test_public_get_bypasses_auth_but_minting_and_revoking_stay_gated(client_with_share):
-    """With Bearer auth ON: the public viewer GETs bypass auth (the token is the credential),
-    but POST-create and DELETE-revoke require the app token."""
-    client, settings = client_with_share
-    app = main_mod.app
-    enabled = settings.model_copy(update={"auth_enabled": True, "auth_token": TOKEN})
-    app.dependency_overrides[get_settings] = lambda: enabled
-    auth = {"Authorization": f"Bearer {TOKEN}"}
-    try:
-        s = _seed_chat(client)
-        # Minting requires the token.
-        assert client.post(f"/api/sessions/{s.id}/share").status_code == 401
-        r = client.post(f"/api/sessions/{s.id}/share", headers=auth)
-        assert r.status_code == 200
-        token = r.json()["token"]
-
-        # PUBLIC viewer: reachable with NO token (incl. the single-file .html export).
-        assert client.get(f"/api/share/{token}").status_code == 200
-        assert client.get(f"/share/{token}").status_code == 200
-        assert client.get(f"/api/share/{token}/page.html").status_code == 200
-        # A normal API route still 401s without the token (proves the bypass is scoped).
-        assert client.get("/api/sessions").status_code == 401
-
-        # Revoking requires the token (DELETE is not exempt).
-        assert client.delete(f"/api/share/{token}").status_code == 401
-        assert client.delete(f"/api/share/{token}", headers=auth).status_code == 200
-    finally:
-        app.dependency_overrides.pop(get_settings, None)

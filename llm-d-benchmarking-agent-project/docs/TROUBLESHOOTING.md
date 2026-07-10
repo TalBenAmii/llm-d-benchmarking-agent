@@ -95,12 +95,6 @@ trail is replayed in its original transcript position on reconnect/resume.
   vs accelerator memory). A shortfall under `enforce=true` is a deployment-halting ERROR; else
   an advisory WARNING. Interpretation guidance: `knowledge/capacity.md`.
 
-### Rate-limited (429) or unauthorized (401)
-- These come from the Phase 12 controls when enabled. **401** → missing/bad
-  `Authorization: Bearer <AUTH_TOKEN>` (WS may use `?token=`). **429** → the `/api/*` token
-  bucket is empty (tune `RATE_LIMIT_RPS` / `RATE_LIMIT_BURST`). `/healthz` + `/metrics` are
-  never throttled. See `docs/SECURITY.md`.
-
 ### Metrics are missing or reset to zero
 - The agent's counters are **process-lifetime** — they reset on a backend restart, so a sudden
   return to zero usually means a restart, not lost data. Confirm with the `AgentDown` alert /

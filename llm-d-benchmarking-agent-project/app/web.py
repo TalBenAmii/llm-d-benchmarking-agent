@@ -12,7 +12,7 @@ argument — notably any ``get_settings()`` call stays in the route handler (so 
 monkeypatches ``app.main.get_settings`` still steers which workspace is resolved, and *when*).
 
 Scoped tests for the trust boundaries here (CORS + path-traversal + share-redaction) live in
-``tests/test_api_trust.py`` (the helpers are also exercised through the HTTP/WS route tests in
+``tests/test_web.py`` (the helpers are also exercised through the HTTP/WS route tests in
 ``tests/test_api*.py``).
 """
 from __future__ import annotations

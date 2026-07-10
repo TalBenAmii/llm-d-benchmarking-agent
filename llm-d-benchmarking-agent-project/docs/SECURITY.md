@@ -15,7 +15,7 @@ referenced. It is not a roadmap.
 ```
  ┌──────────┐   WS/HTTP    ┌──────────────────────────────────────────────┐
  │ Browser  │ ───────────▶ │ FastAPI backend (app/main.py)                 │
- │  (UI)    │ ◀─────────── │  — auth / rate-limit / CORS (Phase 12)        │
+ │  (UI)    │ ◀─────────── │  — CORS (Phase 12)                            │
  └──────────┘   events      │  — agent loop (app/agent/loop.py)            │
    UNTRUSTED               │     ▲ tool calls                              │
    (never holds secrets)   │     │                                         │
@@ -37,8 +37,8 @@ referenced. It is not a roadmap.
 Three boundaries matter:
 
 1. **Browser ↔ backend.** The browser is untrusted and **never receives secrets** (LLM API
-   keys, HF token, auth token). It can only send chat messages and approve/deny proposed
-   mutations. The backend authenticates/throttles this surface (Phase 12, below).
+   keys, HF token). It can only send chat messages and approve/deny proposed mutations. The
+   backend has no auth/rate-limit of its own on this surface — see Network exposure, below.
 2. **LLM output ↔ execution.** The LLM is treated as an **untrusted source of proposed
    actions**. Nothing the LLM emits runs directly: every command is validated by the allowlist
    and every *mutating* command additionally needs explicit human approval. Prompt injection in
@@ -83,8 +83,8 @@ Every validated command is executed by `CommandRunner`:
   is structurally impossible — there is no shell to inject into.
 - **Scrubbed environment.** The child process gets only an allowlisted passthrough set
   (`PATH`, `HOME`, `KUBECONFIG`, locale/TLS vars, `LLMDBENCH_*` config) plus any explicitly
-  configured `HF_TOKEN`. **`ANTHROPIC_API_KEY` / the auth token are excluded
-  by construction** — they are never in the child's environment.
+  configured `HF_TOKEN`. **`ANTHROPIC_API_KEY` is excluded
+  by construction** — it is never in the child's environment.
 - **Pinned working directory.** A command that must run inside a repo is confined to that repo
   path (`cwd_must_be`), resolved through a `repo:<name>` reference, not a caller-supplied path.
 - **Timeouts + process-group kill.** Each command has a deadline (`Decision.timeout_s` from the
@@ -96,37 +96,33 @@ Every validated command is executed by `CommandRunner`:
 ## Secret handling & scrubbing
 
 - **Secrets live only in the backend env / `.env`** (gitignored): `ANTHROPIC_API_KEY`,
-  `HF_TOKEN`, and (Phase 12) `AUTH_TOKEN`. `app/config.py` reads them from the
-  environment — never from the browser.
+  `HF_TOKEN`. `app/config.py` reads them from the environment — never from the browser.
 - **The browser never sees them.** No secret is sent in any WS/HTTP response.
-- **Child processes never see LLM/auth secrets** — see the env scrub above. Only `HF_TOKEN`
+- **Child processes never see the LLM secret** — see the env scrub above. Only `HF_TOKEN`
   (needed for gated real-model pulls) is forwarded, and only when explicitly configured.
 - **Logs never contain secrets.** Structured logs (Phase 11) record `exe = argv[0]` only —
   never the full argv or the environment — so a token passed as an argument or env var cannot
-  leak into a log line. The auth token is constant-time compared and never logged.
+  leak into a log line.
 - **In-cluster**, secrets are mounted from a Kubernetes `Secret` via `secretKeyRef` (never
   inline manifest values); the Helm chart manages the Secret from values, or points at a
   pre-existing one via `secret.existingSecret`. See `docs/DEPLOYMENT.md`.
 
-## Network exposure (pairs with Phase 12: auth + rate-limit + CORS)
+## Network exposure
 
-The FastAPI surface defaults to **`127.0.0.1:8000`** and ships its trust controls **OFF/open**,
-so local single-user use is frictionless. **The moment you bind to anything other than
-localhost, you must enable auth.** The controls (mechanism in `app/security/auth.py`, judgment
-in `knowledge/api_trust.md`):
+The FastAPI surface defaults to **`127.0.0.1:8000`** and has **no Bearer auth or rate-limiting of
+its own** — this is a single-user, in-cluster/localhost service. The one trust control the app
+ships is CORS:
 
 | Control | Env | Effect when enabled |
 |---|---|---|
-| Bearer auth | `AUTH_ENABLED=true`, `AUTH_TOKEN=<secret>` | Every HTTP route **and** the `/ws` handshake require `Authorization: Bearer <token>` (WS may use `?token=`); bad/missing → **401** (HTTP) / **WS close 1008**. Constant-time compared. Empty token while enabled → the server **refuses to start**. |
-| Rate limit | `RATE_LIMIT_ENABLED=true`, `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST` | In-memory token bucket on `/api/*` intake; empty bucket → **429**. `/healthz` + `/metrics` are never throttled. |
 | CORS | `CORS_ALLOW_ORIGINS=https://app.example.com,…` | `CORSMiddleware` installed only when set; otherwise no CORS headers (today's default). |
 
 Exposure guidance:
 
-- **Local dev on `127.0.0.1`** — leave all three off.
-- **LAN / shared ingress** — enable auth (always) and the rate limiter.
-- **Internet-exposed** — enable all three **and put TLS/an authenticating reverse proxy in
-  front** (TLS termination is out of scope for the app itself).
+- **Local dev on `127.0.0.1`** — nothing to configure.
+- **LAN / shared / internet-exposed** — put an authenticating reverse proxy (or your cluster's
+  ingress auth) **in front** of the agent; the app itself trusts every request that reaches it.
+  TLS termination is likewise out of scope for the app itself.
 
 ## What requires isolation
 

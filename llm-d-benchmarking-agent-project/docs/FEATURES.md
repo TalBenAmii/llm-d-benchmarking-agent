@@ -85,7 +85,7 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 | **Agent "what next?" suggestion buttons** — the agent offers follow-ups by CALLING `suggest_next_steps` (it chooses how many, up to 6) instead of asking in prose; they render as clickable pills (same style as the welcome chips) under its reply, and a tap sends that option's prompt (save baseline, compare, sweep…). Replay/share-safe (rides the tool result) | `ui/app.js` (`renderAgentSuggestions`) | 🔵 Appear under the agent's reply after it calls `suggest_next_steps` (e.g. post-`analyze_results`). ⚪ `tests/test_ui.py`, `tests/test_suggest_next_steps.py`. |
 | **Copy-summary on results cards** — hover-reveal button copies a markdown summary (metrics + SLO table) to paste into a report/PR | `ui/app.js` (`resultsCardMarkdown`/`addCardCopy`) | 🔵 Hover a benchmark results card; click Copy. ⚪ `tests/test_ui.py`. |
 | **Guided Benchmark Builder** — a "✨ Design" wizard (header + welcome CTA) where a non-expert picks use-case / scale / token-shape / SLO targets / hardware via chips & inputs, sees a live plain-language preview, and sends it as a normal message. The agent does ALL `<scenario, harness, workload>` mapping — the form only phrases the request (thin code / thick agent) | `ui/index.html` `#builder`, `ui/app.js` (`composeBrief`/`openBuilder`/`submitBuilder`) | 🔵 Click "✨ Design", choose options, Send. ⚪ `tests/test_ui.py`. |
-| **Share a chat via link** (ChatGPT-style) — the "🔗" header button mints a **read-only public link** to an *immutable snapshot* of the conversation; copy it, or delete it to revoke. Opening `/share/<token>` serves the same SPA read-only (no composer / sidebar / WebSocket) and replays the snapshot with the live transcript renderers — the **full session picture**: token totals (incl. cache + context-window at share time) as a meta line, the run-stage rail, and the agent's next-step chips (inert). The link bypasses the optional Bearer auth (the unguessable token is the credential); minting/revoking stay owner-gated; pending approval gates are stripped from the snapshot | `app/storage/share.py` (`ShareStore`), `app/main.py` (`POST /api/sessions/{id}/share`, `GET /api/share/{token}`, `GET /share/{token}`, `DELETE /api/share/{token}`), `app/security/auth.py` (public-GET exemption), `ui/index.html` `#share-dialog`, `ui/app.js` (`shareChat`/`bootShareView`) | 🔵 Click 🔗 on a started chat → copy the link → open it in a private window. ⚪ `tests/test_share.py`, `tests/test_ui.py`. |
+| **Share a chat via link** (ChatGPT-style) — the "🔗" header button mints a **read-only public link** to an *immutable snapshot* of the conversation; copy it, or delete it to revoke. Opening `/share/<token>` serves the same SPA read-only (no composer / sidebar / WebSocket) and replays the snapshot with the live transcript renderers — the **full session picture**: token totals (incl. cache + context-window at share time) as a meta line, the run-stage rail, and the agent's next-step chips (inert). The unguessable token is the only credential (the service has no Bearer auth); pending approval gates are stripped from the snapshot | `app/storage/share.py` (`ShareStore`), `app/main.py` (`POST /api/sessions/{id}/share`, `GET /api/share/{token}`, `GET /share/{token}`, `DELETE /api/share/{token}`), `ui/index.html` `#share-dialog`, `ui/app.js` (`shareChat`/`bootShareView`) | 🔵 Click 🔗 on a started chat → copy the link → open it in a private window. ⚪ `tests/test_share.py`, `tests/test_ui.py`. |
 | **UI preview harness** — drive every render path with fixture data, no backend/LLM | `ui/preview.html` | 🔵 Open `/static/preview.html` (or serve `ui/` and open `preview.html`) to see all of the above without a cluster. |
 
 ---
@@ -195,8 +195,6 @@ result.
 | **Skill-grounding gate** — a mutating `llmdbenchmark` op is REFUSED until its grounding doc was fetched THIS session (the enforcement backstop that replaced the de-inlined always-on quickstart steering, `consulted_skills` ledger written by `fetch_key_docs`). Spec-aware: the kind/CPU-sim path (`--spec cicd/kind*`) requires `fetch_key_docs(task="quickstart")` — the project runbook, now loaded on demand via a `kind: knowledge` `key_docs.yaml` entry (de-inlined from CORE_KNOWLEDGE, served through `fetch_key_docs` exactly like the guides); the GPU/guide path requires the op's `*_skill` (standup→deploy_skill, run/smoketest→benchmark_skill, teardown→teardown_skill, experiment→compare_skill). Wired at the command chokepoint (`command_exec.py`) + as an early deploy gate in `propose_session_plan` (`plan.py`); `run_shell` is intentionally NOT gated. **WVA autoscaling is description-driven, not gated** — the agent fetches `wva_skill` when the ask is about autoscaling (no command chokepoint to gate) | `app/tools/skill_gate.py`, `command_exec.py`/`plan.py` (wiring), `knowledge/key_docs.yaml` (`kind: knowledge`), `app/tools/knowledge_access.py` (`fetch_key_docs`) | ⚪ `tests/test_skill_gate.py` (unit) + the deterministic `scripts/validate_flows.py` (42/42 flows pass with the gate live); the gated live-LLM check is `tests/eval/simulate/test_skill_usage_live.py` (6 scenarios × 3 runs, majority passes). |
 | Secrets stay backend-only; child-process env scrubbed | `app/config.py:child_env` | ⚪ Read `child_env`; browser never receives keys. |
 | **Allowlist governance** — per-command timeouts + usage quotas (P13) | `app/security/quota.py`, `security/allowlist.yaml` | ⚪ `tests/test_governance.py`. |
-| **Optional Bearer-token auth** (`AUTH_ENABLED`/`AUTH_TOKEN`) → 401 on missing/bad (P12) | `app/security/auth.py` | 🟢 With auth on: no token → **401** + `www-authenticate: Bearer`; correct token → **200** (see evidence). |
-| **Token-bucket rate limit** (`RATE_LIMIT_*`) → 429 when drained (P12) | `app/security/auth.py` (`rate_limit` dependency) | 🟢 With `RPS=1 BURST=2`: first request 200, rest **429** (see evidence). |
 | Optional CORS (`CORS_ALLOW_ORIGINS`); off = no CORS headers (today's default) | `app/config.py:cors_origins_list`, `app/main.py` | ⚪ Set the env var and inspect response headers. |
 
 ---
@@ -297,8 +295,7 @@ expected responses, not the test runs.
 ```
 GET /healthz   → {"ok":true}
 GET /readyz    → 200 {"ready":true,"self_check":{checks:[workspace_writable, provider_coherent,
-                 repos_resolvable (llm-d, llm-d-benchmark), runner_ok (allowlisted execs),
-                 auth_coherent]}}
+                 repos_resolvable (llm-d, llm-d-benchmark), runner_ok (allowlisted execs)]}}
 GET /metrics   → Prometheus: llmdbench_agent_commands_total, _command_duration_seconds,
                  llmdbench_orchestrator_run_attempts_total, _run_faults_total, _runs_in_flight,
                  _runs_submitted_total, _runs_terminal_total
@@ -308,16 +305,8 @@ GET /api/history  → {"records":[...], "metrics":[ttft,tpot,itl,request_latency
                     gpu_utilization,schedule_delay]}
 GET /api/history/trend?metric=<unknown> → graceful 200 error + available_metrics
 GET /api/history/trend?metric=ttft       → {"metric":"ttft","better":"lower","points":[...]}
+artifact route → real chart PNG byte-identical (image/png); ../ / non-image / unknown-session → 404
 startup log → JSON {"message":"startup",...} ; {"message":"retention.gc",...}
-```
-
-**Auth/rate-limit instance (`AUTH_ENABLED=true AUTH_TOKEN=… RATE_LIMIT_ENABLED=true RPS=1 BURST=2`):**
-```
-GET /api/sessions (no token)      → 401 {"detail":"missing or invalid bearer token"} + www-authenticate: Bearer
-GET /api/sessions (Bearer <tok>)  → 200
-GET /healthz|/readyz (no token)   → 200  (liveness/readiness probes are auth-exempt for kubelets)
-6× rapid authed GET /api/sessions → 200, then 429 until the bucket refills
-artifact route                    → real chart PNG byte-identical (image/png); ../ / non-image / unknown-session → 404
 ```
 
 **Artifacts:**

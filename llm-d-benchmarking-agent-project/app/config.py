@@ -87,24 +87,6 @@ class Settings(BaseSettings):
     # real chat list. Keep this None in production (loop.py only fills an *unset* namespace, so a
     # non-None default here would swallow the plan's namespace — see app/agent/loop.py).
     default_session_namespace: str | None = None
-    # ---- API trust (Phase 12): optional auth + rate-limit + CORS ----------
-    # ALL THREE default OFF/open, so local use is unchanged and existing flows/tests pass.
-    # Turn them on only when exposing the API beyond localhost. Pure mechanism here; the
-    # operator's judgment about *when* to enable lives in knowledge/api_trust.md.
-    #
-    # Optional Bearer-token auth. When enabled, every HTTP route and the /ws endpoint require
-    # ``Authorization: Bearer <AUTH_TOKEN>`` (constant-time compared); missing/bad token -> 401.
-    # AUTH_TOKEN is a secret (backend-only, like the LLM keys) — never sent to the browser.
-    auth_enabled: bool = False
-    auth_token: str = ""
-
-    # In-memory token-bucket rate limiter on the HTTP message-intake surface. RPS is the
-    # steady-state refill rate (tokens/second); BURST is the bucket capacity (max instantaneous
-    # tokens). Empty bucket -> 429. Off by default; per-process, not distributed.
-    rate_limit_enabled: bool = False
-    rate_limit_rps: float = 5.0
-    rate_limit_burst: int = 10
-
     # CORS allowed origins for the browser fetch surface. Empty (default) = today's behavior
     # (no CORS middleware installed, so the response carries no CORS headers). Set a
     # comma-separated origin list (e.g. ``https://app.example.com``) to allow those origins.
@@ -121,10 +103,8 @@ class Settings(BaseSettings):
     # when the app is opened via a public URL/tunnel). Set this to a public origin
     # (e.g. ``https://abc.trycloudflare.com`` or a deployed domain) to mint ABSOLUTE links that
     # are shareable off-host — e.g. when you run the app at localhost but reach it via a tunnel.
-    # NOTE: exposing the app publicly so friends can open share links also exposes the whole
-    # agent unless you enable AUTH_TOKEN — share GETs bypass auth by design, so turning auth on
-    # locks the agent while keeping share links open. The "when" judgment lives in
-    # knowledge/api_trust.md; this is pure mechanism.
+    # NOTE: this service has no Bearer auth — exposing it publicly so friends can open share
+    # links also exposes the whole agent to anyone who can reach the host.
     share_base_url: str = ""
 
     @property

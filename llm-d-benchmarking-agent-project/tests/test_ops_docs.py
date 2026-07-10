@@ -81,8 +81,8 @@ def _normalize_metric_token(tok: str) -> str:
         "shell=False",
         "Secret handling",
         "scrub",                # secret scrubbing
-        "Network exposure",     # pairs with Phase 12
-        "AUTH_ENABLED",
+        "Network exposure",
+        "CORS_ALLOW_ORIGINS",
         "requires isolation",
     )),
     (DOCS / "TROUBLESHOOTING.md", (
