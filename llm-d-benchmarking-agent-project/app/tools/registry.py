@@ -19,6 +19,8 @@ from app.tools import tool_loader
 from app.tools.access import knowledge_access, suggest
 from app.tools.analyze import (
     aggregate_runs as aggregate_runs_tool,
+)
+from app.tools.analyze import (
     analyze,
     compare,
     history,

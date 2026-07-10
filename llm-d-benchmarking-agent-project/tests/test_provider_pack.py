@@ -18,10 +18,10 @@ import yaml
 from app.tools.access.knowledge_access import read_knowledge
 from app.tools.setup import probe
 from app.tools.setup.probe import (
-    _detect_provider,
-    _node_provider_summaries,
     _PROVIDER_DEFAULT,
     _PROVIDER_LABEL_HINTS,
+    _detect_provider,
+    _node_provider_summaries,
     probe_environment,
 )
 from tests._helpers import _ctx
