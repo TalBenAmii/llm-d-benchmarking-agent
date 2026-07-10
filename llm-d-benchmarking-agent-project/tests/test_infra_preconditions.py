@@ -234,7 +234,7 @@ def test_no_version_comparison_logic_in_python():
     import io
     import tokenize
 
-    probe_path = Path(__file__).resolve().parents[1] / "app" / "tools" / "probe.py"
+    probe_path = Path(__file__).resolve().parents[1] / "app" / "tools" / "setup" / "probe.py"
     src = probe_path.read_text()
 
     # 1) No threshold appears as a STRING or NUMBER literal in the code (a comparison like

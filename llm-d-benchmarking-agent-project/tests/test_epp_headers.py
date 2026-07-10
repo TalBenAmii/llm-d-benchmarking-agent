@@ -201,7 +201,7 @@ def test_classification_is_data_not_python():
                    "evicted-queue-pressure"):
         assert reason in yaml_text
     prompt_src = (_project_root() / "app" / "agent" / "prompt.py").read_text()
-    probe_src = (_project_root() / "app" / "tools" / "probe.py").read_text()
+    probe_src = (_project_root() / "app" / "tools" / "setup" / "probe.py").read_text()
     # The dropped-reason enum values must not be hard-coded into Python (no if/elif on them).
     for reason in ("rejected-saturated", "evicted-priority"):
         assert reason not in prompt_src

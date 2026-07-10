@@ -362,4 +362,4 @@ def _read_knowledge_file(rel: str) -> str:
 
 
 def _read_probe_src() -> str:
-    return (_project_root() / "app" / "tools" / "probe.py").read_text()
+    return (_project_root() / "app" / "tools" / "setup" / "probe.py").read_text()
