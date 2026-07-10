@@ -5,11 +5,13 @@ Status: **approved 2026-07-10 — all four moves, automation-first. Move A (docs
 `reorg/knowledge` → main, sibling `llm-d-bench-mcp` merged first; knowledge_hash + prompt
 bytes verified bit-identical); move C (scripts/) EXECUTED 2026-07-10 (branch `reorg/scripts` →
 main; 11 scripts → install/·bridges/·eval/, root run.sh·install_local.sh·_env.sh stayed; sibling
-needs no change — it sources the unmoved `scripts/_env.sh`); D pending.** Supersedes the earlier
+needs no change — it sources the unmoved `scripts/_env.sh`); move D (app/tools/) EXECUTED
+2026-07-10 (branch `reorg/tools` → main, sibling `llm-d-bench-mcp` merged first; prompt bytes
+verified bit-identical; stale-path gate zero hits in both owned repos). ALL FOUR MOVES LANDED.** Supersedes the earlier
 "proposed, not executed" menu version. Owner decision: do docs/, knowledge/, scripts/ AND
 app/tools/, using tools (`git mv` + scripted path rewrites) rather than manual edits.
 `app/` proper (other than `app/tools/`) stays untouched. (This doc now lives at
-`docs/project/PROJECT_LAYOUT_REORG.md` after move A; §B/C/D below are unchanged and still to run.)
+`docs/project/PROJECT_LAYOUT_REORG.md` after move A.)
 
 Execution order: **A docs → B knowledge → C scripts → D app/tools** (rising code risk; each
 lands on main before the next starts).
