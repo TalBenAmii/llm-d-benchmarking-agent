@@ -55,7 +55,7 @@ This is the heart of the security model and the project's **thin-code / thick-ag
 
 - **`security/allowlist.yaml`** is the deny-by-default policy. It enumerates the executables
   that may run, their permitted subcommands/flags, value constraints, and per-command execution
-  limits (`timeout_s`, `quota`). **You widen capability by editing this YAML — never by adding a
+  limits (`timeout_s`). **You widen capability by editing this YAML — never by adding a
   per-command branch in Python.**
 - **`app/security/allowlist.py`** (`Allowlist.validate`) is a *pure validator* with no embedded
   per-command knowledge. Given a logical argv it returns a `Decision`:

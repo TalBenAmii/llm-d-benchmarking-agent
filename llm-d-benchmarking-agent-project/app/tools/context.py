@@ -14,7 +14,6 @@ from typing import Any
 
 from app.config import Settings
 from app.security.allowlist import Allowlist
-from app.security.quota import QuotaCounter, QuotaExceeded
 from app.security.runner import CommandRunner, RunResult
 from app.storage.history import HistoryStore
 from app.tools.catalog import build_catalog, catalog_for_allowlist
@@ -30,19 +29,6 @@ class ApprovalRejected(RuntimeError):
     def __init__(self, argv: list[str]):
         super().__init__("user rejected the command: " + " ".join(argv))
         self.argv = argv
-
-
-class QuotaError(ToolError):
-    """Raised BEFORE execution when a command would exceed its allowlist-declared usage
-    quota (per_session / per_day). It is a ToolError, so the agent loop already relays it
-    as a clean tool error; the carried fields (key/window/cap/used) make it structured."""
-
-    def __init__(self, exc: QuotaExceeded):
-        super().__init__(str(exc))
-        self.key = exc.key
-        self.window = exc.window
-        self.cap = exc.cap
-        self.used = exc.used
 
 
 # Callbacks the agent loop wires in per dispatch.
@@ -74,10 +60,6 @@ class ToolContext:
     # The id of THIS context's own session, so the cancel tool can refuse to cancel the very
     # turn it is running inside (that would deadlock: cancel-self then await-self).
     session_id: str | None = field(default=None, repr=False)
-    # Per-session usage-quota counter (Phase 13). MECHANISM only — the CAPS come from the
-    # allowlist DATA via the Decision; this just tallies and compares. One per session
-    # (a ToolContext is created per session), so per_session counts are naturally scoped.
-    quota: QuotaCounter = field(default_factory=QuotaCounter, repr=False)
     _catalog: dict[str, Any] | None = field(default=None, repr=False)
     # Per-session "already provided this doc" set (Context budget). A repeated fetch of the SAME
     # doc within a session would re-inject identical full text into the replayed transcript on
@@ -138,13 +120,13 @@ class ToolContext:
         a short 20s bound when the policy declares none.
 
         ``quiet=True`` skips ONLY the ``command`` event emit — every gate (allowlist, read-only
-        classification, quota) still applies and the command still runs/records metrics. Used by
+        classification) still applies and the command still runs/records metrics. Used by
         the live resource poller so its 5s ``kubectl top`` polls don't flood the persisted,
         500-capped command trail with hundreds of identical rows.
 
         ``cwd`` narrows where a read-only probe runs (e.g. a ``git rev-parse`` against a specific
         read-only repo for provenance capture). It cannot widen capability — the allowlist /
-        read-only / quota gates still apply and an entry's own pinned ``cwd_must_be`` wins.
+        read-only gates still apply and an entry's own pinned ``cwd_must_be`` wins.
 
         Mechanism lives in app/tools/command_exec.py (CommandExecutor); this thin delegator keeps
         the execution engine separable from this dependency-injection container."""

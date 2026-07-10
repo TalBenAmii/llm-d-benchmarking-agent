@@ -396,8 +396,8 @@ class BenchmarkOrchestrator:
 
         async def _safe_checkpoint_write() -> None:
             """Persist the checkpoint, BEST-EFFORT. The ConfigMap write is a mutating
-            ``kubectl apply`` (approval- and quota-gated) and so CAN raise — quota exhausted
-            mid-sweep, approval declined, or a transient apply error. It runs OUTSIDE the
+            ``kubectl apply`` (approval-gated) and so CAN raise — approval declined, or a
+            transient apply error. It runs OUTSIDE the
             per-treatment try/except in ``_one`` (in ``_persist_in_flight`` before it and
             ``_persist_completed`` after it), so an uncaught error here would propagate through
             ``asyncio.gather`` and SINK THE WHOLE SWEEP — destroying every other treatment's

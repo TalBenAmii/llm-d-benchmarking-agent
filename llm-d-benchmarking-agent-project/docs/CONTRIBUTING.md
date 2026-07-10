@@ -85,7 +85,7 @@ call it lives in the prompt + `knowledge/`.
    `build_registry()` in `app/tools/registry.py`, and a description in `_DESCRIPTIONS`.
 4. **Allow any new commands as DATA.** If the tool needs a command not yet permitted, add it to
    `security/allowlist.yaml` with the right `mode` (read-only auto-runs; mutating is
-   approval-gated) and any value constraints / `timeout_s` / `quota`. Never add a Python branch.
+   approval-gated) and any value constraints / `timeout_s`. Never add a Python branch.
 5. **Put the judgment in `knowledge/`.** Add or extend a `knowledge/*.md` so the LLM knows when
    and how to use the tool and how to interpret its facts.
 6. **Test it hermetically.** Add tests using the fakes above. Update the expected tool-name set

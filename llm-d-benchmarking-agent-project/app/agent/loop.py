@@ -21,7 +21,7 @@ from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.session import Session
 from app.llm.provider import LLMProvider, Usage, open_provider_turn
 from app.observability.logging import bind as log_bind
-from app.tools.context import ApprovalRejected, QuotaError, ToolError
+from app.tools.context import ApprovalRejected, ToolError
 from app.tools.registry import dispatch, tool_definitions
 
 log = logging.getLogger("app.agent.loop")
@@ -435,13 +435,6 @@ class AgentLoop:
                             "instruction: adjust accordingly and, if a mutating step is still the "
                             "right next move, propose it again by calling the tool (a fresh "
                             "Approve/Decline card). Otherwise ask what they want to do instead."}
-        except QuotaError as exc:
-            # Over an allowlist-declared usage quota — refused pre-execution. Surface the
-            # caps so the agent can explain the limit instead of silently failing.
-            return {"quota_exceeded": True, "reason": str(exc),
-                    "key": exc.key, "window": exc.window, "cap": exc.cap, "used": exc.used,
-                    "note": "this command hit its configured usage quota; tell the user the "
-                            "limit was reached and ask whether to wait or adjust the plan"}
         except ToolError as exc:
             return {"error": str(exc)}
         except Exception as exc:  # never let one tool crash the loop

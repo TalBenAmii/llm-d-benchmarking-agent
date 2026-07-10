@@ -32,8 +32,8 @@ the authoritative list. Judgment about *what to do with* results lives in `knowl
 
 ## Infra files (not tools)
 - `registry.py` — `build_registry()` (name→`ToolSpec`) + `dispatch()` (validate → handler). Authoritative.
-- `context.py` — `ToolContext` DI container + thin `run_command`/`run_readonly` delegators; `ToolError`/`ApprovalRejected`/`QuotaError`.
-- `command_exec.py` — `CommandExecutor`: validate → quota → approval → run → record. Tools don't touch it directly.
+- `context.py` — `ToolContext` DI container + thin `run_command`/`run_readonly` delegators; `ToolError`/`ApprovalRejected`.
+- `command_exec.py` — `CommandExecutor`: validate → approval → run → record. Tools don't touch it directly.
 - `schemas/` — package of Pydantic input models, one module per tool family (`execute.py`, `orchestrate.py`, `probe.py`, `analysis.py`, `config.py`, `command.py`, `provenance.py`, `doe.py`, `docs.py`).
 - `probe_parse.py` — pure parser for `probe.py` output. (The tolerant tail-of-JSON helper `find_last_json`/`parse_bridge_dict` now lives in `app/dig.py`.)
 - `gated_access.py` — gated-model deploy refusal (`gated_block`) at the command chokepoint; wired into `command_exec.py`/`shell.py`, verdicts recorded by the capacity bridge.

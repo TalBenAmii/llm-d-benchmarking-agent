@@ -288,9 +288,9 @@ async def test_run_sweep_requires_namespace_with_sweep_id(tmp_path):
 
 
 async def test_checkpoint_write_failure_for_one_treatment_does_not_sink_the_sweep(tmp_path):
-    """A checkpoint ConfigMap write (mutating `kubectl apply`, approval+quota gated) can raise
-    for one treatment — quota exhausted mid-sweep, approval declined, a transient apply error.
-    The sweep's per-treatment isolation must hold for that path too: the OTHER treatments must
+    """A checkpoint ConfigMap write (mutating `kubectl apply`, approval-gated) can raise
+    for one treatment — approval declined, a transient apply error. The sweep's
+    per-treatment isolation must hold for that path too: the OTHER treatments must
     still complete and the sweep must not abort.
 
     Reproduces a checkpoint-only isolation gap distinct from
@@ -305,7 +305,7 @@ async def test_checkpoint_write_failure_for_one_treatment_does_not_sink_the_swee
         async def apply(self, manifest_path, *, namespace):
             m = _yaml.safe_load(Path(manifest_path).read_text())
             # Fail only the checkpoint ConfigMap apply (the Job applies must succeed so the
-            # surviving treatments actually run). Mirrors a quota/approval/transient apply error
+            # surviving treatments actually run). Mirrors an approval/transient apply error
             # hitting the checkpoint write specifically.
             if m.get("kind") == "ConfigMap":
                 raise RuntimeError("simulated checkpoint ConfigMap apply failure")
