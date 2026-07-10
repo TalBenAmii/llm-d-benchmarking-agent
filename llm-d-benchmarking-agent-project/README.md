@@ -1,7 +1,7 @@
 # llm-d Benchmarking Assistant Agent
 
-This folder holds all of the project's code and docs. The full README — what the agent does,
-quick start, feature showcase, security model — lives at the
+This folder holds all of the project's code and docs. The full README (what the agent does,
+quick start, feature showcase, security model) lives at the
 [**repository root**](../README.md).
 
 Quick pointers:
