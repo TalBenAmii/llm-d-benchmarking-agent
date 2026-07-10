@@ -12,7 +12,7 @@
 > cluster, security, and CI surfaces, not in the chat bubbles; this file shows where.
 
 Legend for the "How to see / verify" column:
-- 🟢 verified live in this session: ran against the running app with the output observed (see the [Evidence log](#evidence-log) at the bottom).
+- 🟢 verified live in this session: exercised against the running app and the output observed (see the [Evidence log](#evidence-log) at the bottom).
 - 🔵 driveable in the browser/cluster: observable by using the chat UI or a kind cluster (needs the LLM key, which is configured, and/or a cluster).
 - ⚪ artifact / config: verify by rendering an artifact or reading a file; no live server needed.
 
@@ -47,7 +47,7 @@ operability features and are the easiest to verify with `curl`.
 
 | Feature | Where it lives | How to see / verify |
 |---|---|---|
-| End-to-end flow: probe → plan → standup → smoketest → run → parse report → summarize → teardown | `app/agent/loop.py`, `app/tools/*` | 🔵 In the chat: *"benchmark a small chat model on CPU"* and approve the plan. |
+| End-to-end flow: probe → plan → standup → smoketest → run → parse report → summarize → teardown | `app/agent/loop.py`, `app/tools/*` | 🔵 In the chat: *"benchmark a small chat model on CPU"* and approve the plan (exercised in a real session). |
 | **SessionPlan approval gate**: nothing mutating runs until you approve a structured plan | `app/validation/session_plan.py`, `propose_session_plan` tool | 🔵 Chat shows a plan card with Approve/Reject before any standup/run. |
 | **Steering** (Claude-Code style): type a message WHILE the agent is working; it is queued and the running turn picks it up at its next step (no concurrent turn, no "please wait"). Also covers typing instead of approving at a gate (declines + steers) | `app/agent/loop.py` (drains `ctx.steer_messages` each step), `app/main.py` (queues mid-turn `user_message` + backstop), `ui/app.js` (composer stays usable mid-turn) | 🔵 Start a turn, then send another message before it finishes; the agent folds it in. ⚪ `tests/test_ws.py::test_ws_typing_while_thinking_steers_the_same_turn`, `tests/test_loop.py::test_mid_thinking_steer_extends_the_same_turn`, `tests/test_concurrency.py::test_second_message_to_running_session_is_queued_as_steer`. |
 | Use-case → `<spec, harness, workload>` triplet mapping (knowledge-driven, not hardcoded) | `knowledge/usecase_to_profile.yaml` | ⚪ Read the YAML; the LLM reasons over it (no `if/elif` in Python). |
@@ -156,7 +156,7 @@ result.
 
 | Feature | Where | How to see / verify |
 |---|---|---|
-| Report parsing + plain-language summary (validated against repo BR-v0.2 schema) | `app/validation/report.py`, `locate_and_parse_report` | 🔵 The "Benchmark results" card in chat. ⚪ `tests/test_report_validation.py`. |
+| Report parsing + plain-language summary (validated against repo BR-v0.2 schema) | `app/validation/report.py`, `locate_and_parse_report` | 🔵 The "Benchmark results" card in chat (seen in a real session). ⚪ `tests/test_report_validation.py`. |
 | SLO-aware filtering + **goodput estimate** + Pareto/DoE frontier | `app/validation/analysis.py`, `analyze_results` | ⚪ `tests/test_analyze.py`. |
 | A/B comparison of 2+ runs (per-metric deltas + per-metric winner) | `app/tools/compare.py` | ⚪ `tests/` (compare). |
 | **Cross-harness** comparison (inference-perf vs guidellm on the same stack) | `app/tools/compare.py` (`compare_harness_runs`) | ⚪ `tests/test_multiharness.py`. |

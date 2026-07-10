@@ -145,7 +145,7 @@ in the `quality-gates` job (the hermetic flow-validation job runs unchanged alon
   lives in one place, `COV_FAIL_UNDER` in the `Makefile`, and is mirrored by the CI step and
   asserted by `tests/test_quality_gates.py` (so they can't drift). It is set a few points
   below the measured baseline (~89%), not a hardcoded 80%. Never delete a functional test to
-  satisfy coverage; add a test, or leave the threshold alone.
+  satisfy coverage; raise coverage by adding tests, never by deleting them.
 
 The covered suite reads the real Benchmark Report schema/specs, so it needs the read-only
 `llm-d` / `llm-d-benchmark` repos present (`REPOS_DIR` points at their parent); CI clones

@@ -17,9 +17,9 @@ resolved, fail loudly (non-negotiable rule 7). Split out of `PROJECT_BRAIN_REFER
 Canonical, upstream-maintained operational procedures, read live (never vendored; clone via
 `ensure_repos` / the allowlisted `git clone .../llm-d-incubation/llm-d-skills`). It is the canonical
 default source for the deploy / teardown / benchmark / compare / autoscale procedures, so it is a
-REQUIRED repo alongside `llm-d` + `llm-d-benchmark`: it's in `Settings.repo_paths` (gates `/readyz`;
-a missing skills repo 503s the startup self-check, per rule 7; and is captured in provenance /
-reproducibility). It's still independently versioned, so `ensure_repos`' `ref` is never applied to it.
+REQUIRED repo alongside `llm-d` + `llm-d-benchmark`: it's in `Settings.repo_paths` (gates `/readyz`
+and is captured in provenance / reproducibility; a missing skills repo 503s the startup self-check,
+per rule 7). It's still independently versioned, so `ensure_repos`' `ref` is never applied to it.
 - **Skills:** `skills/<name>/SKILL.md`: `deploy-llm-d`, `teardown-llm-d`, `run-llm-d-benchmark`,
   `compare-llm-d-configurations`, `configure-wva-autoscaling-llm-d` (plus each skill's `references/` /
   `docs/` / `resources/`).

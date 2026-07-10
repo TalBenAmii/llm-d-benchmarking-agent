@@ -116,7 +116,7 @@ _Avoid_: "grid search", "batch run", "matrix" loosely; "sweep" and "DoE" are the
 
 **goal-seeking**:
 Converging on the best config that meets an SLO by iterating sweeps: a coarse DoE round -> `analyze_results` (SLO-feasible frontier + goodput) -> narrow the factor ranges around the incumbent -> re-sweep, within a total-run budget agreed up front. No dedicated tool; the strategy lives in `knowledge/sweep_playbook.md` (its goal-seeking section), and each round rides the normal SessionPlan/sweep approval.
-_Avoid_: "optimizer", "tuning loop"; and don't attribute the decision to a tool, the agent decides.
+_Avoid_: "optimizer", "tuning loop"; don't attribute the decision to a tool; the agent decides.
 
 ### Orchestrator & results
 
