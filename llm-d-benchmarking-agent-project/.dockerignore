@@ -50,5 +50,4 @@ testing/
 # Docs / planning that don't belong in the image.
 *.md
 !README.md
-plan.md
 docs/
