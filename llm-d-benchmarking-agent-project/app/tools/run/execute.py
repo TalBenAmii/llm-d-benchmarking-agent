@@ -430,7 +430,7 @@ async def execute_llmdbenchmark(
     # therefore deliberately NOT an allowlisted flag (it could never be expressed as an argv
     # token) and it never appears in a `command` event — `_emit_command` emits only argv/text/
     # mode, so the browser/log/persisted trail never sees it (mirrors the HF_TOKEN non-leak
-    # rationale in scripts/provision_hf_secret.py + settings.extra_subprocess_env). The benchmark
+    # rationale in scripts/bridges/provision_hf_secret.py + settings.extra_subprocess_env). The benchmark
     # CLI consumes cluster_url/cluster_token via its ExecutionContext (utilities/cluster.kube_connect
     # honours host + bearer token); we forward them as LLMDBENCH_CLUSTER_URL/_TOKEN. PURE MECHANISM
     # — WHEN/WHETHER to target a remote cluster is judgment in knowledge/preconditions.md.

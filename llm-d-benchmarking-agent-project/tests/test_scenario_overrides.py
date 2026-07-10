@@ -1,7 +1,7 @@
 """Hermetic tests for per-knob vLLM scenario authoring (Phase 45).
 
 Cover ``write_and_validate_config(artifact_type="scenario", …)`` in
-``app/tools/config_artifact.py``: the agent supplies per-knob OVERRIDES, the tool deep-merges
+``app/tools/setup/config_artifact.py``: the agent supplies per-knob OVERRIDES, the tool deep-merges
 them onto a minimal ``scenario: [ {name, …} ]`` skeleton, SHAPE-validates the knobs against
 the repo's own scenario examples (read LIVE — the read-only sibling repo is the only on-disk
 dependency, and the validator degrades gracefully if it is absent), and writes the file into
@@ -14,7 +14,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from app.tools.config_artifact import (
+from app.tools.context import ToolError
+from app.tools.registry import dispatch, tool_definitions
+from app.tools.setup.config_artifact import (
     _build_scenario_document,
     _build_spec_document,
     _scenario_reference,
@@ -22,8 +24,6 @@ from app.tools.config_artifact import (
     validate_scenario_structure,
     write_and_validate_config,
 )
-from app.tools.context import ToolError
-from app.tools.registry import dispatch, tool_definitions
 
 # ---------------------------------------------------------------------------
 # Pure mechanism: dotted-override deep-merge onto the scenario skeleton
@@ -387,7 +387,7 @@ async def test_plan_dry_run_executes_against_the_authored_spec(tool_ctx):
     """END-TO-END (mocked CLI): the agent authors a scenario, then runs the determinism gate
     THROUGH execute_llmdbenchmark with spec=<spec_path>. A recording runner stands in for the
     real CLI (no cluster), so we verify the authored spec actually reaches plan/--dry-run."""
-    from app.tools.execute import execute_llmdbenchmark
+    from app.tools.run.execute import execute_llmdbenchmark
     from tests.flows.harness import CaptureRunner
 
     out = await write_and_validate_config(

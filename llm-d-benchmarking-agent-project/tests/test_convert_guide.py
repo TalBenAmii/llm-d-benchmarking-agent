@@ -19,14 +19,14 @@ import pytest
 import yaml
 
 from app.tools.context import ToolError
-from app.tools.convert_guide import (
+from app.tools.registry import dispatch, tool_definitions
+from app.tools.setup.convert_guide import (
     _build_scenario_sh,
     _emit_export_lines,
     _scenario_twin_content,
     _validate_name,
     convert_guide_to_scenario,
 )
-from app.tools.registry import dispatch, tool_definitions
 
 # ---------------------------------------------------------------------------
 # Name screen (mechanism that keeps every output inside the workspace)
@@ -296,7 +296,7 @@ async def test_plan_dry_run_executes_against_the_authored_spec(tool_ctx):
     """END-TO-END (mocked CLI): author from a guide map, then run the determinism gate THROUGH
     execute_llmdbenchmark with spec=<spec_path>. A recording runner stands in for the real CLI
     (no cluster), so we verify the authored spec actually reaches plan/--dry-run."""
-    from app.tools.execute import execute_llmdbenchmark
+    from app.tools.run.execute import execute_llmdbenchmark
     from tests.flows.harness import CaptureRunner
 
     out = await convert_guide_to_scenario(
@@ -358,7 +358,7 @@ async def test_dispatch_converts_end_to_end(tool_ctx):
 def test_convert_guide_knowledge_is_reachable(tool_ctx):
     """The mapping JUDGMENT lives in knowledge/convert_guide.md and is loadable via the same
     read_knowledge mechanism the tool description points at."""
-    from app.tools.knowledge_access import read_knowledge
+    from app.tools.access.knowledge_access import read_knowledge
 
     res = read_knowledge(tool_ctx, name="convert_guide")
     assert res.get("topic") == "convert_guide"

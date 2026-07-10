@@ -244,7 +244,7 @@ def test_install_service_wires_provider_selection():
     # token → claude-agent-sdk + secret.claudeCodeOauthToken; an API key → anthropic +
     # secret.anthropicApiKey. This doubles as a cross-file consistency check that the installer,
     # the chart values, and the deployment env wiring agree on the provider + Secret key names.
-    text = (PROJECT_ROOT / "scripts" / "install_service.sh").read_text()
+    text = (PROJECT_ROOT / "scripts" / "install" / "install_service.sh").read_text()
     # Primary path: the Claude subscription OAuth token selects the SDK provider.
     assert "--oauth-token" in text
     assert "config.llmProvider=claude-agent-sdk" in text

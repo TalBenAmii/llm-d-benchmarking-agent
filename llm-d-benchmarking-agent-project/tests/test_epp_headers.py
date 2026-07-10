@@ -18,7 +18,7 @@ from pathlib import Path
 import yaml
 
 from app.agent.prompt import CORE_KNOWLEDGE, build_system_prompt
-from app.tools.knowledge_access import read_knowledge
+from app.tools.access.knowledge_access import read_knowledge
 
 # The four header names the spec/HERMETIC-TEST require to be decoded, plus the two enum values.
 REQUIRED_HEADER_NAMES = (
@@ -39,7 +39,7 @@ def _read_knowledge_file(rel: str) -> str:
 
 
 def _epp_data() -> dict:
-    data = yaml.safe_load(_read_knowledge_file("knowledge/epp_headers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/workload/epp_headers.yaml"))
     assert isinstance(data, dict)
     return data
 
@@ -184,7 +184,7 @@ def test_narration_reframes_failures_as_capacity_not_breakage():
 # ---- (7) results_interpretation.md routes the agent here --------------------
 
 def test_results_interpretation_routes_to_epp_headers():
-    md = _read_knowledge_file("knowledge/results_interpretation.md")
+    md = _read_knowledge_file("knowledge/analysis/results_interpretation.md")
     assert 'read_knowledge("epp_headers")' in md
     assert "x-llm-d-request-dropped-reason" in md
     # It frames the routing around a non-100% success / 429.
@@ -196,12 +196,12 @@ def test_results_interpretation_routes_to_epp_headers():
 def test_classification_is_data_not_python():
     """The rejected/evicted/broken classification must NOT live in any Python module — assert the
     enum values appear in the YAML but not as branch literals in the prompt/probe code."""
-    yaml_text = _read_knowledge_file("knowledge/epp_headers.yaml")
+    yaml_text = _read_knowledge_file("knowledge/workload/epp_headers.yaml")
     for reason in ("rejected-saturated", "evicted-priority", "rejected-ttl-expired",
                    "evicted-queue-pressure"):
         assert reason in yaml_text
     prompt_src = (_project_root() / "app" / "agent" / "prompt.py").read_text()
-    probe_src = (_project_root() / "app" / "tools" / "probe.py").read_text()
+    probe_src = (_project_root() / "app" / "tools" / "setup" / "probe.py").read_text()
     # The dropped-reason enum values must not be hard-coded into Python (no if/elif on them).
     for reason in ("rejected-saturated", "evicted-priority"):
         assert reason not in prompt_src

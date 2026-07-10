@@ -242,7 +242,7 @@ def test_expected_commands_reference_real_catalog_items():
 def test_snapshot_matches_live():
     """Drift guard: when the real repo IS present, every name the flows rely on must still
     exist upstream. This is what keeps the frozen snapshot honest."""
-    from app.tools.catalog import build_catalog
+    from app.tools.setup.catalog import build_catalog
 
     live = build_catalog(_BENCH_REPO)
     live_specs, live_harnesses, live_workloads = set(live["specs"]), set(live["harnesses"]), set(live["workloads"])

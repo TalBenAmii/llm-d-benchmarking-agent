@@ -30,13 +30,13 @@ from app.capacity.planner import (
 )
 from app.config import Settings
 from app.security.allowlist import Allowlist
-from app.tools.capacity import check_capacity
 from app.tools.context import ToolContext
+from app.tools.setup.capacity import check_capacity
 from tests.flows.harness import CaptureRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
-BRIDGE_PATH = PROJECT_ROOT / "scripts" / "capacity_check.py"
+BRIDGE_PATH = PROJECT_ROOT / "scripts" / "bridges" / "capacity_check.py"
 
 # A sentinel token value the backend would hold. The whole point of the scrub assertions
 # is that THIS string never leaks into the structured result or the command events.
@@ -110,7 +110,7 @@ def _install_fake_hf(monkeypatch, responder, *, token_box=None):
 
 
 def _load_bridge():
-    """Import scripts/capacity_check.py as a module (it is not on the package path)."""
+    """Import scripts/bridges/capacity_check.py as a module (it is not on the package path)."""
     spec = importlib.util.spec_from_file_location("capacity_check_bridge", BRIDGE_PATH)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
@@ -412,7 +412,7 @@ def test_bridge_emit_contract_includes_gated_access(
     monkeypatch, tmp_path, capsys, _restore_logging_disable
 ):
     """The bridge's success stdout JSON carries the gated_access field end-to-end (the
-    contract app/tools/capacity.py reads), driven through the fake gating util."""
+    contract app/tools/setup/capacity.py reads), driven through the fake gating util."""
     _install_fake_hf(monkeypatch, _gated_denied)
     monkeypatch.setenv("HF_TOKEN", _FAKE_HF_TOKEN)
     # A self-contained plan_config + a fake run_capacity_planner so no real planner is needed.

@@ -10,7 +10,7 @@ the caller's request.
 
 The emitted shape mirrors the llm-d-benchmark experiment format that
 ``llmdbenchmark.experiment.parser.parse_experiment`` consumes (verified at runtime
-against the repo's own examples — see ``app/tools/doe.py``):
+against the repo's own examples — see ``app/tools/run/doe.py``):
 
     experiment:
       name: <name>

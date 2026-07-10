@@ -1,4 +1,4 @@
-"""Tests for the repos clone/setup tool (app/tools/repos.py).
+"""Tests for the repos clone/setup tool (app/tools/setup/repos.py).
 
 Focus: the catalog refresh that ``ensure_repos`` triggers MUST run even when a later repo's
 clone is rejected/denied mid-loop — otherwise a successfully-cloned earlier repo is left
@@ -15,8 +15,8 @@ import pytest
 from app.config import BENCH_REPO_NAME, GUIDE_REPO_NAME, Settings
 from app.security.allowlist import Allowlist
 from app.security.runner import CommandRunner
-from app.tools import repos
 from app.tools.context import ApprovalRejected, ToolContext
+from app.tools.setup import repos
 
 
 class _Res:

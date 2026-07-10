@@ -26,14 +26,14 @@ import pytest
 import yaml
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.config_artifact import (
+from app.tools.run.execute import build_argv
+from app.tools.schemas import ExecuteInput
+from app.tools.setup.config_artifact import (
     _build_scenario_document,
     _scenario_reference,
     validate_scenario_structure,
     write_and_validate_config,
 )
-from app.tools.execute import build_argv
-from app.tools.schemas import ExecuteInput
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[1] / "knowledge"
 
@@ -244,7 +244,7 @@ def test_repo_path_value_constraint_present():
 
 
 def test_deploy_path_playbook_documents_the_kustomize_block():
-    guide = KNOWLEDGE_DIR / "deploy_path_playbook.md"
+    guide = KNOWLEDGE_DIR / "deploy/deploy_path_playbook.md"
     assert guide.is_file()
     text = guide.read_text()
     # The block's knob family and the --llmd-repo-path thread are documented as judgment.

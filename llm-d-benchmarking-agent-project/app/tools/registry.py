@@ -15,33 +15,21 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.readiness import check_endpoint_readiness
-from app.tools import (
+from app.tools import tool_loader
+from app.tools.access import knowledge_access, suggest
+from app.tools.analyze import (
     aggregate_runs as aggregate_runs_tool,
 )
-from app.tools import (
+from app.tools.analyze import (
     analyze,
-    capacity,
     compare,
-    config_artifact,
-    convert_guide,
-    discover,
-    doe,
-    execute,
     history,
-    knowledge_access,
-    manage_runs,
-    orchestrate,
-    plan,
-    probe,
     report_locate,
-    repos,
     reproducibility,
-    shell,
-    suggest,
-    tool_loader,
     workload_profile,
 )
 from app.tools.context import ToolContext
+from app.tools.run import doe, execute, manage_runs, orchestrate, shell
 from app.tools.schemas import (
     AdviseAcceleratorsInput,
     AggregateRunsInput,
@@ -79,6 +67,7 @@ from app.tools.schemas import (
     SuggestNextStepsInput,
     WriteConfigInput,
 )
+from app.tools.setup import capacity, config_artifact, convert_guide, discover, plan, probe, repos
 from app.validation.session_plan import SessionPlan
 
 

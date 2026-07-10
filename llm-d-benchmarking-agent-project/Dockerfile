@@ -212,7 +212,7 @@ WORKDIR /app
 
 # The resolved APP venv from the builder + the app source and the data files it reads at runtime
 # (the allowlist, the knowledge files, the static UI, and now scripts/ — the allowlist wires
-# scripts/capacity_check.py + aggregate_runs.py + provision_hf_secret.py to run via the CLI venv).
+# scripts/bridges/capacity_check.py + aggregate_runs.py + provision_hf_secret.py to run via the CLI venv).
 # The .env is NOT baked in — it is configured at deploy time.
 COPY --from=builder /opt/venv /opt/venv
 COPY app ./app

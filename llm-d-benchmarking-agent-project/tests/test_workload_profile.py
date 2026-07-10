@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.tools import workload_profile
+from app.tools.analyze import workload_profile
 from app.tools.context import ToolError
 from app.tools.registry import dispatch
 

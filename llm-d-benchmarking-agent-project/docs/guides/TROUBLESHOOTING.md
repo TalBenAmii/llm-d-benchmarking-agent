@@ -1,110 +1,112 @@
 # Troubleshooting
 
-A symptom-first guide to the common failures, **where to look**, and how to use the agent's
-structured logs (Phase 11) and its readiness/metrics endpoints to diagnose them. Nothing here
-invents a feature — every endpoint, env var, and log key below exists in the code.
+A symptom-first guide to common failures: where to look, and how to use the agent's structured
+logs (Phase 11) and its readiness/metrics endpoints to diagnose them. Every endpoint, env var,
+and log key below exists in the code.
 
 ## First moves (always)
 
-1. **Hit the health probes.**
-   - `GET /healthz` → `{"status":"ok"}` means the process is **live**.
-   - `GET /readyz` → **200** when the startup self-check passed, **503** with structured
+1. Hit the health probes.
+   - `GET /healthz` returns `{"status":"ok"}` when the process is live.
+   - `GET /readyz` returns 200 when the startup self-check passed, or 503 with structured
      reasons when it did not (workspace writable, provider coherent, repos resolvable, auth
-     coherent). The 503 body tells you *which* check failed — start there.
-2. **Read the structured logs.** With `LOG_FORMAT=json` (the default) every line is one JSON
+     coherent). The 503 body tells you which check failed. Start there.
+2. Read the structured logs. With `LOG_FORMAT=json` (the default) every line is one JSON
    object with `timestamp`, `level`, `logger`, `message`, plus structured `extra` fields. The
    correlation fields are the key to navigation (`knowledge/logging.md`):
-   - **one turn** → grep its `corr_id` (minted at the WebSocket handshake, one per connection/turn);
-   - **one chat across turns** → filter on `session_id`;
-   - **one tool's activity** → add `tool=<name>`;
-   - **one orchestrated run** → filter on `run_id`.
-3. **Turn up the volume.** Set `LOG_LEVEL=DEBUG` for the backend; use `LOG_FORMAT=text` for a
+   - one turn: grep its `corr_id` (minted at the WebSocket handshake, one per connection/turn)
+   - one chat across turns: filter on `session_id`
+   - one tool's activity: add `tool=<name>`
+   - one orchestrated run: filter on `run_id`
+3. Turn up the volume. Set `LOG_LEVEL=DEBUG` for the backend; use `LOG_FORMAT=text` for a
    compact human line (`ts level logger [corr_id] message`) during local dev.
 
 ## Debug mode (UI)
 
-The chat UI has a **Debug toggle** (`>_`) that reveals the full **executed-command trail**
-*inline in the chat* — every command the agent ran (read-only probes included) appears in
-place, between the messages, in execution order, each badged read-only/mutating and
-auto/approved. Toggling it off hides the commands again; the setting persists. Use it to
-answer *"what did the agent actually run?"* without leaving the conversation. The inline
-trail is replayed in its original transcript position on reconnect/resume.
+The chat UI has a Debug toggle (`>_`) that reveals the executed-command trail inline in the
+chat: every command the agent ran (read-only probes included) appears in place, between the
+messages, in execution order, each badged read-only/mutating and auto/approved. Toggling it
+off hides the commands again; the setting persists. Use it to answer "what did the agent
+actually run?" without leaving the conversation. The inline trail is replayed in its original
+transcript position on reconnect/resume.
 
 ## Symptom → what to check
 
 ### The agent connects but never responds / no LLM output
-- **No API key.** A real session needs `ANTHROPIC_API_KEY` (or an OpenAI-compatible key) in
+- No API key. A real session needs `ANTHROPIC_API_KEY` (or an OpenAI-compatible key) in
   `.env`. `GET /readyz` reports `provider_coherent: false` when the configured provider has no
-  key. Tests run a fake provider, so green tests do **not** imply a configured key.
-- **Wrong provider/model.** `LLM_PROVIDER` must be `anthropic` or `openai`; an unknown value
+  key. Tests run a fake provider, so green tests do not imply a configured key.
+- Wrong provider/model. `LLM_PROVIDER` must be `anthropic` or `openai`; an unknown value
   fails the self-check with `unknown LLM_PROVIDER`.
-- Check the logs for `turn.start` without a matching `turn.end` on the same `corr_id` — that
+- Check the logs for `turn.start` without a matching `turn.end` on the same `corr_id`. That
   localizes a hang to the LLM call vs a tool.
 
 ### A command "isn't allowed" / is denied
-- The allowlist (`security/allowlist.yaml`) is **deny-by-default**. A denial means the
+- The allowlist (`security/allowlist.yaml`) is deny-by-default. A denial means the
   executable, a subcommand, a flag value, or a token failed validation. The denial `reason`
-  appears in the surfaced error and the log. **Fix by widening the YAML policy — never by
-  editing Python.** See `docs/reference/SECURITY.md` for the model.
+  appears in the surfaced error and the log. Fix by widening the YAML policy, never by
+  editing Python. See `docs/reference/SECURITY.md` for the model.
 - A token containing a shell metacharacter is rejected on principle (defense in depth), even
   though the runner uses `shell=False`.
 
 ### A mutating command never runs
-- Mutating commands **require explicit UI approval** (an `approval` frame over `/ws`). If you
-  approve after disconnecting, the approval is auto-rejected (a detached turn won't hang holding
-  a concurrency slot — Phase 2). Reconnect and re-drive.
+- Mutating commands require explicit UI approval (an `approval` frame over `/ws`). If you
+  approve after disconnecting, the approval is auto-rejected (a detached turn won't hang
+  holding a concurrency slot; Phase 2). Reconnect and re-drive.
 
 ### "venv not set up" / `llmdbenchmark` not found
-- The benchmark CLI lives in the **benchmark repo's own `.venv`** built by its `install.sh`.
+- The benchmark CLI lives in the benchmark repo's own `.venv` built by its `install.sh`.
   The runner raises `… not found — the benchmark venv is not set up yet (run install.sh first)`.
   Have the agent run the bootstrap (`install.sh --uv`) first, or set up the venv manually.
 
 ### `kind create cluster` fails on a fresh host ("could not find a log line … Multi-User System")
-- The kind node's systemd can't boot because the host's inotify limits are too low (node logs show
-  `Failed to allocate directory watch: Too many open files`). The repo-root `install.sh` now raises
-  `fs.inotify.max_user_watches`/`max_user_instances` automatically (persisted to
-  `/etc/sysctl.d/99-inotify-kind.conf`) before creating the cluster. Creating a cluster by hand? Bump
-  those limits first (best-effort `sudo sysctl -w …`), then retry `kind create cluster`.
+- The kind node's systemd can't boot because the host's inotify limits are too low (node logs
+  show `Failed to allocate directory watch: Too many open files`). The repo-root `install.sh`
+  raises `fs.inotify.max_user_watches`/`max_user_instances` automatically (persisted to
+  `/etc/sysctl.d/99-inotify-kind.conf`) before creating the cluster. Creating a cluster by
+  hand? Bump those limits first (best-effort `sudo sysctl -w …`), then retry
+  `kind create cluster`.
 
 ### Repos not found / catalog or report tools fail
 - The two read-only sibling repos (`llm-d/`, `llm-d-benchmark/`) must resolve under
   `REPOS_DIR` (defaults to the parent of the project dir). `GET /readyz` reports
   `repos_resolvable: false` with `missing repo(s): …` when they don't. Set `REPOS_DIR` to the
-  directory that contains them. (In a bare git worktree the nested sibling repos can be empty —
+  directory that contains them. (In a bare git worktree the nested sibling repos can be empty;
   point `REPOS_DIR` at a populated checkout.)
 
 ### A command hangs, then is killed
 - Every command has a deadline (`Decision.timeout_s` from the allowlist YAML, else a sane
-  default). On timeout the runner logs `runner.exec.timeout` with `deadline_s` and SIGKILLs the
-  child's **whole process group**. The result carries `timed_out: true`. If a class of command
-  legitimately needs longer, raise its `timeout_s` in `security/allowlist.yaml` (data, not code).
+  default). On timeout the runner logs `runner.exec.timeout` with `deadline_s` and SIGKILLs
+  the child's whole process group. The result carries `timed_out: true`. If a class of command
+  legitimately needs longer, raise its `timeout_s` in `security/allowlist.yaml` (data, not
+  code).
 
 ### A benchmark run failed
-- Don't scrape logs for the verdict — read the **metrics** (`knowledge/observability.md`):
-  - `llmdbench_orchestrator_runs_terminal_total{outcome}` — `succeeded` vs `dead_lettered`.
-  - `llmdbench_orchestrator_run_faults_total{kind}` — the dominant fault
+- Don't scrape logs for the verdict. Read the metrics (`knowledge/observability.md`):
+  - `llmdbench_orchestrator_runs_terminal_total{outcome}`: `succeeded` vs `dead_lettered`.
+  - `llmdbench_orchestrator_run_faults_total{kind}`: the dominant fault
     (`oom`/`timeout`/`unschedulable`/`evicted`/`image_error`/`run_error`/`unknown`).
 - For `oom`/`unschedulable`/`evicted`, use the read-only `observe_run_metrics` tool
-  (`scope="nodes"` for node pressure, or `scope="pods"` for the run's pods) to confirm resource
-  pressure. The remediation judgment lives in `knowledge/orchestrator.md`.
+  (`scope="nodes"` for node pressure, or `scope="pods"` for the run's pods) to confirm
+  resource pressure. The remediation judgment lives in `knowledge/orchestrator.md`.
 - The orchestrator refuses to submit a Job when `ORCHESTRATOR_IMAGE` is unset (it would be
-  unrunnable). For the **local** path, `execute_llmdbenchmark` runs the harness directly.
+  unrunnable). For the local path, `execute_llmdbenchmark` runs the harness directly.
 
 ### Capacity pre-flight says it won't fit
-- `check_capacity` runs the **benchmark repo's own** planner (weights + activation + KV-cache
-  vs accelerator memory). A shortfall under `enforce=true` is a deployment-halting ERROR; else
-  an advisory WARNING. Interpretation guidance: `knowledge/capacity.md`.
+- `check_capacity` runs the benchmark repo's own planner (weights + activation + KV-cache
+  vs accelerator memory). A shortfall under `enforce=true` is a deployment-halting ERROR;
+  otherwise an advisory WARNING. Interpretation guidance: `knowledge/capacity.md`.
 
 ### Rate-limited (429) or unauthorized (401)
-- These come from the Phase 12 controls when enabled. **401** → missing/bad
-  `Authorization: Bearer <AUTH_TOKEN>` (WS may use `?token=`). **429** → the `/api/*` token
-  bucket is empty (tune `RATE_LIMIT_RPS` / `RATE_LIMIT_BURST`). `/healthz` + `/metrics` are
+- These come from the Phase 12 controls when enabled. 401 means a missing or bad
+  `Authorization: Bearer <AUTH_TOKEN>` (WS may use `?token=`). 429 means the `/api/*` token
+  bucket is empty (tune `RATE_LIMIT_RPS` / `RATE_LIMIT_BURST`). `/healthz` and `/metrics` are
   never throttled. See `docs/reference/SECURITY.md`.
 
 ### Metrics are missing or reset to zero
-- The agent's counters are **process-lifetime** — they reset on a backend restart, so a sudden
+- The agent's counters are process-lifetime: they reset on a backend restart, so a sudden
   return to zero usually means a restart, not lost data. Confirm with the `AgentDown` alert /
-  the `up` series. If `/metrics` is empty of the `llmdbench_*` families, no commands/runs have
+  the `up` series. If `/metrics` has none of the `llmdbench_*` families, no commands/runs have
   happened yet since startup.
 
 ## Where each signal lives (cheat sheet)

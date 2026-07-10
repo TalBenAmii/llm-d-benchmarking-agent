@@ -9,7 +9,7 @@ Two halves, both hermetic (NO cluster, NO GPU, NO network, NO real benchmark run
       the registry descriptions route there.
 
   (B) THE OPTIONAL SCRIPTED STEP (run a standalone plot script against a results dir):
-      the `aggregate_runs` tool + the vetted `scripts/aggregate_runs.py` wrapper, allowlisted
+      the `aggregate_runs` tool + the vetted `scripts/bridges/aggregate_runs.py` wrapper, allowlisted
       READ-ONLY against a results dir. Covered three ways: the allowlist classification, the
       tool end-to-end through a CaptureRunner faking the bridge, and a REAL end-to-end run of
       the wrapper (importing the repo's OWN aggregate_runs module) over fixture BR v0.2
@@ -30,7 +30,7 @@ from app.config import get_settings
 from app.dig import parse_bridge_dict
 from app.security.allowlist import READ_ONLY, Allowlist
 from app.security.runner import CommandRunner, RunnerError
-from app.tools.aggregate_runs import aggregate_runs
+from app.tools.analyze.aggregate_runs import aggregate_runs
 from app.tools.context import ToolError
 from app.tools.registry import dispatch, tool_definitions
 from app.validation.report import load_report
@@ -38,7 +38,7 @@ from tests._helpers import _real_repo_ctx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
-WRAPPER = PROJECT_ROOT / "scripts" / "aggregate_runs.py"
+WRAPPER = PROJECT_ROOT / "scripts" / "bridges" / "aggregate_runs.py"
 
 
 # ============================================================================
@@ -47,7 +47,7 @@ WRAPPER = PROJECT_ROOT / "scripts" / "aggregate_runs.py"
 
 def test_read_repo_doc_reaches_the_analysis_notebook_readme(tool_ctx):
     """The agent surfaces the notebook setup guide straight from the read-only repo."""
-    from app.tools.knowledge_access import read_repo_doc
+    from app.tools.access.knowledge_access import read_repo_doc
 
     doc = read_repo_doc(tool_ctx, path="llm-d-benchmark/docs/analysis/README.md")
     assert doc["path"].endswith("docs/analysis/README.md")
@@ -56,7 +56,7 @@ def test_read_repo_doc_reaches_the_analysis_notebook_readme(tool_ctx):
 
 
 def test_read_repo_doc_reaches_the_analysis_pipeline_overview(tool_ctx):
-    from app.tools.knowledge_access import read_repo_doc
+    from app.tools.access.knowledge_access import read_repo_doc
 
     doc = read_repo_doc(tool_ctx, path="llm-d-benchmark/docs/analysis.md")
     assert doc["path"].endswith("docs/analysis.md")
@@ -67,7 +67,7 @@ def test_read_repo_doc_reaches_the_analysis_pipeline_overview(tool_ctx):
 def test_knowledge_analysis_surfaces_notebook_and_scripts():
     """knowledge/analysis.md (the agent's brain) carries the real artifact paths + the
     judgment that these are pointer-only exploration, NOT part of the automated flow."""
-    text = (PROJECT_ROOT / "knowledge" / "analysis.md").read_text()
+    text = (PROJECT_ROOT / "knowledge" / "analysis/analysis.md").read_text()
     # The interactive notebook + its setup doc + the pipeline overview are named.
     assert "analysis.ipynb" in text
     assert "docs/analysis/README.md" in text
@@ -134,7 +134,7 @@ def test_runner_resolves_wrapper_via_bench_venv(tmp_path):
     entry = Allowlist.from_file(ALLOWLIST_PATH).executable("aggregate_runs.py")
     real, _cwd = runner.resolve(["aggregate_runs.py", str(tmp_path / "req.json")], entry)
     assert real[0] == str(venv_bin / "python")
-    assert real[1].endswith("scripts/aggregate_runs.py")
+    assert real[1].endswith("scripts/bridges/aggregate_runs.py")
     assert real[2].endswith("req.json")
 
 

@@ -95,7 +95,7 @@ def test_find_report_honours_root_precedence_over_global_mtime(tmp_path):
     roots are only a fallback."""
     import os
 
-    from app.tools.report_locate import _find_report
+    from app.tools.analyze.report_locate import _find_report
 
     workspace = tmp_path / "ws" / "sessions" / "sess1"
     run_a = workspace / "results" / "runA"      # what the caller explicitly asks for
@@ -137,8 +137,8 @@ def test_locate_rejects_session_id_path_traversal(tmp_path, evil):
     must NOT let the tool escape the sessions root and locate+read a benchmark_report
     elsewhere on disk. Fails before the fix (the out-of-root report is located and read);
     passes after (a ToolError is raised, so the loop relays a clean {"error": ...})."""
+    from app.tools.analyze.report_locate import locate_and_parse_report
     from app.tools.context import ToolError
-    from app.tools.report_locate import locate_and_parse_report
 
     sessions_root = tmp_path / "sessions"
     ws = sessions_root / "sess1"
@@ -156,7 +156,7 @@ def test_locate_rejects_session_id_path_traversal(tmp_path, evil):
 def test_locate_accepts_legitimate_session_id(tmp_path):
     """The fix must keep the normal path working: a plain session_id naming a sibling session
     inside the sessions root still locates that session's report (no false rejection)."""
-    from app.tools.report_locate import _session_root
+    from app.tools.analyze.report_locate import _session_root
 
     sessions_root = tmp_path / "sessions"
     ws = sessions_root / "sess1"

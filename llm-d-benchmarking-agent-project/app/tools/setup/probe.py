@@ -14,11 +14,11 @@ from app.tools.context import ToolContext, ToolError
 
 # Pure JSON/text parsers + the constants they own live in the sibling module; import them back so
 # the `_probe_*` orchestration functions below are unchanged in behavior, and so existing
-# `from app.tools.probe import <parser>` imports (tests + callers) keep resolving. Import direction
+# `from app.tools.setup.probe import <parser>` imports (tests + callers) keep resolving. Import direction
 # is one-way (probe -> probe_parse); probe_parse never imports from this module. `_ACCELERATOR_
 # RESOURCE_KEYS` and `_PROVIDER_DEFAULT` are defined there but also used by staying probes below,
 # so they're imported (single source of truth).
-from app.tools.probe_parse import (  # noqa: F401
+from app.tools.setup.probe_parse import (  # noqa: F401
     _ACCELERATOR_RESOURCE_KEYS,
     _PROVIDER_DEFAULT,
     _PROVIDER_LABEL_HINTS,
@@ -458,7 +458,7 @@ def list_catalog(ctx: ToolContext, *, kinds: list[str] | None = None, refresh: b
 # The pure JSON/text parsers (`_names_from_json`, `_items_from_json`, `_parse_cpu_quantity`,
 # `_node_cpu_summaries`, `_server_version`, `_collect_image_tags`, `_as_str`,
 # `_node_accelerator_summaries`, `_detect_provider`, `_node_provider_summaries`,
-# `_detect_cluster_provider`, `_pod_summaries`) now live in app/tools/probe_parse.py and are
+# `_detect_cluster_provider`, `_pod_summaries`) now live in app/tools/setup/probe_parse.py and are
 # imported at the top. `_parse_image_tags` stays here because it is NOT pure: it reads the chosen
 # spec's scenario YAML off disk via `ctx.settings.bench_repo`.
 

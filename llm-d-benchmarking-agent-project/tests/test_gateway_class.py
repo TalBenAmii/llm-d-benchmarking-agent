@@ -24,7 +24,7 @@ from __future__ import annotations
 import pytest
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv
+from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 
@@ -159,7 +159,7 @@ def test_gateway_class_on_plan_stays_read_only(allowlist, catalog):
 def test_gateway_class_knowledge_is_discoverable():
     from pathlib import Path
 
-    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "gateway_class.md"
+    kfile = Path(__file__).resolve().parent.parent / "knowledge" / "deploy/gateway_class.md"
     assert kfile.is_file(), "knowledge/gateway_class.md must exist (auto-indexed by prompt glob)"
     text = kfile.read_text()
     # First line must be a heading (the on-demand index uses it as the one-line purpose).
@@ -174,7 +174,7 @@ def test_gateway_class_knowledge_is_discoverable():
 
 
 def test_gateway_class_knowledge_reachable_via_read_knowledge(tool_ctx):
-    from app.tools.knowledge_access import read_knowledge
+    from app.tools.access.knowledge_access import read_knowledge
 
     res = read_knowledge(tool_ctx, name="gateway_class")
     assert "error" not in res, res

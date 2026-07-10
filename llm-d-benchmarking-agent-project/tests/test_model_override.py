@@ -21,7 +21,7 @@ import pytest
 
 from app.capacity.planner import _OVERRIDE_PATHS, apply_overrides
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv
+from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 
@@ -154,11 +154,11 @@ KNOWLEDGE_DIR = Path(__file__).resolve().parents[1] / "knowledge"
 
 
 def test_model_override_knowledge_exists_and_pairs_with_capacity():
-    guide = KNOWLEDGE_DIR / "model_override.md"
+    guide = KNOWLEDGE_DIR / "run/model_override.md"
     assert guide.is_file(), "knowledge/model_override.md must hold the which-model judgment"
     text = guide.read_text()
     # The non-negotiable rule: the same id goes to the capacity pre-flight.
     assert "check_capacity" in text and "overrides={'model'" in text
     # And capacity.md points back at the override guide so the lockstep rule is discoverable.
-    cap = (KNOWLEDGE_DIR / "capacity.md").read_text()
+    cap = (KNOWLEDGE_DIR / "deploy/capacity.md").read_text()
     assert "model_override.md" in cap and "ExecuteInput.models" in cap

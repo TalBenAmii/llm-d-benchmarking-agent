@@ -15,9 +15,9 @@ from unittest.mock import patch
 
 import yaml
 
-from app.tools import probe
-from app.tools.knowledge_access import read_knowledge
-from app.tools.probe import (
+from app.tools.access.knowledge_access import read_knowledge
+from app.tools.setup import probe
+from app.tools.setup.probe import (
     _PROVIDER_DEFAULT,
     _PROVIDER_LABEL_HINTS,
     _detect_provider,
@@ -108,7 +108,7 @@ async def test_openshift_provider_and_value_bearing_l40s_taint(tmp_path):
     """OpenShift node labels → provider openshift; the L40S value-bearing GPU taint is surfaced
     with its value so the agent can author an Equal+value toleration."""
     ctx, runner = _ctx(tmp_path, nodes_json=OPENSHIFT_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd["available"] is True
@@ -127,7 +127,7 @@ async def test_openshift_provider_and_value_bearing_l40s_taint(tmp_path):
 async def test_gke_provider_and_keyed_gpu_taint(tmp_path):
     """GKE cloud.google.com/* labels → provider gke; a keyed-only nvidia.com/gpu taint surfaces."""
     ctx, _ = _ctx(tmp_path, nodes_json=GKE_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd["provider"] == "gke"
@@ -141,7 +141,7 @@ async def test_gke_provider_and_keyed_gpu_taint(tmp_path):
 async def test_doks_provider_and_gpu_taint(tmp_path):
     """DOKS doks.digitalocean.com/* labels → provider doks; nvidia.com/gpu taint surfaces."""
     ctx, _ = _ctx(tmp_path, nodes_json=DOKS_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd["provider"] == "doks"
@@ -154,7 +154,7 @@ async def test_kind_default_no_cloud_labels_no_gpu_taint(tmp_path):
     """A plain kind cluster has no cloud-provider label → provider kind; the control-plane taint
     is NOT a GPU taint, so gpu_taints is empty (nothing to tolerate on the quickstart path)."""
     ctx, _ = _ctx(tmp_path, nodes_json=KIND_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd["provider"] == _PROVIDER_DEFAULT == "kind"
@@ -166,7 +166,7 @@ async def test_mixed_cluster_surfaces_providers_seen(tmp_path):
     """A mixed cluster (a GKE GPU node + an unlabeled node): provider resolves to the GPU node's
     provider; providers_seen surfaces the mix for the agent's judgment."""
     ctx, _ = _ctx(tmp_path, nodes_json=MIXED_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd["provider"] == "gke"  # the non-default provider on the GPU-bearing node wins
@@ -176,7 +176,7 @@ async def test_mixed_cluster_surfaces_providers_seen(tmp_path):
 
 async def test_no_kubectl_degrades_gracefully(tmp_path):
     ctx, runner = _ctx(tmp_path, nodes_json=OPENSHIFT_NODES_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: None):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: None):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
     assert pd == {
@@ -194,7 +194,7 @@ async def test_unreachable_cluster_is_structured_not_raised(tmp_path):
         return RunResult(exit_code=1, duration_s=0.0, real_argv=list(argv), cwd=None,
                          output="The connection to the server was refused")
 
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"), \
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"), \
             patch.object(ctx, "run_readonly", side_effect=boom):
         out = await probe_environment(ctx, checks=["provider_detection"])
     pd = out["provider_detection"]
@@ -250,7 +250,7 @@ def test_infra_providers_knowledge_loads_via_read_knowledge(tool_ctx):
 def test_python_label_table_mirrors_knowledge_detection_table():
     """The Python _PROVIDER_LABEL_HINTS table is a MIRROR of the knowledge file's detection map —
     they must stay in lockstep so the mechanism never diverges from the documented mapping."""
-    data = yaml.safe_load(_read_knowledge_file("knowledge/infra_providers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/infra_providers.yaml"))
     knowledge_pairs = {
         (e["prefix"], e["provider"]) for e in data["detection"]["label_prefix_to_provider"]
     }
@@ -260,7 +260,7 @@ def test_python_label_table_mirrors_knowledge_detection_table():
 
 
 def test_infra_providers_carries_oc_vs_kubectl_cli_judgment():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/infra_providers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/infra_providers.yaml"))
     by_provider = data["cli"]["by_provider"]
     assert by_provider["openshift"]["cli"] == "oc"
     for prov in ("gke", "doks", "aks", "kind"):
@@ -269,7 +269,7 @@ def test_infra_providers_carries_oc_vs_kubectl_cli_judgment():
 
 
 def test_infra_providers_carries_gpu_tolerations_per_provider():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/infra_providers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/infra_providers.yaml"))
     tol = data["gpu_tolerations"]
     # OpenShift: an Equal+value toleration for the value-bearing L40S taint.
     osp = tol["openshift"]["toleration_value_bearing"]
@@ -282,7 +282,7 @@ def test_infra_providers_carries_gpu_tolerations_per_provider():
 
 def test_infra_providers_flags_gke_known_issues_gmp_undetected_nvshmem():
     """The GKE known-issue notes the acceptance criterion names: GMP, 'Undetected platform', NVSHMEM."""
-    data = yaml.safe_load(_read_knowledge_file("knowledge/infra_providers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/infra_providers.yaml"))
     gke_ids = {i["id"] for i in data["known_issues"]["gke"]}
     assert "google-managed-prometheus" in gke_ids
     assert "undetected-platform-vllm-0.10.0" in gke_ids
@@ -290,7 +290,7 @@ def test_infra_providers_flags_gke_known_issues_gmp_undetected_nvshmem():
 
 
 def test_infra_providers_flags_openshift_servicemesh_conflict():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/infra_providers.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/infra_providers.yaml"))
     gw = data["gateway"]["openshift_servicemesh_conflict"]
     assert "ServiceMesh" in gw["symptom"] or "Istio" in gw["symptom"]
     assert "ServiceMesh" in gw["advice"] or "Istio" in gw["advice"]
@@ -362,4 +362,4 @@ def _read_knowledge_file(rel: str) -> str:
 
 
 def _read_probe_src() -> str:
-    return (_project_root() / "app" / "tools" / "probe.py").read_text()
+    return (_project_root() / "app" / "tools" / "setup" / "probe.py").read_text()

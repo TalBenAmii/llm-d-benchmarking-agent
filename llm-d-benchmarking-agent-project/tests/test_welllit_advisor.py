@@ -20,7 +20,7 @@ import yaml
 
 from app.agent.prompt import CORE_KNOWLEDGE, build_system_prompt
 from app.config import get_settings
-from app.tools.knowledge_access import read_knowledge
+from app.tools.access.knowledge_access import read_knowledge
 from tests.flows.catalog_snapshot import frozen_catalog
 
 ADVISOR_NAME = "welllit_path_advisor.yaml"
@@ -59,7 +59,7 @@ _WORKLOAD_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*\.yaml$")
 
 
 def _advisor_path() -> Path:
-    return get_settings().knowledge_dir / ADVISOR_NAME
+    return get_settings().knowledge_dir / "routing" / ADVISOR_NAME
 
 
 def _load_advisor() -> dict:
@@ -197,7 +197,7 @@ def test_advisor_is_on_demand_in_the_system_prompt(tool_ctx):
     assert ADVISOR_NAME not in CORE_KNOWLEDGE
     prompt = build_system_prompt(tool_ctx)
     assert f"# Knowledge: {ADVISOR_NAME}" not in prompt
-    body = (tool_ctx.settings.knowledge_dir / ADVISOR_NAME).read_text()
+    body = (tool_ctx.settings.knowledge_dir / "routing" / ADVISOR_NAME).read_text()
     # The bulk of the advisor body (everything past the first heading) is NOT inlined.
     assert body[200:] not in prompt
     # But the topic name appears in the on-demand index, with the read_knowledge cue.
@@ -206,7 +206,7 @@ def test_advisor_is_on_demand_in_the_system_prompt(tool_ctx):
 
 
 def test_deploy_path_playbook_references_the_advisor():
-    playbook = (get_settings().knowledge_dir / "deploy_path_playbook.md").read_text()
+    playbook = (get_settings().knowledge_dir / "deploy/deploy_path_playbook.md").read_text()
     assert "welllit_path_advisor" in playbook, (
         "deploy_path_playbook.md must reference the advisor (per the Phase 20 spec)"
     )

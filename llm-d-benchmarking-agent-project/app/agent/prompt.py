@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.tools.access.knowledge_access import EXCLUDED_KNOWLEDGE_FILES
 from app.tools.context import ToolContext
-from app.tools.knowledge_access import EXCLUDED_KNOWLEDGE_FILES
 
 ROLE = """\
 You are the llm-d Benchmarking Assistant. You help people who do NOT know the
@@ -215,7 +215,7 @@ Therefore:
   benchmark report or its numbers — is SYNTHETIC, not measured. Don't claim "the stack is
   deployed" or "the endpoint is serving", and don't present simulated results as real. Attach a
   "(simulated — nothing was actually deployed or benchmarked)" caveat wherever such post-deploy
-  state or results appear. Full rule: knowledge/sim_integration.md.
+  state or results appear. Full rule: knowledge/reference/sim_integration.md.
 - Do NOT stop the walk for a missing precondition (no Docker/kind/GPU/cluster): nothing real is
   deployed, so note the real probe finding and proceed through the ENTIRE workflow (standup →
   smoketest → run → report) without waiting for things to "become ready".
@@ -256,7 +256,7 @@ Therefore:
 #
 # Also de-inlined here: quickstart_playbook.md — our kind/CPU-sim RUNBOOK. It now loads on demand via
 # fetch_key_docs(task="quickstart") (a `kind: knowledge` entry in key_docs.yaml), exactly like the
-# upstream guides load, and a skill-grounding GATE (app/tools/skill_gate.py) refuses a cicd/kind
+# upstream guides load, and a skill-grounding GATE (app/tools/run/skill_gate.py) refuses a cicd/kind
 # standup/run/teardown (and the plan proposing it) until that fetch has happened — so de-inlining it
 # can't regress the kind demo. It stays reachable via the on-demand index + read_knowledge too.
 CORE_KNOWLEDGE = (
@@ -339,7 +339,9 @@ def _knowledge_sections(ctx: ToolContext) -> list[str]:
     kdir = ctx.settings.knowledge_dir
     if not kdir.is_dir():
         return []
-    all_files = sorted(kdir.glob("*.md")) + sorted(kdir.glob("*.yaml")) + sorted(kdir.glob("*.yml"))
+    all_files = (sorted(kdir.rglob("*.md"), key=lambda p: p.name)
+                 + sorted(kdir.rglob("*.yaml"), key=lambda p: p.name)
+                 + sorted(kdir.rglob("*.yml"), key=lambda p: p.name))
     # Drop editor-facing meta docs (e.g. knowledge/CLAUDE.md) — they are not agent knowledge
     # and must never be inlined or indexed into the prompt. Same set used by knowledge_access.
     all_files = [f for f in all_files if f.name not in EXCLUDED_KNOWLEDGE_FILES]

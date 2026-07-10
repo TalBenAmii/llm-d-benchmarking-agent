@@ -119,12 +119,12 @@ async def test_probe_environment_emits_command_per_probe(tmp_path):
     (auto_run) — proving probe-emit/exec parity."""
     from unittest.mock import patch
 
-    from app.tools.probe import probe_environment
+    from app.tools.setup.probe import probe_environment
 
     events, emit = _collector()
     ctx, runner = _capture_ctx(tmp_path, emit=emit)
 
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         await probe_environment(ctx, namespace="llmd-quickstart")
 
     cmds = _commands(events)

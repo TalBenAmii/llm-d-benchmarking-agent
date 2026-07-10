@@ -20,7 +20,7 @@ cat > "$hooks_dir/pre-commit" <<'HOOK'
 # Mirrors the project gates `make lint` (= ruff check .), `make typecheck` (= mypy app) and
 # `make test` (= pytest tests/).
 #
-# Local-only (lives in .git/hooks, not version-controlled) — (re)create with scripts/install-git-hooks.sh.
+# Local-only (lives in .git/hooks, not version-controlled) — (re)create with scripts/install/install-git-hooks.sh.
 # Bypass once with:  git commit --no-verify   /   git merge --no-verify
 set -u
 

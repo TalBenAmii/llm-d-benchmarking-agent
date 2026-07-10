@@ -20,13 +20,13 @@ import yaml
 
 from app.config import Settings
 from app.security.allowlist import Allowlist
-from app.tools.knowledge_access import read_knowledge
-from app.tools.probe import (
+from app.tools.access.knowledge_access import read_knowledge
+from app.tools.registry import dispatch, tool_definitions
+from app.tools.setup.probe import (
     _ACCELERATOR_RESOURCE_KEYS,
     _node_accelerator_summaries,
     advise_accelerators,
 )
-from app.tools.registry import dispatch, tool_definitions
 from tests._helpers import _ctx
 
 # A GPU node advertising nvidia.com/gpu under capacity + allocatable, with real cpu/memory.
@@ -80,7 +80,7 @@ GAUDI_NODE_JSON = json.dumps({
 async def test_advise_accelerators_gpu_node_reports_advertised_resource(tmp_path):
     """On a GPU-advertised node the agent gets the advertised accelerator resource + cpu/memory."""
     ctx, runner = _ctx(tmp_path, nodes_json=GPU_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await advise_accelerators(ctx)
     assert out["available"] is True
     assert out["any_accelerator"] is True
@@ -105,7 +105,7 @@ async def test_advise_accelerators_cpu_only_node(tmp_path):
     """A CPU-only node advertises no accelerator resource — cpu_only is True, facts surface
     so the agent can pair the 64c/64GB floor warning with check_capacity's sizing."""
     ctx, _ = _ctx(tmp_path, nodes_json=CPU_ONLY_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await advise_accelerators(ctx)
     assert out["available"] is True
     assert out["any_accelerator"] is False
@@ -124,7 +124,7 @@ async def test_advise_accelerators_mixed_cluster_union_of_resources(tmp_path):
     """A mixed cluster advertises the accelerator on its GPU node — any_accelerator is True,
     advertised_resources is the union, and each node carries its own cpu_only flag."""
     ctx, _ = _ctx(tmp_path, nodes_json=MIXED_CLUSTER_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await advise_accelerators(ctx)
     assert out["any_accelerator"] is True
     assert out["cpu_only"] is False  # at least one node advertises an accelerator
@@ -137,7 +137,7 @@ async def test_advise_accelerators_mixed_cluster_union_of_resources(tmp_path):
 async def test_advise_accelerators_detects_sibling_vendor_key(tmp_path):
     """Sibling extended resources (amd/gaudi/tpu/xpu) are detected, not just nvidia."""
     ctx, _ = _ctx(tmp_path, nodes_json=GAUDI_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await advise_accelerators(ctx)
     assert out["advertised_resources"] == ["habana.ai/gaudi"]
     assert out["nodes"][0]["accelerators"] == {"habana.ai/gaudi": "8"}
@@ -146,7 +146,7 @@ async def test_advise_accelerators_detects_sibling_vendor_key(tmp_path):
 
 async def test_advise_accelerators_no_kubectl_degrades_gracefully(tmp_path):
     ctx, runner = _ctx(tmp_path, nodes_json=GPU_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: None):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: None):
         out = await advise_accelerators(ctx)
     assert out == {
         "available": False, "nodes": [], "any_accelerator": False,
@@ -164,7 +164,7 @@ async def test_advise_accelerators_unreachable_cluster(tmp_path):
         return RunResult(exit_code=1, duration_s=0.0, real_argv=list(argv), cwd=None,
                          output="The connection to the server was refused")
 
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"), \
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"), \
             patch.object(ctx, "run_readonly", side_effect=boom):
         out = await advise_accelerators(ctx)
     assert out["available"] is False
@@ -196,7 +196,7 @@ async def test_advise_accelerators_registered_and_dispatchable(tmp_path):
     names = {d["name"] for d in tool_definitions()}
     assert "advise_accelerators" in names
     ctx, _ = _ctx(tmp_path, nodes_json=GPU_NODE_JSON)
-    with patch("app.tools.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
+    with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         result = await dispatch(ctx, "advise_accelerators", {})
     assert result["advertised_resources"] == ["nvidia.com/gpu"]
 
@@ -230,7 +230,7 @@ def test_accelerators_knowledge_loads_via_read_knowledge(tool_ctx):
 
 def test_accelerators_knowledge_carries_cpu_floor():
     """The real (non-sim) CPU-only 64c/64GB-per-replica floor is DATA, not a Python threshold."""
-    path = "knowledge/accelerators.yaml"
+    path = "knowledge/deploy/accelerators.yaml"
     data = yaml.safe_load(_read_knowledge_file(path))
     cpu = data["cpu_inferencing"]
     assert cpu["supported"] is True
@@ -242,7 +242,7 @@ def test_accelerators_knowledge_carries_cpu_floor():
 
 
 def test_accelerators_knowledge_carries_cuda_driver_minimums():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/accelerators.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/accelerators.yaml"))
     cuda = data["cuda_driver"]
     assert cuda["current"]["cuda_version"] == "12.9.1"
     assert cuda["current"]["min_driver"] == "525.60.13"
@@ -253,7 +253,7 @@ def test_accelerators_knowledge_carries_cuda_driver_minimums():
 
 
 def test_accelerators_knowledge_carries_dra_vs_device_plugin_distinction():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/accelerators.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/accelerators.yaml"))
     rm = data["resource_management"]
     names = {m["name"] for m in rm["mechanisms"]}
     assert any("Device Plugin" in n for n in names)
@@ -263,7 +263,7 @@ def test_accelerators_knowledge_carries_dra_vs_device_plugin_distinction():
 
 
 def test_accelerators_knowledge_marks_kind_sim_floor_exempt():
-    data = yaml.safe_load(_read_knowledge_file("knowledge/accelerators.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/accelerators.yaml"))
     sim = data["kind_cpu_sim"]
     assert sim["floor_exempt"] is True
     assert sim["path"] == "cicd/kind"
@@ -271,7 +271,7 @@ def test_accelerators_knowledge_marks_kind_sim_floor_exempt():
 
 def test_accelerators_knowledge_maps_sibling_vendor_resource_keys():
     """Every accelerator key the probe detects must be documented as a vendor resource."""
-    data = yaml.safe_load(_read_knowledge_file("knowledge/accelerators.yaml"))
+    data = yaml.safe_load(_read_knowledge_file("knowledge/deploy/accelerators.yaml"))
     documented: set[str] = set()
     for entry in data["accelerator_resources"]:
         if "resource_key" in entry:
@@ -293,4 +293,4 @@ def _read_knowledge_file(rel: str) -> str:
 
 
 def _read_probe_src() -> str:
-    return (_project_root() / "app" / "tools" / "probe.py").read_text()
+    return (_project_root() / "app" / "tools" / "setup" / "probe.py").read_text()

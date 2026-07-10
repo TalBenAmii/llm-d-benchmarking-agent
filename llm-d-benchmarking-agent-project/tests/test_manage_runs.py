@@ -10,8 +10,8 @@ import json
 from app.config import Settings
 from app.security.allowlist import Allowlist
 from app.tools.context import ToolContext
-from app.tools.manage_runs import manage_orchestrated_runs
 from app.tools.registry import dispatch
+from app.tools.run.manage_runs import manage_orchestrated_runs
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 

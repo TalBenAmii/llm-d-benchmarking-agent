@@ -1,46 +1,45 @@
-# FEATURES — what this project does and how to see / verify each piece
+# FEATURES: what this project does and how to see / verify each piece
 
-> A single, evidence-backed inventory of **every feature** on `main`
-> (MVP → roadmap v1 phases 0–10 → v2 phases 11–18 → v3 phases 19–26 → token-tracking →
-> ROADMAP_V4 phases 27–66 — all active phases merged, 7 explicitly deferred (34/43/44/47/52/57/58)
-> — → todo-batch follow-ups), with a concrete way to **see or verify** each one.
+> A single, evidence-backed inventory of every feature on `main` (MVP, roadmap v1 phases 0–10,
+> v2 phases 11–18, v3 phases 19–26, token-tracking, ROADMAP_V4 phases 27–66 with all active
+> phases merged and 7 explicitly deferred: 34/43/44/47/52/57/58, plus todo-batch follow-ups),
+> each with a concrete way to see or verify it.
 >
-> **Read this first — why "the app looks unchanged":** most recent work is *backend / ops /
-> trust / quality* plumbing that has **no chat-UI surface by design** (structured logging,
-> auth, rate-limiting, allowlist governance, run lifecycle, workspace GC, CI quality gates).
-> Only a handful of commits touched the visible chat. So "I can't see changes in the app" is
-> expected — the changes are at the HTTP/WS, cluster, security, and CI surfaces, not in the
-> chat bubbles. This file shows you where each one actually lives.
+> Read this first, because "the app looks unchanged" is expected: most recent work is
+> backend / ops / trust / quality plumbing with no chat-UI surface by design (structured
+> logging, auth, rate-limiting, allowlist governance, run lifecycle, workspace GC, CI quality
+> gates). Only a handful of commits touched the visible chat. The changes live at the HTTP/WS,
+> cluster, security, and CI surfaces, not in the chat bubbles; this file shows where.
 
-**Legend for the "How to see / verify" column**
-- 🟢 **verified live in this session** — I ran it against the running app and observed the output (see the [Evidence log](#evidence-log) at the bottom).
-- 🔵 **driveable in the browser/cluster** — observable by using the chat UI or a kind cluster (needs the LLM key, which is configured, and/or a cluster).
-- ⚪ **artifact / config** — verify by rendering an artifact or reading a file; no live server needed.
+Legend for the "How to see / verify" column:
+- 🟢 verified live in this session: exercised against the running app and the output observed (see the [Evidence log](#evidence-log) at the bottom).
+- 🔵 driveable in the browser/cluster: observable by using the chat UI or a kind cluster (needs the LLM key, which is configured, and/or a cluster).
+- ⚪ artifact / config: verify by rendering an artifact or reading a file; no live server needed.
 
 ---
 
 ## 0. The one-paragraph map
 
-A local **chat assistant** (FastAPI backend + static chat UI over a WebSocket) that drives the
+A local chat assistant (FastAPI backend + static chat UI over a WebSocket) that drives the
 `llm-d-benchmark` CLI for non-experts: it interviews you, plans a run, checks preconditions,
 deploys an llm-d stack, runs a benchmark, parses the report against the repo's schema, and
-explains the numbers. Around that core sit a **Kubernetes-native orchestrator**, a **results
-analyzer** (SLO/goodput/Pareto), **cross-session history + trends**, **Prometheus
-observability**, a **deny-by-default security allowlist + per-action approval**, **optional
-auth/rate-limit/CORS**, **run lifecycle** (cancel/reattach/readiness), **workspace GC**, a
-**one-command Helm deploy**, and a **token-usage counter + prompt caching**. All
-*judgment* lives in editable `knowledge/` files; Python is mechanism only.
+explains the numbers. Around that core sit a Kubernetes-native orchestrator, a results analyzer
+(SLO/goodput/Pareto), cross-session history and trends, Prometheus observability, a
+deny-by-default security allowlist with per-action approval, optional auth/rate-limit/CORS,
+run lifecycle controls (cancel/reattach/readiness), workspace GC, a one-command Helm deploy,
+and a token-usage counter with prompt caching. All judgment lives in editable `knowledge/`
+files; Python is mechanism only.
 
 ---
 
 ## 1. How to launch it and see everything yourself
 
-Launch it with `./scripts/run.sh` (then open http://127.0.0.1:8000) — full quickstart in the
+Launch it with `./scripts/run.sh`, then open http://127.0.0.1:8000. Full quickstart in the
 [root README](../../../README.md#quick-start) / [`DEPLOYMENT.md`](../guides/DEPLOYMENT.md).
 
-The browser chat is where the **user-facing** features live. The HTTP endpoints
-(`/healthz`, `/readyz`, `/metrics`, `/api/sessions`, `/api/history`) are where the
-**operability** features live and are the easiest to verify with `curl`.
+The browser chat is where the user-facing features live. The HTTP endpoints
+(`/healthz`, `/readyz`, `/metrics`, `/api/sessions`, `/api/history`) carry the
+operability features and are the easiest to verify with `curl`.
 
 ---
 
@@ -48,12 +47,12 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 
 | Feature | Where it lives | How to see / verify |
 |---|---|---|
-| End-to-end flow: probe → plan → standup → smoketest → run → parse report → summarize → teardown | `app/agent/loop.py`, `app/tools/*` | 🔵 In the chat: *"benchmark a small chat model on CPU"* and approve the plan (this is exactly the session you already ran). |
-| **SessionPlan approval gate** — nothing mutating runs until you approve a structured plan | `app/validation/session_plan.py`, `propose_session_plan` tool | 🔵 Chat shows a plan card with Approve/Reject before any standup/run. |
-| **Steering** (Claude-Code style) — type a message WHILE the agent is working; it's queued and the running turn picks it up at its next step (no concurrent turn, no "please wait"). Also covers type-instead-of-approve at a gate (declines + steers) | `app/agent/loop.py` (drains `ctx.steer_messages` each step), `app/main.py` (queues mid-turn `user_message` + backstop), `ui/app.js` (composer stays usable mid-turn) | 🔵 Start a turn, then send another message before it finishes — the agent folds it in. ⚪ `tests/test_ws.py::test_ws_typing_while_thinking_steers_the_same_turn`, `tests/test_loop.py::test_mid_thinking_steer_extends_the_same_turn`, `tests/test_concurrency.py::test_second_message_to_running_session_is_queued_as_steer`. |
+| End-to-end flow: probe → plan → standup → smoketest → run → parse report → summarize → teardown | `app/agent/loop.py`, `app/tools/*` | 🔵 In the chat: *"benchmark a small chat model on CPU"* and approve the plan (exercised in a real session). |
+| **SessionPlan approval gate**: nothing mutating runs until you approve a structured plan | `app/validation/session_plan.py`, `propose_session_plan` tool | 🔵 Chat shows a plan card with Approve/Reject before any standup/run. |
+| **Steering** (Claude-Code style): type a message WHILE the agent is working; it is queued and the running turn picks it up at its next step (no concurrent turn, no "please wait"). Also covers typing instead of approving at a gate (declines + steers) | `app/agent/loop.py` (drains `ctx.steer_messages` each step), `app/main.py` (queues mid-turn `user_message` + backstop), `ui/app.js` (composer stays usable mid-turn) | 🔵 Start a turn, then send another message before it finishes; the agent folds it in. ⚪ `tests/test_ws.py::test_ws_typing_while_thinking_steers_the_same_turn`, `tests/test_loop.py::test_mid_thinking_steer_extends_the_same_turn`, `tests/test_concurrency.py::test_second_message_to_running_session_is_queued_as_steer`. |
 | Use-case → `<spec, harness, workload>` triplet mapping (knowledge-driven, not hardcoded) | `knowledge/usecase_to_profile.yaml` | ⚪ Read the YAML; the LLM reasons over it (no `if/elif` in Python). |
-| Concrete `llmdbenchmark run` argv + dry-run preview | `app/tools/execute.py` | 🔵 The "Executed commands" panel shows the exact argv; `--dry-run` is read-only. |
-| Catalog grounding (specs/harnesses/workloads discovered from the repo, never invented) | `app/tools/probe.py:list_catalog` | 🔵 `list_catalog` runs read-only at session start. |
+| Concrete `llmdbenchmark run` argv + dry-run preview | `app/tools/run/execute.py` | 🔵 The "Executed commands" panel shows the exact argv; `--dry-run` is read-only. |
+| Catalog grounding (specs/harnesses/workloads discovered from the repo, never invented) | `app/tools/setup/probe.py:list_catalog` | 🔵 `list_catalog` runs read-only at session start. |
 
 ---
 
@@ -64,37 +63,37 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 | llm-d brand theme (the official llm-d mark, Red Hat fonts), light/dark toggle | `ui/index.html`, `ui/styles.css` | 🔵 Open the app; click the theme toggle (top-right). Persists in `localStorage`. |
 | **Recent chats sidebar + resume** (Claude-web style) | `ui/app.js`, `GET /api/sessions`, WS `?session=<id>` | 🟢 `GET /api/sessions` returns the stored chats (observed: 100+ sessions). Click one to replay its transcript. |
 | **Stored Results sidebar + metric trend sparkline** | `ui/index.html` (`#history`, `#trend-view`), `GET /api/history`, `/api/history/trend` | 🟢 Endpoints live. The sparkline appears once a result is stored via `result_history`; the agent proactively stores the first real run of a session as a baseline (directed by `knowledge/history.md`), so a fresh `/api/history` populates after your first benchmark. |
-| **Per-run charts shown inline under the report summary** | `GET /api/sessions/{sid}/artifact`, `app/tools/report_locate.py` (`_discover_charts`), `ui/app.js` (`renderReportCharts`) | 🟢 After `locate_and_parse_report`, the harness's latency/throughput PNGs render as captioned images in the results card (read-only, image-only, path-traversal-hardened route). |
-| **Token-usage counter** (real provider counts) — **context-window chip** `⛶ N ctx` (under the chat input, right-aligned on the hint row) shows the current prompt size sent to the model on the latest call; raw count, no model-limit denominator since the active model can change; persists across reloads) + live per-turn `↑up ↓down · N this turn (X calls · Y cached)` | `app/agent/events.py` (`usage` event → `context_window`), `ui/app.js` (`onUsage`/`appendTurnTokens`/`setContextWindow`) | 🔵 Visible during/after any chat turn. |
-| **Model + reasoning-effort picker** — click the composer model badge to open a VSCode-style popover and switch the Anthropic model + reasoning effort for THIS chat. Per-session **ephemeral** override (never writes `.env` / mutates the provider singleton); effort is per-model (hidden for Haiku, clamped down on a model switch); the pick sticks in `localStorage` and re-syncs on reconnect. **Agent-SDK provider only.** | `app/llm/model_catalog.py` (`served_models`/`valid_selection`), `GET /api/provider` (`switchable`/`effort`/`models`), `set_model` WS frame, `app/agent/session.py` (`model_override`/`effort_override` → `open_provider_turn`), `ui/app.js`·`index.html`·`styles.css` | 🔵 Click the model badge → pick a model/effort → it applies to the next turn (agent-SDK provider only). ⚪ `tests/test_model_picker.py`. |
-| **Deterministic welcome card** — a consistent, code-emitted greeting (capability bullets + nudge) on a FRESH chat, NO LLM turn spent; never shown on resume | `knowledge/welcome.md` (judgment text), `app/agent/cards.py` (parser), `app/main.py` (`welcome` event on `not resumed`), `ui/app.js` (`renderWelcome`) | 🔵 Open a new chat: the welcome card + suggestion chips appear before you type. ⚪ `tests/test_deterministic_msgs.py`. |
-| **Structured post-run results card** — a deterministic summary (model/harness/requests + latency/throughput table + exact SLO verdicts + Pareto frontier for a sweep) built from the validated BR v0.2 summary, not LLM prose | `app/agent/cards.py`, `app/agent/loop.py` (`results_card` event after the report/analysis tool), `ui/app.js` (`renderResultsCard`) | 🔵 After `locate_and_parse_report` / `analyze_results` the card renders identically every run. ⚪ `tests/test_deterministic_msgs.py`. |
+| **Per-run charts shown inline under the report summary** | `GET /api/sessions/{sid}/artifact`, `app/tools/analyze/report_locate.py` (`_discover_charts`), `ui/app.js` (`renderReportCharts`) | 🟢 After `locate_and_parse_report`, the harness's latency/throughput PNGs render as captioned images in the results card (read-only, image-only, path-traversal-hardened route). |
+| **Token-usage counter** (real provider counts): a context-window chip `⛶ N ctx` (under the chat input, right-aligned on the hint row) shows the current prompt size sent to the model on the latest call (raw count, no model-limit denominator since the active model can change; persists across reloads), plus a live per-turn `↑up ↓down · N this turn (X calls · Y cached)` | `app/agent/events.py` (`usage` event → `context_window`), `ui/app.js` (`onUsage`/`appendTurnTokens`/`setContextWindow`) | 🔵 Visible during/after any chat turn. |
+| **Model + reasoning-effort picker**: click the composer model badge to open a VSCode-style popover and switch the Anthropic model + reasoning effort for THIS chat. Per-session ephemeral override (never writes `.env` or mutates the provider singleton); effort is per-model (hidden for Haiku, clamped down on a model switch); the pick sticks in `localStorage` and re-syncs on reconnect. Agent-SDK provider only. | `app/llm/model_catalog.py` (`served_models`/`valid_selection`), `GET /api/provider` (`switchable`/`effort`/`models`), `set_model` WS frame, `app/agent/session.py` (`model_override`/`effort_override` → `open_provider_turn`), `ui/app.js`·`index.html`·`styles.css` | 🔵 Click the model badge → pick a model/effort → it applies to the next turn (agent-SDK provider only). ⚪ `tests/test_model_picker.py`. |
+| **Deterministic welcome card**: a consistent, code-emitted greeting (capability bullets + nudge) on a FRESH chat, with no LLM turn spent; never shown on resume | `knowledge/welcome.md` (judgment text), `app/agent/cards.py` (parser), `app/main.py` (`welcome` event on `not resumed`), `ui/app.js` (`renderWelcome`) | 🔵 Open a new chat: the welcome card + suggestion chips appear before you type. ⚪ `tests/test_deterministic_msgs.py`. |
+| **Structured post-run results card**: a deterministic summary (model/harness/requests + latency/throughput table + exact SLO verdicts + Pareto frontier for a sweep) built from the validated BR v0.2 summary, not LLM prose | `app/agent/cards.py`, `app/agent/loop.py` (`results_card` event after the report/analysis tool), `ui/app.js` (`renderResultsCard`) | 🔵 After `locate_and_parse_report` / `analyze_results` the card renders identically every run. ⚪ `tests/test_deterministic_msgs.py`. |
 | Animated "working" indicator (spinning llm-d mark + live status/tool name) | `ui/index.html` `#working`, `ui/app.js` | 🔵 Appears while the agent is thinking/running a tool. |
 | Markdown rendering of assistant text | `ui/app.js` (renderer) | 🔵 Assistant replies render as formatted markdown. |
-| Debug view (`>_`) — show the executed commands inline in the chat | `ui/index.html` `#debug-toggle`, `ui/app.js` `addInlineCommand` | 🔵 Toggle top-right; reveals each command the agent ran inline, between the messages, in execution order (badged read-only/mutating + auto/approved). Toggle off to hide. |
+| Debug view (`>_`): show the executed commands inline in the chat | `ui/index.html` `#debug-toggle`, `ui/app.js` `addInlineCommand` | 🔵 Toggle top-right; reveals each command the agent ran inline, between the messages, in execution order (badged read-only/mutating + auto/approved). Toggle off to hide. |
 | Approval cards persist across chat switches | `ui/app.js` | 🔵 Switch chats with a pending approval; it's still there. |
-| Per-command approval for mutating actions; read-only probes auto-run. A per-session **Auto-approve** pill (bottom-left of the composer) skips the command card for the rest of the chat (the plan still asks); a command card also offers an **"Approve & stop asking"** button that approves it *and* flips auto-approve on in one click | `app/agent/loop.py`, `app/agent/channel.py`, `app/security/*`, `ui/index.html` `#autoapprove-toggle`, `ui/app.js` (`applyAutoApprove`/`addApprovalCard`) | 🔵 Standup/run/teardown prompt for approval; probes don't. Toggle the composer pill, or click "Approve & stop asking" on a command card, to auto-approve the rest. ⚪ `tests/test_auto_approve.py`. |
-| **Run progress stepper** — phased workflow rail (Pre-flight → Plan → Setup → Configure → Deploy → Benchmark → Analyze) that lights up as the agent works | `ui/index.html` `#run-steps`, `ui/app.js` (`renderRunSteps`/`advancePhase`) | 🔵 Appears once a benchmark starts; the active phase pulses. Per-chat (survives switches). Driven from the `tool_call` stream, no LLM cost. ⚪ `tests/test_ui.py`. |
-| **Stop button** — cancel an in-flight run from the UI (sends the `cancel` control frame; handles the `cancelled` event) | `ui/app.js` (`cancelRun`), `app/main.py` (Phase-16 cancel) | 🔵 Visible in the working line during a run; click to stop. ⚪ `tests/test_ui.py`. |
-| **Goodput gauge + binding constraint** in the results card — radial gauge of estimated goodput + the first missed SLO target | `ui/app.js` (`goodputGauge`, `renderResultsCard`) | 🔵 Renders in the SLO section of the results card when goodput is computed. |
-| **Pareto frontier scatter** (sweeps) — 2D objective-space plot with the frontier highlighted + SLO-infeasible points ringed | `ui/app.js` (`renderParetoCard`/`scatterPlot`) | 🔵 After `analyze_results` on a sweep. Renders from the per-run objective coordinates already on the result. |
+| Per-command approval for mutating actions; read-only probes auto-run. A per-session **Auto-approve** pill (bottom-left of the composer) skips the command card for the rest of the chat (the plan still asks); a command card also offers an "Approve & stop asking" button that approves it *and* flips auto-approve on in one click | `app/agent/loop.py`, `app/agent/channel.py`, `app/security/*`, `ui/index.html` `#autoapprove-toggle`, `ui/app.js` (`applyAutoApprove`/`addApprovalCard`) | 🔵 Standup/run/teardown prompt for approval; probes don't. Toggle the composer pill, or click "Approve & stop asking" on a command card, to auto-approve the rest. ⚪ `tests/test_auto_approve.py`. |
+| **Run progress stepper**: phased workflow rail (Pre-flight → Plan → Setup → Configure → Deploy → Benchmark → Analyze) that lights up as the agent works | `ui/index.html` `#run-steps`, `ui/app.js` (`renderRunSteps`/`advancePhase`) | 🔵 Appears once a benchmark starts; the active phase pulses. Per-chat (survives switches). Driven from the `tool_call` stream, no LLM cost. ⚪ `tests/test_ui.py`. |
+| **Stop button**: cancel an in-flight run from the UI (sends the `cancel` control frame; handles the `cancelled` event) | `ui/app.js` (`cancelRun`), `app/main.py` (Phase-16 cancel) | 🔵 Visible in the working line during a run; click to stop. ⚪ `tests/test_ui.py`. |
+| **Goodput gauge + binding constraint** in the results card: radial gauge of estimated goodput + the first missed SLO target | `ui/app.js` (`goodputGauge`, `renderResultsCard`) | 🔵 Renders in the SLO section of the results card when goodput is computed. |
+| **Pareto frontier scatter** (sweeps): 2D objective-space plot with the frontier highlighted + SLO-infeasible points ringed | `ui/app.js` (`renderParetoCard`/`scatterPlot`) | 🔵 After `analyze_results` on a sweep. Renders from the per-run objective coordinates already on the result. |
 | **A/B comparison delta bars** + **cross-harness table** | `ui/app.js` (`renderComparisonCard`/`deltaBar`, `renderHarnessCompareCard`) | 🔵 After `compare_reports` (direction-aware green/red deltas vs baseline) / `compare_harness_runs`. |
 | **Live per-pod CPU/mem trend sparklines** in the resource side-panel | `ui/app.js` (`accumulateResourceHistory`/`renderResourceTrends`) | 🔵 During a run the side-panel shows rolling sparklines under the kubectl-top table. |
-| **Copy buttons** on code/JSON blocks, **jump-to-latest** (reads "↓ N new messages" when messages arrive while you're scrolled up, else "↓ Latest"), **off-canvas mobile sidebar** | `ui/app.js`, `ui/styles.css` | 🔵 Hover a code block for Copy; scroll up and let new messages arrive — the jump button counts them, click to snap back; narrow the window for the hamburger. ⚪ `tests/test_ui.py`. |
-| **Pre-flight / status cards** — the read-only diagnostic tools render as friendly status cards instead of raw JSON: `probe_environment` → environment status grid; `check_capacity` → feasibility + diagnostics; `check_endpoint_readiness` → services/gateway/serving grid; `advise_accelerators` → CPU-only/accelerated + node table; `generate_doe_experiment` → treatment matrix; `orchestrate_benchmark_run` → outcome + per-attempt fault timeline | `ui/app.js` (`renderEnvStatus`/`renderCapacityCard`/`renderReadinessCard`/`renderAcceleratorCard`/`renderDoeCard`/`renderOrchestrateCard`) | 🔵 Each renders after its tool runs. ⚪ `tests/test_ui.py`. |
-| **Agent "what next?" suggestion buttons** — the agent offers follow-ups by CALLING `suggest_next_steps` (it chooses how many, up to 6) instead of asking in prose; they render as clickable pills (same style as the welcome chips) under its reply, and a tap sends that option's prompt (save baseline, compare, sweep…). Replay/share-safe (rides the tool result) | `ui/app.js` (`renderAgentSuggestions`) | 🔵 Appear under the agent's reply after it calls `suggest_next_steps` (e.g. post-`analyze_results`). ⚪ `tests/test_ui.py`, `tests/test_suggest_next_steps.py`. |
-| **Copy-summary on results cards** — hover-reveal button copies a markdown summary (metrics + SLO table) to paste into a report/PR | `ui/app.js` (`resultsCardMarkdown`/`addCardCopy`) | 🔵 Hover a benchmark results card; click Copy. ⚪ `tests/test_ui.py`. |
-| **Guided Benchmark Builder** — a "✨ Design" wizard (header + welcome CTA) where a non-expert picks use-case / scale / token-shape / SLO targets / hardware via chips & inputs, sees a live plain-language preview, and sends it as a normal message. The agent does ALL `<scenario, harness, workload>` mapping — the form only phrases the request (thin code / thick agent) | `ui/index.html` `#builder`, `ui/app.js` (`composeBrief`/`openBuilder`/`submitBuilder`) | 🔵 Click "✨ Design", choose options, Send. ⚪ `tests/test_ui.py`. |
-| **Share a chat via link** (ChatGPT-style) — the "🔗" header button mints a **read-only public link** to an *immutable snapshot* of the conversation; copy it, or delete it to revoke. Opening `/share/<token>` serves the same SPA read-only (no composer / sidebar / WebSocket) and replays the snapshot with the live transcript renderers — the **full session picture**: token totals (incl. cache + context-window at share time) as a meta line, the run-stage rail, and the agent's next-step chips (inert). The link bypasses the optional Bearer auth (the unguessable token is the credential); minting/revoking stay owner-gated; pending approval gates are stripped from the snapshot | `app/storage/share.py` (`ShareStore`), `app/main.py` (`POST /api/sessions/{id}/share`, `GET /api/share/{token}`, `GET /share/{token}`, `DELETE /api/share/{token}`), `app/security/auth.py` (public-GET exemption), `ui/index.html` `#share-dialog`, `ui/app.js` (`shareChat`/`bootShareView`) | 🔵 Click 🔗 on a started chat → copy the link → open it in a private window. ⚪ `tests/test_share.py`, `tests/test_ui.py`. |
-| **UI preview harness** — drive every render path with fixture data, no backend/LLM | `ui/preview.html` | 🔵 Open `/static/preview.html` (or serve `ui/` and open `preview.html`) to see all of the above without a cluster. |
+| **Copy buttons** on code/JSON blocks, **jump-to-latest** (reads "↓ N new messages" when messages arrive while you're scrolled up, else "↓ Latest"), **off-canvas mobile sidebar** | `ui/app.js`, `ui/styles.css` | 🔵 Hover a code block for Copy; scroll up and let new messages arrive: the jump button counts them, click to snap back; narrow the window for the hamburger. ⚪ `tests/test_ui.py`. |
+| **Pre-flight / status cards**: the read-only diagnostic tools render as friendly status cards instead of raw JSON: `probe_environment` → environment status grid; `check_capacity` → feasibility + diagnostics; `check_endpoint_readiness` → services/gateway/serving grid; `advise_accelerators` → CPU-only/accelerated + node table; `generate_doe_experiment` → treatment matrix; `orchestrate_benchmark_run` → outcome + per-attempt fault timeline | `ui/app.js` (`renderEnvStatus`/`renderCapacityCard`/`renderReadinessCard`/`renderAcceleratorCard`/`renderDoeCard`/`renderOrchestrateCard`) | 🔵 Each renders after its tool runs. ⚪ `tests/test_ui.py`. |
+| **Agent "what next?" suggestion buttons**: the agent offers follow-ups by CALLING `suggest_next_steps` (it chooses how many, up to 6) instead of asking in prose; they render as clickable pills (same style as the welcome chips) under its reply, and a tap sends that option's prompt (save baseline, compare, sweep…). Replay/share-safe (rides the tool result) | `ui/app.js` (`renderAgentSuggestions`) | 🔵 Appear under the agent's reply after it calls `suggest_next_steps` (e.g. post-`analyze_results`). ⚪ `tests/test_ui.py`, `tests/test_suggest_next_steps.py`. |
+| **Copy-summary on results cards**: hover-reveal button copies a markdown summary (metrics + SLO table) to paste into a report/PR | `ui/app.js` (`resultsCardMarkdown`/`addCardCopy`) | 🔵 Hover a benchmark results card; click Copy. ⚪ `tests/test_ui.py`. |
+| **Guided Benchmark Builder**: a "✨ Design" wizard (header + welcome CTA) where a non-expert picks use-case / scale / token-shape / SLO targets / hardware via chips and inputs, sees a live plain-language preview, and sends it as a normal message. The agent does ALL `<scenario, harness, workload>` mapping; the form only phrases the request (thin code / thick agent) | `ui/index.html` `#builder`, `ui/app.js` (`composeBrief`/`openBuilder`/`submitBuilder`) | 🔵 Click "✨ Design", choose options, Send. ⚪ `tests/test_ui.py`. |
+| **Share a chat via link** (ChatGPT-style): the "🔗" header button mints a read-only public link to an *immutable snapshot* of the conversation; copy it, or delete it to revoke. Opening `/share/<token>` serves the same SPA read-only (no composer / sidebar / WebSocket) and replays the snapshot with the live transcript renderers, giving the full session picture: token totals (incl. cache + context-window at share time) as a meta line, the run-stage rail, and the agent's next-step chips (inert). The link bypasses the optional Bearer auth (the unguessable token is the credential); minting/revoking stay owner-gated; pending approval gates are stripped from the snapshot | `app/storage/share.py` (`ShareStore`), `app/main.py` (`POST /api/sessions/{id}/share`, `GET /api/share/{token}`, `GET /share/{token}`, `DELETE /api/share/{token}`), `app/security/auth.py` (public-GET exemption), `ui/index.html` `#share-dialog`, `ui/app.js` (`shareChat`/`bootShareView`) | 🔵 Click 🔗 on a started chat → copy the link → open it in a private window. ⚪ `tests/test_share.py`, `tests/test_ui.py`. |
+| **UI preview harness**: drive every render path with fixture data, no backend/LLM | `ui/preview.html` | 🔵 Open `/static/preview.html` (or serve `ui/` and open `preview.html`) to see all of the above without a cluster. |
 
 ---
 
-## 4. The agent tools (authoritative list — `app/tools/registry.py`)
+## 4. The agent tools (authoritative list: `app/tools/registry.py`)
 
-> Note: `app/tools/registry.py:build_registry` is the authoritative count — read it (the
-> enumerated list below mirrors it). `run_shell` (arbitrary `bash -lc`) is the agent's always-on
-> ad-hoc command tool — gated by the read-only/mutating classifier + approval, NOT the allowlist.
+> Note: `app/tools/registry.py:build_registry` is the authoritative count; the enumerated list
+> below mirrors it. `run_shell` (arbitrary `bash -lc`) is the agent's always-on ad-hoc command
+> tool, gated by the read-only/mutating classifier + approval, NOT the allowlist.
 
 **Sensing / grounding (read-only, auto-run):** `probe_environment`, `list_catalog`,
 `inspect_workload_profile`, `estimate_run_duration`, `read_knowledge`, `search_knowledge`,
@@ -105,29 +104,29 @@ The browser chat is where the **user-facing** features live. The HTTP endpoints
 `generate_doe_experiment`, `convert_guide_to_scenario`.
 
 **Mutating (approval-gated):** `ensure_repos`, `run_setup`, `execute_llmdbenchmark`,
-`run_shell` (arbitrary `bash -lc` — read-only commands auto-run, mutating/unknown ones prompt),
+`run_shell` (arbitrary `bash -lc`; read-only commands auto-run, mutating/unknown ones prompt),
 `orchestrate_benchmark_run`, `orchestrate_sweep` (parallel DoE-treatment Jobs
-under a concurrency cap, with per-treatment retry/dead-letter + checkpoint/resume — the
+under a concurrency cap, with per-treatment retry/dead-letter + checkpoint/resume: the
 proposal's parallel-treatment scheduling), `manage_orchestrated_runs` (list **read-only** /
-stop / reap the orchestrator's K8s Jobs ON the cluster — `stop` deletes a still-running Job,
+stop / reap the orchestrator's K8s Jobs ON the cluster; `stop` deletes a still-running Job,
 which `cancel_run` does NOT; also mirrored read-only at `GET /api/jobs`), `provision_hf_secret`.
 
 **Analysis / history (read-only):** `compare_reports`, `compare_harness_runs`,
 `analyze_results`, `aggregate_runs`, `result_history`, `cancel_run`.
 
-**Goal-seeking (no dedicated tool):** "hit this SLO at best goodput" now rides the DoE sweep
-+ Pareto path — iterative `generate_doe_experiment`/`orchestrate_sweep` rounds narrowed by
+**Goal-seeking (no dedicated tool):** "hit this SLO at best goodput" rides the DoE sweep
++ Pareto path: iterative `generate_doe_experiment`/`orchestrate_sweep` rounds narrowed by
 `analyze_results`' SLO-feasible frontier, steered by the goal-seeking section of
 `knowledge/sweep_playbook.md` (the closed-loop `autotune_search` tool was removed 2026-07-02).
 
-**Reproducibility (read-only):** `export_run_bundle` (capture a provenance bundle — repo
+**Reproducibility (read-only):** `export_run_bundle` (capture a provenance bundle: repo
 SHAs + resolved config + validated report digest), `reproduce_run` (re-derive a rerun
 proposal that goes back through the SessionPlan-approval + `--dry-run` gates).
 
-**Conversation / UX (read-only, auto-run):** `suggest_next_steps` — offer concrete
-follow-ups (the agent chooses how many — up to 6) as clickable buttons instead of a prose "want me to…?"; the agent's turn-ending
-discretionary offer (NOT an approval gate — mutations still go through their own gates). See
-`knowledge/conversation_style.md`.
+**Conversation / UX (read-only, auto-run):** `suggest_next_steps` offers concrete
+follow-ups (the agent chooses how many, up to 6) as clickable buttons instead of a prose
+"want me to…?"; the agent's turn-ending discretionary offer (NOT an approval gate; mutations
+still go through their own gates). See `knowledge/conversation_style.md`.
 
 *How to verify each tool:* every tool has a focused test in `tests/` (e.g.
 `tests/test_new_tools.py`, `tests/test_analyze.py`, `tests/test_capacity.py`,
@@ -147,7 +146,7 @@ result.
 | **Stateless reconstruct** from Job/pod labels | `controller.py:reconstruct` | ⚪ `tests/test_orchestrator.py`. |
 | **Real-time pod log streaming** → live `output` events during a run (P21) | `controller.run_attempt` + `kube.stream_logs(follow=True)` | 🔵 Run `orchestrate_benchmark_run` on a cluster; logs stream into the console panel live, not just at the end. |
 | **Checkpoint / resume** of long DOE sweeps via a per-sweep ConfigMap (P22) | `app/orchestrator/checkpoint.py` | ⚪ `tests/test_orchestrator*`; resume a sweep with the same `sweep_id` → completed treatments are skipped. |
-| **Resource management** — nodeSelector / tolerations / affinity / GPU type + pod anti-affinity (P23) | `JobSpec`/`build_job_manifest` + `knowledge/resource_management.md` | ⚪ Pass `scheduling` to `orchestrate_benchmark_run`; inspect the rendered manifest in tests. |
+| **Resource management**: nodeSelector / tolerations / affinity / GPU type + pod anti-affinity (P23) | `JobSpec`/`build_job_manifest` + `knowledge/resource_management.md` | ⚪ Pass `scheduling` to `orchestrate_benchmark_run`; inspect the rendered manifest in tests. |
 | **Endpoint readiness gate** before submit (+ approval-gated standup suggestion) (P24) | `app/readiness/probes.py` + `diagnostics.py`, `check_endpoint_readiness` tool | ⚪ `tests/test_endpoint_readiness.py` + tool tests; reads `kubectl get endpoints`, refuses to submit against an unready endpoint. |
 | Cleanup of terminal Jobs/ConfigMaps; results PVC preserved | `controller.py:cleanup` | ⚪ orchestrator tests. |
 
@@ -157,15 +156,15 @@ result.
 
 | Feature | Where | How to see / verify |
 |---|---|---|
-| Report parsing + plain-language summary (validated against repo BR-v0.2 schema) | `app/validation/report.py`, `locate_and_parse_report` | 🔵 The "Benchmark results" card you saw in chat. ⚪ `tests/test_report_validation.py`. |
+| Report parsing + plain-language summary (validated against repo BR-v0.2 schema) | `app/validation/report.py`, `locate_and_parse_report` | 🔵 The "Benchmark results" card in chat (seen in a real session). ⚪ `tests/test_report_validation.py`. |
 | SLO-aware filtering + **goodput estimate** + Pareto/DoE frontier | `app/validation/analysis.py`, `analyze_results` | ⚪ `tests/test_analyze.py`. |
-| A/B comparison of 2+ runs (per-metric deltas + per-metric winner) | `app/tools/compare.py` | ⚪ `tests/` (compare). |
-| **Cross-harness** comparison (inference-perf vs guidellm on the same stack) | `app/tools/compare.py` (`compare_harness_runs`) | ⚪ `tests/test_multiharness.py`. |
+| A/B comparison of 2+ runs (per-metric deltas + per-metric winner) | `app/tools/analyze/compare.py` | ⚪ `tests/` (compare). |
+| **Cross-harness** comparison (inference-perf vs guidellm on the same stack) | `app/tools/analyze/compare.py` (`compare_harness_runs`) | ⚪ `tests/test_multiharness.py`. |
 | Metric extraction incl. **KV-cache hit rate, schedule delay, GPU utilization** (P25) | `report.py`/`analysis.py` + `knowledge/standard_metrics.yaml` | ⚪ tests; `None` when a harness doesn't emit them. |
 | **Cross-session result history** (`store`/`list`/`get`/`delete`) | `app/storage/history.py`, `result_history` tool, `GET /api/history` | 🟢 `GET /api/history` returns `records` + the 11 trendable `metrics`. Store one in chat to populate it. |
 | **Metric trends over time** (`trend`) + sidebar sparkline | `GET /api/history/trend?metric=<m>` | 🟢 Live (see evidence). Valid metrics: `ttft, tpot, itl, request_latency, output_token_rate, total_token_rate, request_rate, success_rate_pct, kv_cache_hit_rate, gpu_utilization, schedule_delay`. |
 
-> ✅ **The harness's own PNG charts are surfaced inline.** `inference-perf` writes
+> ✅ The harness's own PNG charts are surfaced inline. `inference-perf` writes
 > `latency_vs_qps.png`, `throughput_vs_latency.png`, `throughput_vs_qps.png` into the session
 > `analysis/` folder; `locate_and_parse_report` returns them as a `charts` list, the read-only
 > `GET /api/sessions/{sid}/artifact` route serves the bytes (image-only, traversal-hardened), and
@@ -178,9 +177,9 @@ result.
 
 | Feature | Where | How to see / verify |
 |---|---|---|
-| Prometheus metrics endpoint (agent's own counters/histograms/gauges) | `app/observability/metrics.py`, `GET /metrics` | 🟢 `curl /metrics` — exposes `llmdbench_agent_commands_total`, `_command_duration_seconds`, `llmdbench_orchestrator_run_attempts_total`, `_run_faults_total`, `_runs_in_flight`, `_runs_submitted_total`, `_runs_terminal_total`. |
-| Live cluster resource usage during a run (`kubectl top`) | `app/tools/manage_runs.py`, `observe_run_metrics` tool | 🔵 Call it while a run is in flight (needs the in-cluster metrics-server, which kind / the `cicd/kind` spec do NOT install — add it separately). |
-| Per-cluster metrics-server installer (enables the live stats above) | `scripts/install_metrics_server.sh`, `install_metrics_server.sh` allowlist exec | 🔵 `probe_environment` reports `metrics_server.available` up front (pre-flight); on kind where it is false the agent OFFERS `run_shell("install_metrics_server.sh --kubelet-insecure-tls")` BEFORE the run (mutating → approval). Judgment in `knowledge/observability.md`; rule in `app/agent/prompt.py` HARD_RULES. |
+| Prometheus metrics endpoint (agent's own counters/histograms/gauges) | `app/observability/metrics.py`, `GET /metrics` | 🟢 `curl /metrics` exposes `llmdbench_agent_commands_total`, `_command_duration_seconds`, `llmdbench_orchestrator_run_attempts_total`, `_run_faults_total`, `_runs_in_flight`, `_runs_submitted_total`, `_runs_terminal_total`. |
+| Live cluster resource usage during a run (`kubectl top`) | `app/tools/run/manage_runs.py`, `observe_run_metrics` tool | 🔵 Call it while a run is in flight (needs the in-cluster metrics-server, which kind / the `cicd/kind` spec do NOT install; add it separately). |
+| Per-cluster metrics-server installer (enables the live stats above) | `scripts/install/install_metrics_server.sh`, `install_metrics_server.sh` allowlist exec | 🔵 `probe_environment` reports `metrics_server.available` up front (pre-flight); on kind where it is false the agent OFFERS `run_shell("install_metrics_server.sh --kubelet-insecure-tls")` BEFORE the run (mutating → approval). Judgment in `knowledge/observability.md`; rule in `app/agent/prompt.py` HARD_RULES. |
 | Grafana dashboard + Prometheus scrape config + **alert rules** | `deploy/observability/{grafana-dashboard.json,prometheus-scrape.yaml,alerts.rules.yaml}` | ⚪ Files render/import directly. |
 
 ---
@@ -191,12 +190,12 @@ result.
 |---|---|---|
 | **Deny-by-default allowlist**, argv-only (`shell=False`), policy-as-data | `security/allowlist.yaml`, `app/security/allowlist.py` | ⚪ `tests/test_allowlist.py`; `/readyz` reports "15 allowlisted executables". |
 | Read-only probes auto-run; mutating commands require UI approval | `app/agent/loop.py`, `app/security/runner.py` | 🔵 Standup prompts; probes don't. |
-| **Gated-model access guardrail** — once `check_capacity` reports a model `gated:true`+`authorized:false`, any `standup`/`run`/`smoketest` of it is REFUSED at the command chokepoint (both `execute_llmdbenchmark` and the ad-hoc `run_shell`) until a later `check_capacity` clears it; the refusal nudges `provision_hf_secret`. A deterministic MECHANISM backstop to the HARD_RULE + `knowledge/capacity.md` steering (a flaky model could otherwise stand up an un-pullable model that fails opaquely minutes in). CLI matched by **basename** (no path bypass); `-m`/`--models`/`--model` parsed in space- **and** equals-form; the verdict clears on re-auth; HF token never leaves the backend | `app/tools/gated_access.py`, `app/tools/capacity.py` (records the verdict), `command_exec.py`/`shell.py` (chokepoints), `app/agent/prompt.py` (HARD_RULE) | ⚪ `tests/test_gated_guardrail.py`, `tests/test_capacity_gated.py`; 🟢 live flow `error-gated-model-access` (the harness now materializes the real bench `config/` so the live capacity tools reach the canned bridge). |
-| **Skill-grounding gate** — a mutating `llmdbenchmark` op is REFUSED until its grounding doc was fetched THIS session (the enforcement backstop that replaced the de-inlined always-on quickstart steering, `consulted_skills` ledger written by `fetch_key_docs`). Spec-aware: the kind/CPU-sim path (`--spec cicd/kind*`) requires `fetch_key_docs(task="quickstart")` — the project runbook, now loaded on demand via a `kind: knowledge` `key_docs.yaml` entry (de-inlined from CORE_KNOWLEDGE, served through `fetch_key_docs` exactly like the guides); the GPU/guide path requires the op's `*_skill` (standup→deploy_skill, run/smoketest→benchmark_skill, teardown→teardown_skill, experiment→compare_skill). Wired at the command chokepoint (`command_exec.py`) + as an early deploy gate in `propose_session_plan` (`plan.py`); `run_shell` is intentionally NOT gated. **WVA autoscaling is description-driven, not gated** — the agent fetches `wva_skill` when the ask is about autoscaling (no command chokepoint to gate) | `app/tools/skill_gate.py`, `command_exec.py`/`plan.py` (wiring), `knowledge/key_docs.yaml` (`kind: knowledge`), `app/tools/knowledge_access.py` (`fetch_key_docs`) | ⚪ `tests/test_skill_gate.py` (unit) + the deterministic `scripts/validate_flows.py` (42/42 flows pass with the gate live); the gated live-LLM check is `tests/eval/simulate/test_skill_usage_live.py` (6 scenarios × 3 runs, majority passes). |
+| **Gated-model access guardrail**: once `check_capacity` reports a model `gated:true`+`authorized:false`, any `standup`/`run`/`smoketest` of it is REFUSED at the command chokepoint (both `execute_llmdbenchmark` and the ad-hoc `run_shell`) until a later `check_capacity` clears it; the refusal nudges `provision_hf_secret`. A deterministic MECHANISM backstop to the HARD_RULE + `knowledge/capacity.md` steering (a flaky model could otherwise stand up an un-pullable model that fails opaquely minutes in). CLI matched by basename (no path bypass); `-m`/`--models`/`--model` parsed in space- and equals-form; the verdict clears on re-auth; HF token never leaves the backend | `app/tools/run/gated_access.py`, `app/tools/setup/capacity.py` (records the verdict), `command_exec.py`/`shell.py` (chokepoints), `app/agent/prompt.py` (HARD_RULE) | ⚪ `tests/test_gated_guardrail.py`, `tests/test_capacity_gated.py`; 🟢 live flow `error-gated-model-access` (the harness materializes the real bench `config/` so the live capacity tools reach the canned bridge). |
+| **Skill-grounding gate**: a mutating `llmdbenchmark` op is REFUSED until its grounding doc was fetched THIS session (the enforcement backstop that replaced the de-inlined always-on quickstart steering; `consulted_skills` ledger written by `fetch_key_docs`). Spec-aware: the kind/CPU-sim path (`--spec cicd/kind*`) requires `fetch_key_docs(task="quickstart")`, the project runbook, loaded on demand via a `kind: knowledge` `key_docs.yaml` entry (de-inlined from CORE_KNOWLEDGE, served through `fetch_key_docs` exactly like the guides); the GPU/guide path requires the op's `*_skill` (standup→deploy_skill, run/smoketest→benchmark_skill, teardown→teardown_skill, experiment→compare_skill). Wired at the command chokepoint (`command_exec.py`) + as an early deploy gate in `propose_session_plan` (`plan.py`); `run_shell` is intentionally NOT gated. WVA autoscaling is description-driven, not gated: the agent fetches `wva_skill` when the ask is about autoscaling (no command chokepoint to gate) | `app/tools/run/skill_gate.py`, `command_exec.py`/`plan.py` (wiring), `knowledge/key_docs.yaml` (`kind: knowledge`), `app/tools/access/knowledge_access.py` (`fetch_key_docs`) | ⚪ `tests/test_skill_gate.py` (unit) + the deterministic `scripts/eval/validate_flows.py` (42/42 flows pass with the gate live); the gated live-LLM check is `tests/eval/simulate/test_skill_usage_live.py` (6 scenarios × 3 runs, majority passes). |
 | Secrets stay backend-only; child-process env scrubbed | `app/config.py:child_env` | ⚪ Read `child_env`; browser never receives keys. |
-| **Allowlist governance** — per-command timeouts + usage quotas (P13) | `app/security/quota.py`, `security/allowlist.yaml` | ⚪ `tests/test_governance.py`. |
-| **Optional Bearer-token auth** (`AUTH_ENABLED`/`AUTH_TOKEN`) → 401 on missing/bad (P12) | `app/security/auth.py` | 🟢 With auth on: no token → **401** + `www-authenticate: Bearer`; correct token → **200** (see evidence). |
-| **Token-bucket rate limit** (`RATE_LIMIT_*`) → 429 when drained (P12) | `app/security/auth.py` (`rate_limit` dependency) | 🟢 With `RPS=1 BURST=2`: first request 200, rest **429** (see evidence). |
+| **Allowlist governance**: per-command timeouts + usage quotas (P13) | `app/security/quota.py`, `security/allowlist.yaml` | ⚪ `tests/test_governance.py`. |
+| **Optional Bearer-token auth** (`AUTH_ENABLED`/`AUTH_TOKEN`) → 401 on missing/bad (P12) | `app/security/auth.py` | 🟢 With auth on: no token → 401 + `www-authenticate: Bearer`; correct token → 200 (see evidence). |
+| **Token-bucket rate limit** (`RATE_LIMIT_*`) → 429 when drained (P12) | `app/security/auth.py` (`rate_limit` dependency) | 🟢 With `RPS=1 BURST=2`: first request 200, rest 429 (see evidence). |
 | Optional CORS (`CORS_ALLOW_ORIGINS`); off = no CORS headers (today's default) | `app/config.py:cors_origins_list`, `app/main.py` | ⚪ Set the env var and inspect response headers. |
 
 ---
@@ -207,12 +206,12 @@ result.
 |---|---|---|
 | **Structured JSON logging + correlation IDs** (P11) | `app/observability/logging.py` | 🟢 Server stdout is JSON (`{"timestamp":...,"level":"INFO","logger":"app.main","message":"startup",...}`). |
 | Liveness `/healthz` | `app/main.py` | 🟢 `{"ok":true}`. |
-| **Readiness `/readyz` + startup self-check** (P16/P18) — workspace writable, provider coherent, repos resolvable, runner ok, auth coherent | `app/main.py`, `app/storage/retention.py` | 🟢 `curl /readyz` returns the full per-check report (all green here). |
-| **Run lifecycle**: cancel a run in another chat, reattach, graceful shutdown (P16) | `app/tools/manage_runs.py` (`cancel_run`), `app/agent/lifecycle.py` | ⚪ `tests/test_run_lifecycle.py`; 🔵 `cancel_run` frees a stuck run's concurrency slot. |
+| **Readiness `/readyz` + startup self-check** (P16/P18): workspace writable, provider coherent, repos resolvable, runner ok, auth coherent | `app/main.py`, `app/storage/retention.py` | 🟢 `curl /readyz` returns the full per-check report (all green here). |
+| **Run lifecycle**: cancel a run in another chat, reattach, graceful shutdown (P16) | `app/tools/run/manage_runs.py` (`cancel_run`), `app/agent/lifecycle.py` | ⚪ `tests/test_run_lifecycle.py`; 🔵 `cancel_run` frees a stuck run's concurrency slot. |
 | Concurrency cap on simultaneous runs | `app/agent/*`, `tests/test_concurrency.py` | ⚪ `tests/test_concurrency.py`. |
 | **WS protocol hardening + live event buffer** (P15) | `app/agent/ws_schemas.py`, `channel.py` | ⚪ `tests/test_ws.py`. |
 | **Workspace retention / GC + startup cleanup** (P18) | `app/storage/retention.py` | 🟢 Startup log: `{"message":"retention.gc","removed":0,"reclaimed_bytes":0}`. |
-| **Simulate Mode** (`SIMULATE=1`) — walk the whole flow; read-only commands run for real, mutations no-op, synthetic report | `app/config.py`, `app/tools/command_exec.py` + `app/tools/shell.py` (caller-gate), `app/agent/loop.py` | 🔵 Set `SIMULATE=1`, run a benchmark in chat — read-only probes/greps return real output (genuine context), every mutating command is a no-op, a synthetic report is produced, no cluster touched. ⚪ `tests/test_simulate.py`. |
+| **Simulate Mode** (`SIMULATE=1`): walk the whole flow; read-only commands run for real, mutations no-op, synthetic report | `app/config.py`, `app/tools/command_exec.py` + `app/tools/run/shell.py` (caller-gate), `app/agent/loop.py` | 🔵 Set `SIMULATE=1`, run a benchmark in chat: read-only probes/greps return real output (genuine context), every mutating command is a no-op, a synthetic report is produced, no cluster touched. ⚪ `tests/test_simulate.py`. |
 
 ---
 
@@ -224,7 +223,7 @@ result.
 | **Helm chart** (Deployment, Service, SA, RBAC Role/Binding, Secret) | `deploy/helm/llm-d-benchmarking-agent/` | 🟢 `helm template deploy/helm/llm-d-benchmarking-agent` renders all 6 kinds. |
 | Least-privilege RBAC | `deploy/helm/llm-d-benchmarking-agent/templates/rbac.yaml` | ⚪ Inspect the rendered Role rules. |
 | Single source of truth for image/port/SA across artifacts | `app/packaging/assets.py` | ⚪ `tests/test_packaging.py`. |
-| **In-cluster service deploy** — run the agent ITSELF as a Kubernetes service (alongside the laptop install) via a self-contained **full-bake** image (bundles the `llmdbenchmark` CLI + 3 sibling repos + client toolchain) + Helm | `Dockerfile` (full-bake), `scripts/install_service.sh` (published image by default, `--build` for local), `deploy/helm/*`, `docs/guides/CLUSTER_SERVICE_DEPLOY.md` | 🟢 Keyless end-to-end on kind **PASSED** via `testing/cluster-service-sim/run.sh` (`/healthz`+`/readyz` green, `/api/provider`, in-Pod RBAC 403 = least-privilege holds); the live-chat step needs either a Claude subscription `CLAUDE_CODE_OAUTH_TOKEN` (the default `claude-agent-sdk` path — `claude` CLI baked in) or an `ANTHROPIC_API_KEY` fallback. |
+| **In-cluster service deploy**: run the agent ITSELF as a Kubernetes service (alongside the laptop install) via a self-contained full-bake image (bundles the `llmdbenchmark` CLI + 3 sibling repos + client toolchain) + Helm | `Dockerfile` (full-bake), `scripts/install/install_service.sh` (published image by default, `--build` for local), `deploy/helm/*`, `docs/guides/CLUSTER_SERVICE_DEPLOY.md` | 🟢 Keyless end-to-end on kind PASSED via `testing/cluster-service-sim/run.sh` (`/healthz`+`/readyz` green, `/api/provider`, in-Pod RBAC 403 = least-privilege holds); the live-chat step needs either a Claude subscription `CLAUDE_CODE_OAUTH_TOKEN` (the default `claude-agent-sdk` path; `claude` CLI baked in) or an `ANTHROPIC_API_KEY` fallback. |
 
 ---
 
@@ -241,9 +240,9 @@ result.
 
 ---
 
-## 12. Knowledge base (thick-agent — all judgment lives here)
+## 12. Knowledge base (thick-agent: all judgment lives here)
 
-The agent's decisions are **data**, not Python. Verify by reading `knowledge/`:
+The agent's decisions are data, not Python. Verify by reading `knowledge/`:
 `usecase_to_profile.yaml`, `sweep_playbook.md`, `welllit_path_advisor.yaml` (P20),
 `resource_management.md` (P23), `standard_metrics.yaml` (P25), `analysis.md`,
 `results_interpretation.md`, `multi_harness.md`, `capacity.md`, `orchestrator.md`,
@@ -252,39 +251,45 @@ inlines the core guides; `read_knowledge('<topic>')` pulls in the rest on demand
 
 **Upstream skills library (3rd REQUIRED read-only repo, `llm-d-skills`):** the agent grounds its
 deploy/teardown/benchmark/compare/autoscale procedures in the incubation skills' canonical
-`SKILL.md`s, read **live** (never vendored) via `key_docs.yaml` → `fetch_key_docs(task='*_skill')`.
-The skills are the **canonical default** for those procedures, so the repo is now REQUIRED (in
+`SKILL.md`s, read live (never vendored) via `key_docs.yaml` → `fetch_key_docs(task='*_skill')`.
+The skills are the canonical default for those procedures, so the repo is REQUIRED (in
 `Settings.repo_paths` → gates `/readyz`, captured in provenance/reproducibility); it stays
-independently versioned, so `ensure_repos`' `ref` is never applied to it. The `knowledge/` adapters
-(`deploy_path_playbook`, `sweep_playbook`, `teardown`, `autoscaling`, `author_spec_workload`) now
-**defer to the skill for the procedure and carry only the delta** — how each runs through OUR tooling
-(the SessionPlan gate + `llmdbenchmark` CLI + BR-v0.2 parsing stay authoritative). These operation
-skills are now **ENFORCED**, not merely encouraged — a mutating op is refused until its grounding doc
-was fetched this session (the **skill-grounding gate**, §8); the kind/CPU-sim `quickstart` runbook is
-enforced the same way and loads on demand via a `kind: knowledge` `key_docs.yaml` fetch (de-inlined
-from CORE), while WVA autoscaling stays description-driven (no command chokepoint → no gate). **Verify:**
-`fetch_key_docs(task='teardown_skill')` returns the live SKILL.md (the repo is cloned by `ensure_repos`
-/ `git clone .../llm-d-incubation/llm-d-skills`); the clone allowlist + read-only guard are pinned in
-`tests/test_allowlist.py` (`test_git_clone_skills_allowed`) and the root `.claude/settings.json`. Each golden operation-flow now grounds in its grounding doc first — its `*_skill`, or the `quickstart` runbook on the kind/CPU-sim path — and all 5 operations are exemplified (compare/wva added), enforced hermetically by `tests/flows/test_flow_skill_grounding.py` / `test_flow_skill_correctness.py` / `test_corpus_skill_coverage.py` + `tests/eval/test_no_orphan_operation.py`.
+independently versioned, so `ensure_repos`' `ref` is never applied to it. The `knowledge/`
+adapters (`deploy_path_playbook`, `sweep_playbook`, `teardown`, `autoscaling`,
+`author_spec_workload`) defer to the skill for the procedure and carry only the delta: how each
+runs through OUR tooling (the SessionPlan gate + `llmdbenchmark` CLI + BR-v0.2 parsing stay
+authoritative). These operation skills are ENFORCED, not merely encouraged: a mutating op is
+refused until its grounding doc was fetched this session (the skill-grounding gate, §8); the
+kind/CPU-sim `quickstart` runbook is enforced the same way and loads on demand via a
+`kind: knowledge` `key_docs.yaml` fetch (de-inlined from CORE), while WVA autoscaling stays
+description-driven (no command chokepoint → no gate). Verify:
+`fetch_key_docs(task='teardown_skill')` returns the live SKILL.md (the repo is cloned by
+`ensure_repos` / `git clone .../llm-d-incubation/llm-d-skills`); the clone allowlist + read-only
+guard are pinned in `tests/test_allowlist.py` (`test_git_clone_skills_allowed`) and the root
+`.claude/settings.json`. Each golden operation-flow grounds in its grounding doc first (its
+`*_skill`, or the `quickstart` runbook on the kind/CPU-sim path) and all 5 operations are
+exemplified (compare/wva added), enforced hermetically by
+`tests/flows/test_flow_skill_grounding.py` / `test_flow_skill_correctness.py` /
+`test_corpus_skill_coverage.py` + `tests/eval/test_no_orphan_operation.py`.
 
 **Prompt-token efficiency (token-tracking merge):** fixed prompt overhead was cut ~40%
 (`~20.4K → ~12.3K`), schema `title`s are stripped (`registry.py:_strip_titles`), and
-**provider-agnostic prompt caching** is wired in (`app/llm/*`). Verify via the per-turn token
-line in the UI (`· Y cached`). **Per-turn replay trimmed** on top of that: tighter compaction
-(`context_mgmt.py` — recent-window 8, threshold 20K) plus dropping the redundant CLI log tail
-from a successful `execute_llmdbenchmark` result (`execute.py` — the BR-v0.2 report supersedes it,
-rule #4), so the recurring per-step cache-read shrinks without touching the live working set.
-Reasoning effort/thinking are now bindable via the provider-neutral `LLM_EFFORT`/`LLM_THINKING`
+provider-agnostic prompt caching is wired in (`app/llm/*`). Verify via the per-turn token
+line in the UI (`· Y cached`). Per-turn replay was trimmed on top of that: tighter compaction
+(`context_mgmt.py`, recent-window 8, threshold 20K) plus dropping the redundant CLI log tail
+from a successful `execute_llmdbenchmark` result (`execute.py`; the BR-v0.2 report supersedes
+it, rule #4), so the recurring per-step cache-read shrinks without touching the live working
+set. Reasoning effort/thinking are bindable via the provider-neutral `LLM_EFFORT`/`LLM_THINKING`
 aliases (`config.py`); a fixed `LLM_THINKING=<N>` budget also bounds worst-case output spend.
-**Tool-defs trimmed + phase-grouped (resident-prefix cut):** the model-facing tool descriptions
-were surgically trimmed (`registry.py:_DESCRIPTIONS`, ~9.3K→7.7K tok — only detail duplicated in
-the `knowledge/` guide each points to was cut), and the tool schemas are now loaded on demand by
-GROUP (`registry.py:_TOOL_GROUPS` setup/run/analyze/advanced) — only the lean `STARTER_KIT` is
+Tool-defs are trimmed + phase-grouped (resident-prefix cut): the model-facing tool descriptions
+were surgically trimmed (`registry.py:_DESCRIPTIONS`, ~9.3K→7.7K tok; only detail duplicated in
+the `knowledge/` guide each points to was cut), and the tool schemas are loaded on demand by
+GROUP (`registry.py:_TOOL_GROUPS` setup/run/analyze/advanced): only the lean `STARTER_KIT` is
 resident until the model calls `load_tools(['<group>'])`, which the loop folds into
 `session.loaded_groups` and re-opens the turn so the group is callable the same step. Resident
-tool-defs on the early/planning steps drop ~17K→~5.4K tok (front-loaded; ≈break-even once a full
-deploy→run→analyze session has loaded every group). Generalizes the former `enable_advanced_tools`
-boolean into the group set. **Verify:** `pytest tests/test_phase_tiered_tools.py`.
+tool-defs on the early/planning steps drop ~17K→~5.4K tok (front-loaded; roughly break-even once
+a full deploy→run→analyze session has loaded every group). This generalizes the former
+`enable_advanced_tools` boolean into the group set. Verify: `pytest tests/test_phase_tiered_tools.py`.
 
 ---
 
@@ -329,10 +334,11 @@ helm template deploy/helm/llm-d-benchmarking-agent → ServiceAccount, Role, Rol
 
 No open caveats. Five early findings (orphaned harness PNG charts behind `/static`; empty trend
 sparkline until a result is stored; `/healthz`+`/readyz` wrongly auth-gated; `CLAUDE.md` tool-count
-drift; ambiguous latency units) were all **fixed on 2026-06-02** (`1515959`, merged `3363496`) — done.
+drift; ambiguous latency units) were all fixed on 2026-06-02 (`1515959`, merged `3363496`).
 
 **Counts (current).** Verified against the running app: the agent tools enumerated in §4
-(authoritative: `registry.py:build_registry`; `run_shell` is the agent's always-on ad-hoc command tool), **11 trendable history metrics** (incl. `kv_cache_hit_rate`,
-`gpu_utilization`, `schedule_delay`), **15 allowlisted executables**, **7 `/metrics` families**.
-All ROADMAP_V4 active phases (27–66) are merged; 7 are explicitly deferred (34/43/44/47/52/57/58 —
-their per-phase rows are in `docs/reference/BENCHMARK_FEATURE_COVERAGE.md`).
+(authoritative: `registry.py:build_registry`; `run_shell` is the agent's always-on ad-hoc command
+tool), 11 trendable history metrics (incl. `kv_cache_hit_rate`, `gpu_utilization`,
+`schedule_delay`), 15 allowlisted executables, 7 `/metrics` families. All ROADMAP_V4 active
+phases (27–66) are merged; 7 are explicitly DEFERRED (34/43/44/47/52/57/58; their per-phase rows
+are in `docs/reference/BENCHMARK_FEATURE_COVERAGE.md`).

@@ -7,7 +7,7 @@ sibling-independent (uses _SUBCOMMANDS + the frozen catalog snapshot).
 """
 from __future__ import annotations
 
-from app.tools.execute import _SUBCOMMANDS
+from app.tools.run.execute import _SUBCOMMANDS
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.flows import ALL_FLOWS
 

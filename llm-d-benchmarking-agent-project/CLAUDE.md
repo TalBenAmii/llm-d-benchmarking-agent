@@ -38,7 +38,7 @@ llm-d-benchmarking-agent-project/
 ├─ app/                   FastAPI backend — mechanism only (no judgment)
 │  ├─ main.py·config.py·paths.py·dig.py   app entry · settings+knowledge load · path resolve · safe dict/JSON accessors
 │  ├─ agent/         📁   the agent loop + system prompt (prompt-cache byte-stability)
-│  ├─ tools/         📁   the tool registry (registry.py is authoritative); schemas/ = tool I/O + SessionPlan JSON schemas
+│  ├─ tools/         📁   the tool registry (registry.py authoritative); handlers in setup/·run/·analyze/·access/ subpackages; schemas/ = tool I/O + SessionPlan JSON schemas
 │  ├─ validation/    📁   the four determinism gates
 │  ├─ security/      📁   allowlist validator (pure; the policy itself is data in /security)
 │  ├─ orchestrator/  📁   Kubernetes-native benchmark Job lifecycle + fault classification
@@ -49,10 +49,11 @@ llm-d-benchmarking-agent-project/
 │  ├─ llm/           📁   provider-agnostic LLM integration (anthropic / openai-compat / claude-agent-sdk)
 │  ├─ storage/       📁   persistence: history · provenance · share · retention/GC
 │  └─ web.py             pure, decorator-free HTTP/SSE helpers extracted from main (path-traversal 404s, CORS guard, share redaction)
-├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here
+├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here (62 files in
+│                         10 topic subfolders; resolved by basename via a recursive glob — see its CLAUDE.md)
 ├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
 ├─ deploy/               Helm chart + observability manifests
-├─ scripts/              entry points (install_local.sh · install_service.sh · run.sh · setup-claude-plan.sh) + host bootstrap (install_prereqs.sh) + flow eval (validate_flows.py + run_eval_isolated.sh)
+├─ scripts/              root entry points (run.sh · install_local.sh · _env.sh shared lib) + install/ (service+host bootstrap: install_service.sh · install_prereqs.sh · install_metrics_server.sh · install-git-hooks.sh · setup-claude-plan.sh · kind_egress_heal.sh) + bridges/ (allowlisted repo wrappers: aggregate_runs.py · capacity_check.py · provision_hf_secret.py) + eval/ (flow eval: validate_flows.py · run_eval_isolated.sh)
 ├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ ui/                   static chat UI (index.html, app.js, styles.css)
@@ -70,7 +71,7 @@ no `app/knowledge/` package.
 - **Upstream reuse paths** (specs, harnesses, report schema, CLI safe-preview) → `docs/reference/UPSTREAM_REUSE_PATHS.md`
 - **Domain glossary** (spec/harness/workload/SessionPlan/goodput/dead-letter…) → `docs/reference/CONTEXT.md`
 - **Full doc map** → `docs/README.md`; **run-locally quickstart** → root `README.md` / `docs/guides/DEPLOYMENT.md`
-- **SIMULATE=1** — dry-run toggle (walk the whole workflow; read-only commands run for real, mutations no-op) → `docs/reference/CONTEXT.md` §Simulate Mode + `knowledge/sim_integration.md`. Default `0`.
+- **SIMULATE=1** — dry-run toggle (walk the whole workflow; read-only commands run for real, mutations no-op) → `docs/reference/CONTEXT.md` §Simulate Mode + `knowledge/reference/sim_integration.md`. Default `0`.
 
 ## Capturing recurring conclusions (standing instruction to future-me)
 When you derive a conclusion you'd otherwise re-investigate later (env/build gotchas, locked decisions),

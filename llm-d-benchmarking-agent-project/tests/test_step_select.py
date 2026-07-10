@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from app.security.allowlist import MUTATING, READ_ONLY
-from app.tools.execute import build_argv
+from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 
@@ -154,7 +154,7 @@ KNOWLEDGE_DIR = Path(__file__).resolve().parents[1] / "knowledge"
 
 
 def test_step_select_knowledge_exists_and_steers_rerun():
-    guide = KNOWLEDGE_DIR / "step_select.md"
+    guide = KNOWLEDGE_DIR / "run/step_select.md"
     assert guide.is_file(), "knowledge/step_select.md must hold the which-step judgment"
     text = guide.read_text()
     # It steers the re-run use case and names the modeled flag (not extra), and tells the
@@ -174,8 +174,8 @@ def test_step_select_knowledge_is_autodiscoverable(allowlist, catalog, tmp_path)
     # read_knowledge('step_select') with NO Python registration.
     from app.config import get_settings
     from app.security.runner import CommandRunner
+    from app.tools.access.knowledge_access import read_knowledge
     from app.tools.context import ToolContext
-    from app.tools.knowledge_access import read_knowledge
 
     s = get_settings()
     ctx = ToolContext(

@@ -5,7 +5,7 @@ authoritative repo docs pinned in knowledge/key_docs.yaml, read one knowledge gu
 basename, and lexically search the knowledge corpus + the curated upstream-doc index. None of
 these mutate anything, so the agent loop runs them automatically (no approval).
 
-Split out of app/tools/probe.py (which had grown into a ~1,100-line module spanning three
+Split out of app/tools/setup/probe.py (which had grown into a ~1,100-line module spanning three
 unrelated tool families) so the doc/knowledge surface is independently navigable. probe.py
 re-exports these names for backwards compatibility; new code should import them from here.
 """
@@ -128,7 +128,7 @@ def fetch_key_docs(
     The *list* of docs is hard-coded (in key_docs.yaml); the *content* is read live from
     the cloned repos, so it is never a stale vendored copy. Read-only. Call this before
     proposing a deployment plan so the flow/flags come from the real procedure."""
-    kfile = ctx.settings.knowledge_dir / "key_docs.yaml"
+    kfile = ctx.settings.knowledge_dir / "reference" / "key_docs.yaml"
     if not kfile.is_file():
         return {"docs": [], "note": f"key_docs.yaml not found at {kfile}"}
     try:
@@ -141,7 +141,7 @@ def fetch_key_docs(
         entries = [e for e in entries if e.get("task") == task]
         # Record the task as CONSULTED the instant it is requested — keyed on the task ARG,
         # independent of whether the docs actually resolve (an absent skills repo must not defeat
-        # the skill-grounding gate; see app/tools/skill_gate.py). Mechanism only.
+        # the skill-grounding gate; see app/tools/run/skill_gate.py). Mechanism only.
         ctx.consulted_skills.add(task)
 
     fetched: list[dict[str, Any]] = []
@@ -203,7 +203,7 @@ def _knowledge_files(ctx: ToolContext) -> list[Path]:
     kdir = ctx.settings.knowledge_dir
     if not kdir.is_dir():
         return []
-    files = list(kdir.glob("*.md")) + list(kdir.glob("*.yaml")) + list(kdir.glob("*.yml"))
+    files = list(kdir.rglob("*.md")) + list(kdir.rglob("*.yaml")) + list(kdir.rglob("*.yml"))
     files = [f for f in files if f.name not in EXCLUDED_KNOWLEDGE_FILES]
     return sorted(files, key=lambda p: p.name)
 
@@ -468,7 +468,7 @@ def _repo_doc_pointers(ctx: ToolContext) -> list[tuple[str, str]]:
     """(repo-relative-path, line) pairs parsed from the curated knowledge/useful_repo_docs.md
     index. Each bulleted/numbered line that names a `repo/...` doc becomes a searchable pointer
     so a problem-driven query can surface the right UPSTREAM doc by topic, not exact basename."""
-    idx = ctx.settings.knowledge_dir / "useful_repo_docs.md"
+    idx = ctx.settings.knowledge_dir / "reference" / "useful_repo_docs.md"
     if not idx.is_file():
         return []
     pointers: list[tuple[str, str]] = []

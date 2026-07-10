@@ -1,6 +1,6 @@
 """Pure parsing helpers for the environment probes (no ``ctx``, no I/O).
 
-Extracted from ``app/tools/probe.py`` (which had grown to ~750 lines): the ``_probe_*``
+Extracted from ``app/tools/setup/probe.py`` (which had grown to ~750 lines): the ``_probe_*``
 orchestration functions there call ``ctx.run_readonly`` then feed the captured stdout to these
 parsers. Keeping the parsers in their own cohesive module makes them trivially unit-testable and
 shrinks the probe module to its I/O-bearing surface. Each function here takes already-captured

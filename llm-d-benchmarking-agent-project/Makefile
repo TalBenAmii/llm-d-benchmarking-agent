@@ -58,13 +58,13 @@ quality: lint typecheck coverage
 
 # --- the headline: "validate that the agent runs the right commands" ---------
 validate:
-	$(PY) scripts/validate_flows.py --show
+	$(PY) scripts/eval/validate_flows.py --show
 
 validate-pytest:
 	$(PY) -m pytest tests/flows/test_flows.py -v
 
 validate-live:
-	LLM_EVAL_LIVE=1 $(PY) scripts/validate_flows.py --live
+	LLM_EVAL_LIVE=1 $(PY) scripts/eval/validate_flows.py --live
 
 # Isolated variants: each flow runs in its OWN process under an EXTERNAL `timeout -s TERM -k`, so a
 # wedged event loop / deadlocked SDK subprocess can never stall the whole run (the in-process asyncio
@@ -72,10 +72,10 @@ validate-live:
 # FLOWS="name1 name2" re-runs just a subset (e.g. confirming suspected-infra failures flip to PASS).
 # In a git WORKTREE the sibling repos are empty, so point REPOS_DIR at the primary checkout.
 validate-live-iso:
-	scripts/run_eval_isolated.sh live $(FLOWS)
+	scripts/eval/run_eval_isolated.sh live $(FLOWS)
 
 validate-simulate-iso:
-	scripts/run_eval_isolated.sh simulate $(FLOWS)
+	scripts/eval/run_eval_isolated.sh simulate $(FLOWS)
 
 # --- Self-eval (Layer 3 + 4): agent-quality judge + exploratory bug-hunter ----
 # eval-shadow is HERMETIC + ZERO quota (the always-on guard, runs in plain pytest too).
@@ -91,7 +91,7 @@ bughunt:
 	LLM_EVAL_LIVE=1 BUGHUNT=1 $(PY) -m pytest tests/eval/live/test_bughunt_live.py -v --timeout=600
 
 flows:
-	$(PY) scripts/validate_flows.py --list
+	$(PY) scripts/eval/validate_flows.py --list
 
 # --- Container image (self-contained "full-bake": app + CLI venv + repos + toolchain) ---------
 # Large (~1 GB) and needs build-time network egress — see the Dockerfile header.
@@ -105,7 +105,7 @@ image-publish: image
 # Print the live catalog so you can refresh tests/flows/catalog_snapshot.py when the
 # upstream repo changes (the drift guard flags when a refresh is due).
 snapshot-catalog:
-	@$(PY) -c "import json; from app.tools.catalog import build_catalog; \
+	@$(PY) -c "import json; from app.tools.setup.catalog import build_catalog; \
 c = build_catalog('../llm-d-benchmark'); \
 print('present:', c['present']); \
 print('SPECS =', json.dumps(c['specs'])); \

@@ -23,7 +23,8 @@ from pathlib import Path
 
 import yaml
 
-from app.tools.config_artifact import (
+from app.tools.registry import tool_definitions
+from app.tools.setup.config_artifact import (
     _SOFT_OPTIONAL_KNOBS,
     _build_scenario_document,
     _scenario_reference,
@@ -31,7 +32,6 @@ from app.tools.config_artifact import (
     validate_scenario_structure,
     write_and_validate_config,
 )
-from app.tools.registry import tool_definitions
 
 # The exact dotted tracing knob paths the upstream modelservice jinja renders. Kept in lockstep
 # with config/templates/jinja/13_ms-values.yaml.j2 and knowledge/observability.md §4.
@@ -273,7 +273,7 @@ async def test_plan_dry_run_renders_authored_tracing_block(tool_ctx):
     """END-TO-END (recording runner, no cluster): the agent authors the tracing scenario, then
     drives the determinism gate THROUGH execute_llmdbenchmark(spec=<spec_path>, dry_run). The
     authored spec must reach the CLI argv — that is the validation gate the acceptance asks for."""
-    from app.tools.execute import execute_llmdbenchmark
+    from app.tools.run.execute import execute_llmdbenchmark
     from tests.flows.harness import CaptureRunner
 
     out = await write_and_validate_config(
@@ -317,7 +317,7 @@ def test_observability_knowledge_documents_config_only_limitation():
     observability knowledge file states it explicitly and documents the dotted keys + the gate."""
     from app.config import get_settings
 
-    md = (get_settings().knowledge_dir / "observability_tracing.md").read_text()
+    md = (get_settings().knowledge_dir / "observability/observability_tracing.md").read_text()
     lower = md.lower()
     # The section exists and states CONFIGURE-not-COLLECT.
     assert "tracing" in lower
