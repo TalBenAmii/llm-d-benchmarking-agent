@@ -147,6 +147,11 @@ def test_dockerfile_does_not_bake_in_secrets_or_scratch():
     assert any("app" in c for c in copied)
     assert any("security" in c for c in copied)
     assert any("knowledge" in c for c in copied)
+    # `COPY app` ships the UI only while app/ui is real and not re-excluded by .dockerignore.
+    assert (PROJECT_ROOT / "app" / "ui" / "index.html").exists()
+    ignored = {ln.strip().rstrip("/") for ln in DOCKERIGNORE.read_text().splitlines()
+               if ln.strip() and not ln.strip().startswith("#")}
+    assert not {"app/ui", "app/ui/*", "*.html", "**/*.html"} & ignored
 
 
 def test_dockerignore_excludes_secrets_and_scratch():

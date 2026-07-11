@@ -31,7 +31,7 @@ rules), and [`FEATURES.md`](reference/FEATURES.md) (live, evidence-backed featur
 inventory). The agent's judgment lives in [`knowledge/`](../knowledge/).
 
 UI screenshots used by docs/demos live in [`images/`](images/); the informal working backlog is
-the loose [`todo`](../../todo) file at the monorepo root. Design history (the original proposal + plan, and the five shipped
+the loose `todo` file at the monorepo root (untracked, present only in the primary checkout). Design history (the original proposal + plan, and the five shipped
 feature proposals) is preserved in git history only (`docs/history/`, removed 2026-07-10).
 
 ## Design in one line
