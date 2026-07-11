@@ -2,8 +2,7 @@
 
 > A single, evidence-backed inventory of every feature on `main` (MVP, roadmap v1 phases 0–10,
 > v2 phases 11–18, v3 phases 19–26, token-tracking, ROADMAP_V4 phases 27–66 with all active
-> phases merged and 7 explicitly deferred: 34/43/44/47/52/57/58, plus todo-batch follow-ups),
-> each with a concrete way to see or verify it.
+> phases merged, plus todo-batch follow-ups), each with a concrete way to see or verify it.
 >
 > Read this first, because "the app looks unchanged" is expected: most recent work is
 > backend / ops / trust / quality plumbing with no chat-UI surface by design (structured
@@ -329,5 +328,4 @@ drift; ambiguous latency units) were all fixed on 2026-06-02 (`1515959`, merged 
 (authoritative: `registry.py:build_registry`; `run_shell` is the agent's always-on ad-hoc command
 tool), 11 trendable history metrics (incl. `kv_cache_hit_rate`, `gpu_utilization`,
 `schedule_delay`), 15 allowlisted executables, 7 `/metrics` families. All ROADMAP_V4 active
-phases (27–66) are merged; 7 are explicitly DEFERRED (34/43/44/47/52/57/58; their per-phase rows
-are in `docs/reference/BENCHMARK_FEATURE_COVERAGE.md`).
+phases (27–66) are merged.
