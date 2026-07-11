@@ -13,6 +13,12 @@ Two ways to run a benchmark:
   container image (`ORCHESTRATOR_IMAGE` in the backend `.env`, or pass `image`); if it isn't
   set yet, fall back to `execute_llmdbenchmark`.
 
+**Route by the user's words.** "run as a **Kubernetes Job**", "**via the orchestrator**",
+"**on-cluster**", "submit it / watch it to completion / stream the pod logs",
+"restart-resilient / retryable / unattended / parallel" → **`orchestrate_benchmark_run`**. "just
+run it / quickstart / watch it live locally" with no cluster-object framing → `execute_llmdbenchmark`.
+When the user names the orchestrator or a K8s Job, do NOT substitute the local subprocess path.
+
 ## Reading a failure (what the fault `kind` means, and what to do)
 
 The tool returns a structured `failure` with a `kind`. Translate it for the user and suggest

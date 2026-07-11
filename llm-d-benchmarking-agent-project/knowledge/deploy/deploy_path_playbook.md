@@ -51,6 +51,12 @@ drive it (BOTH go through `execute_llmdbenchmark` / `run_shell` — code is mech
 - **As the guide's own manifests** — the `-t kustomize` path with `kustomize.guideName: optimized-baseline`
   (see "Kustomize deploy method" below); applies the guide verbatim via helm+kustomize.
 
+**Prefer the direct catalog spec.** When the guide name is ALREADY a catalog spec (`guides/<name>`
+appears in `list_catalog`), deploy it DIRECTLY: pass `guides/<name>` verbatim as the `--spec`
+(`execute_llmdbenchmark subcommand=standup flags={spec:"guides/<name>"}`). Do NOT materialize a
+custom kustomize scenario into the workspace and pass its file path as `--spec` — only author a
+kustomize scenario (the `-t kustomize` path) when you must PATCH/override the guide's manifests.
+
 **Client prerequisites — offer `install-deps.sh` when MISSING.** A guide-based deploy needs the
 deployment client toolchain (`helm`+helm-diff, `helmfile`, `kustomize`, `yq`, `kubectl`); when it's
 absent (and `run_setup`/`install.sh` hasn't already supplied it) OFFER `run_shell("install-deps.sh")`
