@@ -37,5 +37,5 @@ behavioural branching.
 
 ## Scoped tests
 ```bash
-pytest tests/test_agent_sdk_provider.py tests/test_provider_pack.py tests/test_llm_caching_usage.py
+pytest tests/agent/test_agent_sdk_provider.py tests/tools/test_provider_pack.py tests/agent/test_llm_caching_usage.py
 ```

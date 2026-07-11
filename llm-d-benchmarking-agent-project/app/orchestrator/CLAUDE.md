@@ -42,6 +42,6 @@ ConfigMap checkpoint).
 
 ## Scoped tests
 ```bash
-pytest tests/test_orchestrator*.py        # controller, retry, sweep, checkpoint, faults, logstream, tool
+pytest tests/orchestrator/test_orchestrator*.py        # controller, retry, sweep, checkpoint, faults, logstream, tool
 ```
 `tests/orchestrator_fakes.py` provides an in-memory `FakeKubeClient` — orchestrator tests run hermetically (no cluster).

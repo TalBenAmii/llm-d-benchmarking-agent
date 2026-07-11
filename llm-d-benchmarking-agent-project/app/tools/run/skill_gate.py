@@ -33,7 +33,7 @@ _CLI = "llmdbenchmark"
 # on the kind path 'quickstart' overrides every subcommand). plan/results carry no operation skill,
 # so they are absent -> never gated. Subcommand names are exactly those execute.py::build_argv emits.
 # A NEW MUTATING llmdbenchmark subcommand MUST be added here or it bypasses grounding (coverage test:
-# tests/test_skill_gate.py::test_gate_covers_every_mutating_subcommand).
+# tests/tools/test_skill_gate.py::test_gate_covers_every_mutating_subcommand).
 _TASK_BY_SUBCOMMAND = {
     "standup": "deploy_skill",
     "smoketest": "benchmark_skill",

@@ -259,7 +259,7 @@ inflate an agent call or let the agent study-to-the-test) and NOT in Python `if/
 **Layer 4: exploratory bug-hunter.** An LLM (`explorer.py::LLMActionSelector`, prompt-seeded
 for reproducibility, with a deterministic seeded-RNG fallback when no key) drives the REAL app
 over the same HTTP+WS surface the self-play fuzzer drives (the reusable driver was factored out
-into `tests/eval/app_driver.py`, which `tests/test_selfplay_fuzz.py` now imports unchanged). The
+into `tests/eval/app_driver.py`, which `tests/platform/test_selfplay_fuzz.py` now imports unchanged). The
 deterministic invariant battery is the authoritative oracle: only a deterministic finding
 with `severity >= high` fails the build; the LLM triage is advisory-only (`llm_triage`
 field), never gating. Every action is logged so a finding replays through the deterministic

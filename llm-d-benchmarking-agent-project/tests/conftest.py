@@ -72,7 +72,7 @@ def _ground_skills_by_default(monkeypatch):
     plan proposing it) until its grounding task is in ``ctx.consulted_skills`` — a per-session ledger
     the real agent fills by calling ``fetch_key_docs``. Tests that aren't ABOUT the gate assume the
     agent already grounded (exactly as they assume no gated-model block by default), so seed every
-    context here; the gate's own tests (``tests/test_skill_gate.py``) clear ``consulted_skills`` to
+    context here; the gate's own tests (``tests/tools/test_skill_gate.py``) clear ``consulted_skills`` to
     exercise it. Auto-reverts after each test."""
     from app.tools.context import ToolContext
     from app.tools.run import skill_gate

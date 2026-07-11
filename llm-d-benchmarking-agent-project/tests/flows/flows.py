@@ -1313,7 +1313,7 @@ GATED_MODEL_ACCESS = Flow(
     # is not produced here; this flow scores the agent's tool CHOICE + the safety gate (it provisions
     # the HF secret and never runs the benchmark before access is resolved). The end-to-end gated
     # verdict (gated+unauthorized → provision → re-check → authorized) is exercised against a real
-    # repo ctx in tests/test_capacity_gated.py. The canned payloads below drive the LIVE eval (real
+    # repo ctx in tests/orchestrator/test_capacity_gated.py. The canned payloads below drive the LIVE eval (real
     # repo present), where check_capacity reaches the bridge.
     canned={
         # First capacity check: gated + unauthorized (no token configured cluster-side). Both

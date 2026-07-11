@@ -1,8 +1,8 @@
 """Reusable real-app driver — the shared mechanism behind both the deterministic self-play
-fuzzer (``tests/test_selfplay_fuzz.py``) and the LLM-driven exploratory bug-hunter
+fuzzer (``tests/platform/test_selfplay_fuzz.py``) and the LLM-driven exploratory bug-hunter
 (``tests/eval/explorer.py``).
 
-This module was **factored out** of ``tests/test_selfplay_fuzz.py`` (the hard-won WS-handshake /
+This module was **factored out** of ``tests/platform/test_selfplay_fuzz.py`` (the hard-won WS-handshake /
 gate-resume / state-isolation invariants live here now). It is pure MECHANISM — no policy, no
 LLM. The fuzzer imports it and selects actions with a seeded RNG; the bug-hunter imports the
 SAME machinery and selects actions with an LLM (or the seeded RNG fallback). Because the driver
@@ -21,7 +21,7 @@ What lives here:
     (``act_new_chat`` … ``act_delete_session``). Each action returns nothing; ``check_all``
     runs the full invariant sweep.
 
-Nothing here is a test; it spends NO quota. ``tests/test_selfplay_fuzz.py`` re-exports the
+Nothing here is a test; it spends NO quota. ``tests/platform/test_selfplay_fuzz.py`` re-exports the
 public names below so its module-level references keep working unchanged.
 """
 from __future__ import annotations

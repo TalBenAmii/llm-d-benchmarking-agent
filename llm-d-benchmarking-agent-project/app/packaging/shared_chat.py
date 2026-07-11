@@ -27,7 +27,7 @@ from typing import Any
 # must never carry the owning session id), mirroring the ``/api/share/<token>`` response shape.
 _PUBLIC_FIELDS = ("title", "created_at", "shared_at", "items", "usage")
 
-# The two asset refs in ui/index.html this inliner rewrites, and the boot marker app.js must carry.
+# The two asset refs in app/ui/index.html this inliner rewrites, and the boot marker app.js must carry.
 _CSS_REF = '<link rel="stylesheet" href="/static/styles.css" />'
 _JS_REF = '<script src="/static/app.js"></script>'
 _BOOT_MARKER = "__LLMD_SHARED__"
@@ -61,7 +61,7 @@ def _embed_json(obj: Any) -> str:
 def render_shared_chat(snapshot: dict[str, Any], *, ui_dir: Path) -> str:
     """Render the SPA shell with ``styles.css`` + ``app.js`` inlined and ``snapshot`` embedded,
     producing a dependency-free, read-only, offline viewer. ``ui_dir`` is ``get_settings().ui_dir``
-    (the served ``ui/`` directory)."""
+    (the served ``app/ui/`` directory)."""
     snapshot = snapshot or {}
     public = {k: snapshot.get(k) for k in _PUBLIC_FIELDS}
 
@@ -73,12 +73,12 @@ def render_shared_chat(snapshot: dict[str, Any], *, ui_dir: Path) -> str:
     # /static/* off a server (defeating "self-contained") or can't render the embedded snapshot.
     if _CSS_REF not in html or _JS_REF not in html:
         raise RuntimeError(
-            "shared-chat export: ui/index.html no longer links /static/styles.css + /static/app.js "
+            "shared-chat export: app/ui/index.html no longer links /static/styles.css + /static/app.js "
             "the way render_shared_chat expects — update the inliner."
         )
     if _BOOT_MARKER not in js:
         raise RuntimeError(
-            "shared-chat export: ui/app.js lacks the window.__LLMD_SHARED__ static-boot path."
+            "shared-chat export: app/ui/app.js lacks the window.__LLMD_SHARED__ static-boot path."
         )
 
     html = _FONT_LINK_RE.sub("", html)                       # drop the only external assets

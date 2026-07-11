@@ -32,7 +32,7 @@ MAX_STEPS = 24
 # Pareto/comparison/env/capacity/etc.). Their un-clamped result is persisted to
 # ``session.card_results`` so a resumed/reloaded chat replays the card in its transcript
 # position — the LLM-facing copy in ``messages`` is budget-clamped and unusable for rendering.
-# Keep this in lock-step with the dispatch in ui/app.js `renderToolResultCards`.
+# Keep this in lock-step with the dispatch in app/ui/app.js `renderToolResultCards`.
 CARD_RESULT_TOOLS = frozenset({
     "locate_and_parse_report", "analyze_results", "compare_reports", "compare_harness_runs",
     "probe_environment", "check_capacity", "check_endpoint_readiness", "advise_accelerators",

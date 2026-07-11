@@ -14,7 +14,7 @@ on-demand knowledge index + `CATALOG_POINTER` + `GROUP_CATALOG_NOTE` (+ conditio
 the environment pre-probe are injected as **synthetic per-turn user messages** (`loop.py`
 + `catalog_brief_message` in `prompt.py`), precisely so they don't mutate the cached
 prefix. If you append dynamic text to `build_system_prompt()`, you bust the cache on every
-turn. `tests/test_context_mgmt.py` enforces byte-stability + "catalog body never in the
+turn. `tests/agent/test_context_mgmt.py` enforces byte-stability + "catalog body never in the
 prefix" + "catalog injected exactly once".
 
 ## Other local invariants
@@ -58,6 +58,6 @@ prefix" + "catalog injected exactly once".
 
 ## Scoped tests
 ```bash
-pytest tests/test_context_mgmt.py tests/test_loop.py tests/test_deterministic_msgs.py
+pytest tests/agent/test_context_mgmt.py tests/agent/test_loop.py tests/agent/test_deterministic_msgs.py
 ```
 (`test_context_mgmt.py` is the cache-stability guard — run it after ANY change to `prompt.py`.)

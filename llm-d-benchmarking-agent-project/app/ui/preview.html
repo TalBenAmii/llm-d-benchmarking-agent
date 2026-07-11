@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>llm-d Benchmarking Assistant — UI preview (fixture data)</title>
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4.67 0 78.7 78.7'%3E%3Cg stroke-width='1.74'%3E%3Cpath fill='%23595959' stroke='%23595959' d='m52.97,43.51c-0.83,0-1.65,0.21-2.39,0.64l-10.73,6.19c-1.48,0.85-2.39,2.43-2.39,4.14v12.38c0,1.7,0.91,3.29,2.39,4.14l10.73,6.19c1.47,0.85,3.3,0.85,4.78,0l10.73-6.19c1.48-0.85,2.39-2.43,2.39-4.14v-12.38c0-1.7-0.91-3.28-2.39-4.14v0l-10.73-6.19c-0.74-0.43-1.56-0.64-2.39-0.64zm0,3.74c0.18,0,0.35,0.05,0.52,0.14l10.73,6.19v0c0.32,0.18,0.51,0.52,0.51,0.89v12.38c0,0.37-0.19,0.71-0.52,0.89l-10.73,6.19c-0.32,0.19-0.71,0.19-1.03,0l-10.73-6.19v0c-0.32-0.18-0.51-0.52-0.51-0.89v-12.38c0-0.37,0.19-0.71,0.52-0.89l10.73-6.19c0.16-0.09,0.34-0.14,0.52-0.14z'/%3E%3Cpath fill='%23595959' stroke='%23595959' stroke-linecap='round' d='m64.73,35.25v22.34a1.87,1.87,0,0,0,1.87,1.87,1.87,1.87,0,0,0,1.87-1.87v-24.51z'/%3E%3Cpath fill='%237f317f' stroke='%237f317f' d='m38.07,26.55c0.41,0.72,1,1.33,1.74,1.76l10.7,6.24c1.47,0.86,3.3,0.86,4.77,0.02l10.75-6.15c1.48-0.85,2.4-2.42,2.4-4.13l0.05-12.38c0.01-1.7-0.9-3.29-2.37-4.15l-10.7-6.24c-1.47-0.86-3.3-0.86-4.78-0.02l-10.75,6.15c-1.48,0.85-2.4,2.42-2.4,4.13v0l-0.05,12.39c0,0.85,0.22,1.67,0.63,2.39zm3.25-1.86c-0.09-0.15-0.14-0.33-0.13-0.52l0.05-12.39h0c0-0.37,0.2-0.7,0.52-0.89l10.75-6.15c0.32-0.18,0.71-0.18,1.03,0l10.7,6.24c0.32,0.19,0.51,0.52,0.51,0.9l-0.05,12.39h0c0,0.37-0.2,0.7-0.52,0.89l-10.75,6.15c-0.32,0.18-0.71,0.18-1.03,0l-10.7-6.24c-0.16-0.09-0.29-0.22-0.38-0.38z'/%3E%3Cpath fill='%237f317f' stroke='%237f317f' stroke-linecap='round' d='m25.07,20.44,19.4-11.09a1.87,1.87,0,0,0,0.7-2.55,1.87,1.87,0,0,0-2.55-0.7l-21.27,12.17z'/%3E%3Cpath fill='%237f317f' stroke='%237f317f' d='m31.23,47.82c0.41-0.71,0.65-1.53,0.65-2.39l0.03-12.39c0-1.7-0.91-3.29-2.38-4.14l-10.71-6.22c-1.47-0.86-3.3-0.86-4.78-0.01l-10.74,6.17c-1.48,0.85-2.39,2.43-2.4,4.13l-0.03,12.39c0,1.7,0.91,3.29,2.38,4.14l10.71,6.22c1.47,0.86,3.3,0.86,4.78,0.01v0l10.74-6.17c0.74-0.42,1.34-1.03,1.75-1.74zm-3.23-1.88c-0.09,0.15-0.22,0.28-0.38,0.38l-10.74,6.17v0c-0.32,0.18-0.71,0.18-1.03,0l-10.71-6.22c-0.32-0.19-0.51-0.52-0.51-0.89l0.03-12.39c0-0.37,0.19-0.71,0.52-0.89l10.74-6.17v0c0.32-0.18,0.71-0.18,1.03,0l10.71,6.22c0.32,0.19,0.52,0.52,0.51,0.89l-0.03,12.39c0,0.19-0.05,0.36-0.14,0.52z'/%3E%3Cpath fill='%237f317f' stroke='%237f317f' stroke-linecap='round' d='m32.46,62.14-19.32-11.22a1.87,1.87,0,0,0-2.56,0.68,1.87,1.87,0,0,0,0.68,2.56l21.19,12.31z'/%3E%3C/g%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700&family=Red+Hat+Mono:wght@400;500;600&display=swap" />
+
+  <!-- Relative asset paths so this page works whether served by the app at /static/preview.html
+       or by a plain static server (`python3 -m http.server`) run from this app/ui/ directory. -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <style>
+    /* Preview-only banner explaining this is fixture data, not a live session. */
+    .preview-banner {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      background: var(--accent-strong); color: var(--on-accent);
+      font: 600 12px/1.4 var(--mono); text-align: center; padding: 5px 12px;
+    }
+    body { padding-top: 26px; }
+  </style>
+
+  <script>
+    // Apply theme like the real page…
+    (function () {
+      try {
+        var t = localStorage.getItem("llmd-theme") || "dark";
+        document.documentElement.setAttribute("data-theme", t);
+        // Default debug view ON in the preview so the inline executed-command trail is visible
+        // (the >_ button still toggles it). The real app defaults it off.
+        document.documentElement.setAttribute("data-debug", "on");
+      } catch (e) {}
+    })();
+    // …then flip into preview mode and neutralize the live transport BEFORE app.js runs:
+    // a no-op WebSocket so connect() is inert, and we skip the sessions/history fetches via
+    // the boot guard keyed on this flag.
+    window.__LLMD_PREVIEW__ = true;
+    window.WebSocket = function () { this.readyState = 1; this.send = function () {}; this.close = function () {}; };
+    window.WebSocket.OPEN = 1;
+  </script>
+</head>
+<body>
+  <div class="preview-banner">UI PREVIEW · all numbers below are fixture data driving the real render code — no backend, no LLM</div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-head">
+      <button id="new-chat" class="new-chat" type="button"><span aria-hidden="true">+</span> New chat</button>
+    </div>
+    <div class="sidebar-label">Recent</div>
+    <nav id="conv-list" class="conv-list" aria-label="Recent conversations"></nav>
+    <section id="history" class="history" aria-label="Stored benchmark results">
+      <div id="history-body" class="history-body">
+        <div class="history-controls">
+          <label class="sr-only" for="trend-metric">Trend metric</label>
+          <select id="trend-metric" class="trend-metric"><option value="">Trend: pick a metric…</option></select>
+        </div>
+        <div id="trend-view" class="trend-view" aria-live="polite"></div>
+        <div id="history-list" class="history-list" aria-live="polite"><div class="history-empty">No stored results yet.</div></div>
+      </div>
+      <div class="sidebar-label history-head results-bar">
+        <button id="results-toggle" class="results-toggle" type="button" aria-expanded="false" aria-controls="history-body" title="Show / hide results trends">
+          <span class="results-caret" aria-hidden="true">▾</span>
+          <span>Results</span>
+        </button>
+        <button id="history-refresh" class="icon-btn icon-btn-sm" type="button" title="Refresh">⟳</button>
+      </div>
+    </section>
+  </aside>
+  <div class="main-col">
+  <header>
+    <div class="brand">
+      <button id="sidebar-toggle" class="icon-btn sidebar-toggle" type="button" title="Show / hide chats" aria-label="Toggle sidebar" aria-expanded="false">☰</button>
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 69.37 78.7" width="32" height="36" role="img" aria-label="llm-d">
+          <g stroke-width="1.74">
+            <path class="hx-g" fill="#595959" stroke="#595959" d="m52.97,43.51c-0.83,0-1.65,0.21-2.39,0.64l-10.73,6.19c-1.48,0.85-2.39,2.43-2.39,4.14v12.38c0,1.7,0.91,3.29,2.39,4.14l10.73,6.19c1.47,0.85,3.3,0.85,4.78,0l10.73-6.19c1.48-0.85,2.39-2.43,2.39-4.14v-12.38c0-1.7-0.91-3.28-2.39-4.14v0l-10.73-6.19c-0.74-0.43-1.56-0.64-2.39-0.64zm0,3.74c0.18,0,0.35,0.05,0.52,0.14l10.73,6.19v0c0.32,0.18,0.51,0.52,0.51,0.89v12.38c0,0.37-0.19,0.71-0.52,0.89l-10.73,6.19c-0.32,0.19-0.71,0.19-1.03,0l-10.73-6.19v0c-0.32-0.18-0.51-0.52-0.51-0.89v-12.38c0-0.37,0.19-0.71,0.52-0.89l10.73-6.19c0.16-0.09,0.34-0.14,0.52-0.14z" />
+            <path class="hx-g" fill="#595959" stroke="#595959" stroke-linecap="round" d="m64.73,35.25v22.34a1.87,1.87,0,0,0,1.87,1.87,1.87,1.87,0,0,0,1.87-1.87v-24.51z" />
+            <path class="hx-p" fill="#7f317f" stroke="#7f317f" d="m38.07,26.55c0.41,0.72,1,1.33,1.74,1.76l10.7,6.24c1.47,0.86,3.3,0.86,4.77,0.02l10.75-6.15c1.48-0.85,2.4-2.42,2.4-4.13l0.05-12.38c0.01-1.7-0.9-3.29-2.37-4.15l-10.7-6.24c-1.47-0.86-3.3-0.86-4.78-0.02l-10.75,6.15c-1.48,0.85-2.4,2.42-2.4,4.13v0l-0.05,12.39c0,0.85,0.22,1.67,0.63,2.39zm3.25-1.86c-0.09-0.15-0.14-0.33-0.13-0.52l0.05-12.39h0c0-0.37,0.2-0.7,0.52-0.89l10.75-6.15c0.32-0.18,0.71-0.18,1.03,0l10.7,6.24c0.32,0.19,0.51,0.52,0.51,0.9l-0.05,12.39h0c0,0.37-0.2,0.7-0.52,0.89l-10.75,6.15c-0.32,0.18-0.71,0.18-1.03,0l-10.7-6.24c-0.16-0.09-0.29-0.22-0.38-0.38z" />
+            <path class="hx-p" fill="#7f317f" stroke="#7f317f" stroke-linecap="round" d="m25.07,20.44,19.4-11.09a1.87,1.87,0,0,0,0.7-2.55,1.87,1.87,0,0,0-2.55-0.7l-21.27,12.17z" />
+            <path class="hx-p" fill="#7f317f" stroke="#7f317f" d="m31.23,47.82c0.41-0.71,0.65-1.53,0.65-2.39l0.03-12.39c0-1.7-0.91-3.29-2.38-4.14l-10.71-6.22c-1.47-0.86-3.3-0.86-4.78-0.01l-10.74,6.17c-1.48,0.85-2.39,2.43-2.4,4.13l-0.03,12.39c0,1.7,0.91,3.29,2.38,4.14l10.71,6.22c1.47,0.86,3.3,0.86,4.78,0.01v0l10.74-6.17c0.74-0.42,1.34-1.03,1.75-1.74zm-3.23-1.88c-0.09,0.15-0.22,0.28-0.38,0.38l-10.74,6.17v0c-0.32,0.18-0.71,0.18-1.03,0l-10.71-6.22c-0.32-0.19-0.51-0.52-0.51-0.89l0.03-12.39c0-0.37,0.19-0.71,0.52-0.89l10.74-6.17v0c0.32-0.18,0.71-0.18,1.03,0l10.71,6.22c0.32,0.19,0.52,0.52,0.51,0.89l-0.03,12.39c0,0.19-0.05,0.36-0.14,0.52z" />
+            <path class="hx-p" fill="#7f317f" stroke="#7f317f" stroke-linecap="round" d="m32.46,62.14-19.32-11.22a1.87,1.87,0,0,0-2.56,0.68,1.87,1.87,0,0,0,0.68,2.56l21.19,12.31z" />
+          </g>
+        </svg>
+      </span>
+      <div>
+        <h1>llm-d Benchmarking Assistant</h1>
+        <p class="sub">Describe a use case — I'll deploy, benchmark, and explain the results.</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button id="builder-toggle" type="button" class="builder-btn" title="Design a benchmark — guided builder" aria-label="Open the guided benchmark builder"><span aria-hidden="true">✨</span> Design</button>
+      <button id="debug-toggle" type="button" class="icon-btn" title="Debug view — show the commands the agent ran inline in the chat" aria-label="Toggle debug view" aria-pressed="false">&gt;_</button>
+      <button id="theme-toggle" type="button" class="icon-btn" title="Toggle light / dark theme" aria-label="Toggle theme"></button>
+      <div id="status" class="status" title="connection status">preview</div>
+    </div>
+  </header>
+
+  <div id="run-steps" class="run-steps" role="list" aria-label="Benchmark workflow progress" hidden></div>
+
+  <main id="transcript" aria-live="polite"></main>
+
+  <footer>
+    <!-- Floating composer with the working/status bar slotted in as its top row (matches index.html). -->
+    <form id="composer" autocomplete="off">
+      <div id="working" class="working" role="status" aria-live="polite" hidden>
+        <span class="working-logo" aria-hidden="true">
+          <svg viewBox="0 0 69.37 78.7" width="18" height="20" focusable="false">
+            <g class="working-hex" stroke-width="1.74">
+              <g class="hx1"><path d="m38.07,26.55c0.41,0.72,1,1.33,1.74,1.76l10.7,6.24c1.47,0.86,3.3,0.86,4.77,0.02l10.75-6.15c1.48-0.85,2.4-2.42,2.4-4.13l0.05-12.38c0.01-1.7-0.9-3.29-2.37-4.15l-10.7-6.24c-1.47-0.86-3.3-0.86-4.78-0.02l-10.75,6.15c-1.48,0.85-2.4,2.42-2.4,4.13v0l-0.05,12.39c0,0.85,0.22,1.67,0.63,2.39zm3.25-1.86c-0.09-0.15-0.14-0.33-0.13-0.52l0.05-12.39h0c0-0.37,0.2-0.7,0.52-0.89l10.75-6.15c0.32-0.18,0.71-0.18,1.03,0l10.7,6.24c0.32,0.19,0.51,0.52,0.51,0.9l-0.05,12.39h0c0,0.37-0.2,0.7-0.52,0.89l-10.75,6.15c-0.32,0.18-0.71,0.18-1.03,0l-10.7-6.24c-0.16-0.09-0.29-0.22-0.38-0.38z" /><path stroke-linecap="round" d="m25.07,20.44,19.4-11.09a1.87,1.87,0,0,0,0.7-2.55,1.87,1.87,0,0,0-2.55-0.7l-21.27,12.17z" /></g>
+              <g class="hx2"><path d="m31.23,47.82c0.41-0.71,0.65-1.53,0.65-2.39l0.03-12.39c0-1.7-0.91-3.29-2.38-4.14l-10.71-6.22c-1.47-0.86-3.3-0.86-4.78-0.01l-10.74,6.17c-1.48,0.85-2.39,2.43-2.4,4.13l-0.03,12.39c0,1.7,0.91,3.29,2.38,4.14l10.71,6.22c1.47,0.86,3.3,0.86,4.78,0.01v0l10.74-6.17c0.74-0.42,1.34-1.03,1.75-1.74zm-3.23-1.88c-0.09,0.15-0.22,0.28-0.38,0.38l-10.74,6.17v0c-0.32,0.18-0.71,0.18-1.03,0l-10.71-6.22c-0.32-0.19-0.51-0.52-0.51-0.89l0.03-12.39c0-0.37,0.19-0.71,0.52-0.89l10.74-6.17v0c0.32-0.18,0.71-0.18,1.03,0l10.71,6.22c0.32,0.19,0.52,0.52,0.51,0.89l-0.03,12.39c0,0.19-0.05,0.36-0.14,0.52z" /><path stroke-linecap="round" d="m32.46,62.14-19.32-11.22a1.87,1.87,0,0,0-2.56,0.68,1.87,1.87,0,0,0,0.68,2.56l21.19,12.31z" /></g>
+              <g class="hx3"><path d="m52.97,43.51c-0.83,0-1.65,0.21-2.39,0.64l-10.73,6.19c-1.48,0.85-2.39,2.43-2.39,4.14v12.38c0,1.7,0.91,3.29,2.39,4.14l10.73,6.19c1.47,0.85,3.3,0.85,4.78,0l10.73-6.19c1.48-0.85,2.39-2.43,2.39-4.14v-12.38c0-1.7-0.91-3.28-2.39-4.14v0l-10.73-6.19c-0.74-0.43-1.56-0.64-2.39-0.64zm0,3.74c0.18,0,0.35,0.05,0.52,0.14l10.73,6.19v0c0.32,0.18,0.51,0.52,0.51,0.89v12.38c0,0.37-0.19,0.71-0.52,0.89l-10.73,6.19c-0.32,0.19-0.71,0.19-1.03,0l-10.73-6.19v0c-0.32-0.18-0.51-0.52-0.51-0.89v-12.38c0-0.37,0.19-0.71,0.52-0.89l10.73-6.19c0.16-0.09,0.34-0.14,0.52-0.14z" /><path stroke-linecap="round" d="m64.73,35.25v22.34a1.87,1.87,0,0,0,1.87,1.87,1.87,1.87,0,0,0,1.87-1.87v-24.51z" /></g>
+            </g>
+          </svg>
+        </span>
+        <span class="working-word">Thinking</span><span class="working-dots">…</span>
+        <span class="working-stats"></span>
+        <button id="stop-run" class="stop-run" type="button" title="Stop the current run" aria-label="Stop the current run">◼ Stop</button>
+      </div>
+      <textarea id="input" rows="1" placeholder="e.g. Benchmark a small chat model on my laptop"></textarea>
+      <div class="composer-tools">
+        <!-- Mirrors index.html: auto-approve lives at the bottom-left of the composer (a labeled pill). -->
+        <button id="autoapprove-toggle" type="button" class="autoapprove" title="Auto-approve commands — skip the Approve card for commands in this chat (the plan still asks)" aria-label="Toggle auto-approve for commands" aria-pressed="false"><span class="autoapprove-mark" aria-hidden="true">✓</span><span>Auto-approve</span></button>
+        <button id="send" type="submit">Send</button>
+      </div>
+    </form>
+  </footer>
+  <button id="jump-latest" class="jump-latest" type="button" title="Jump to the latest message" hidden>↓ Latest</button>
+  </div>
+
+  <aside id="resource-side" class="resource-side" aria-label="Live resource usage" aria-live="polite" hidden>
+    <div class="resource-side-head">
+      <span class="resource-side-title">Live resources</span>
+      <button id="resource-side-close" class="icon-btn icon-btn-sm" type="button" title="Hide" aria-label="Hide">×</button>
+    </div>
+    <div id="resource-side-body" class="resource-side-body"></div>
+  </aside>
+
+  <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
+
+
+  <dialog id="builder" class="builder">
+    <div class="builder-head">
+      <span><span aria-hidden="true">✨</span> Design a benchmark</span>
+      <button id="builder-close" class="icon-btn icon-btn-sm" type="button" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="builder-intro">Answer what you know — leave the rest. I'll turn this into a request and
+      recommend the right scenario, harness, and workload for you. You can edit the message before sending.</p>
+    <div class="builder-body">
+      <fieldset class="builder-field">
+        <legend>What are you serving?</legend>
+        <div class="chip-group" data-field="usecase" role="group" aria-label="Use case">
+          <button type="button" class="bchip" data-value="a chat assistant">Chat assistant</button>
+          <button type="button" class="bchip" data-value="long-context RAG / document Q&amp;A">Long-context RAG</button>
+          <button type="button" class="bchip" data-value="code completion">Code completion</button>
+          <button type="button" class="bchip" data-value="batch summarization">Batch summarization</button>
+          <button type="button" class="bchip" data-value="an agentic / tool-calling pipeline">Agentic pipeline</button>
+        </div>
+      </fieldset>
+      <fieldset class="builder-field">
+        <legend>How much load?</legend>
+        <div class="chip-group" data-field="scale" role="group" aria-label="Concurrency">
+          <button type="button" class="bchip" data-value="light load (around 10 concurrent users)">Light · ~10</button>
+          <button type="button" class="bchip" data-value="moderate load (around 100 concurrent users)">Moderate · ~100</button>
+          <button type="button" class="bchip" data-value="heavy load (around 500 concurrent users)">Heavy · ~500</button>
+        </div>
+        <div class="chip-group" data-field="pattern" role="group" aria-label="Load pattern">
+          <button type="button" class="bchip" data-value="steady traffic">Steady</button>
+          <button type="button" class="bchip" data-value="bursty traffic">Bursty</button>
+          <button type="button" class="bchip" data-value="a sweep to find the maximum sustainable throughput">Find max throughput</button>
+        </div>
+      </fieldset>
+      <fieldset class="builder-field">
+        <legend>Token shape</legend>
+        <div class="builder-pair">
+          <div class="chip-group" data-field="input" data-noun="input prompts" role="group" aria-label="Input length">
+            <span class="chip-group-label">Input</span>
+            <button type="button" class="bchip" data-value="short">Short</button>
+            <button type="button" class="bchip" data-value="medium">Medium</button>
+            <button type="button" class="bchip" data-value="long">Long</button>
+          </div>
+          <div class="chip-group" data-field="output" data-noun="responses" role="group" aria-label="Output length">
+            <span class="chip-group-label">Output</span>
+            <button type="button" class="bchip" data-value="short">Short</button>
+            <button type="button" class="bchip" data-value="medium">Medium</button>
+            <button type="button" class="bchip" data-value="long">Long</button>
+          </div>
+        </div>
+      </fieldset>
+      <fieldset class="builder-field">
+        <legend>Quality targets (SLO) <span class="builder-opt">optional</span></legend>
+        <div class="builder-slo">
+          <label>TTFT ≤ <input type="number" id="slo-ttft" class="slo-input" min="0" step="10" inputmode="numeric" placeholder="—"> ms</label>
+          <label>TPOT ≤ <input type="number" id="slo-tpot" class="slo-input" min="0" step="1" inputmode="numeric" placeholder="—"> ms</label>
+          <label>Throughput ≥ <input type="number" id="slo-tput" class="slo-input" min="0" step="10" inputmode="numeric" placeholder="—"> tok/s</label>
+        </div>
+      </fieldset>
+      <fieldset class="builder-field">
+        <legend>Hardware</legend>
+        <div class="chip-group" data-field="hardware" role="group" aria-label="Hardware">
+          <button type="button" class="bchip sel" data-value="CPU-only — the local kind quickstart with a simulated engine">CPU-only (local kind)</button>
+          <button type="button" class="bchip" data-value="GPU">GPU</button>
+        </div>
+      </fieldset>
+    </div>
+    <div class="builder-preview-wrap">
+      <label class="builder-preview-label" for="builder-preview">This is what I'll send — edit if you like:</label>
+      <textarea id="builder-preview" class="builder-preview" rows="6" aria-label="Message preview"></textarea>
+    </div>
+    <div class="builder-actions">
+      <button type="button" id="builder-cancel" class="ghost-btn">Cancel</button>
+      <button type="button" id="builder-send" class="primary-btn">Send to assistant →</button>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+  <script>
+    // ---- fixtures: representative shapes of what the backend streams to the client ----
+    const A = window.__llmd;
+    A.bootChat();   // sets up the active chat pane the renderers append into
+
+    // 1) Run progress stepper — drive a sequence of tool_calls through the real handler.
+    [["probe_environment", {}], ["propose_session_plan", {}], ["ensure_repos", {}],
+     ["write_and_validate_config", {}], ["execute_llmdbenchmark", { subcommand: "standup" }],
+     ["execute_llmdbenchmark", { subcommand: "run" }]
+    ].forEach((t, i) => A.handle({ type: "tool_call", data: { id: "t" + i, name: t[0], input: t[1] } }));
+
+    // 1b) Executed-command trail — these appear INLINE in the chat, in execution order, and only
+    //     when the >_ debug view is on (this preview defaults it on). Read-only probes auto-run;
+    //     the cluster create is mutating, so it's tagged "approved". Toggle >_ to hide them.
+    [
+      { mode: "read_only", auto_run: true, text: "docker info" },
+      { mode: "read_only", auto_run: true, text: "kind get clusters" },
+      { mode: "read_only", auto_run: true, text: "kubectl get nodes -o json" },
+      { mode: "mutating", auto_run: false, text: "kind create cluster --name llmd-quickstart" },
+      { mode: "mutating", auto_run: false, text: "llmdbenchmark standup --spec cicd/kind" },
+      { mode: "mutating", auto_run: false, text: "llmdbenchmark run --spec cicd/kind -l inference-perf -w sanity_random.yaml" },
+    ].forEach((c) => A.handle({ type: "command", data: c }));
+
+    // 2) Assistant message with a fenced code block (copy button) + markdown + a GFM table.
+    A.handle({ type: "assistant_text", data: { text:
+      "I'll stand up a small CPU-only stack, then run **inference-perf** against it:\n\n" +
+      "```bash\nkind create cluster --name llmd-quickstart\nllmdbenchmark standup --spec cicd/kind\n```\n\n" +
+      "Here's where we diverge based on your actual GPU availability:\n\n" +
+      "| Path | Spec | Hardware | Trade-off |\n" +
+      "|------|------|---------:|-----------|\n" +
+      "| **Quick local sanity** | `cicd/kind` | CPU-only sim | Fast, no real GPU, not representative |\n" +
+      "| **Real GPU benchmark** | `guides/optimized-baseline` | Actual GPU | Real numbers, needs a GPU cluster + HF token |\n\n" +
+      "Below are the structured results once the run finishes." } });
+
+    // 2b) A deliberately WIDE SessionPlan table (mirrors the real bug: long right-hand cells).
+    //     Width-containment check — this must scroll inside the bubble, NOT push the chat column
+    //     past the viewport. If the page grows a horizontal scrollbar, the fix has regressed.
+    A.handle({ type: "assistant_text", data: { text:
+      "Let me propose a **SessionPlan** for your approval:\n\n" +
+      "| Field | Value |\n" +
+      "|-------|-------|\n" +
+      "| Use case | Local sanity benchmark on CPU-simulated engine (no GPU needed) |\n" +
+      "| Spec | `cicd/kind` (local kind cluster, simulated inference) |\n" +
+      "| Namespace | `llmd-quickstart` (already exists) |\n" +
+      "| Harness | `inference-perf` (latency-focused load generator) |\n" +
+      "| Workload | `sanity_random.yaml` (small validation profile) |\n" +
+      "| Model | `facebook/opt-125m` (built into the scenario, no HF token needed) |\n" +
+      "| Expected steps | 1. Stand up the sim stack; 2. Smoketest (endpoint check); 3. Run benchmark; 4. Parse & summarize results; 5. (Optional) tear down |\n" +
+      "| Duration | ~5–10 minutes total |\n" +
+      "| Reversible | Yes — teardown removes the stack but keeps the cluster |\n\n" +
+      "Click **Approve** and I'll start the deployment." } });
+
+    // 3) Single-run results card with the goodput gauge + binding constraint.
+    A.renderResultsCard({
+      kind: "run", model: "facebook/opt-125m", harness: "inference-perf",
+      requests_total: 1000, requests_failures: 7, success_rate_pct: 99.3,
+      duration: "PT2M30S", load: "100 req/s",
+      metrics: [
+        { label: "Time to first token", value: 0.123, stat: "mean", units: "s", direction: "lower is better" },
+        { label: "Time per output token", value: 0.0151, stat: "mean", units: "s", direction: "lower is better" },
+        { label: "End-to-end request latency", value: 1.84, stat: "p95", units: "s", direction: "lower is better" },
+        { label: "Output token throughput", value: 523.9, stat: "mean", units: "tokens/s", direction: "higher is better" },
+      ],
+      slo: {
+        overall_met: false, checked_count: 3, success_rate_pct: 99.3,
+        goodput: { estimate_pct: 82.4, estimate_fraction: 0.824 },
+        verdicts: [
+          { metric: "ttft", statistic: "p99", direction: "max", target: 200, observed: 178, units: "ms", met: true },
+          { metric: "tpot", statistic: "p99", direction: "max", target: 15, observed: 21, units: "ms", met: false },
+          { metric: "request_latency", statistic: "p95", direction: "max", target: 2000, observed: 1840, units: "ms", met: true },
+        ],
+      },
+    });
+
+    // 4) Pareto frontier scatter (from an analyze_results sweep).
+    A.renderParetoCard({
+      analyzed: true, n: 5,
+      runs: [
+        { label: "r1", slo: { overall_met: true } }, { label: "r2", slo: { overall_met: true } },
+        { label: "r3", slo: { overall_met: false } }, { label: "r4", slo: { overall_met: true } },
+        { label: "r5", slo: { overall_met: false } },
+      ],
+      pareto: {
+        objectives: [
+          { name: "output_token_rate", direction: "higher", units: "tok/s" },
+          { name: "ttft_p99", direction: "lower", units: "ms" },
+        ],
+        runs: [
+          { label: "r1", objectives: { output_token_rate: 420, ttft_p99: 90 }, on_frontier: true },
+          { label: "r2", objectives: { output_token_rate: 540, ttft_p99: 140 }, on_frontier: true },
+          { label: "r3", objectives: { output_token_rate: 300, ttft_p99: 160 }, on_frontier: false },
+          { label: "r4", objectives: { output_token_rate: 610, ttft_p99: 230 }, on_frontier: true },
+          { label: "r5", objectives: { output_token_rate: 350, ttft_p99: 120 }, on_frontier: false },
+        ],
+        frontier: ["r1", "r2", "r4"],
+      },
+    });
+
+    // 5) A/B comparison delta bars (from compare_reports).
+    A.renderComparisonCard({
+      compared: true, n: 2, baseline: "baseline",
+      comparison: {
+        labels: ["baseline", "candidate"], baseline: "baseline",
+        metrics: [
+          { key: "latency.ttft", name: "TTFT", stat: "p99", units: "ms", direction: "lower", baseline_value: 200,
+            per_run: [{ label: "baseline", value: 200, delta_pct: 0 }, { label: "candidate", value: 150, delta_pct: -25 }] },
+          { key: "throughput.output_token_rate", name: "output tok/s", stat: "mean", units: "tok/s", direction: "higher", baseline_value: 500,
+            per_run: [{ label: "baseline", value: 500, delta_pct: 0 }, { label: "candidate", value: 560, delta_pct: 12 }] },
+          { key: "latency.tpot", name: "TPOT", stat: "p99", units: "ms", direction: "lower", baseline_value: 15,
+            per_run: [{ label: "baseline", value: 15, delta_pct: 0 }, { label: "candidate", value: 18, delta_pct: 20 }] },
+        ],
+        headline: "Compared 2 runs (baseline: baseline). best TTFT: candidate (150 ms); best output tok/s: candidate (560 tok/s).",
+      },
+    });
+
+    // 6) Live resource sparklines — feed several ticks so per-pod history accumulates.
+    const podBase = { "vllm-server-0": [850, 1024], "inference-gateway-0": [120, 256] };
+    for (let i = 0; i < 9; i++) {
+      const rows = Object.keys(podBase).map((name) => {
+        const [c, m] = podBase[name];
+        const cpu = Math.round(c * (0.6 + 0.4 * Math.sin(i / 1.7) + i * 0.03));
+        const mem = Math.round(m * (1 + i * 0.05));
+        return { name, "cpu(cores)": cpu + "m", "memory(bytes)": mem + "Mi" };
+      });
+      A.renderResourceStats({ available: true, namespace: "llmd-quickstart", rows });
+    }
+    // 6a) The "no metrics-server" state — kind ships without it, so this is what a quickstart run
+    // shows. The panel now shows a PASSIVE hint (no button): the agent proactively offers the
+    // approval-gated install BEFORE the run (deterministic probe fact + HARD_RULE), so a mid-run
+    // button is no longer needed. Rendered LAST so the unavailable state is the visible panel here.
+    A.renderResourceStats({ available: false, note: "live resource stats unavailable (no metrics-server)" });
+
+    // 6b) The agent's "what next?" suggestion buttons (clickable; from suggest_next_steps — the
+    // agent chooses how many to offer, up to 6).
+    A.renderAgentSuggestions({ suggestions: [
+      { label: "Save as baseline", prompt: "Save this run as my baseline so future runs can be trended against it" },
+      { label: "Compare to last run", prompt: "Compare this run against a prior comparable run to spot a regression or win" },
+      { label: "Run a sweep", prompt: "Sweep concurrency/config to find the best operating point for this model" },
+    ] });
+
+    // 7) Pre-flight / status cards (from the read-only diagnostic tools).
+    A.renderEnvStatus({
+      container_runtime: { type: "docker", present: true, daemon_up: true },
+      tools: { docker: true, kubectl: true, kind: true, helm: false },
+      venv: { exists: true, path: ".venv" },
+      repos: { "llm-d": { present: true }, "llm-d-benchmark": { present: true } },
+      kube_context: { available: true, context: "kind-llmd-quickstart" },
+      cluster_info: { reachable: true },
+      kind_clusters: { available: true, clusters: ["llmd-quickstart"] },
+      namespaces: { available: true, namespaces: ["default", "llmd-quickstart", "kube-system"] },
+      stack: { checked: true, exists: true, pod_count: 4, ready_count: 3 },
+    });
+    A.renderCapacityCard({
+      spec: "cicd/kind", ran: true, feasible: false, gated: false,
+      errors: ["ERROR: requested KV-cache (21Gi) exceeds per-GPU budget (20Gi) by 1Gi"],
+      warnings: ["WARNING: tensor-parallelism 2 with 1 visible accelerator will under-utilize"],
+    });
+    A.renderReadinessCard({
+      namespace: "llmd-quickstart", ready: false, detail: "1 of 2 services not ready",
+      ready_endpoints: [{ service: "vllm-decode", ready_addresses: 1, not_ready_addresses: 0 }],
+      not_ready_endpoints: [{ service: "vllm-prefill", ready_addresses: 0, not_ready_addresses: 1 }],
+      gateway: { control_plane_ready: true },
+      serving_readiness: { pods: [
+        { name: "vllm-decode-0", ready_condition: "True" },
+        { name: "vllm-prefill-0", ready_condition: "False" },
+      ], health_reachable: true, models_reachable: false },
+    });
+    A.renderAcceleratorCard({
+      available: true, any_accelerator: false, cpu_only: true, advertised_resources: [],
+      nodes: [{ name: "llmd-quickstart-control-plane", accelerators: {}, cpu_only: true, allocatable: { cpu: 8 } }],
+    });
+    A.renderDoeCard({
+      generated: true, experiment_name: "pd-ratio-sweep", total_matrix: 4,
+      n_setup_treatments: 2, n_run_treatments: 2,
+      setup_treatments: [
+        { name: "tp1", "decode.parallelism.tensor": 1 }, { name: "tp2", "decode.parallelism.tensor": 2 },
+      ],
+      run_treatments: [
+        { name: "qps10", "load.rate_qps": 10 }, { name: "qps50", "load.rate_qps": 50 },
+      ],
+    });
+    A.renderOrchestrateCard({
+      namespace: "llmd-quickstart", run_id: "run-abc123", succeeded: false, dead_lettered: true,
+      attempts: [
+        { phase: "failed", reason: "BackoffLimitExceeded", failure: { kind: "oom", message: "container OOMKilled" } },
+        { phase: "failed", reason: "DeadlineExceeded", failure: { kind: "timeout", message: "exceeded activeDeadlineSeconds" } },
+      ],
+      final_failure: { kind: "oom", message: "container OOMKilled (limit 2Gi)" },
+    });
+
+    // 8) Start the working indicator so the live status line + Stop button are visible
+    //    (a real run does this on send; here it just ticks against fixture state).
+    A.startWorking("Benchmarking");
+  </script>
+</body>
+</html>

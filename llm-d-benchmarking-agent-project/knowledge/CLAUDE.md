@@ -60,7 +60,7 @@ knowledge/
   old stem before renaming. Cross-file cueing convention: a file says `read_knowledge('other')` to defer.
 - **Basenames AND stems must stay globally unique across ALL subfolders.** Resolution is by
   basename/stem over the recursive glob, so two files sharing a basename/stem (in different folders)
-  would silently shadow each other. Locked by `tests/test_knowledge_stem_uniqueness.py`. Adding a file:
+  would silently shadow each other. Locked by `tests/platform/test_knowledge_stem_uniqueness.py`. Adding a file:
   drop it in the fitting topic folder with a fresh basename — the layout is navigational, nothing pins
   a file to a folder (no code joins a hard-coded `knowledge/<folder>/…` path except the four direct
   joins in `knowledge_access.py`/`cards.py`/`report_metrics.py`, which pin `reference/`, `conversation/`,
@@ -75,12 +75,12 @@ knowledge/
   advisor files — `usecase_to_profile.yaml`/`key_docs.yaml`/`deploy_path_playbook.md` — are free text, not gated.)
 - **`CLAUDE.md` / `README.md` here are NOT knowledge** — they're filtered out of the glob in
   `app/agent/prompt.py::_knowledge_sections` and `app/tools/access/knowledge_access.py::_knowledge_files`
-  (and `read_knowledge` won't return them). Locked by `tests/test_knowledge_meta_excluded.py`. If you add
+  (and `read_knowledge` won't return them). Locked by `tests/platform/test_knowledge_meta_excluded.py`. If you add
   another meta/doc file here, add its name to that exclusion set or it leaks into the agent's prompt.
 
 ## Scoped checks (run after editing knowledge files)
 ```bash
-pytest tests/test_epp_headers.py tests/test_welllit_advisor.py \
-       tests/test_serving_readiness.py tests/test_new_tools.py \
-       tests/test_knowledge_meta_excluded.py tests/test_knowledge_stem_uniqueness.py
+pytest tests/platform/test_epp_headers.py tests/tools/test_welllit_advisor.py \
+       tests/orchestrator/test_serving_readiness.py tests/tools/test_new_tools.py \
+       tests/platform/test_knowledge_meta_excluded.py tests/platform/test_knowledge_stem_uniqueness.py
 ```

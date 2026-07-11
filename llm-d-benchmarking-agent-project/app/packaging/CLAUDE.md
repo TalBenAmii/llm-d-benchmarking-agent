@@ -13,7 +13,7 @@ package only *asserts the contract* with it.)
   gains a kube verb, update this tuple or in-cluster runs hit Forbidden. Tests pin artifact↔constant agreement
   and the port/path agreement with `app/main.py`.
 - **Both HTML renderers guarantee "zero external assets"** and fail LOUD rather than ship a broken file:
-  `shared_chat` raises if `ui/index.html` lost its CSS/JS refs or `app.js` lost the `__LLMD_SHARED__` boot
+  `shared_chat` raises if `app/ui/index.html` lost its CSS/JS refs or `app.js` lost the `__LLMD_SHARED__` boot
   marker; both escape `</script>` breakout (incl. U+2028/U+2029). Only `_PUBLIC_FIELDS` are embedded —
   deliberately NOT `source_session_id`. `report_card` HTML-escapes every value and never fabricates a metric.
 - **Dependency direction: packaging → storage** (imports `ShareStore`), never the reverse.
@@ -25,5 +25,5 @@ package only *asserts the contract* with it.)
 
 ## Scoped tests
 ```bash
-pytest tests/test_packaging.py tests/test_report_card.py tests/test_shared_chat_export.py
+pytest tests/platform/test_packaging.py tests/platform/test_report_card.py tests/platform/test_shared_chat_export.py
 ```

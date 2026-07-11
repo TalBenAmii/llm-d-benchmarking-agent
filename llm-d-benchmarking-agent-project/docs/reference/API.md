@@ -13,7 +13,7 @@ the LLM as JSON Schema); the registry and descriptions live in
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/` | Serve the chat UI (`ui/index.html`). |
+| `GET` | `/` | Serve the chat UI (`app/ui/index.html`). |
 | `GET` | `/static/*` | Static UI assets. |
 | `GET` | `/healthz` | Liveness (minimal): `{ok: true}` means the process is up and serving; no dependency checks. K8s `livenessProbe` target. |
 | `GET` | `/readyz` | Readiness (Phase 16): `{ready, self_check:{checks:[…]}}` with per-component status (provider configured, repos present, runner ok, workspace writable). `200` when ready, `503` when not. K8s `readinessProbe` target. |
@@ -219,5 +219,5 @@ facts is the LLM's job, guided by `knowledge/`.
   `app/tools/`, and a `ToolSpec` in `app/tools/registry.py` (with a description). The JSON
   Schema is emitted to the LLM automatically.
 - **A new command the agent may run:** edit only `security/allowlist.yaml` (see its header
-  for the worked recipe), no Python change, and add a case to `tests/test_allowlist.py`.
+  for the worked recipe), no Python change, and add a case to `tests/platform/test_allowlist.py`.
   Judgment about when to use it goes in `knowledge/`, not in code.
