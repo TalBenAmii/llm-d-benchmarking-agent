@@ -463,7 +463,12 @@ async def create_share(sid: str) -> JSONResponse:
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     items = [it for it in _history_items(session) if it.get("role") != "approval_request"]
-    if not items:
+    # A chat is shareable only once it holds REAL conversation. Auto-run items are the pre-turn
+    # read-only env probes (docker info, kind get clusters, kubectl get nodes, …) that EVERY new
+    # session runs before the user has said anything — counting them let a brand-new, never-used
+    # chat mint a public link to an otherwise-empty transcript. Gate on conversation items only;
+    # the snapshot itself still carries the full trail below (parity with the resume/debug view).
+    if not any(not (it.get("role") == "command" and it.get("auto_run")) for it in items):
         raise HTTPException(status_code=400, detail="nothing to share yet")
     # Two ordered mint passes. FIRST inline each report chart as a self-contained data: URI: this
     # needs the chart's REAL session_id to resolve the PNG off disk, then DROPS that id (so the

@@ -551,6 +551,30 @@ def test_create_400_for_empty_chat(client_with_share):
     assert client.post(f"/api/sessions/{s.id}/share").status_code == 400
 
 
+def test_create_400_for_probe_only_chat(client_with_share):
+    """BUG: every new session AUTO-RUNS read-only env probes (docker info, kind get clusters,
+    kubectl get nodes, …) BEFORE the user says anything — they land in ``session.commands`` as
+    pre-turn (tool_call_id=None) ``auto_run`` items and render as ``role: command`` history rows.
+    The empty-chat guard only dropped ``approval_request`` rows, so those probes made ``items``
+    non-empty and a brand-new, never-used chat happily minted a PUBLIC link to a transcript with
+    zero conversation. The guard now ignores auto-run rows, so a probe-only chat 400s like a truly
+    empty one; a real user turn (below) is still shareable."""
+    client, _ = client_with_share
+    s = client.app.state.sessions.create()
+    s.commands = [
+        {"tool_call_id": None, "text": "docker info", "argv": ["docker", "info"],
+         "mode": "read_only", "auto_run": True},
+        {"tool_call_id": None, "text": "kind get clusters", "argv": ["kind", "get", "clusters"],
+         "mode": "read_only", "auto_run": True},
+    ]
+    s.persist()
+    assert client.post(f"/api/sessions/{s.id}/share").status_code == 400
+    # One real user message flips it to shareable (200) — the probes are noise, not the gate.
+    s.messages = [{"role": "user", "content": "deploy a tiny model"}]
+    s.persist()
+    assert client.post(f"/api/sessions/{s.id}/share").status_code == 200
+
+
 def test_share_survives_corrupt_session_transcript(client_with_share):
     """BUG: a corrupt/forward-incompatible state.json whose ``messages`` (or any of the
     persisted command/approval/card-result trails) carries a NON-DICT element must NOT 500 the
