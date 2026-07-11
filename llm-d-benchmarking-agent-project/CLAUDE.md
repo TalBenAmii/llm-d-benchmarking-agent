@@ -64,7 +64,7 @@ Knowledge is loaded by `app/config.py` + `app/agent/prompt.py` from the root `kn
 no `app/knowledge/` package.
 
 ## Reference — fetch on demand (NOT inlined here)
-- **What's built / status / feature set** → `docs/reference/FEATURES.md` (read first; how to verify each) + `docs/reference/PROJECT_BRAIN_REFERENCE.md`; gaps → the DEFERRED phases in `docs/reference/FEATURES.md`
+- **What's built / status / feature set** → `docs/reference/FEATURES.md` (read first; how to verify each) + `docs/reference/PROJECT_BRAIN_REFERENCE.md`
 - **Coding conventions** (+ what the finish-time review checks) → **`coding-guidelines`** skill
 - **Finish loop** (commit → review → `--no-ff` merge to main; the `main`-only git hook gates ruff+pytest) → **`finish-implementation`** skill
 - **Test env + run commands + gotchas** → `tests/CLAUDE.md`

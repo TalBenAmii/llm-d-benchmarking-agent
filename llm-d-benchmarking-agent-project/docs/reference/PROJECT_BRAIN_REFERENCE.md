@@ -19,7 +19,7 @@ built and verified 2026-05-31. It has since grown well past that (orchestrator, 
 multi-harness compare, capacity pre-flight, history/trends, observability, one-command deploy).
 
 - **Authoritative, evidence-backed feature inventory + how to verify each:** `FEATURES.md` (read first).
-- **Remaining / deferred work:** the DEFERRED phases in `FEATURES.md` (per-phase rows in `docs/reference/BENCHMARK_FEATURE_COVERAGE.md`).
+- **Per-upstream-feature coverage status:** `docs/reference/BENCHMARK_FEATURE_COVERAGE.md`.
 - **Design rationale + MVP implementation-status record:** git history only (`docs/history/plan.md`, removed 2026-07-10).
 - **Tool count is never hard-coded here:** `app/tools/registry.py` (`build_registry()`) is the only source of truth.
 

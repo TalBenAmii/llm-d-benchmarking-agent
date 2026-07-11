@@ -17,7 +17,7 @@ Kubernetes-native benchmark orchestrator, and results analyzer for
 | [SECURITY.md](reference/SECURITY.md) | operators / reviewers | Threat model: trust boundaries, the allowlist/approval model, secret scrubbing, network-exposure guidance, what requires isolation. |
 | [TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md) | operators | Symptom → what to check; debug mode; the structured logs + `corr_id`; the readiness/metrics endpoints. |
 | [INTERACTIVE_TEST_GUIDE.md](guides/INTERACTIVE_TEST_GUIDE.md) | contributors / testers | Follow-along runbook to drive every feature by hand with a real LLM. |
-| [BENCHMARK_FEATURE_COVERAGE.md](reference/BENCHMARK_FEATURE_COVERAGE.md) | contributors / reviewers | Benchmark-CLI feature-coverage catalog (✅/🟡/⬜): what's wired vs deferred. |
+| [BENCHMARK_FEATURE_COVERAGE.md](reference/BENCHMARK_FEATURE_COVERAGE.md) | contributors / reviewers | Benchmark-CLI feature-coverage catalog (✅/🟡/⬜): what's wired, per upstream feature. |
 | [USEFUL_REPO_DOCS.md](reference/USEFUL_REPO_DOCS.md) | contributors | Curated index of which upstream `llm-d` / `llm-d-benchmark` docs matter and why. |
 | [CONTEXT.md](reference/CONTEXT.md) | contributors / reviewers | Domain glossary: the project's shared vocabulary (spec, harness, workload, SessionPlan, goodput, …) with "avoid" synonyms. |
 | [CONFIG_AUDIT_LOG.md](project/CONFIG_AUDIT_LOG.md) | maintainers | Dated config/model-drift audit entries: the running log of configuration and model-version reconciliations. |
@@ -28,8 +28,8 @@ Ops assets live under [`deploy/observability/`](../deploy/observability/): a Pro
 config, alert rules (`alerts.rules.yaml`), and a Grafana dashboard.
 
 Project root: [`README.md`](../../README.md) (overview, at the repo root), [`CLAUDE.md`](../CLAUDE.md) (working
-rules), and [`FEATURES.md`](reference/FEATURES.md) (live, evidence-backed feature inventory + the
-remaining/deferred phases). The agent's judgment lives in [`knowledge/`](../knowledge/).
+rules), and [`FEATURES.md`](reference/FEATURES.md) (live, evidence-backed feature
+inventory). The agent's judgment lives in [`knowledge/`](../knowledge/).
 
 UI screenshots used by docs/demos live in [`images/`](images/); the informal working backlog is
 [`TODO.md`](project/TODO.md). Design history (the original proposal + plan, and the five shipped
@@ -61,6 +61,3 @@ upstream as a module in `llm-d-benchmark` (proposal §5.3 / §10). What's in pla
   reviewer can verify behavior deterministically.
 - **One-command deploy:** a hardened image + Helm chart with
   least-privilege RBAC ([DEPLOYMENT.md](guides/DEPLOYMENT.md)).
-
-Open items before a formal upstream PR are tracked in [`FEATURES.md`](reference/FEATURES.md)'s DEFERRED
-phases.
