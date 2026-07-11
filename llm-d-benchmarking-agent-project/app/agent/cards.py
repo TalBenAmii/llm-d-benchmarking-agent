@@ -94,7 +94,7 @@ def parse_welcome(text: str) -> dict[str, Any] | None:
 # Scope note — why ONLY ``analyze_results`` and not ``locate_and_parse_report``: the single-run
 # benchmark's structured view (the latency/throughput tiles, the percentile ladder, and the
 # per-run chart thumbnails) is already rendered by the frontend's report-summary card
-# (``renderReportSummary`` in ``ui/app.js``), driven directly from the same validated
+# (``renderReportSummary`` in ``app/ui/app.js``), driven directly from the same validated
 # ``locate_and_parse_report`` result. Building a second card from that report here only duplicated
 # those metrics in a separate, chart-less table — so we don't. This card adds the one thing the
 # report-summary card does NOT carry: the analyzer's exact, deterministic SLO pass/fail verdicts

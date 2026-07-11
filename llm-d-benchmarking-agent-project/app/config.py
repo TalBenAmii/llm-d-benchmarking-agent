@@ -231,7 +231,7 @@ class Settings(BaseSettings):
 
     @property
     def ui_dir(self) -> Path:
-        return PROJECT_ROOT / "ui"
+        return PROJECT_ROOT / "app" / "ui"
 
     @property
     def benchmark_report_schema_path(self) -> Path:

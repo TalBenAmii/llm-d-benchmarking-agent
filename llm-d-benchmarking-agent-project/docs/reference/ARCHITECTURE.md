@@ -28,7 +28,7 @@ Everything below follows from two rules (see [`CLAUDE.md`](../../CLAUDE.md)):
 ## High-level picture
 
 ```
-                    Browser chat UI (ui/: HTML/JS/CSS)
+                    Browser chat UI (app/ui/: HTML/JS/CSS)
                           │  WebSocket /ws
                           │  (assistant text · tool calls · streamed command output ·
                           │   approval cards · results · the executed-command trail)
@@ -64,7 +64,7 @@ Everything below follows from two rules (see [`CLAUDE.md`](../../CLAUDE.md)):
 
 ## Components (by layer)
 
-### UI: `ui/`
+### UI: `app/ui/`
 A static, dependency-free chat client (`index.html`, `app.js`, `styles.css`) served by the
 backend. It speaks the WebSocket event protocol (below), renders streamed command output,
 shows Approve/Reject cards with the exact `argv`, exposes a Debug view of the full

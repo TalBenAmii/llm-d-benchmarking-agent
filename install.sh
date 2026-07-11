@@ -7,7 +7,7 @@
 # DELEGATE the actual deploy to scripts/install/install_service.sh (the real Helm installer) ->
 # verify /healthz + /readyz -> LEAVE THE SERVICE RUNNING and (by default, on a terminal) open the UI.
 # The Helm logic lives in install_service.sh; this script does not duplicate it. For a
-# build+deploy+assert+AUTO-TEARDOWN e2e test instead, use testing/cluster-service-sim/run.sh.
+# build+deploy+assert+AUTO-TEARDOWN e2e test instead, use harnesses/cluster-service-sim/run.sh.
 #
 # Caveats: the image is a ~1 GB "full-bake" and the FIRST build is slow and needs network
 # egress (it clones the CLI + toolchain). On WSL2, run from the Linux filesystem (not /mnt/*).
@@ -32,7 +32,7 @@ create kind cluster -> load image -> DELEGATE the deploy to scripts/install/inst
 verify /healthz + /readyz. If no Claude auth is configured it checks whether you're signed in to the
 Claude app (offering to sign in + mint a subscription token if not), then LEAVES THE SERVICE RUNNING
 and (by default, on a terminal) opens the chat UI in your browser.
-(For a build+deploy+assert+auto-teardown e2e test instead, use testing/cluster-service-sim/run.sh.)
+(For a build+deploy+assert+auto-teardown e2e test instead, use harnesses/cluster-service-sim/run.sh.)
 
 Usage:
   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/install.sh)
@@ -148,7 +148,7 @@ http_get() {
   HTTP_CODE="$(timeout 15 curl -sS -o "$BODY_FILE" -w '%{http_code}' "http://127.0.0.1:$PORT$1" 2>/dev/null || echo 000)"
 }
 
-# Curl-bootstrap (mirrors scripts/install_local.sh): this file also runs via `bash <(curl … install.sh)`,
+# Curl-bootstrap (mirrors scripts/install/install_local.sh): this file also runs via `bash <(curl … install.sh)`,
 # where it is NOT inside a checkout (no sibling project dir). In that case clone the repo into INSTALL_DIR
 # and re-exec the on-disk copy so every path below resolves. A real checkout (marker file present) is a no-op.
 bootstrap_if_curl() {
@@ -517,7 +517,7 @@ report() {
   log "Tear down:"
   log "    kind delete cluster --name $CLUSTER"
   log "Full e2e test (build+deploy+assert+auto-teardown):"
-  log "    bash llm-d-benchmarking-agent-project/testing/cluster-service-sim/run.sh"
+  log "    bash llm-d-benchmarking-agent-project/harnesses/cluster-service-sim/run.sh"
 }
 
 # --open: foreground port-forward + best-effort browser open, blocking until Ctrl-C.

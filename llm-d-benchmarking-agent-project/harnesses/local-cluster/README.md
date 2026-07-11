@@ -46,7 +46,7 @@ the real K8s scheduler.
 ## Usage
 
 ```bash
-cd testing/local-cluster
+cd harnesses/local-cluster
 
 # kind mode: cluster + fake GPUs on every node
 ./setup.sh                       # multi-node, 4 fake GPUs each
@@ -78,13 +78,13 @@ Requirements: `kubectl` + `kind` (kind mode) on PATH; an internet connection the
 
 ## Product safety: how we keep this out of the shipped artifact
 
-The product is exactly what the `Dockerfile` COPYs (`app/ security/ knowledge/ ui/` + two
+The product is exactly what the `Dockerfile` COPYs (`app/` — which carries the static UI at `app/ui/` — `security/ knowledge/ scripts/` + two
 metadata files) plus the `deploy/` charts. This harness lives entirely outside that set and is
 guarded three ways:
 
-1. `.dockerignore` excludes `testing/`, so it can't even enter the build context.
+1. `.dockerignore` excludes `harnesses/`, so it can't even enter the build context.
 2. `tests/test_product_boundary.py` asserts (a) the Dockerfile COPY set never names
-   `testing/`, (b) `.dockerignore` excludes it, and (c) no module under `app/` imports it. A
+   `harnesses/`, (b) `.dockerignore` excludes it, and (c) no module under `app/` imports it. A
    future change that wires the mock into the product fails CI loudly.
 3. No custom images, no app code: the fake-GPU mechanisms are upstream (kind node PATCH,
    kwok). There is nothing here to maintain inside the product, and the agent drives the mock

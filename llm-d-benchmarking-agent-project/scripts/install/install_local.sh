@@ -16,18 +16,18 @@
 # When it finishes:   ./scripts/run.sh   →   http://127.0.0.1:8000
 #
 # Usage:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install_local.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install/install_local.sh)
 #                                        # curl-bootstrap: clone into INSTALL_DIR, then run on-disk
-#   ./scripts/install_local.sh                 # full bootstrap (repos + client deps + bench + app)
-#   ./scripts/install_local.sh --dev           # + dev extras (chart-testing; this project's .[dev])
-#   ./scripts/install_local.sh --prereqs       # + Docker & kind (host cluster prereqs; needs passwordless sudo)
-#   ./scripts/install_local.sh --app-only      # ONLY this project's venv + .env (skip the upstream installers)
-#   ./scripts/install_local.sh --no-client     # skip the llm-d client toolchain step
-#   ./scripts/install_local.sh --no-bench      # skip the llm-d-benchmark framework step
-#   ./scripts/install_local.sh --no-clone      # don't clone missing repos (fail if a needed repo is absent)
-#   ./scripts/install_local.sh --no-llm-setup  # skip the interactive Claude-plan (LLM provider) step at the end
-#   ./scripts/install_local.sh --no-mcp        # skip installing + registering the llm-d-bench MCP server
-#   ./scripts/install_local.sh -h | --help
+#   ./scripts/install/install_local.sh                 # full bootstrap (repos + client deps + bench + app)
+#   ./scripts/install/install_local.sh --dev           # + dev extras (chart-testing; this project's .[dev])
+#   ./scripts/install/install_local.sh --prereqs       # + Docker & kind (host cluster prereqs; needs passwordless sudo)
+#   ./scripts/install/install_local.sh --app-only      # ONLY this project's venv + .env (skip the upstream installers)
+#   ./scripts/install/install_local.sh --no-client     # skip the llm-d client toolchain step
+#   ./scripts/install/install_local.sh --no-bench      # skip the llm-d-benchmark framework step
+#   ./scripts/install/install_local.sh --no-clone      # don't clone missing repos (fail if a needed repo is absent)
+#   ./scripts/install/install_local.sh --no-llm-setup  # skip the interactive Claude-plan (LLM provider) step at the end
+#   ./scripts/install/install_local.sh --no-mcp        # skip installing + registering the llm-d-bench MCP server
+#   ./scripts/install/install_local.sh -h | --help
 #
 # The three repos are expected as siblings of this project. Override their location with
 # REPOS_DIR=/path (matches the agent's own REPOS_DIR setting). In curl-bootstrap mode the repo is
@@ -47,7 +47,7 @@ case "${1:-}" in -h|--help) usage; exit 0 ;; esac   # before the bootstrap, so c
 # real path, so use it to locate the project only when that yields a real checkout; otherwise clone
 # the repo into INSTALL_DIR and re-exec the on-disk copy so every path below resolves normally.
 INSTALL_DIR="${INSTALL_DIR:-$HOME/llm-d-benchmarking-agent}"
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/.." 2>/dev/null && pwd || true)"   # this script lives in scripts/
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/../.." 2>/dev/null && pwd || true)"   # this script lives in scripts/install/
 if [[ -z "$PROJECT_DIR" || ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
   [[ "${_AGENT_BOOTSTRAPPED:-0}" == 1 ]] && { echo "install_local.sh: project not found after cloning (bootstrap loop)." >&2; exit 1; }
   command -v git >/dev/null 2>&1 || { echo "install_local.sh: git is required to fetch the repo — install git and re-run." >&2; exit 1; }
@@ -56,9 +56,9 @@ if [[ -z "$PROJECT_DIR" || ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
     git clone "https://github.com/TalBenAmii/llm-d-benchmarking-agent" "$INSTALL_DIR"
   fi
   PROJECT_DIR="$INSTALL_DIR/llm-d-benchmarking-agent-project"
-  [[ -f "$PROJECT_DIR/scripts/install_local.sh" ]] || { echo "install_local.sh: $PROJECT_DIR/scripts/install_local.sh missing after clone." >&2; exit 1; }
+  [[ -f "$PROJECT_DIR/scripts/install/install_local.sh" ]] || { echo "install_local.sh: $PROJECT_DIR/scripts/install/install_local.sh missing after clone." >&2; exit 1; }
   export _AGENT_BOOTSTRAPPED=1
-  exec bash "$PROJECT_DIR/scripts/install_local.sh" "$@"   # re-run on-disk so BASH_SOURCE paths resolve
+  exec bash "$PROJECT_DIR/scripts/install/install_local.sh" "$@"   # re-run on-disk so BASH_SOURCE paths resolve
 fi
 REPOS_DIR="${REPOS_DIR:-$(dirname "$PROJECT_DIR")}"   # repos are siblings of the project
 GUIDE_REPO="$REPOS_DIR/llm-d"
@@ -88,7 +88,7 @@ step() { printf '\n\033[1;35m━━ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[install] %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31m[install] ERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 trap 'rc=$?; [[ $rc -ne 0 ]] && printf "\n\033[1;31m[install] aborted (exit %s).\033[0m See the message above; fix it and re-run (the script is idempotent).\n" "$rc" >&2' EXIT
-# shellcheck source-path=SCRIPTDIR/..
+# shellcheck source-path=SCRIPTDIR/../..
 # shellcheck source=scripts/_env.sh
 source "$PROJECT_DIR/scripts/_env.sh"
 add_local_bin_to_path   # ~/.local/bin holds claude + uv; put it on PATH so every step below sees them

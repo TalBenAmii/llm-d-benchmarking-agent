@@ -2,7 +2,7 @@
 # Stand up the local mock-GPU cluster — DEBUG-ONLY (see ./README.md).
 #
 # This is host-side test infrastructure; it is NOT driven by the agent and NEVER ships in the
-# product image (.dockerignore excludes testing/, enforced by tests/test_product_boundary.py).
+# product image (.dockerignore excludes harnesses/, enforced by tests/test_product_boundary.py).
 #
 # Two modes:
 #   --mode kind   (default)  Real kind cluster; every node is PATCHED to advertise fake

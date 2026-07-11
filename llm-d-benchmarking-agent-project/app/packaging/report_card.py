@@ -25,7 +25,7 @@ from app.dig import dict_or_empty as _d
 from app.dig import dig
 
 # The official llm-d mark (llm-d.ai/img/llm-d-icon.svg, coordinates rebased + minified) as an
-# INLINE <svg> element (HTML5 needs no xmlns; same mark as ui/index.html). Inlined, not a data
+# INLINE <svg> element (HTML5 needs no xmlns; same mark as app/ui/index.html). Inlined, not a data
 # URI / <img src>, so the document carries ZERO URLs at all (not even the SVG namespace URI) —
 # keeping the "no external asset link" guarantee airtight.
 _LOGO_SVG = (

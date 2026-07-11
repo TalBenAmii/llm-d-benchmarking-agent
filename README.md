@@ -87,7 +87,7 @@ the service running, and opens the UI in your browser.
 ```bash
 ./install.sh --no-open           # deploy without opening a browser (prints the port-forward line)
 kind delete cluster --name bench-agent                                   # tear it all down
-bash llm-d-benchmarking-agent-project/testing/cluster-service-sim/run.sh # full build+deploy+assert+auto-teardown e2e
+bash llm-d-benchmarking-agent-project/harnesses/cluster-service-sim/run.sh # full build+deploy+assert+auto-teardown e2e
 ```
 
 | `install.sh` flag | What |
@@ -105,15 +105,15 @@ Skip Kubernetes and run the app straight on your host (uvicorn on `127.0.0.1:800
 
 ```bash
 # One-liner: clones into ~/llm-d-benchmarking-agent, then installs everything:
-bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install_local.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install/install_local.sh)
 
 # ...or clone first:
 git clone https://github.com/TalBenAmii/llm-d-benchmarking-agent.git
 cd llm-d-benchmarking-agent/llm-d-benchmarking-agent-project
 
-./scripts/install_local.sh            # upstream repos + llm-d toolchain + benchmark CLI + app + MCP server
-./scripts/install_local.sh --prereqs  # ...also Docker + kind for the local quickstart (needs passwordless sudo)
-./scripts/install_local.sh --no-mcp   # ...skip the MCP-server setup (web UI only)
+./scripts/install/install_local.sh            # upstream repos + llm-d toolchain + benchmark CLI + app + MCP server
+./scripts/install/install_local.sh --prereqs  # ...also Docker + kind for the local quickstart (needs passwordless sudo)
+./scripts/install/install_local.sh --no-mcp   # ...skip the MCP-server setup (web UI only)
 
 # then start the agent; the installer prints this exact line; --open opens http://127.0.0.1:8000:
 cd ~/llm-d-benchmarking-agent/llm-d-benchmarking-agent-project && ./scripts/run.sh --open
@@ -148,7 +148,7 @@ server with Claude Code:
 bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-bench-mcp/main/scripts/install.sh)
 ```
 
-> **Already set up by the main installer.** `./scripts/install_local.sh` above registers this
+> **Already set up by the main installer.** `./scripts/install/install_local.sh` above registers this
 > server by default (opt out with `--no-mcp`); the one-liner here is the MCP-first path. It also
 > installs the web UI into the same venv, so either installer leaves you with both front-ends.
 
@@ -388,8 +388,8 @@ All paths under [`llm-d-benchmarking-agent-project/`](llm-d-benchmarking-agent-p
 | `app/` | FastAPI backend: agent loop, tools, orchestrator, security, validation (mechanism only) |
 | `security/allowlist.yaml` | The deny-by-default command policy (data) |
 | `knowledge/` | The agent's editable brain: playbooks and heuristics (no code) |
-| `ui/` | Static chat UI (HTML/JS/CSS) |
-| `scripts/` | Entry points (`install_local.sh`, `install_service.sh`, `run.sh`, `setup-claude-plan.sh`) + helpers |
+| `app/ui/` | Static chat UI (HTML/JS/CSS) |
+| `scripts/` | Entry points (`run.sh` + `install/`: `install_local.sh`, `install_service.sh`, `setup-claude-plan.sh`) + helpers |
 | `deploy/` | Dockerfile assets, Helm chart, observability |
 | `tests/` | pytest (unit + integration + flow validation) |
 

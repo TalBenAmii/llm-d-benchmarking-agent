@@ -34,7 +34,7 @@ source "scripts/_env.sh"   # provides _tty_interactive + ensure_env + read_env +
 # usable terminal there is nobody to ask — skip cleanly, never hang a scripted install. _tty_interactive
 # (shared with the menu helpers, one definition) is the single source of truth: it requires /dev/tty to
 # be openable AND our process to be its FOREGROUND process group, so a background/non-foreground job
-# (`./scripts/install_local.sh &`, nohup, WSL/ssh non-interactive exec) — which would SIGTTIN-stop or block
+# (`./scripts/install/install_local.sh &`, nohup, WSL/ssh non-interactive exec) — which would SIGTTIN-stop or block
 # forever on the first read — takes the clean-skip path instead of prompting.
 if _tty_interactive; then TTY=/dev/tty; else
   log "No interactive terminal — skipping Claude-plan setup. Run ./scripts/install/setup-claude-plan.sh later."
@@ -82,7 +82,7 @@ esac
 # and walk a logged-in user into a re-login that then "fails" for the wrong reason.
 if command -v python3 >/dev/null 2>&1; then PYJSON="python3"
 elif [[ -x .venv/bin/python ]]; then PYJSON=".venv/bin/python"
-else die "python3 is required (to read 'claude auth status') — install it, or run ./scripts/install_local.sh first, then re-run this script."
+else die "python3 is required (to read 'claude auth status') — install it, or run ./scripts/install/install_local.sh first, then re-run this script."
 fi
 # Fields: loggedIn → "true"/"", email/subscriptionType → value/"".
 refresh_auth() { AUTH_JSON="$(claude auth status --json 2>/dev/null || true)"; }

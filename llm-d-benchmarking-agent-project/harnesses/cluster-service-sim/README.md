@@ -5,7 +5,7 @@ A local test adapter that deploys the agent as a Kubernetes service onto a throw
 (`scripts/install/install_service.sh`) and the project Helm chart, and asserts that the application
 fully works end to end.
 
-> This is test scaffolding; it never ships in the product image. `testing/` is excluded by
+> This is test scaffolding; it never ships in the product image. `harnesses/` is excluded by
 > `.dockerignore` and `tests/test_product_boundary.py` turns "the harness never enters the
 > build context" into a checked invariant. This adapter imports nothing from `app/`.
 
@@ -47,17 +47,17 @@ fully works end to end.
 
 ```bash
 # From the project root (or anywhere — the script resolves its own paths):
-testing/cluster-service-sim/run.sh                 # build/reuse image, deploy, assert, tear down
-testing/cluster-service-sim/run.sh --keep          # leave the cluster up for inspection afterwards
-testing/cluster-service-sim/run.sh --no-build      # require the image to already exist locally
+harnesses/cluster-service-sim/run.sh                 # build/reuse image, deploy, assert, tear down
+harnesses/cluster-service-sim/run.sh --keep          # leave the cluster up for inspection afterwards
+harnesses/cluster-service-sim/run.sh --no-build      # require the image to already exist locally
 
 # PRIMARY: a Claude subscription OAuth token -> deploys claude-agent-sdk AND runs the live-chat round-trip:
-CLAUDE_CODE_OAUTH_TOKEN=... testing/cluster-service-sim/run.sh
-#   or: testing/cluster-service-sim/run.sh --oauth-token ...
+CLAUDE_CODE_OAUTH_TOKEN=... harnesses/cluster-service-sim/run.sh
+#   or: harnesses/cluster-service-sim/run.sh --oauth-token ...
 
 # FALLBACK: an Anthropic API key -> deploys anthropic AND runs the live-chat round-trip:
-ANTHROPIC_API_KEY=sk-ant-... testing/cluster-service-sim/run.sh
-#   or: testing/cluster-service-sim/run.sh --anthropic-key sk-ant-...
+ANTHROPIC_API_KEY=sk-ant-... harnesses/cluster-service-sim/run.sh
+#   or: harnesses/cluster-service-sim/run.sh --anthropic-key sk-ant-...
 ```
 
 Useful flags (`--help` lists all): `--oauth-token`, `--anthropic-key`, `--cluster`,
@@ -90,7 +90,7 @@ cluster-service copy, independent of the local `uvicorn` app `run-app.sh` also s
 
 ```bash
 wsl.exe -d kind-fresh -u root -- bash -lc \
-  'cd /root/llm-d-benchmarking-agent-project && testing/cluster-service-sim/run.sh'
+  'cd /root/llm-d-benchmarking-agent-project && harnesses/cluster-service-sim/run.sh'
 ```
 
 (If `helm` is not on `PATH` in the distro, install it first, then re-run.)

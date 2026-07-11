@@ -3410,7 +3410,7 @@ function bootSharedStatic(data) {
 }
 
 // ---- boot ---------------------------------------------------------------
-// ui/preview.html sets window.__LLMD_PREVIEW__ to drive the renderers with fixture data and no
+// app/ui/preview.html sets window.__LLMD_PREVIEW__ to drive the renderers with fixture data and no
 // backend. In that mode we skip the live boot (sessions/history fetch + WebSocket connect) and
 // expose the render entry points so the preview can exercise the real rendering paths.
 if (window.__LLMD_SHARED__) {

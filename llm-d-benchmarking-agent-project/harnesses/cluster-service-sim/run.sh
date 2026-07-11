@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run.sh — LOCAL cluster-service smoke adapter (NOT product; testing/ is build-excluded).
+# run.sh — LOCAL cluster-service smoke adapter (NOT product; harnesses/ is build-excluded).
 #
 # Deploys the agent as a Kubernetes SERVICE onto a THROWAWAY `kind` cluster — exercising the
 # real service installer (scripts/install/install_service.sh) + Helm chart — and asserts "the app fully
@@ -7,7 +7,7 @@
 # boundary, and (when a key is present) one live-chat round-trip over the /ws WebSocket.
 #
 # It is a TEST harness for a maintainer to run on a box that HAS docker+kind+kubectl+helm; it is
-# never baked into the image (.dockerignore excludes testing/, tests/test_product_boundary.py
+# never baked into the image (.dockerignore excludes harnesses/, tests/test_product_boundary.py
 # turns that into a checked invariant). It self-terminates: EVERY wait is hard-bounded (no
 # unbounded loop can wedge), a post-build watchdog caps the whole cluster phase, and a trap tears
 # the cluster down on exit unless --keep.
@@ -38,7 +38,7 @@ set -euo pipefail
 
 # ─── location ────────────────────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"            # testing/cluster-service-sim -> project root
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"            # harnesses/cluster-service-sim -> project root
 INSTALLER="$PROJECT_DIR/scripts/install/install_service.sh"      # the service installer we exercise
 CHART_DIR="$PROJECT_DIR/deploy/helm/llm-d-benchmarking-agent"  # same chart install_service.sh deploys
 MAIN_PID=$$

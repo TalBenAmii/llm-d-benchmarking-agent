@@ -22,7 +22,7 @@ Dockerfile, chart, and CI scaffold, not paraphrased.
 
 There are two entirely separate installers; pick by where the agent runs.
 
-| | `scripts/install_local.sh` | `scripts/install/install_service.sh` |
+| | `scripts/install/install_local.sh` | `scripts/install/install_service.sh` |
 |---|---|---|
 | **Runs the agent** | on your laptop/dev box (a `.venv` + `./scripts/run.sh`) | as a Pod inside a Kubernetes cluster (Helm-deployed) |
 | **What it sets up** | clones the 3 sibling repos, installs the client toolchain + `llmdbenchmark` CLI + this app's venv + `.env` + MCP server | `helm upgrade --install` of the pre-built published image into an existing cluster, with a namespace-scoped SA + least-privilege RBAC |
@@ -302,10 +302,10 @@ echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
 ### Run the kind adapter
 
 ```bash
-bash testing/cluster-service-sim/run.sh
+bash harnesses/cluster-service-sim/run.sh
 ```
 
-> Note: `testing/cluster-service-sim/run.sh` is the kind end-to-end adapter for this feature. It builds
+> Note: `harnesses/cluster-service-sim/run.sh` is the kind end-to-end adapter for this feature. It builds
 > the image, spins up a kind cluster, deploys via the real `install_service.sh` + chart, and asserts
 > `/healthz` + `/readyz` + `/api/provider`, plus the RBAC least-privilege boundary (an in-Pod
 > `kubectl delete ns kube-system` must be refused `Forbidden`) and, only when an OAuth token or an
@@ -324,7 +324,7 @@ bash fresh-env/run-app.sh --with-runtime --detach
 
 # Then run the adapter INSIDE that distro (the project is injected at /root/llm-d-benchmarking-agent-project):
 wsl -d kind-fresh -u root -- bash -lc \
-  'cd /root/llm-d-benchmarking-agent-project && bash testing/cluster-service-sim/run.sh'
+  'cd /root/llm-d-benchmarking-agent-project && bash harnesses/cluster-service-sim/run.sh'
 ```
 
 To wipe the distro and rebuild from the golden image, re-run `bash fresh-env/run-app.sh` (add
@@ -348,7 +348,7 @@ golden base image).
 | Local build + install | `./scripts/install/install_service.sh --build` (+ `kind load docker-image <img>`) |
 | Reach the UI | `kubectl -n <ns> port-forward svc/<release>-llm-d-benchmarking-agent 8000:8000` |
 | Post-install notes | `helm get notes <release> -n <ns>` |
-| Test (kind adapter) | `bash testing/cluster-service-sim/run.sh` |
+| Test (kind adapter) | `bash harnesses/cluster-service-sim/run.sh` |
 | Test (fresh WSL env) | `bash fresh-env/run-app.sh --with-runtime --detach` |
 
 ### Key config knobs

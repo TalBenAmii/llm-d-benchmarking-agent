@@ -35,9 +35,9 @@ tests/
 
 # Debug-only local mock-cluster harness (multi-node kind / kwok fake-GPU scaffolding used to
 # exercise multi-GPU orchestration without real hardware). NEVER part of the product — the
-# Dockerfile only COPYs the five runtime dirs (app, security, knowledge, ui, scripts), and
-# tests/test_product_boundary.py enforces it.
-testing/
+# Dockerfile only COPYs the four runtime dirs (app — which includes the static UI at app/ui —
+# security, knowledge, scripts), and tests/test_product_boundary.py enforces it.
+harnesses/
 
 # VCS + editor + OS noise.
 .git/

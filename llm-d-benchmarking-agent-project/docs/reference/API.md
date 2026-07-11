@@ -13,7 +13,7 @@ the LLM as JSON Schema); the registry and descriptions live in
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/` | Serve the chat UI (`ui/index.html`). |
+| `GET` | `/` | Serve the chat UI (`app/ui/index.html`). |
 | `GET` | `/static/*` | Static UI assets. |
 | `GET` | `/healthz` | Liveness (minimal): `{ok: true}` means the process is up and serving; no dependency checks. K8s `livenessProbe` target. |
 | `GET` | `/readyz` | Readiness (Phase 16): `{ready, self_check:{checks:[…]}}` with per-component status (provider configured, repos present, runner ok, workspace writable). `200` when ready, `503` when not. K8s `readinessProbe` target. |
