@@ -4,9 +4,7 @@ Slim orientation hub for the reference/historical material that doesn't belong i
 always-on `CLAUDE.md`. Read it when you need orientation; it is not loaded every session. The
 active `CLAUDE.md` keeps the non-negotiable rules, the folder map, and the on-demand pointers.
 
-Two focused references were split out of this file (load whichever the task needs):
-- **[`CONFIG_AUDIT_LOG.md`](../project/CONFIG_AUDIT_LOG.md)**: dated config / model-drift audit entries
-  (the per-turn-config reorganizations and post-model-release reviews). Read before the next such review.
+One focused reference was split out of this file (load it when the task needs it):
 - **[`UPSTREAM_REUSE_PATHS.md`](UPSTREAM_REUSE_PATHS.md)**: where to look in the READ-ONLY
   `llm-d-benchmark/` repo (CLI entry, specs, harnesses/workloads, report schema, safe-preview commands).
   Read when generating configs or picking specs.

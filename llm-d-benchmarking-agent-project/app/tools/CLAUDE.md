@@ -77,5 +77,5 @@ flag passthroughs (wva/deep/serviceaccount/release/non_admin/envvarspod/full_inf
 
 ## Scoped tests
 ```bash
-pytest tests/test_new_tools.py tests/test_schemas.py tests/test_command_events.py tests/test_allowlist.py
+pytest tests/tools/test_new_tools.py tests/tools/test_schemas.py tests/agent/test_command_events.py tests/platform/test_allowlist.py
 ```

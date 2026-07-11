@@ -181,7 +181,7 @@ either sets `harness="vllm-benchmark"` or switches the key to `rate`. If it blin
   `setup` / `treatments`, one named treatment per cross-product cell, no top-level `run:` key.
 
 > Quick non-UI sanity check of the same mechanism (hermetic, no LLM, no cluster):
-> `.venv/bin/python -m pytest tests/test_doe.py tests/test_sweep.py -q` → covers the
+> `.venv/bin/python -m pytest tests/tools/test_doe.py tests/tools/test_sweep.py -q` → covers the
 > cross-product generator, the tool, and validation against the repo's real experiment YAMLs.
 
 ---
@@ -263,7 +263,7 @@ These need a real cluster. Ask the agent to use the orchestrator path:
   `llmdbench_orchestrator_run_faults_total` in `/metrics`. *(§5)*
 
 > No cluster handy? The orchestrator mechanism is fully covered hermetically:
-> `.venv/bin/python -m pytest tests/test_orchestrator*.py tests/test_sweep.py -q`.
+> `.venv/bin/python -m pytest tests/orchestrator/test_orchestrator*.py tests/tools/test_sweep.py -q`.
 
 ---
 

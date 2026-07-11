@@ -37,5 +37,5 @@ skips corrupt files rather than crash. All share one workspace root (`settings.r
 
 ## Scoped tests
 ```bash
-pytest tests/test_history.py tests/test_provenance.py tests/test_retention.py tests/test_share.py
+pytest tests/platform/test_history.py tests/platform/test_provenance.py tests/platform/test_retention.py tests/platform/test_share.py
 ```

@@ -29,5 +29,5 @@ metric definitions wired into central record points, and a backend-only live res
 
 ## Scoped tests
 ```bash
-pytest tests/test_metrics.py tests/test_logging.py tests/test_observability.py tests/test_resource_poller.py
+pytest tests/platform/test_metrics.py tests/platform/test_logging.py tests/platform/test_observability.py tests/platform/test_resource_poller.py
 ```

@@ -83,7 +83,7 @@ metadata files) plus the `deploy/` charts. This harness lives entirely outside t
 guarded three ways:
 
 1. `.dockerignore` excludes `harnesses/`, so it can't even enter the build context.
-2. `tests/test_product_boundary.py` asserts (a) the Dockerfile COPY set never names
+2. `tests/platform/test_product_boundary.py` asserts (a) the Dockerfile COPY set never names
    `harnesses/`, (b) `.dockerignore` excludes it, and (c) no module under `app/` imports it. A
    future change that wires the mock into the product fails CI loudly.
 3. No custom images, no app code: the fake-GPU mechanisms are upstream (kind node PATCH,

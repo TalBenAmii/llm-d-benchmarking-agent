@@ -20,7 +20,6 @@ Kubernetes-native benchmark orchestrator, and results analyzer for
 | [BENCHMARK_FEATURE_COVERAGE.md](reference/BENCHMARK_FEATURE_COVERAGE.md) | contributors / reviewers | Benchmark-CLI feature-coverage catalog (✅/🟡/⬜): what's wired, per upstream feature. |
 | [USEFUL_REPO_DOCS.md](reference/USEFUL_REPO_DOCS.md) | contributors | Curated index of which upstream `llm-d` / `llm-d-benchmark` docs matter and why. |
 | [CONTEXT.md](reference/CONTEXT.md) | contributors / reviewers | Domain glossary: the project's shared vocabulary (spec, harness, workload, SessionPlan, goodput, …) with "avoid" synonyms. |
-| [CONFIG_AUDIT_LOG.md](project/CONFIG_AUDIT_LOG.md) | maintainers | Dated config/model-drift audit entries: the running log of configuration and model-version reconciliations. |
 | [PROJECT_BRAIN_REFERENCE.md](reference/PROJECT_BRAIN_REFERENCE.md) | engineers / maintainers | Orientation hub for reference/historical material: status and pointers into the rest of the suite. |
 | [UPSTREAM_REUSE_PATHS.md](reference/UPSTREAM_REUSE_PATHS.md) | contributors | Where to look in the READ-ONLY `llm-d-benchmark/`: the CLI entry point, specs, harnesses, and the Benchmark Report schema. |
 
@@ -32,7 +31,7 @@ rules), and [`FEATURES.md`](reference/FEATURES.md) (live, evidence-backed featur
 inventory). The agent's judgment lives in [`knowledge/`](../knowledge/).
 
 UI screenshots used by docs/demos live in [`images/`](images/); the informal working backlog is
-[`TODO.md`](project/TODO.md). Design history (the original proposal + plan, and the five shipped
+the loose [`todo`](../../todo) file at the monorepo root. Design history (the original proposal + plan, and the five shipped
 feature proposals) is preserved in git history only (`docs/history/`, removed 2026-07-10).
 
 ## Design in one line

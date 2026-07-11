@@ -39,6 +39,6 @@ constrained at the boundaries; the gates here are the boundaries.
 
 ## Scoped tests
 ```bash
-pytest tests/test_sessions.py tests/test_schemas.py tests/test_report_validation.py \
-       tests/test_analyze.py tests/test_doe.py tests/test_session_performance.py
+pytest tests/agent/test_sessions.py tests/tools/test_schemas.py tests/tools/test_report_validation.py \
+       tests/tools/test_analyze.py tests/tools/test_doe.py tests/platform/test_session_performance.py
 ```

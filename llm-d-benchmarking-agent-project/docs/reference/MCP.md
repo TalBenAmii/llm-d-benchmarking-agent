@@ -20,4 +20,4 @@ so either installer leaves you with both front-ends.
 
 That repo carries the full tool/prompt/resource list, manual-config block, security model, and
 design of record. The server consumes this project as an editable install; the `app.*` import
-surface it relies on is guarded here by `tests/test_mcp_import_surface.py`.
+surface it relies on is guarded here by `tests/platform/test_mcp_import_surface.py`.

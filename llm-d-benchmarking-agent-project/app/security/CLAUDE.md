@@ -31,7 +31,7 @@ env-scrubbing (below) are shared by BOTH paths, so API keys stay out of every su
 ## To widen capability: edit `security/allowlist.yaml` ONLY (no Python change)
 Add the executable (`flat: true` for a simple tool, else `subcommands:`), set `mode:` (read_only |
 mutating), constrain **every** user/LLM-influenced value (`value: {ref|enum|regex|ref_catalog|any_of}`),
-optionally add `timeout_s`, and add a test case in `tests/test_allowlist.py`. Worked examples
+optionally add `timeout_s`, and add a test case in `tests/platform/test_allowlist.py`. Worked examples
 already in the file: `kind create/delete cluster`, `install_prereqs.sh`, `llmdbenchmark` subcommands.
 
 ## Gotchas
@@ -47,5 +47,5 @@ already in the file: `kind create/delete cluster`, `install_prereqs.sh`, `llmdbe
 
 ## Scoped tests
 ```bash
-pytest tests/test_allowlist.py tests/test_governance.py
+pytest tests/platform/test_allowlist.py tests/platform/test_governance.py
 ```

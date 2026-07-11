@@ -41,7 +41,7 @@ _ACCELERATOR_RESOURCE_KEYS = (
 # known issue) lives ENTIRELY there, NOT here. A node matching no prefix counts toward the `kind`
 # default (kind/local nodes carry no cloud-provider labels). Order does not affect correctness
 # (the longest matching prefix wins) but is kept stable for readability. Mirroring tests in
-# tests/test_provider_pack.py assert this table stays in lockstep with the knowledge file.
+# tests/tools/test_provider_pack.py assert this table stays in lockstep with the knowledge file.
 _PROVIDER_LABEL_HINTS: tuple[tuple[str, str], ...] = (
     ("node.openshift.io/", "openshift"),
     ("machine.openshift.io/", "openshift"),

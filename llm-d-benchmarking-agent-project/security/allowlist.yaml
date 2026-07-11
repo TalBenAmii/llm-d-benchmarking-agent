@@ -76,7 +76,7 @@
 #    (e.g. `--dry-run`), mark that flag `read_only_trigger: true`.
 # 4. That's it — NO Python change. The agent reaches any allowlisted command through the
 #    generic `run_command` tool, and the pure validator (app/security/allowlist.py) and
-#    runner already handle the rest. Add a test case in tests/test_allowlist.py.
+#    runner already handle the rest. Add a test case in tests/platform/test_allowlist.py.
 # Worked examples: the `kind create cluster` / `kind delete cluster` subcommands and the
 # `install_prereqs.sh` script below were each added with nothing more than the lines you
 # see here — no new Python.

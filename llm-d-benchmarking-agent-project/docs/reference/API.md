@@ -219,5 +219,5 @@ facts is the LLM's job, guided by `knowledge/`.
   `app/tools/`, and a `ToolSpec` in `app/tools/registry.py` (with a description). The JSON
   Schema is emitted to the LLM automatically.
 - **A new command the agent may run:** edit only `security/allowlist.yaml` (see its header
-  for the worked recipe), no Python change, and add a case to `tests/test_allowlist.py`.
+  for the worked recipe), no Python change, and add a case to `tests/platform/test_allowlist.py`.
   Judgment about when to use it goes in `knowledge/`, not in code.

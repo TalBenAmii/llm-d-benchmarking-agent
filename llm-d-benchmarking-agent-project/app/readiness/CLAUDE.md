@@ -28,5 +28,5 @@ plane. The wait-vs-stand-up-vs-config-error *judgment* is deferred to `knowledge
 
 ## Scoped tests
 ```bash
-pytest tests/test_endpoint_readiness.py tests/test_gateway_readiness.py tests/test_serving_readiness.py
+pytest tests/orchestrator/test_endpoint_readiness.py tests/orchestrator/test_gateway_readiness.py tests/orchestrator/test_serving_readiness.py
 ```

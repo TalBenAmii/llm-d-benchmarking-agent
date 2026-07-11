@@ -7,7 +7,7 @@
 # boundary, and (when a key is present) one live-chat round-trip over the /ws WebSocket.
 #
 # It is a TEST harness for a maintainer to run on a box that HAS docker+kind+kubectl+helm; it is
-# never baked into the image (.dockerignore excludes harnesses/, tests/test_product_boundary.py
+# never baked into the image (.dockerignore excludes harnesses/, tests/platform/test_product_boundary.py
 # turns that into a checked invariant). It self-terminates: EVERY wait is hard-bounded (no
 # unbounded loop can wedge), a post-build watchdog caps the whole cluster phase, and a trap tears
 # the cluster down on exit unless --keep.

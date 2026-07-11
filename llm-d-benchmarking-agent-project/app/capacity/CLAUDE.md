@@ -35,5 +35,5 @@ belong in the repo / `knowledge/`, never here.
 
 ## Scoped tests
 ```bash
-pytest tests/test_capacity.py tests/test_capacity_gated.py
+pytest tests/orchestrator/test_capacity.py tests/orchestrator/test_capacity_gated.py
 ```

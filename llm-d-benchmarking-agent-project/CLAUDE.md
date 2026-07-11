@@ -48,16 +48,16 @@ llm-d-benchmarking-agent-project/
 │  ├─ observability/ 📁   dependency-free metrics + Prometheus exposition + structured logging
 │  ├─ llm/           📁   provider-agnostic LLM integration (anthropic / openai-compat / claude-agent-sdk)
 │  ├─ storage/       📁   persistence: history · provenance · share · retention/GC
+│  ├─ ui/                static chat UI (index.html·app.js·styles.css·preview.html)
 │  └─ web.py             pure, decorator-free HTTP/SSE helpers extracted from main (path-traversal 404s, CORS guard, share redaction)
 ├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here (62 files in
 │                         10 topic subfolders; resolved by basename via a recursive glob — see its CLAUDE.md)
 ├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
 ├─ deploy/               Helm chart + observability manifests
-├─ scripts/              root entry points (run.sh · install_local.sh · _env.sh shared lib) + install/ (service+host bootstrap: install_service.sh · install_prereqs.sh · install_metrics_server.sh · install-git-hooks.sh · setup-claude-plan.sh · kind_egress_heal.sh) + bridges/ (allowlisted repo wrappers: aggregate_runs.py · capacity_check.py · provision_hf_secret.py) + eval/ (flow eval: validate_flows.py · run_eval_isolated.sh)
-├─ tests/           📁    pytest suite (+ eval/ flows/ integration/) — env & run cheat sheet lives here
-├─ testing/              non-product harnesses (local-cluster mock GPU; build-excluded)
-├─ ui/                   static chat UI (index.html, app.js, styles.css)
-├─ docs/                 documentation (README index + guides/ how-to · reference/ API·ARCHITECTURE·FEATURES·CONTEXT · project/ TODO·CONFIG_AUDIT_LOG + images/ UI stills)
+├─ scripts/              root entry points (run.sh · _env.sh shared lib) + install/ (service+host bootstrap: install_local.sh · install_service.sh · install_prereqs.sh · install_metrics_server.sh · install-git-hooks.sh · setup-claude-plan.sh · kind_egress_heal.sh) + bridges/ (allowlisted repo wrappers: aggregate_runs.py · capacity_check.py · provision_hf_secret.py) + eval/ (flow eval: validate_flows.py · run_eval_isolated.sh)
+├─ tests/           📁    pytest suite in subsystem buckets (agent/ · tools/ · orchestrator/ · platform/, shared fixtures at root; + eval/ flows/ integration/) — env & run cheat sheet lives here
+├─ harnesses/            non-product harnesses (local-cluster mock GPU; build-excluded)
+├─ docs/                 documentation (README index + guides/ how-to · reference/ API·ARCHITECTURE·FEATURES·CONTEXT + images/ UI stills)
 └─ workspace/            gitignored runtime scratch (per-session state, generated configs, logs)
 ```
 Knowledge is loaded by `app/config.py` + `app/agent/prompt.py` from the root `knowledge/` dir — there is
@@ -77,6 +77,6 @@ no `app/knowledge/` package.
 When you derive a conclusion you'd otherwise re-investigate later (env/build gotchas, locked decisions),
 put it where it belongs — tightly: a **folder-level fact** → that folder's `CLAUDE.md`; a **cross-cutting
 rule** → the right skill / global `~/.claude/CLAUDE.md`; **status / reference** →
-`docs/reference/PROJECT_BRAIN_REFERENCE.md`; a **dated config/model-drift audit entry** → `docs/project/CONFIG_AUDIT_LOG.md`.
+`docs/reference/PROJECT_BRAIN_REFERENCE.md`.
 Keep THIS file a map (structure + non-negotiables + pointers only).
 Consolidate, don't duplicate.

@@ -6,7 +6,7 @@ A local test adapter that deploys the agent as a Kubernetes service onto a throw
 fully works end to end.
 
 > This is test scaffolding; it never ships in the product image. `harnesses/` is excluded by
-> `.dockerignore` and `tests/test_product_boundary.py` turns "the harness never enters the
+> `.dockerignore` and `tests/platform/test_product_boundary.py` turns "the harness never enters the
 > build context" into a checked invariant. This adapter imports nothing from `app/`.
 
 ## What it does
