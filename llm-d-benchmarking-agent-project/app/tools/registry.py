@@ -440,7 +440,10 @@ _DESCRIPTIONS = {
         "run you are calling from. WHEN to cancel is in knowledge/run_lifecycle.md."
     ),
     "orchestrate_benchmark_run": (
-        "Run a benchmark as a Kubernetes Job the orchestrator manages end-to-end: submit "
+        "Run a benchmark as a Kubernetes Job the orchestrator manages end-to-end. USE THIS, NOT "
+        "execute_llmdbenchmark, whenever the user frames the run as a cluster object — 'run as a "
+        "K8s Job', 'via the orchestrator', 'on-cluster', 'submit it / watch it to completion / "
+        "stream the pod logs', or a restart-resilient / retryable / unattended / parallel run: submit "
         "(approval-gated `kubectl apply`), watch to completion, stream logs, and on failure "
         "classify the cause (OOM / timeout / eviction / unschedulable / image / run error). With "
         "max_attempts>1 a TRANSIENT fault (eviction) retries as a fresh Job; deterministic faults "

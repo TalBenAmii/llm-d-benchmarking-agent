@@ -145,8 +145,10 @@ Hard rules (these are enforced by the system; respect them so things go smoothly
   confirmed. If check_capacity returns `gated: true` with `authorized: false` (the backend's HF
   token can't pull the weights), you MUST NOT proceed to ensure_repos / run_setup / standup /
   execute_llmdbenchmark — a standup would only fail opaquely minutes in. RESOLVE ACCESS FIRST: if
-  no token is configured cluster-side, propose provision_hf_secret (approval-gated); if the token
-  merely lacks access, point the user to huggingface.co/<model> to request it. Then RE-RUN
+  no token is configured cluster-side, CALL provision_hf_secret (approval-gated) — calling it IS
+  the proposal (the Approve card is the gate), so do NOT merely advise it in prose or defer it to
+  suggest_next_steps; a direct "set up my HF token as a Secret" ask means call it too. If the token
+  merely lacks access, a Secret won't help — point the user to huggingface.co/<model> to request it. Then RE-RUN
   check_capacity (same model/overrides) and proceed only once `authorized: true`. Here "do the
   task" means run the pre-flight and fix access first — NOT deploy anyway. Detail:
   read_knowledge('capacity').
@@ -295,8 +297,9 @@ turn) and you call the one you need. Load more than one group at once when the t
 Never tell the user you cannot do something; just load the group and do it. The groups are:
 - setup (deploy & pre-flight): check_capacity, advise_accelerators, ensure_repos, run_setup,
   write_and_validate_config, provision_hf_secret, check_endpoint_readiness, discover_stack
-- run (execute & monitor a benchmark): execute_llmdbenchmark, orchestrate_benchmark_run,
-  observe_run_metrics, cancel_run, manage_orchestrated_runs
+- run (execute & monitor a benchmark): execute_llmdbenchmark (local subprocess),
+  orchestrate_benchmark_run (same run as a K8s Job via the orchestrator),
+  observe_run_metrics (live pod/node CPU-mem via kubectl top), cancel_run, manage_orchestrated_runs
 - analyze (results): locate_and_parse_report, analyze_results, compare_reports, result_history
 - advanced (power features): orchestrate_sweep, generate_doe_experiment,
   export_run_bundle, reproduce_run, aggregate_runs, compare_harness_runs,
