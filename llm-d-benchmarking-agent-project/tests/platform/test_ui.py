@@ -751,3 +751,17 @@ def test_reproducibility_css_present():
     css = _ui("styles.css")
     for sel in (".report-actions", ".report-action", ".prov-dirty-banner", ".prov-chip", ".prov-cmd"):
         assert sel in css, f"missing {sel} in styles.css"
+
+
+def test_sidebar_hides_the_pytest_test_namespace_folder():
+    """The pytest suite stamps its chats with namespace "test" (tests/conftest.py) and writes into
+    the live session store — the sidebar must drop that folder before grouping, so test chats never
+    appear in the UI. (No JS runtime in CI, so this pins the filter structurally: the constant, the
+    filter, and its placement before the namespace grouping in renderSidebar.)"""
+    js = _ui("app.js")
+    assert 'const HIDDEN_NAMESPACE = "test"' in js
+    filter_at = js.find("s.namespace !== HIDDEN_NAMESPACE")
+    group_at = js.find("s.namespace || NO_NAMESPACE")
+    assert filter_at != -1, "renderSidebar no longer filters the hidden test namespace"
+    assert group_at != -1, "renderSidebar no longer groups by namespace"
+    assert filter_at < group_at, "the hidden-namespace filter must run BEFORE grouping"
