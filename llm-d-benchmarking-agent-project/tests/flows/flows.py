@@ -73,6 +73,20 @@ _CAPACITY_GATED_NO_TOKEN = (
     'provision the llm-d-hf-token Secret before standup.", "models": []}}'
 )
 
+# A canned capacity-bridge JSON for the kind CPU-sim quickstart: FEASIBLE (sizing ran to a fit —
+# the diagnostics carry the repo planner's own fit-path KV-cache markers) and PUBLIC (a sim model,
+# no gated weights). This is what the REAL cicd/kind check returns; the live eval fakes the bridge
+# subprocess, so kind-quickstart must can it (like the gated/capacity flows) or check_capacity gets
+# empty bridge output and re-errors. Pairs with the absent-flow config-tree hydration in the harness
+# so the mandatory pre-flight clears cleanly and the agent proceeds to standup.
+_CAPACITY_KIND_FEASIBLE = (
+    '{"ok": true, "diagnostics": ['
+    '"[decode] Allocatable KV cache memory: 40.00 GB", '
+    '"[decode] Max concurrent requests: 1024"], '
+    '"gated_access": {"gated": false, "authorized": true, '
+    '"reason": "CPU-sim model is public — no gated weights.", "models": []}}'
+)
+
 
 @dataclass
 class CommandPolicyCheck:
@@ -164,6 +178,11 @@ KIND_QUICKSTART = Flow(
     description="The MVP happy path: stand up a tiny llm-d stack on a local kind cluster "
                 "with a simulated engine, benchmark it, and summarize the report.",
     repo_state="absent",
+    # The mandatory capacity pre-flight fires before standup; in the live eval the bridge subprocess
+    # is faked, so hand it the real cicd/kind verdict (feasible + public) — paired with the harness
+    # materializing the config tree after the fake clone. Without it check_capacity errors and the
+    # agent intermittently stalls before standup. See _CAPACITY_KIND_FEASIBLE.
+    canned={"capacity_check.py": _CAPACITY_KIND_FEASIBLE},
     mock_user_input="I want to try llm-d on my laptop — no GPU. Stand up the kind quickstart "
                     "and run a small chat benchmark, then tell me how it did.",
     turns=[

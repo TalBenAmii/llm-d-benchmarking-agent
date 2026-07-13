@@ -312,10 +312,15 @@ class CaptureRunner(CommandRunner):
     # so `calls` records them and `_maybe_simulate_clone` fires (the flows assert over `calls`).
     runs_real_subprocess = False
 
-    def __init__(self, repo_paths, *, canned: dict[str, CannedValue] | None = None):
+    def __init__(self, repo_paths, *, canned: dict[str, CannedValue] | None = None,
+                 hydrate_bench: bool = False):
         super().__init__(repo_paths)
         self.calls: list[dict[str, Any]] = []
         self._canned = dict(canned or {})
+        # LIVE-eval only, absent-flow only: after the fake clone/install, leave the bench repo's
+        # config tree + venv on disk (a REAL clone/install would), so the read-only pre-flight
+        # tools don't error on a half-built skeleton. See _maybe_hydrate_bench_repo.
+        self._hydrate_bench = hydrate_bench
 
     async def execute(self, logical_argv, entry, *, on_line=None, timeout=None, cwd=None, extra_env=None):
         argv = list(logical_argv)
@@ -327,6 +332,7 @@ class CaptureRunner(CommandRunner):
         })
 
         self._maybe_simulate_clone(argv, cwd)
+        self._maybe_hydrate_bench_repo(argv, cwd)
 
         output = ""
         exit_code = 0
@@ -365,6 +371,37 @@ class CaptureRunner(CommandRunner):
         (repo / ".git").mkdir(parents=True, exist_ok=True)
         if name == BENCH_REPO_NAME:
             (repo / "install.sh").write_text("#!/usr/bin/env bash\n")  # presence is enough
+
+    def _maybe_hydrate_bench_repo(self, argv: list[str], cwd) -> None:
+        """LIVE-eval fidelity for the absent→clone→install path (kind-quickstart): a REAL
+        ``git clone`` + ``install.sh`` leave the bench repo's ``config/`` tree AND its ``.venv`` on
+        disk. The bare skeleton the fake left instead makes the read-only pre-flight tools contradict
+        the "I just set it up" state — ``check_capacity`` errors on the missing
+        ``config/templates/values/defaults.yaml`` and ``run_setup``/``probe`` report ``venv_exists:
+        false`` right after a "successful" install — which intermittently stalls the live agent
+        before standup. Materializing what the real commands produce removes that contradiction.
+
+        Gated to the absent flow via ``hydrate_bench`` (set only for a live absent-repo run), so the
+        present_* flows keep their intentional repo/venv state and the scripted path is untouched."""
+        if not self._hydrate_bench:
+            return
+        bench = self._repos.get(BENCH_REPO_NAME)
+        if bench is None:
+            return
+        if argv[:2] == ["git", "clone"] and len(argv) > 2:
+            # The clone brings the REAL config tree (idempotent; a no-op when no real repo is
+            # resolvable, e.g. a bare CI runner — the helper checks that).
+            name = argv[2].removesuffix(".git").rstrip("/").rsplit("/", 1)[-1]
+            if name == BENCH_REPO_NAME:
+                _materialize_real_bench_config(bench.parent)
+        elif argv and argv[0].rsplit("/", 1)[-1] == "install.sh":
+            # install.sh builds the framework venv — lay down the same skeleton marker
+            # _materialize_repo_state uses for present_with_venv (run_setup/probe key on its presence).
+            venv_bin = bench / ".venv" / "bin"
+            if not (venv_bin / "python").exists():
+                venv_bin.mkdir(parents=True, exist_ok=True)
+                (venv_bin / "python").write_text("")
+                (bench / ".venv" / "pyvenv.cfg").write_text("version = 3.11.0\n")
 
 
 # ---- result of running a flow ------------------------------------------------
@@ -524,7 +561,11 @@ async def run_flow(
         simulate=simulate,
     )
     policy = CommandPolicy.from_file(settings.command_policy_path)
-    runner = CaptureRunner(settings.repo_paths, canned=flow.canned)
+    # LIVE eval on the absent flow (kind-quickstart): the agent clones + installs mid-run, so the
+    # fake clone/install must leave the config tree + venv behind (a real one does) or the read-only
+    # pre-flight tools contradict the just-completed setup — see CaptureRunner._maybe_hydrate_bench_repo.
+    hydrate_bench = provider is not None and flow.repo_state == "absent"
+    runner = CaptureRunner(settings.repo_paths, canned=flow.canned, hydrate_bench=hydrate_bench)
     workspace = settings.resolved_workspace_dir / "sessions" / "flow"
     ctx = ToolContext(settings=settings, policy=policy, runner=runner, workspace=workspace)
     # Pin the catalog to the frozen snapshot. Setting the field is not enough: tools like
