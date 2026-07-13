@@ -156,9 +156,9 @@ class CommandPolicy:
         try:
             data = yaml.safe_load(Path(path).read_text())
         except yaml.YAMLError as exc:
-            raise CommandPolicyError(f"policy policy at {path} is not valid YAML: {exc}") from exc
+            raise CommandPolicyError(f"policy at {path} is not valid YAML: {exc}") from exc
         if not isinstance(data, dict) or "executables" not in data:
-            raise CommandPolicyError(f"malformed policy policy at {path}")
+            raise CommandPolicyError(f"malformed policy at {path}")
         return cls(data)
 
     # ---- public API -------------------------------------------------------

@@ -277,11 +277,12 @@ GPU utilization) and reports `None` rather than guessing when a harness doesn't.
 
 ## How it stays safe
 
-- **Deny-by-default allowlist**
-  ([`security/allowlist.yaml`](llm-d-benchmarking-agent-project/security/allowlist.yaml)): the
-  dedicated command tools can run only an explicit set of commands: `llmdbenchmark`; read-only
+- **Deny-by-default command policy**
+  ([`security/command_policy.yaml`](llm-d-benchmarking-agent-project/security/command_policy.yaml)):
+  the dedicated command tools can run only an explicit set of commands: `llmdbenchmark`; read-only
   `kubectl`/`kind`/`docker` probes; `git clone` of the llm-d repos; the install scripts;
-  `kind create`/`delete cluster`. Allowlisted commands run as argv lists with `shell=False`. The
+  `kind create`/`delete cluster`. The policy also declares each command read-only or mutating, which
+  is what decides whether you get asked. Approved commands run as argv lists with `shell=False`. The
   policy is data; widening it is a reviewed config change, not a code change.
 - **Per-action approval.** Read-only commands auto-run; every mutating or unknown command,
   including anything the general `run_shell` tool proposes, shows you the exact command
@@ -360,7 +361,7 @@ Optional Bearer-token auth (`AUTH_ENABLED`/`AUTH_TOKEN`) and a token-bucket rate
 ### Design in one line
 
 **Thin code, thick agent.** The Python is only mechanism: a chat UI, an agent loop, the
-tools, a command allowlist, schema validation. All judgment (which spec/harness/workload,
+tools, a command policy, schema validation. All judgment (which spec/harness/workload,
 what flags, how to read results) lives in the LLM plus editable knowledge files under
 [`knowledge/`](llm-d-benchmarking-agent-project/knowledge/). Editing those Markdown/YAML
 files changes the agent's behavior without touching code.
@@ -369,7 +370,7 @@ files changes the agent's behavior without touching code.
 
 A hermetic flow-validation harness replays each end-to-end flow (quickstart, teardown,
 benchmarking a running stack, dry-run previews, out-of-policy refusals) through the real
-agent loop + allowlist + approval gating, capturing every command without executing anything:
+agent loop + command policy + approval gating, capturing every command without executing anything:
 
 ```bash
 cd llm-d-benchmarking-agent-project
@@ -386,7 +387,7 @@ All paths under [`llm-d-benchmarking-agent-project/`](llm-d-benchmarking-agent-p
 | Path | What |
 |---|---|
 | `app/` | FastAPI backend: agent loop, tools, orchestrator, security, validation (mechanism only) |
-| `security/allowlist.yaml` | The deny-by-default command policy (data) |
+| `security/command_policy.yaml` | The deny-by-default command policy (data) |
 | `knowledge/` | The agent's editable brain: playbooks and heuristics (no code) |
 | `app/ui/` | Static chat UI (HTML/JS/CSS) |
 | `scripts/` | Entry points (`run.sh` + `install/`: `install_local.sh`, `install_service.sh`, `setup-claude-plan.sh`) + helpers |

@@ -15,14 +15,14 @@ boundaries, and the two invariants that keep the system safe and reliable.
 Everything below follows from two rules (see [`CLAUDE.md`](../../CLAUDE.md)):
 
 1. **Thin code, thick agent.** Python is mechanism only: a chat UI, an agent loop, a
-   set of tools, a command command policy, and schema validation. All judgment (which
+   set of tools, a command policy, and schema validation. All judgment (which
    spec/harness/workload to use, what flags to pass, how to read a result) lives in the LLM
    plus editable Markdown/YAML under [`knowledge/`](../../knowledge/). There are no
    `if/elif` decision branches encoding benchmarking expertise in Python.
 2. **Determinism via validation, not scripting.** The LLM is free-form, so the system is
    constrained at its boundaries: tool-call arguments validated against schemas, a
-   `SessionPlan` approved before any mutation, generated configs validated by the CLI's own
-   `--dry-run`/`plan`, and results parsed from the repo's Benchmark Report v0.2 schema,
+   `SessionPlan` cross-checked against the live catalog and human-approved, generated configs
+   structurally validated, and results parsed from the repo's Benchmark Report v0.2 schema,
    never scraped from logs.
 
 ## High-level picture
@@ -181,9 +181,18 @@ and `knowledge/packaging.md`.
 | Gate | Where | Enforces |
 |---|---|---|
 | **a. Tool args** | `tools/registry.py` `dispatch()` | The LLM can only act through schema-validated tool calls; bad args return errors to the model. |
-| **b. SessionPlan** | `validation/session_plan.py` + `tools/setup/plan.py` | A structured plan (enum fields checked against the live catalog) is approved before any mutation. |
-| **c. Config preview** | command policy `read_only_trigger` on `--dry-run`/`plan`/`--list-endpoints` | Generated configs are validated by the CLI's own preview before execution. |
+| **b. SessionPlan** | `validation/session_plan.py` + `tools/setup/plan.py` | A structured plan whose spec/harness/workload are checked against the live catalog (the workload must belong to *that* harness) and whose namespace is RFC1123. A **human checkpoint**, not a precondition — see below. |
+| **c. Generated config** | `validation/doe.py` + `validate_structure()` in `tools/run/doe.py` | The DoE cross-product is pure (no benchmarking judgment); the emitted YAML is structurally validated against the repo's format. |
 | **d. Result schema** | `validation/report.py` | Results are parsed from a validated Benchmark Report v0.2 object, never scraped from logs. |
+
+**Not gates** — asked for by the prompt and the tool descriptions, but enforced by no code:
+- **Config preview via the CLI's own `--dry-run`/`plan`.** `config_artifact.py` states outright that deep
+  `--dry-run` validation is deferred. Older docs listed this as gate (c); they were wrong.
+- **"Plan before mutation."** Nothing keys off `session.approved_plan`. What actually stops an unapproved
+  mutation is the **per-command approval gate** (`tools/command_exec.py`, `tools/run/shell.py`), which is
+  independent of whether a plan exists.
+
+`app/validation/CLAUDE.md` is the single source of truth for this list.
 
 ## Request flow (one user turn)
 

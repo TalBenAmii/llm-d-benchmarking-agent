@@ -2,7 +2,7 @@
 # end-to-end flow (kind quickstart, optimized-baseline, teardown, …).
 #
 # The gating job is fully HERMETIC: the flow harness replays each flow's golden transcript
-# through the real agent loop + real allowlist + real approval gating, capturing the
+# through the real agent loop + real command policy + real approval gating, capturing the
 # commands without spawning anything — so it needs no API key, no Docker, no kind, and not
 # even the llm-d / llm-d-benchmark repos checked out. Fast and deterministic.
 #
@@ -54,7 +54,7 @@ jobs:
         run: python scripts/eval/validate_flows.py --show
 
       - name: Flow replay suite (gating, hermetic)
-        # The golden-transcript flow replays: the real agent loop + real allowlist + real
+        # The golden-transcript flow replays: the real agent loop + real command policy + real
         # approval gating, capturing each flow's commands with nothing spawned — hermetic
         # (no API key, no Docker, no kind, and NOT the llm-d / llm-d-benchmark repos).
         # The REST of the suite reads repo truth (the BR v0.2 schema, specs, repo docs) and

@@ -20,10 +20,11 @@ user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, 
 3. **Thin code, thick agent** — code is mechanism; all judgment lives in the LLM + `knowledge/`. No
    decision logic in Python `if/elif` branches.
 4. **Determinism at the boundaries** — the four code-enforced gates: schema-validated tool args; a
-   `SessionPlan` approved before any mutation; generated configs structurally validated (`doe.py` +
-   the artifact shape-check); results parsed from the Benchmark Report v0.2 schema, never scraped
-   from logs. (Previewing a config via the CLI's `--dry-run`/`plan` is an agent convention the prompt
-   asks for — **not** a code gate. Enumerated in `app/validation/CLAUDE.md`.)
+   `SessionPlan` cross-checked against the live catalog and human-approved; generated configs
+   structurally validated (`doe.py` + the artifact shape-check); results parsed from the Benchmark
+   Report v0.2 schema, never scraped from logs. **Two conventions that are NOT code gates:** the CLI
+   `--dry-run`/`plan` preview, and "plan before mutation" — nothing blocks a mutation on an approved
+   plan; the per-command approval gate (rule 5) is what does. Enumerated in `app/validation/CLAUDE.md`.
 5. **Security: the mutating→approval gate is the guardrail.** Mutations need explicit approval; read-only
    probes auto-run; subprocess env is scrubbed. The deny-by-default command policy (data in
    `security/command_policy.yaml`; `app/security` = pure validator) governs the dedicated command tools;

@@ -119,7 +119,7 @@ class CommandRunner:
         return base / sub if sub else base
 
     def resolve(self, logical_argv: list[str], entry: dict | None) -> tuple[list[str], str | None]:
-        """Map a logical argv to (real_argv, cwd). ``entry`` is the policy policy
+        """Map a logical argv to (real_argv, cwd). ``entry`` is the policy
         entry for argv[0] (carries optional runner/cwd hints)."""
         if not logical_argv:
             raise RunnerError("empty argv")

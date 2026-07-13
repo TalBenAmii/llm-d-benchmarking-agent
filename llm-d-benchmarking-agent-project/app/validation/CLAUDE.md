@@ -10,9 +10,13 @@ and `docs/reference/CONTEXT.md` point here, in this order (a–d).
 1. **Tool-arg schema gate** (a) — every tool input is a Pydantic model validated at `dispatch()` (see
    `app/tools/`). Schemas are the contract; args are never scraped from prior text.
 2. **SessionPlan + catalog gate** (b) (`session_plan.py::validate_plan`) — the plan's spec/harness/workload
-   must exist in the **live catalog**; namespace must be RFC1123. No mutation runs until a SessionPlan
-   is approved (the approval itself is wired in `app/tools/setup/plan.py` + the loop). Reject with a catalog
-   hint on mismatch — never silently default.
+   must exist in the **live catalog**; namespace must be RFC1123. Reject with a catalog hint on mismatch —
+   never silently default. The approval is wired in `app/tools/setup/plan.py` + the loop.
+   **What this gate is not:** a precondition on mutation. Nothing keys off `session.approved_plan` (written
+   in `agent/loop.py`; read only as a namespace fallback in `agent/session.py`). The plan is a *second human
+   checkpoint*; what actually stops an unapproved mutation is the **per-command approval gate**
+   (`tools/command_exec.py`, `tools/run/shell.py`). "Plan first" ordering comes from the system prompt + the
+   skill-grounding gate. If you want it to be a hard precondition, it has to be written.
 3. **DoE / generated-config gate** (c) (`doe.py`) — `build_doe_experiment()` is a **pure** cross-product
    (no benchmarking judgment); `validate_structure()` (in `app/tools/run/doe.py`) checks the emitted YAML
    against the repo's format.
@@ -33,8 +37,8 @@ written.
 - **Keep the full percentile ladder** (`report.py` `_PCTL_KEYS`, `analysis.py`). Dropping a low rung
   (p0p1, p1) silently floors sub-p50 SLO targets to 0% goodput — there's a regression test for exactly this.
 - **Fail loud, but degrade gracefully on newer reports.** A report newer than the committed schema
-  surfaces as a **non-fatal** deviation flagged in the summary ("report is newer than the schema…"),
-  not a silent drop and not a crash.
+  surfaces as **non-fatal** deviations — the raw jsonschema messages, exposed under `schema_deviations`
+  (`app/tools/analyze/report_locate.py`) — not a silent drop and not a crash.
 - **Unit tables are string-matched** (`analysis.py` `_TO_MS`/`_TO_TOK_S`). An unknown unit → `met=None`
   (unchecked, not failed). Add new harness units to the tables.
 - **`SessionPlan.flags` is intentionally untyped** — per-tool validation owns flag shape (thin code, thick agent).
