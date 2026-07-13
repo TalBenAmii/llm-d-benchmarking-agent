@@ -1416,19 +1416,29 @@ function parseMemMiB(s) {
 }
 
 // kubectl's own units ("22m", "46Mi") are Kubernetes jargon this audience doesn't read. Render CPU
-// as a percentage of ONE core (1000 millicores = 1 core, so 22m = 2.2%) and memory in decimal MB/GB,
-// the units a laptop or cloud console shows. Callers keep the raw kubectl string as a `title`.
+// as a percentage of ONE core and memory in decimal MB/GB, the units a laptop or cloud console
+// shows. Percent deliberately runs past 100% for a multi-core pod (a vLLM server on 12.5 cores
+// reads "1250%", as in top/htop) rather than switching unit mid-column. null in -> null out, so
+// callers can fall back to kubectl's own string for the values it can't produce (e.g. "<unknown>").
 function fmtCpuPct(millicores) {
   if (millicores == null) return null;
   const pct = millicores / 10;
   return `${pct === 0 ? "0" : pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)}%`;
 }
-function fmtMemBytes(mib) {
+function fmtMemSize(mib) {
   if (mib == null) return null;
   const mb = (mib * 1024 * 1024) / 1e6;
   if (mb >= 1000) return `${(mb / 1000).toFixed(1)} GB`;
   return `${mb >= 10 ? mb.toFixed(0) : mb.toFixed(1)} MB`;
 }
+
+// The two value columns of the live table, keyed by the `kubectl top` field they read.
+const RES_COLS = [
+  { key: "cpu(cores)", label: "cpu", hint: "Share of one CPU core (100% = one full core)",
+    parse: parseCpuMillicores, fmt: fmtCpuPct },
+  { key: "memory(bytes)", label: "memory", hint: "Memory in use",
+    parse: parseMemMiB, fmt: fmtMemSize },
+];
 
 // Append the latest tick's per-pod CPU/mem to the active chat's rolling history (cap 60 samples).
 function accumulateResourceHistory(data) {
@@ -1472,15 +1482,15 @@ function renderResourceTrends(body) {
     const cpu = el("div", "resource-trend-metric");
     cpu.appendChild(el("span", "resource-trend-lbl", "cpu"));
     cpu.appendChild(resSpark(series, "cpu"));
-    // The trend line is where the unit gets spelled out ("of a core") — the table above is too
-    // narrow for it, so this is what teaches the reader what the bare % in the table means.
+    // Only here is there room to spell the unit out; the table's column header carries the same
+    // explanation as a tooltip.
     cpu.appendChild(el("span", "resource-trend-cur",
       last.cpu != null ? `${fmtCpuPct(last.cpu)} of a core` : "—"));
     row.appendChild(cpu);
     const mem = el("div", "resource-trend-metric");
     mem.appendChild(el("span", "resource-trend-lbl", "mem"));
     mem.appendChild(resSpark(series, "mem"));
-    mem.appendChild(el("span", "resource-trend-cur", last.mem != null ? fmtMemBytes(last.mem) : "—"));
+    mem.appendChild(el("span", "resource-trend-cur", last.mem != null ? fmtMemSize(last.mem) : "—"));
     row.appendChild(mem);
     body.appendChild(row);
   }
@@ -1536,25 +1546,19 @@ function renderResourceSide() {
   }
   const table = el("table", "resource-table");
   const thead = el("tr");
-  const HEADS = [
-    { label: "pod", hint: null },
-    { label: "cpu", hint: "Share of one CPU core (100% = one full core)" },
-    { label: "memory", hint: "Memory in use" },
-  ];
-  for (const h of HEADS) {
-    const th = el("th", null, h.label);
-    if (h.hint) th.title = h.hint;
+  thead.appendChild(el("th", null, "pod"));
+  for (const c of RES_COLS) {
+    const th = el("th", null, c.label);
+    th.title = c.hint;
     thead.appendChild(th);
   }
   table.appendChild(thead);
   for (const r of rows) {
     const tr = el("tr");
     tr.appendChild(el("td", "resource-name", r["name"] || ""));
-    // Humanized value, with the exact kubectl string kept on hover so the raw number is never lost.
-    for (const [key, fmt, parse] of [["cpu(cores)", fmtCpuPct, parseCpuMillicores],
-                                     ["memory(bytes)", fmtMemBytes, parseMemMiB]]) {
-      const raw = r[key] || "";
-      const shown = fmt(parse(raw));
+    for (const c of RES_COLS) {
+      const raw = r[c.key] || "";
+      const shown = c.fmt(c.parse(raw));
       const td = el("td", null, shown != null ? shown : raw);
       if (shown != null && raw) td.title = `kubectl top: ${raw}`;
       tr.appendChild(td);

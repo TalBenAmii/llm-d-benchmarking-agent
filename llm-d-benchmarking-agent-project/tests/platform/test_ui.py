@@ -126,7 +126,7 @@ def test_live_resource_units_are_humanized_not_kubectl_jargon():
     read. The panel renders CPU as a share of one core (22m -> 2.2%) and memory in decimal MB/GB,
     keeping the exact kubectl string on hover so the raw number is never lost."""
     js = _ui("app.js")
-    assert "function fmtCpuPct" in js and "function fmtMemBytes" in js
+    assert "function fmtCpuPct" in js and "function fmtMemSize" in js
     # The raw kubectl string survives as a tooltip on every humanized cell.
     assert "kubectl top: ${raw}" in js
     # The bare % in the table is disambiguated by the trend row spelling the unit out.
