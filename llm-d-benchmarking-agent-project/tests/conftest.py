@@ -11,9 +11,9 @@ from app.config import get_settings
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
 # Hermetic baseline: neutralize the developer's .env SIMULATE toggle before the first settings
-# read. A dev .env with SIMULATE=1 otherwise makes approval-dependent tests deadlock — simulate
-# mode skips the per-command approval those tests wait for. Env vars take precedence over the
-# .env file in pydantic-settings; clearing the lru_cache covers any earlier read.
+# read. A dev .env with SIMULATE=1 otherwise no-ops every mutating command, so tests that assert
+# on what a command actually DID see a synthetic success instead. Env vars take precedence over
+# the .env file in pydantic-settings; clearing the lru_cache covers any earlier read.
 os.environ["SIMULATE"] = "0"
 # Tag every session the suite creates with namespace "test" so the test chats cluster under a
 # single foldable "test" folder in the sidebar instead of bloating the real chat list (and so

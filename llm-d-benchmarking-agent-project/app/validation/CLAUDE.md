@@ -4,17 +4,26 @@ This is where "determinism via validation, not scripting" is implemented. The LL
 constrained at the boundaries; the gates here are the boundaries.
 
 ## The gates implemented here
-1. **SessionPlan + catalog gate** (`session_plan.py::validate_plan`) — the plan's spec/harness/workload
+**This list is the single source of truth for "the four determinism gates"** — the root `CLAUDE.md`
+and `docs/reference/CONTEXT.md` point here, in this order (a–d).
+
+1. **Tool-arg schema gate** (a) — every tool input is a Pydantic model validated at `dispatch()` (see
+   `app/tools/`). Schemas are the contract; args are never scraped from prior text.
+2. **SessionPlan + catalog gate** (b) (`session_plan.py::validate_plan`) — the plan's spec/harness/workload
    must exist in the **live catalog**; namespace must be RFC1123. No mutation runs until a SessionPlan
    is approved (the approval itself is wired in `app/tools/setup/plan.py` + the loop). Reject with a catalog
    hint on mismatch — never silently default.
-2. **Tool-arg schema gate** — every tool input is a Pydantic model validated at `dispatch()` (see
-   `app/tools/`). Schemas are the contract; args are never scraped from prior text.
-3. **DoE / generated-config gate** (`doe.py`) — `build_doe_experiment()` is a **pure** cross-product
+3. **DoE / generated-config gate** (c) (`doe.py`) — `build_doe_experiment()` is a **pure** cross-product
    (no benchmarking judgment); `validate_structure()` (in `app/tools/run/doe.py`) checks the emitted YAML
    against the repo's format.
-4. **Report gate** (`report.py::load_report` + `validate_report`) — results come **only** from a
+4. **Report gate** (d) (`report.py::load_report` + `validate_report`) — results come **only** from a
    schema-validated **Benchmark Report v0.2**, never scraped from logs.
+
+**Not a gate:** previewing a config through the CLI's own `--dry-run`/`plan` is asked for by the prompt
+and the tool descriptions, but **nothing in code enforces it** (`config_artifact.py` returns
+`"structural check only in MVP; deep validation via CLI --dry-run is deferred"`). Older docs listed it as
+gate (c); they were wrong. Treat it as an agent convention — if you want it to be a gate, it has to be
+written.
 
 ## Local invariants
 - **Never fabricate numbers.** `summarize_report()` omits absent fields; it never invents latency/

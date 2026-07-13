@@ -165,10 +165,22 @@ class CommandExecutor:
             sblock = skill_gate.skill_gate_block(ctx, decision)
             if sblock:
                 raise ToolError(sblock)
-        # SIMULATE: a MUTATING command must not actually run. When the wired runner spawns real
-        # subprocesses (production), pre-empt it with a synthetic no-op — ANNOUNCED (so the UI's
-        # command trail shows exactly what WOULD run) but never executed. READ-ONLY commands are
-        # NOT pre-empted: they fall through and run for real, so the agent still gathers genuine
+        # Mutating commands need approval BEFORE anything else happens to them — INCLUDING under
+        # SIMULATE, where the command is only ever previewed. The approval card is the product's
+        # central guardrail, so a simulated walk must exercise the same gate the live path applies:
+        # skipping it made a SIMULATE demo show a workflow production does not have, and left the
+        # eval's safety dimension ("every mutating command approval-gated") unobservable. An
+        # unattended walk turns on the session's auto-approve toggle; it never bypasses the gate.
+        if decision.requires_approval:
+            if ctx.request_approval is None:
+                raise ToolError("approval required but no approver is wired")
+            payload = {"command": " ".join(decision.argv), "argv": decision.argv, "mode": decision.mode}
+            if not await ctx.request_approval("command", payload):
+                raise ApprovalRejected(argv)
+        # SIMULATE: an APPROVED mutating command still must not actually run. When the wired runner
+        # spawns real subprocesses (production), pre-empt it with a synthetic no-op — ANNOUNCED (so
+        # the UI's command trail shows exactly what WOULD run) but never executed. READ-ONLY commands
+        # are NOT pre-empted: they fall through and run for real, so the agent still gathers genuine
         # context under SIMULATE. (No-op test fakes set runs_real_subprocess=False and are called
         # unchanged — they already make every command safe and record it for assertions.)
         if ctx.settings.simulate and decision.mode == MUTATING and ctx.runner.runs_real_subprocess:
@@ -178,14 +190,6 @@ class CommandExecutor:
             )
             self._record_metric(decision, auto_run=False, result=result)
             return result
-        # Mutating commands need approval BEFORE running — but NOT in simulate (a simulated
-        # mutation never executes, so prompting would only stall the dry-run walk).
-        if decision.requires_approval and not ctx.settings.simulate:
-            if ctx.request_approval is None:
-                raise ToolError("approval required but no approver is wired")
-            payload = {"command": " ".join(decision.argv), "argv": decision.argv, "mode": decision.mode}
-            if not await ctx.request_approval("command", payload):
-                raise ApprovalRejected(argv)
         entry = ctx.allowlist.executable(argv[0])
         # Announce the command for the full executed-command trail / debug view. For a
         # mutating command this fires only after approval, so it records what truly ran.

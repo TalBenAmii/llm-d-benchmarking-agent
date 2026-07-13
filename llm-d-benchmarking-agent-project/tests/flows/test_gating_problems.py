@@ -45,8 +45,10 @@ async def test_properly_gated_mutating_command_is_clean(tmp_path):
     assert gating_problems(run) == []
 
 
-async def test_ungated_mutating_flagged_but_tolerated_in_simulate(tmp_path):
-    """An un-gated mutating command is flagged normally, but tolerated under simulate."""
+async def test_ungated_mutating_flagged_in_simulate_too(tmp_path):
+    """An un-gated mutating command is a violation in BOTH modes. Simulate previews the mutation
+    but does not waive its approval card, so it buys no tolerance here — the guardrail is the
+    same on both paths."""
     run = await _trivial_run(tmp_path)
     run.commands = [
         CapturedCommand(argv=["llmdbenchmark", "--spec", "cicd/kind", "standup"],
@@ -55,4 +57,4 @@ async def test_ungated_mutating_flagged_but_tolerated_in_simulate(tmp_path):
     run.simulate = False
     assert any("NOT approval-gated" in p for p in gating_problems(run))
     run.simulate = True
-    assert gating_problems(run) == []
+    assert any("NOT approval-gated" in p for p in gating_problems(run))

@@ -209,8 +209,18 @@ async def run_shell(
     if block is not None:
         raise ToolError(gated_access.gated_block_message(*block))
 
-    # SIMULATE: a MUTATING ad-hoc command is ANNOUNCED but never executed when the wired runner
-    # is a real executor (production) — synthetic no-op, so the user sees what WOULD run while
+    # Mutating/unknown commands gate on approval BEFORE anything else — including under SIMULATE,
+    # where the command is only previewed. Same rule (and same reason) as the dedicated executor in
+    # app/tools/command_exec.py: the gate IS the guardrail, so the dry-run walk must exercise it.
+    if requires_approval:
+        if ctx.request_approval is None:
+            raise ToolError("approval required but no approver is wired")
+        payload = {"command": command, "argv": argv, "mode": mode}
+        if not await ctx.request_approval("command", payload):
+            raise ApprovalRejected(argv)
+
+    # SIMULATE: an APPROVED mutating ad-hoc command is ANNOUNCED but never executed when the wired
+    # runner is a real executor (production) — synthetic no-op, so the user sees what WOULD run while
     # nothing mutates. READ-ONLY commands (grep/ls/cat/kubectl get/…) fall through and run for
     # real, so the agent still gathers genuine context. (No-op test fakes — runs_real_subprocess
     # =False — are called unchanged.)
@@ -224,15 +234,6 @@ async def run_shell(
             "exit_code": res.exit_code, "duration_s": res.duration_s,
             "timed_out": res.timed_out, "stdout_tail": res.output[-2500:],
         }
-
-    # Mutating/unknown commands gate on approval BEFORE running (in simulate the mutating no-op
-    # above already returned, so this fires only when the command will really execute).
-    if requires_approval and not ctx.settings.simulate:
-        if ctx.request_approval is None:
-            raise ToolError("approval required but no approver is wired")
-        payload = {"command": command, "argv": argv, "mode": mode}
-        if not await ctx.request_approval("command", payload):
-            raise ApprovalRejected(argv)
 
     auto_run = not requires_approval
     await _emit_command(ctx, argv=argv, mode=mode, auto_run=auto_run)

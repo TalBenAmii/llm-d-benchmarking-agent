@@ -23,7 +23,8 @@ The governing rule that Python is mechanism only (UI, agent loop, tools, allowli
 _Avoid_: "business logic in code", "config-driven" (it's LLM-reasoned, not a config switch), "rules engine".
 
 **Determinism gate**:
-One of four validation boundaries that constrain the free-form LLM so the system stays reproducible: (a) tool-arg schema validation, (b) SessionPlan approval, (c) config preview via the CLI's own `--dry-run`/`plan`, (d) result parsing from the validated report schema. The slogan is "determinism via validation, not scripting".
+One of four **code-enforced** validation boundaries that constrain the free-form LLM so the system stays reproducible: (a) tool-arg schema validation (`registry.py::dispatch`), (b) SessionPlan approval (`session_plan.py::validate_plan` + `plan.py`), (c) generated-config structural validation (`doe.py` + the artifact shape-check in `config_artifact.py`), (d) result parsing from the validated report schema (`report.py::validate_report`). The slogan is "determinism via validation, not scripting".
+_Not a gate_: previewing a config via the CLI's own `--dry-run`/`plan` is an **agent-behaviour convention** the prompt and tool descriptions ask for — no code enforces it (`config_artifact.py` says deep `--dry-run` validation is deferred). Don't count it as the fourth gate; it's a habit, not a boundary.
 _Avoid_: "guardrail", "check", "assertion" (these are the named, enumerated gates, not ad-hoc checks).
 
 **knowledge/**:
@@ -81,7 +82,7 @@ The traffic shape a harness generates: concurrency, token-length distribution, r
 _Avoid_: "load", "test case", "scenario", "config"; "workload" and "profile" are the canonical pair.
 
 **Simulate Mode**:
-A dry-run toggle (`SIMULATE=1`) where the agent walks the whole workflow (probe → plan → standup → run → report) without deploying or benchmarking anything. The split is by command kind: READ-ONLY commands (probes, `grep`/`ls`/`cat`, `kubectl get`) run for real so the agent gathers genuine context; MUTATING actions (standup/run/teardown, installs, `kubectl apply`, …) are announced but no-opped to synthetic success, and the benchmark report is synthetic. SIMULATE results, and any post-deploy state, must carry an unmistakable disclaimer wherever they appear.
+A dry-run toggle (`SIMULATE=1`) where the agent walks the whole workflow (probe → plan → standup → run → report) without deploying or benchmarking anything. The split is by command kind: READ-ONLY commands (probes, `grep`/`ls`/`cat`, `kubectl get`) run for real so the agent gathers genuine context; MUTATING actions (standup/run/teardown, installs, `kubectl apply`, …) are **still approval-gated**, then announced and no-opped to synthetic success, and the benchmark report is synthetic. (SIMULATE previews the mutation; it does not waive the guardrail — so a simulated walk exercises the same Approve/Reject cards the live path does. Unattended walks use the session's auto-approve toggle.) SIMULATE results, and any post-deploy state, must carry an unmistakable disclaimer wherever they appear.
 _Avoid_: "dry-run" (that's the CLI's `--dry-run` preview, a different mechanism), "mock mode", "test mode".
 
 ### Benchmark concepts
@@ -91,11 +92,11 @@ The schema-validated JSON results object produced by a benchmark run. Results ar
 _Avoid_: "the results", "output", "report" loosely; the version-specific schema name is load-bearing.
 
 **TTFT (time to first token)**:
-Latency until the first output token appears: the "responsiveness" a chat user feels. Reported in seconds in BR v0.2; narrated to users in milliseconds. Lower is better.
+Latency until the first output token appears: the "responsiveness" a chat user feels. Narrated to users in milliseconds. Lower is better. **Never assume the unit**: BR v0.2's `Units` enum permits `ms` *or* `s`, so read the per-entry `units` field (`analysis.py::_TO_MS` maps both).
 _Avoid_: "first-token latency" is acceptable; avoid "response time", "latency" unqualified.
 
 **TPOT / ITL**:
-Time per output token / inter-token latency: the streaming pace after the first token. Drives perceived "tokens/sec per user". Reported `s/token`.
+Time per output token / inter-token latency: the streaming pace after the first token. Drives perceived "tokens/sec per user". Read the per-entry `units` — never assume `s/token`.
 _Avoid_: conflating with TTFT; "generation speed", "throughput" (throughput is system-wide).
 
 **goodput**:
