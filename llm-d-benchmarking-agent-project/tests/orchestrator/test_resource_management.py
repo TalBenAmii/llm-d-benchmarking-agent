@@ -67,7 +67,7 @@ def test_generated_job_never_mounts_volumes_or_escalates():
         pod = m["spec"]["template"]["spec"]
         assert "volumes" not in pod
         assert "volumeMounts" not in pod["containers"][0]
-        for k in ("hostNetwork", "hostPID", "hostIPC", "hostPath"):
+        for k in ("hostNetwork", "hostPID", "hostIPC"):
             assert k not in pod
         sc = pod["containers"][0]["securityContext"]
         assert sc["allowPrivilegeEscalation"] is False

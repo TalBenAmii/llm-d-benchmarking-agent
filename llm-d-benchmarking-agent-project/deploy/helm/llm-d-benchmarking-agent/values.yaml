@@ -56,16 +56,13 @@ rbac:
   create: true
 
 # --- namespace Pod Security admission ---------------------------------------------------
-# The agent's ServiceAccount can create Jobs (see rbac above), and Kubernetes does NOT restrict a
-# Job's pod spec by default — so a mistaken or crafted Job could mount a hostPath and reach the node
-# filesystem, escaping the agent pod's own read-only rootfs. Enforcing the Baseline Pod Security
-# Standard on this namespace forbids hostPath (and privileged / host-namespace) pods at admission,
-# closing that path. Baseline — NOT Restricted — is deliberate: Baseline does not require non-root,
-# so benchmark Jobs and their harness images (which may legitimately run as root) still schedule.
-# The agent pod itself already satisfies Restricted. These levels are the source of truth for the
-# labels install_service.sh applies to the deploy namespace (the chart does NOT template a Namespace
-# object, so a raw `helm ... --create-namespace` install still works — for a chart-only deploy, label
-# the namespace with these same values yourself).
+# The Baseline Pod Security Standard levels install_service.sh stamps on the deploy namespace, so a
+# mistaken/crafted Job (the agent's SA can create Jobs) can't mount a hostPath and reach the node —
+# see docs/guides/CLUSTER_SERVICE_DEPLOY.md §Security model for why Baseline (not Restricted). NOTE:
+# the chart does NOT template a Namespace object and does not read these keys at render time — the
+# installer applies the labels, and tests/platform/test_packaging.py asserts it uses this exact
+# `enforce` value so the two can't silently diverge. A chart-only `helm` deploy must label the
+# namespace itself: kubectl label ns <ns> pod-security.kubernetes.io/enforce=baseline --overwrite.
 podSecurity:
   enforce: baseline   # blocks non-conforming pods at admission
   warn: baseline      # surfaces violations to the API caller

@@ -43,7 +43,7 @@ hdr "Namespace '$NAMESPACE' — Pod Security admission"
 ENFORCE="$(kc get namespace "$NAMESPACE" -o jsonpath='{.metadata.labels.pod-security\.kubernetes\.io/enforce}' 2>/dev/null || true)"
 [[ "$ENFORCE" == "baseline" || "$ENFORCE" == "restricted" ]] \
   && pass "enforce=$ENFORCE (hostPath / privileged pods forbidden at admission)" \
-  || fail "enforce label is '${ENFORCE:-<unset>}' — expected baseline (or stricter). The chart's Namespace object sets it; is podSecurity.enabled=true?"
+  || fail "enforce label is '${ENFORCE:-<unset>}' — expected baseline (or stricter). install_service.sh applies it; for a raw-helm deploy, run: kubectl label ns $NAMESPACE pod-security.kubernetes.io/enforce=baseline --overwrite"
 
 hdr "hostPath Pod is refused at admission (server dry-run)"
 HOSTPATH_POD="$(cat <<'YAML'
