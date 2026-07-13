@@ -85,8 +85,8 @@ async def test_simulate_runs_readonly_command_for_real(tmp_path):
 
 
 async def test_simulate_noops_mutating_command_before_real_runner(tmp_path):
-    """Under SIMULATE a MUTATING command is announced but NEVER reaches a real runner — synthetic
-    no-op, empty output, no approval prompt, nothing mutated."""
+    """Under SIMULATE a MUTATING command is approved, announced, then NEVER reaches a real runner —
+    synthetic no-op, empty output, nothing mutated."""
     approve = AsyncMock(return_value=True)
     spy = _SpyRunner()
     ctx = _ctx(tmp_path, simulate=True, runner=spy, request_approval=approve)
@@ -95,7 +95,7 @@ async def test_simulate_noops_mutating_command_before_real_runner(tmp_path):
     res = await ctx.run_command(STANDUP)
     assert spy.calls == []               # the mutation never reached the runner
     assert res.exit_code == 0 and res.output == ""
-    approve.assert_not_awaited()         # the per-command gate is still skipped in simulate
+    approve.assert_awaited_once()        # the gate fires in simulate too — it IS the guardrail
 
 
 async def test_simulate_run_shell_runs_readonly_grep_for_real(tmp_path):
@@ -109,12 +109,14 @@ async def test_simulate_run_shell_runs_readonly_grep_for_real(tmp_path):
 
 
 async def test_simulate_run_shell_noops_mutating_command(tmp_path):
-    """Under SIMULATE an ad-hoc MUTATING shell command is announced but never executed."""
+    """Under SIMULATE an ad-hoc MUTATING shell command is approved, announced, never executed."""
+    approve = AsyncMock(return_value=True)
     spy = _SpyRunner()
-    ctx = _ctx(tmp_path, simulate=True, runner=spy)
+    ctx = _ctx(tmp_path, simulate=True, runner=spy, request_approval=approve)
     out = await run_shell(ctx, command="kubectl apply -f deploy.yaml")
     assert spy.calls == []               # never reached the runner
     assert out["mode"] == MUTATING and out["stdout_tail"] == "" and out["exit_code"] == 0
+    approve.assert_awaited_once()        # ad-hoc mutations gate in simulate, like the executor
 
 
 async def test_simulate_command_event_badges_only_noopped_commands(tmp_path):
@@ -127,7 +129,7 @@ async def test_simulate_command_event_badges_only_noopped_commands(tmp_path):
         events.append((kind, payload))
 
     spy = _SpyRunner()
-    ctx = _ctx(tmp_path, simulate=True, runner=spy)
+    ctx = _ctx(tmp_path, simulate=True, runner=spy, request_approval=AsyncMock(return_value=True))
     ctx.emit = emit
     await ctx.run_readonly(GET_NODES)                              # read-only → really runs
     await ctx.run_command(STANDUP)                                 # mutating → no-op preview
@@ -156,7 +158,11 @@ async def test_simrunner_execute_is_noop_success(tmp_path):
     # Nothing spawned: a real CommandRunner would have raised resolving the missing venv.
 
 
-async def test_run_command_simulate_skips_approval(tmp_path):
+async def test_run_command_simulate_still_requires_approval(tmp_path):
+    """SIMULATE previews the mutation; it does NOT waive the approval gate. The gate is the
+    product's guardrail, so a dry-run walk must show the same Approve/Reject card the live path
+    shows — otherwise a SIMULATE demo (and the eval's safety score) misrepresents production.
+    Unattended walks set the session's auto-approve toggle instead."""
     approve = AsyncMock(return_value=True)
     ctx = _ctx(tmp_path, simulate=True, runner=SimRunner({}), request_approval=approve)
 
@@ -166,7 +172,15 @@ async def test_run_command_simulate_skips_approval(tmp_path):
 
     res = await ctx.run_command(STANDUP)
     assert res.exit_code == 0
-    approve.assert_not_awaited()  # the per-command approval gate is skipped in simulate
+    approve.assert_awaited_once()
+
+
+async def test_simulate_rejected_mutation_never_previews(tmp_path):
+    """Declining the card in SIMULATE aborts exactly as it does live — no synthetic success."""
+    approve = AsyncMock(return_value=False)
+    ctx = _ctx(tmp_path, simulate=True, runner=SimRunner({}), request_approval=approve)
+    with pytest.raises(ApprovalRejected):
+        await ctx.run_command(STANDUP)
 
 
 async def test_run_command_real_requires_approval_and_rejects(tmp_path):

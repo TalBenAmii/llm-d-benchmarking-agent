@@ -766,14 +766,12 @@ def gating_problems(run: FlowRun) -> list[str]:
     every mutating command must have been approval-gated; no read-only command should be;
     no denied command may reach the runner.
 
-    In SIMULATE mode the per-command approval gate is deliberately skipped (mutating commands
-    run as harmless no-ops, so the walk isn't stalled — see ``app/tools/context.py``); the
-    upfront SessionPlan approval still applies. So under ``run.simulate`` we do NOT treat an
-    un-gated mutating command as a violation — but the deny-bypass and read-only-gating
-    invariants still hold unconditionally."""
+    This holds **unconditionally, SIMULATE included**: simulate previews a mutation (it no-ops
+    the command) but does not waive its approval card, so a simulated walk is gated exactly like
+    the live one."""
     problems: list[str] = []
     for c in run.commands:
-        if c.mode == MUTATING and not c.approved and not run.simulate:
+        if c.mode == MUTATING and not c.approved:
             problems.append(f"mutating command was NOT approval-gated: {c.argv}")
         if c.mode == READ_ONLY and c.approved:
             problems.append(f"read-only command went through the approval gate (should auto-run): {c.argv}")
