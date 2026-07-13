@@ -22,7 +22,7 @@ Counts: 52 ⭐⭐⭐ · 56 ⭐⭐ · 63 ⭐ · 24 skip (—) across 195 files (a
 The most essential docs across both repos, the high-tier must-reads. Read these first.
 
 1. `llm-d-benchmark/README.md`: the canonical CLI reference, covering every `llmdbenchmark` subcommand, flag, and `LLMDBENCH_*` env var the agent shells out with, plus the spec/scenario/harness/profile vocabulary it must speak.
-2. `llm-d-benchmark/llmdbenchmark/interface/README.md`: the authoritative per-subcommand flag/env-var reference; the single best source for the agent's deny-by-default command command policy.
+2. `llm-d-benchmark/llmdbenchmark/interface/README.md`: the authoritative per-subcommand flag/env-var reference; the single best source for the agent's deny-by-default command policy.
 3. `llm-d-benchmark/llmdbenchmark/README.md`: the package map of the exact CLI the agent drives: seven subcommands and the standup→smoketest→run→teardown lifecycle.
 4. `llm-d-benchmark/docs/developer-guide.md`: how scenarios, experiments, harnesses, profiles, and the four-phase lifecycle fit together; the mental model for authoring/validating scenario+experiment YAML.
 5. `llm-d-benchmark/config/README.md`: the source of truth for every config knob a scenario exposes and the scenario→env-var→CLI→experiment override chain (model, replicas, namespace, monitoring).

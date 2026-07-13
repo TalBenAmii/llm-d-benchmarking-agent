@@ -221,7 +221,7 @@ async def healthz() -> JSONResponse:
 @app.get("/readyz")
 async def readyz() -> JSONResponse:
     """Readiness probe: reports per-component readiness from the startup configuration self-check
-    — workspace writable, provider configured, repos present, runner ok (the policy policy
+    — workspace writable, provider configured, repos present, runner ok (the policy
     loads; Phase 16 splits this from /healthz liveness). Returns 200 when ready, 503 when not,
     with the STRUCTURED self-check reasons so an operator/orchestrator can see *why*. Liveness
     stays on the minimal /healthz; this is the readiness gate a K8s readinessProbe / load

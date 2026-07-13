@@ -1,4 +1,4 @@
-# app/security/ — the command command policy (deny-by-default)
+# app/security/ — the command policy (deny-by-default)
 
 `policy.py` is a **pure validator**: it matches a logical argv list against the policy
 **data** in `security/command_policy.yaml` and returns a `Decision(allowed, mode, reason, timeout_s,
