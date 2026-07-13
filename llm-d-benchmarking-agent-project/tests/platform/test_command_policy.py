@@ -49,6 +49,26 @@ def test_run_dry_run_downgrades_to_read_only(policy, catalog):
     assert d.allowed and d.mode == READ_ONLY
 
 
+def test_write_destinations_reject_path_traversal(policy, catalog):
+    # Defense-in-depth behind the approval gate: the constraints on WHERE llmdbenchmark writes must
+    # reject a '..' escape, so an approved benchmark command can't be aimed outside the workspace.
+    # --workspace/--ws/-e/--experiments (output_dir):
+    assert policy.validate(
+        ["llmdbenchmark", "--spec", "cicd/kind", "--workspace", "workspace/exp", "plan"],
+        catalog=catalog).allowed
+    assert not policy.validate(
+        ["llmdbenchmark", "--spec", "cicd/kind", "--workspace", "../../etc", "plan"],
+        catalog=catalog).allowed
+    # run -r/--output (results_sink): a local dest and an opt-in gs:// bucket are fine; a '..' is not.
+    run = ["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns",
+           "-l", "inference-perf", "-w", "sanity_random.yaml"]
+    assert policy.validate([*run, "-r", "gs://bkt/prefix"], catalog=catalog).allowed
+    assert not policy.validate([*run, "-r", "gs://bkt/../prefix"], catalog=catalog).allowed
+    # results add <paths...> (store_paths): a workspace dir is fine; a '..' escape is not.
+    assert policy.validate(["llmdbenchmark", "results", "add", "workspace/run-1"], catalog=catalog).allowed
+    assert not policy.validate(["llmdbenchmark", "results", "add", "../../secret"], catalog=catalog).allowed
+
+
 def test_version_standalone_is_read_only(policy, catalog):
     d = policy.validate(["llmdbenchmark", "--version"], catalog=catalog)
     assert d.allowed and d.mode == READ_ONLY

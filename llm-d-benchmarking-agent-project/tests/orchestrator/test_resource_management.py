@@ -56,6 +56,25 @@ def test_no_scheduling_is_byte_for_byte_baseline():
     }
 
 
+def test_generated_job_never_mounts_volumes_or_escalates():
+    """FS-isolation guardrail: the orchestrator must never template a volume (a hostPath in
+    particular) or a privileged / host-namespace pod into a benchmark Job. The agent's namespace
+    enforces Pod Security Baseline, and the generated Job must stay conformant by construction — no
+    volume mount means no path onto the node filesystem. Holds with scheduling set, too."""
+    sched = Scheduling.from_dict(
+        {"gpu_count": 1, "node_selector": {"pool": "gpu"}, "tolerations": [{"key": "x", "operator": "Exists"}]})
+    for m in (build_job_manifest(_base_spec()), build_job_manifest(_base_spec(scheduling=sched))):
+        pod = m["spec"]["template"]["spec"]
+        assert "volumes" not in pod
+        assert "volumeMounts" not in pod["containers"][0]
+        for k in ("hostNetwork", "hostPID", "hostIPC", "hostPath"):
+            assert k not in pod
+        sc = pod["containers"][0]["securityContext"]
+        assert sc["allowPrivilegeEscalation"] is False
+        assert sc.get("privileged", False) is False
+        assert sc["capabilities"]["drop"] == ["ALL"]
+
+
 def test_empty_scheduling_equals_no_scheduling():
     """An explicitly-empty Scheduling must render IDENTICALLY to scheduling=None (byte-for-byte),
     so 'the agent supplied an empty object' degrades cleanly to the baseline."""

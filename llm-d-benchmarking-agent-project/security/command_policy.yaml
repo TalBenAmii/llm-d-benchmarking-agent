@@ -89,7 +89,7 @@ value_constraints:
   # The clone target is pinned to EXACTLY the three known upstream repos (NOT a whole org):
   # llm-d/{llm-d,llm-d-benchmark} plus the incubation skills library llm-d-incubation/llm-d-skills.
   llmd_clone_url:  { regex: "^https://github\\.com/(llm-d/(llm-d|llm-d-benchmark)|llm-d-incubation/llm-d-skills)(\\.git)?$" }
-  output_dir:      { regex: "^[A-Za-z0-9._/-]+$" }
+  output_dir:      { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+$" }   # a write dir; no '..' traversal
   # ---- cloud results sink (Phase 39): the `run -r/--output` DESTINATION KEYWORD ----
   # This is the value of `run`'s -r/--output: a DESTINATION KEYWORD, NOT a filesystem path.
   # Accepts EITHER the local default (`local`, or a bare safe-charset path) OR an OPT-IN cloud
@@ -104,7 +104,7 @@ value_constraints:
   # (gcloud storage cp / aws s3 cp, using the USER's own cloud credentials) — that is the DEFERRED
   # Phase 47, NOT built/policy-allowed here. WHETHER the user has a bucket (and WHICH) is the agent's
   # judgment in knowledge/cloud_results_sink.md, not data here.
-  results_sink:    { regex: "^(gs|s3)://[A-Za-z0-9._/-]+$|^[A-Za-z0-9._/-]+$" }
+  results_sink:    { regex: "^(?!.*\\.\\.)((gs|s3)://[A-Za-z0-9._/-]+|[A-Za-z0-9._/-]+)$" }   # local dest or gs://|s3:// bucket; no '..' traversal
   # ---- results store (Phase 50): the git-like CLI Results Store positionals ----
   # `llmdbenchmark results <store-command>` is a SEPARATE, OPTIONAL git-like store for sharing
   # benchmark runs across a team via GCS remotes (init/remote/status/add/rm/ls/push/pull). It is
@@ -118,12 +118,12 @@ value_constraints:
   #   * run_uid     — a run UUID/short uid to pull (hex/uuid charset). NOTE wildcards (`c6bc*`)
   #     are NOT expressible: `*` is a blocked shell metacharacter, so only an EXACT run-uid works.
   #   * store_paths — a local workspace dir path or run-uid to stage/push (reuses output_dir's
-  #     safe-charset path; no `..` is NOT enforced here because a staged path is a local dir the
-  #     user already produced, but the metachar screen still rejects shell-dangerous tokens).
+  #     safe-charset path, with NO `..` traversal — a staged path is a normal workspace dir/run-uid,
+  #     never a directory-climbing escape; the metachar screen still rejects shell-dangerous tokens).
   remote_name:     { regex: "^[A-Za-z0-9._-]+$" }
   remote_uri:      { regex: "^gs://[A-Za-z0-9._/-]+$" }
   run_uid:         { regex: "^[A-Za-z0-9-]+$" }
-  store_paths:     { regex: "^[A-Za-z0-9._/-]+$" }
+  store_paths:     { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+$" }
   endpoint_url:    { regex: "^https?://[A-Za-z0-9._:/-]+$" }
   # ---- stack discovery (Phase 56): llm-d-discover -f/--output-format value ----
   # The standalone stack-discovery tool's output format. We drive it with
