@@ -1415,6 +1415,31 @@ function parseMemMiB(s) {
   return v * (scale[u] != null ? scale[u] : 1);
 }
 
+// kubectl's own units ("22m", "46Mi") are Kubernetes jargon this audience doesn't read. Render CPU
+// as a percentage of ONE core and memory in decimal MB/GB, the units a laptop or cloud console
+// shows. Percent deliberately runs past 100% for a multi-core pod (a vLLM server on 12.5 cores
+// reads "1250%", as in top/htop) rather than switching unit mid-column. null in -> null out, so
+// callers can fall back to kubectl's own string for the values it can't produce (e.g. "<unknown>").
+function fmtCpuPct(millicores) {
+  if (millicores == null) return null;
+  const pct = millicores / 10;
+  return `${pct === 0 ? "0" : pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)}%`;
+}
+function fmtMemSize(mib) {
+  if (mib == null) return null;
+  const mb = (mib * 1024 * 1024) / 1e6;
+  if (mb >= 1000) return `${(mb / 1000).toFixed(1)} GB`;
+  return `${mb >= 10 ? mb.toFixed(0) : mb.toFixed(1)} MB`;
+}
+
+// The two value columns of the live table, keyed by the `kubectl top` field they read.
+const RES_COLS = [
+  { key: "cpu(cores)", label: "cpu", hint: "Share of one CPU core (100% = one full core)",
+    parse: parseCpuMillicores, fmt: fmtCpuPct },
+  { key: "memory(bytes)", label: "memory", hint: "Memory in use",
+    parse: parseMemMiB, fmt: fmtMemSize },
+];
+
 // Append the latest tick's per-pod CPU/mem to the active chat's rolling history (cap 60 samples).
 function accumulateResourceHistory(data) {
   if (!cur || !data || data.available === false || !Array.isArray(data.rows)) return;
@@ -1457,12 +1482,15 @@ function renderResourceTrends(body) {
     const cpu = el("div", "resource-trend-metric");
     cpu.appendChild(el("span", "resource-trend-lbl", "cpu"));
     cpu.appendChild(resSpark(series, "cpu"));
-    cpu.appendChild(el("span", "resource-trend-cur", last.cpu != null ? `${fmtNum(last.cpu)}m` : "—"));
+    // Only here is there room to spell the unit out; the table's column header carries the same
+    // explanation as a tooltip.
+    cpu.appendChild(el("span", "resource-trend-cur",
+      last.cpu != null ? `${fmtCpuPct(last.cpu)} of a core` : "—"));
     row.appendChild(cpu);
     const mem = el("div", "resource-trend-metric");
     mem.appendChild(el("span", "resource-trend-lbl", "mem"));
     mem.appendChild(resSpark(series, "mem"));
-    mem.appendChild(el("span", "resource-trend-cur", last.mem != null ? `${fmtNum(last.mem)}Mi` : "—"));
+    mem.appendChild(el("span", "resource-trend-cur", last.mem != null ? fmtMemSize(last.mem) : "—"));
     row.appendChild(mem);
     body.appendChild(row);
   }
@@ -1518,13 +1546,23 @@ function renderResourceSide() {
   }
   const table = el("table", "resource-table");
   const thead = el("tr");
-  for (const h of ["pod", "cpu", "memory"]) thead.appendChild(el("th", null, h));
+  thead.appendChild(el("th", null, "pod"));
+  for (const c of RES_COLS) {
+    const th = el("th", null, c.label);
+    th.title = c.hint;
+    thead.appendChild(th);
+  }
   table.appendChild(thead);
   for (const r of rows) {
     const tr = el("tr");
     tr.appendChild(el("td", "resource-name", r["name"] || ""));
-    tr.appendChild(el("td", null, r["cpu(cores)"] || ""));
-    tr.appendChild(el("td", null, r["memory(bytes)"] || ""));
+    for (const c of RES_COLS) {
+      const raw = r[c.key] || "";
+      const shown = c.fmt(c.parse(raw));
+      const td = el("td", null, shown != null ? shown : raw);
+      if (shown != null && raw) td.title = `kubectl top: ${raw}`;
+      tr.appendChild(td);
+    }
     table.appendChild(tr);
   }
   body.appendChild(table);
