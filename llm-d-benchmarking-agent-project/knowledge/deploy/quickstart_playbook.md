@@ -30,7 +30,9 @@ the steps/flags come from the real procedure rather than memory.
    explicitly name a different one),
    `expected_steps=[install_prereqs?, ensure_repos, run_setup, create_cluster?, install_metrics_server?, standup, smoketest, run, report, teardown?]`
    (include `install_metrics_server?` when the user wants the live resource-stats panel — see step 5b).
-   Wait for approval.
+   Wait for approval. Once approved, the plan card WAS the offer: execute its steps in order all
+   the way through standup → run → report (each mutating call still raises its own Approve card) —
+   do not stop after the prep steps or re-offer standup/run in prose.
 4. **Prepare** — each prep step below is CONDITIONAL: run it only because step 1's probe showed
    the thing missing AND you are on your way to a standup/run. Never build the venv preemptively or
    "to be safe" — only when the probe established repo/venv is the concrete blocker for the deploy.

@@ -18,6 +18,10 @@ Two ways to run a benchmark:
 "restart-resilient / retryable / unattended / parallel" → **`orchestrate_benchmark_run`**. "just
 run it / quickstart / watch it live locally" with no cluster-object framing → `execute_llmdbenchmark`.
 When the user names the orchestrator or a K8s Job, do NOT substitute the local subprocess path.
+An orchestrated run also needs NO local repo/venv prep — the Job's container image carries the
+harness — so don't `ensure_repos`/`run_setup` for it; and never pre-empt its readiness gate by
+prepping or standing up "to make the endpoint ready": call the tool, let the gate decide, and act
+on its structured verdict (a not-ready verdict → offer the approval-gated standup, see below).
 
 ## Reading a failure (what the fault `kind` means, and what to do)
 
