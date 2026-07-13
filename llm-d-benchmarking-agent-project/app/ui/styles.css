@@ -734,7 +734,7 @@ body.split .main-col { flex: 1; min-width: 0; }       /* chat column gives up wi
 .resource-trend-lbl { font: 10px/1 var(--mono); color: var(--muted); width: 26px; flex: none; text-transform: uppercase; }
 .res-spark { width: 92px; height: 22px; flex: none; }
 .res-spark-line { fill: none; stroke: var(--accent); stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
-.resource-trend-cur { font: 600 11px/1 var(--mono); color: var(--accent); margin-left: auto; }
+.resource-trend-cur { font: 600 11px/1 var(--mono); color: var(--accent); margin-left: auto; white-space: nowrap; }
 
 /* Optional dashboard pane (shown when a `resource_stats` event carries a `dashboard_url`). The
    iframe is the live embed; the link is a graceful fallback / "open in new tab" affordance. */

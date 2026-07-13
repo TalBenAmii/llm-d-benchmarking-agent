@@ -1415,6 +1415,21 @@ function parseMemMiB(s) {
   return v * (scale[u] != null ? scale[u] : 1);
 }
 
+// kubectl's own units ("22m", "46Mi") are Kubernetes jargon this audience doesn't read. Render CPU
+// as a percentage of ONE core (1000 millicores = 1 core, so 22m = 2.2%) and memory in decimal MB/GB,
+// the units a laptop or cloud console shows. Callers keep the raw kubectl string as a `title`.
+function fmtCpuPct(millicores) {
+  if (millicores == null) return null;
+  const pct = millicores / 10;
+  return `${pct === 0 ? "0" : pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)}%`;
+}
+function fmtMemBytes(mib) {
+  if (mib == null) return null;
+  const mb = (mib * 1024 * 1024) / 1e6;
+  if (mb >= 1000) return `${(mb / 1000).toFixed(1)} GB`;
+  return `${mb >= 10 ? mb.toFixed(0) : mb.toFixed(1)} MB`;
+}
+
 // Append the latest tick's per-pod CPU/mem to the active chat's rolling history (cap 60 samples).
 function accumulateResourceHistory(data) {
   if (!cur || !data || data.available === false || !Array.isArray(data.rows)) return;
@@ -1457,12 +1472,15 @@ function renderResourceTrends(body) {
     const cpu = el("div", "resource-trend-metric");
     cpu.appendChild(el("span", "resource-trend-lbl", "cpu"));
     cpu.appendChild(resSpark(series, "cpu"));
-    cpu.appendChild(el("span", "resource-trend-cur", last.cpu != null ? `${fmtNum(last.cpu)}m` : "—"));
+    // The trend line is where the unit gets spelled out ("of a core") — the table above is too
+    // narrow for it, so this is what teaches the reader what the bare % in the table means.
+    cpu.appendChild(el("span", "resource-trend-cur",
+      last.cpu != null ? `${fmtCpuPct(last.cpu)} of a core` : "—"));
     row.appendChild(cpu);
     const mem = el("div", "resource-trend-metric");
     mem.appendChild(el("span", "resource-trend-lbl", "mem"));
     mem.appendChild(resSpark(series, "mem"));
-    mem.appendChild(el("span", "resource-trend-cur", last.mem != null ? `${fmtNum(last.mem)}Mi` : "—"));
+    mem.appendChild(el("span", "resource-trend-cur", last.mem != null ? fmtMemBytes(last.mem) : "—"));
     row.appendChild(mem);
     body.appendChild(row);
   }
@@ -1518,13 +1536,29 @@ function renderResourceSide() {
   }
   const table = el("table", "resource-table");
   const thead = el("tr");
-  for (const h of ["pod", "cpu", "memory"]) thead.appendChild(el("th", null, h));
+  const HEADS = [
+    { label: "pod", hint: null },
+    { label: "cpu", hint: "Share of one CPU core (100% = one full core)" },
+    { label: "memory", hint: "Memory in use" },
+  ];
+  for (const h of HEADS) {
+    const th = el("th", null, h.label);
+    if (h.hint) th.title = h.hint;
+    thead.appendChild(th);
+  }
   table.appendChild(thead);
   for (const r of rows) {
     const tr = el("tr");
     tr.appendChild(el("td", "resource-name", r["name"] || ""));
-    tr.appendChild(el("td", null, r["cpu(cores)"] || ""));
-    tr.appendChild(el("td", null, r["memory(bytes)"] || ""));
+    // Humanized value, with the exact kubectl string kept on hover so the raw number is never lost.
+    for (const [key, fmt, parse] of [["cpu(cores)", fmtCpuPct, parseCpuMillicores],
+                                     ["memory(bytes)", fmtMemBytes, parseMemMiB]]) {
+      const raw = r[key] || "";
+      const shown = fmt(parse(raw));
+      const td = el("td", null, shown != null ? shown : raw);
+      if (shown != null && raw) td.title = `kubectl top: ${raw}`;
+      tr.appendChild(td);
+    }
     table.appendChild(tr);
   }
   body.appendChild(table);

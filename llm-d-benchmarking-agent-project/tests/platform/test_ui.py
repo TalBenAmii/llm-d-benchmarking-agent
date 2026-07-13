@@ -121,6 +121,20 @@ def test_live_resource_trend_sparklines():
     assert ".res-spark-line" in css
 
 
+def test_live_resource_units_are_humanized_not_kubectl_jargon():
+    """`kubectl top` speaks millicores + mebibytes ("22m", "46Mi") — jargon this audience doesn't
+    read. The panel renders CPU as a share of one core (22m -> 2.2%) and memory in decimal MB/GB,
+    keeping the exact kubectl string on hover so the raw number is never lost."""
+    js = _ui("app.js")
+    assert "function fmtCpuPct" in js and "function fmtMemBytes" in js
+    # The raw kubectl string survives as a tooltip on every humanized cell.
+    assert "kubectl top: ${raw}" in js
+    # The bare % in the table is disambiguated by the trend row spelling the unit out.
+    assert "of a core" in js
+    # No bare kubectl unit suffixes concatenated onto a displayed number anymore.
+    assert "}m`" not in js and "}Mi`" not in js
+
+
 def test_metrics_server_passive_hint_on_unavailable_panel():
     """When the live-resource panel reports unavailable (kind ships no metrics-server) it shows a
     PASSIVE hint — no actionable button. The mid-run install button was retired because it lived in
