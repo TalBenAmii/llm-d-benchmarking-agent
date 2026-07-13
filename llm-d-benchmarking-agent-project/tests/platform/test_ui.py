@@ -131,8 +131,10 @@ def test_live_resource_units_are_humanized_not_kubectl_jargon():
     assert "kubectl top: ${raw}" in js
     # The bare % in the table is disambiguated by the trend row spelling the unit out.
     assert "of a core" in js
-    # No bare kubectl unit suffixes concatenated onto a displayed number anymore.
-    assert "}m`" not in js and "}Mi`" not in js
+    # The old raw-suffix trend readouts are gone (pin the exact expressions — a bare "}m`" substring
+    # also matches the unrelated minutes formatters, e.g. `${m}m` in a duration string).
+    assert "fmtNum(last.cpu)}m" not in js
+    assert "fmtNum(last.mem)}Mi" not in js
 
 
 def test_metrics_server_passive_hint_on_unavailable_panel():
