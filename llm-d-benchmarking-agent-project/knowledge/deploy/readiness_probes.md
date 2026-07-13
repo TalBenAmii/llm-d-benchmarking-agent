@@ -99,6 +99,10 @@ logs/events (`kubectl logs`, `kubectl get events`), check resources (CPU/mem/GPU
 probe port matches the serving port, or tear down + re-standup. None of these are run for the
 user automatically; standup/teardown are mutating and need explicit approval.
 
+The gap here is the STACK, not your toolchain: do NOT preemptively build the benchmark venv
+(`run_setup` / `install.sh`) or run other prep off the back of a not-ready endpoint — a readiness
+check never established that need. Address the checked gap (offer a standup/wait), nothing else.
+
 ### Verdict C — "serving-ready"
 
 If the endpoint gate already returned `ready: true` (`/v1/models` 200 with a model list and a
