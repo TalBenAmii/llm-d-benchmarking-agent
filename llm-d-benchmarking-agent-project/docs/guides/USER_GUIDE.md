@@ -114,7 +114,7 @@ benchmark keeps running in the background and its result shows up when you retur
 | "LLM provider not configured" | No API key in `.env`. Add `ANTHROPIC_API_KEY` (or OpenAI-compatible creds) and restart. |
 | `install_prereqs.sh` can't install Docker | It needs root or passwordless sudo; on WSL the Docker daemon may not auto-start. The agent relays the exact message: start Docker yourself and re-probe. |
 | Standup fails with OOM / won't load | Ask for a capacity pre-flight first ("will this fit?"); use a lighter model/spec. |
-| "command denied by allowlist" | The agent tried something outside the deny-by-default policy. That's the safety net working; widening it is a reviewed config change (see [`API.md`](../reference/API.md)). |
+| "command denied by command policy" | The agent tried something outside the deny-by-default policy. That's the safety net working; widening it is a reviewed config change (see [`API.md`](../reference/API.md)). |
 | A run seems stuck | Use `observe_run_metrics` to see live CPU/memory; orchestrated runs are wall-clock bounded and classify timeouts/OOM/eviction automatically. |
 
 ## Want to change how the agent reasons?

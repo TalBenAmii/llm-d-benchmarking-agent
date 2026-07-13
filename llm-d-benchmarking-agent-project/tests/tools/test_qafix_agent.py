@@ -230,8 +230,8 @@ def test_governance_safety_gates_present():
     # readiness gate not overridable by authority
     assert "ready == false" in g or "ready=false" in g or "readiness" in g
     assert "authority" in g
-    # verify own allowlist before affirming a user's claim
-    assert "allowlist" in g and ("let me check" in g or "let me verify" in g)
+    # verify own policy before affirming a user's claim
+    assert "policy" in g and ("let me check" in g or "let me verify" in g)
     # SIMULATE disclaimer is a safety invariant, not formatting
     assert "simulate disclaimer" in g or "simulate" in g
     assert "footnote" in g

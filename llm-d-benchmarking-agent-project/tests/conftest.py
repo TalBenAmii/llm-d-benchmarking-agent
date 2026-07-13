@@ -9,7 +9,7 @@ import pytest
 from app.config import get_settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 # Hermetic baseline: neutralize the developer's .env SIMULATE toggle before the first settings
 # read. A dev .env with SIMULATE=1 otherwise no-ops every mutating command, so tests that assert
 # on what a command actually DID see a synthetic success instead. Env vars take precedence over
@@ -46,23 +46,23 @@ def br_example() -> Path:
 
 
 @pytest.fixture(scope="session")
-def allowlist():
-    from app.security.allowlist import Allowlist
-    return Allowlist.from_file(ALLOWLIST_PATH)
+def policy():
+    from app.security.policy import CommandPolicy
+    return CommandPolicy.from_file(COMMAND_POLICY_PATH)
 
 
 @pytest.fixture()
 def tool_ctx(tmp_path):
     """A ToolContext wired to the real repos but an isolated temp workspace."""
     from app.config import get_settings
-    from app.security.allowlist import Allowlist
+    from app.security.policy import CommandPolicy
     from app.security.runner import CommandRunner
     from app.tools.context import ToolContext
 
     s = get_settings()
-    al = Allowlist.from_file(ALLOWLIST_PATH)
+    al = CommandPolicy.from_file(COMMAND_POLICY_PATH)
     runner = CommandRunner(s.repo_paths)
-    return ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
+    return ToolContext(settings=s, policy=al, runner=runner, workspace=tmp_path / "ws")
 
 
 @pytest.fixture(autouse=True)

@@ -24,7 +24,7 @@ from fastapi.testclient import TestClient
 from app.agent.lifecycle import RunRegistry
 from app.config import Settings, get_settings
 from app.llm.provider import AssistantTurn, ToolCall
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner, RunResult
 from app.tools.context import ToolContext, ToolError
 from app.tools.run.manage_runs import cancel_run
@@ -58,7 +58,7 @@ def _ctx(tmp_path, runner, *, sem, session_id="s", runs=None):
 
     ctx = ToolContext(
         settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
+        policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner,
         workspace=tmp_path / "ws",
         request_approval=approve,
@@ -343,7 +343,7 @@ def test_graceful_shutdown_cancels_background_pre_probe(tmp_path):
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_readyz_reports_components_including_runner():
     """/readyz returns STRUCTURED per-component readiness — provider, repos, runner, workspace —
-    via the real FastAPI wiring. Phase 16 adds the runner_ok component (the allowlist policy
+    via the real FastAPI wiring. Phase 16 adds the runner_ok component (the policy policy
     loads). Liveness stays minimal on /healthz."""
     from app.main import app
 
@@ -356,7 +356,7 @@ def test_readyz_reports_components_including_runner():
         # The four components the spec names, each surfaced individually.
         assert {"workspace_writable", "provider_coherent", "repos_resolvable", "runner_ok"} <= names
         runner = next(c for c in body["self_check"]["checks"] if c["name"] == "runner_ok")
-        assert runner["ok"] is True  # the shipped allowlist policy loads in CI
+        assert runner["ok"] is True  # the shipped policy policy loads in CI
         assert runner["data"]["executables"] >= 1
         # Liveness is the minimal, dependency-free probe.
         live = client.get("/healthz").json()
@@ -364,18 +364,18 @@ def test_readyz_reports_components_including_runner():
 
 
 def test_runner_ok_component_detects_a_broken_policy(tmp_path):
-    """The runner_ok readiness component FAILS (not crashes) when the allowlist policy is
+    """The runner_ok readiness component FAILS (not crashes) when the policy policy is
     malformed — proving it's a real signal, not a constant True."""
     from app.storage.retention import _check_runner_ok
 
-    bad = tmp_path / "allowlist.yaml"
-    bad.write_text("this: is not: valid: allowlist\n  - nonsense\n")
+    bad = tmp_path / "command_policy.yaml"
+    bad.write_text("this: is not: valid: policy\n  - nonsense\n")
 
     class _S:
-        allowlist_path = bad
+        command_policy_path = bad
 
     out = _check_runner_ok(_S())
-    assert out.ok is False and "allowlist" in out.detail.lower()
+    assert out.ok is False and "policy" in out.detail.lower()
 
 
 # --- (d) reattach replays buffered live events; cancel control message stops a run ------
@@ -483,12 +483,12 @@ def test_cancel_judgment_lives_in_knowledge(tmp_path):
 
     # And the prompt assembler actually folds it into the system prompt the agent sees.
     from app.agent.prompt import build_system_prompt
-    from app.security.allowlist import Allowlist
+    from app.security.policy import CommandPolicy
     from app.tools.context import ToolContext
 
     ctx = ToolContext(
         settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
+        policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=CommandRunner(settings.repo_paths),
         workspace=tmp_path / "ws",
     )

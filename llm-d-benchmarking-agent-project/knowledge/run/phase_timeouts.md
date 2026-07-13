@@ -16,7 +16,7 @@ There are two independent timeouts in play. Keep them straight:
 
 | Layer | Where it lives | What it bounds | How long |
 |-------|----------------|----------------|----------|
-| **Runner deadline** (outer) | `security/allowlist.yaml` `timeout_s` per subcommand (DATA), enforced by `asyncio.wait_for` in the runner | The **whole** CLI process — if it overruns, the child process group is SIGKILLed | standup/run **3600**, teardown **900**, experiment **14400**, plan **300**, results **600** |
+| **Runner deadline** (outer) | `security/command_policy.yaml` `timeout_s` per subcommand (DATA), enforced by `asyncio.wait_for` in the runner | The **whole** CLI process — if it overruns, the child process group is SIGKILLed | standup/run **3600**, teardown **900**, experiment **14400**, plan **300**, results **600** |
 | **CLI per-phase timeout** (inner, Phase 38) | The `--*-timeout` flags here | One **phase** inside the CLI run (one deploy / bind / wait / drain) | Whatever you pass |
 
 **THE RULE: every per-phase timeout MUST stay strictly BELOW the runner `timeout_s` ceiling for
@@ -34,7 +34,7 @@ Leave a margin (the phase is rarely the only thing happening in the command). A 
 keep a per-phase timeout to **at most ~70–80%** of the runner ceiling, never right up against it.
 
 If a phase genuinely needs **more** time than the runner ceiling allows, the per-phase flag is
-the wrong lever — that is a `timeout_s` policy change in `security/allowlist.yaml` (Phase 13
+the wrong lever — that is a `timeout_s` policy change in `security/command_policy.yaml` (Phase 13
 governance), not a CLI flag. Do not try to out-set the runner deadline with a CLI flag; you
 can't, and you shouldn't want to.
 
@@ -106,7 +106,7 @@ deliberately, e.g. when you will poll results yourself.
 - **Do not set a per-phase timeout ≥ the runner ceiling** for that subcommand (see the rule
   above) — the runner would kill the process first and you'd lose the CLI's clean error.
 - **Do not set a timeout key on a subcommand that doesn't accept it.** `build_argv` drops it
-  silently and the allowlist would refuse it anyway; just don't.
+  silently and the command policy would refuse it anyway; just don't.
 - **Do not use these to "make a deploy reliable."** A timeout buys *patience*, not *capacity*.
   If a deploy is failing because the cluster can't fit the model, raising the timeout just makes
   the failure slower — run `check_capacity` / `advise_accelerators` and fix the real constraint
@@ -115,7 +115,7 @@ deliberately, e.g. when you will poll results yourself.
 ## Mechanism vs. judgment
 
 Emitting the `--*-timeout` flags (and guarding each on the accepting subcommand) is **mechanism**
-— a static table in `app/tools/run/execute.py`, no `if/elif` on the value. The allowlist permits each
-flag value-pinned to a positive integer (DATA, `security/allowlist.yaml`). WHETHER to set one,
+— a static table in `app/tools/run/execute.py`, no `if/elif` on the value. The command policy permits each
+flag value-pinned to a positive integer (DATA, `security/command_policy.yaml`). WHETHER to set one,
 to WHAT value, and the keep-it-below-the-runner-ceiling reconcile that stops the two layers from
 fighting — that judgment lives **here**, never in Python.

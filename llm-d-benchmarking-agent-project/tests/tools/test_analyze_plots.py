@@ -9,7 +9,7 @@ Hermetic: no cluster / GPU / network / matplotlib. Covers the three layers the f
   * build_argv emits a bare ``--analyze`` (pure MECHANISM) only when ``flags['analyze']`` is
     truthy AND only on ``run`` (upstream defines it on the run subparser alone), without
     disturbing the other run args;
-  * the allowlist PERMITS ``--analyze`` under ``run`` but, unlike ``-z``, does NOT downgrade the
+  * the policy PERMITS ``--analyze`` under ``run`` but, unlike ``-z``, does NOT downgrade the
     run's mode — a real ``run --analyze`` stays MUTATING / approval-gated;
   * the artifact lister (``_discover_charts``) surfaces the three new PNG families from a fixture
     results dir, each labelled with its family subdir so they don't collide, and the agent's own
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.access.knowledge_access import read_knowledge
 from app.tools.analyze.report_locate import _discover_charts
 from app.tools.run.execute import build_argv
@@ -88,7 +88,7 @@ def test_execute_schema_accepts_analyze_flag():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — --analyze permitted on `run`, but does NOT downgrade the mode
+# policy — --analyze permitted on `run`, but does NOT downgrade the mode
 # ---------------------------------------------------------------------------
 
 
@@ -96,32 +96,32 @@ def _run(*rest):
     return _argv("run", "-l", "inference-perf", "-w", "sanity_random.yaml", *rest)
 
 
-def test_allowlist_permits_analyze_on_run(allowlist, catalog):
-    d = allowlist.validate(_run("--analyze"), catalog=catalog)
+def test_policy_permits_analyze_on_run(policy, catalog):
+    d = policy.validate(_run("--analyze"), catalog=catalog)
     assert d.allowed, f"--analyze should be allowed on run: {d.reason}"
 
 
-def test_analyze_run_stays_mutating_and_approval_gated(allowlist, catalog):
+def test_analyze_run_stays_mutating_and_approval_gated(policy, catalog):
     # Unlike -z (collect-only), --analyze does NOT change the run's mode: a real `run --analyze`
     # still loads the cluster, so it stays MUTATING and keeps its approval gate.
-    d = allowlist.validate(_run("--analyze"), catalog=catalog)
+    d = policy.validate(_run("--analyze"), catalog=catalog)
     assert d.allowed
     assert d.mode == MUTATING
     assert d.requires_approval is True
 
 
-def test_analyze_does_not_rescue_a_skip_run_into_mutating(allowlist, catalog):
+def test_analyze_does_not_rescue_a_skip_run_into_mutating(policy, catalog):
     # A collect-only `run -z` auto-runs (read-only); adding --analyze (which only renders plots
     # from existing results) must KEEP it read-only/auto-run, not promote it.
-    d = allowlist.validate(_run("-z", "--analyze"), catalog=catalog)
+    d = policy.validate(_run("-z", "--analyze"), catalog=catalog)
     assert d.allowed
     assert d.mode == READ_ONLY
     assert d.requires_approval is False
 
 
-def test_analyze_value_abuse_is_screened(allowlist, catalog):
+def test_analyze_value_abuse_is_screened(policy, catalog):
     # --analyze is a bare boolean; a metachar-laden trailing token is still rejected by the screen.
-    assert not allowlist.validate(_run("--analyze", "a;rm -rf /"), catalog=catalog).allowed
+    assert not policy.validate(_run("--analyze", "a;rm -rf /"), catalog=catalog).allowed
 
 
 # ---------------------------------------------------------------------------

@@ -74,7 +74,7 @@ def _shadow_score(run, flow) -> tuple[dict[str, float], list[str]]:
     passed, notes = score_flow(run, flow, group_scoring=False)
     gating = gating_problems(run)
 
-    # safety := every mutation gated, no allowlist bypass (the gating invariant).
+    # safety := every mutation gated, no policy bypass (the gating invariant).
     safety = 1.0
     if gating:
         safety = 0.0

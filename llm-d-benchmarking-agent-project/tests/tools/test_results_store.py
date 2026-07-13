@@ -8,7 +8,7 @@ not in Python):
     init/remote/status/add/rm/ls/push/pull (verified against
     llm-d-benchmark/llmdbenchmark/interface/results.py), and emits NOTHING from the
     namespace/harness/model/run-flag path for a `results` invocation;
-  * the allowlist (DATA) accepts every store-command at the right mode — init/status/ls/remote-ls
+  * the policy (DATA) accepts every store-command at the right mode — init/status/ls/remote-ls
     READ-ONLY (auto-run), add/rm/push/pull/remote-add/remote-rm MUTATING (approval-gated, the
     spec's HERMETIC-TEST requirement) — and value-pins remote names / GCS-only URIs / run-uids;
   * publish/pull are approval-gated end-to-end through execute_llmdbenchmark (a denying approver
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.context import ApprovalRejected, ToolError
 from app.tools.run.execute import _RESULTS_STORE_COMMANDS, build_argv, execute_llmdbenchmark
 from app.tools.schemas import ExecuteInput
@@ -75,7 +75,7 @@ def test_build_argv_rm():
 
 def test_build_argv_paths_must_be_a_list():
     # Regression: a non-iterable `paths` (scalar) or a non-list mapping must raise a clean
-    # ToolError, not a raw TypeError at argv-build time (before the allowlist could reject it).
+    # ToolError, not a raw TypeError at argv-build time (before the policy could reject it).
     with pytest.raises(ToolError):
         _store_argv({"command": "add", "paths": 5})
     with pytest.raises(ToolError):
@@ -164,7 +164,7 @@ def test_store_command_set_matches_upstream():
 
 
 # ---------------------------------------------------------------------------
-# allowlist (DATA) — every store-command at the right mode + value-pinned
+# policy (DATA) — every store-command at the right mode + value-pinned
 # ---------------------------------------------------------------------------
 
 
@@ -195,59 +195,59 @@ MUTATING_CASES = [
 
 
 @pytest.mark.parametrize("rest", READ_ONLY_CASES)
-def test_allowlist_read_only_store_commands_auto_run(allowlist, catalog, rest):
-    d = allowlist.validate(_argv(*rest), catalog=catalog)
+def test_policy_read_only_store_commands_auto_run(policy, catalog, rest):
+    d = policy.validate(_argv(*rest), catalog=catalog)
     assert d.allowed, f"results {' '.join(rest)} should be allowed: {d.reason}"
     assert d.mode == READ_ONLY and not d.requires_approval, f"results {' '.join(rest)} should auto-run"
 
 
 @pytest.mark.parametrize("rest", MUTATING_CASES)
-def test_allowlist_mutating_store_commands_need_approval(allowlist, catalog, rest):
-    d = allowlist.validate(_argv(*rest), catalog=catalog)
+def test_policy_mutating_store_commands_need_approval(policy, catalog, rest):
+    d = policy.validate(_argv(*rest), catalog=catalog)
     assert d.allowed, f"results {' '.join(rest)} should be allowed: {d.reason}"
     assert d.mode == MUTATING and d.requires_approval, (
         f"results {' '.join(rest)} must be approval-gated (spec HERMETIC-TEST)"
     )
 
 
-def test_allowlist_push_and_pull_are_approval_gated(allowlist, catalog):
-    # The spec calls this out explicitly: push/pull must be approval-gated + allowlisted.
-    push = allowlist.validate(_argv("push", "staging"), catalog=catalog)
-    pull = allowlist.validate(_argv("pull", "prod", "--run-uid", "c6bc210e"), catalog=catalog)
+def test_policy_push_and_pull_are_approval_gated(policy, catalog):
+    # The spec calls this out explicitly: push/pull must be approval-gated + policy-allowed.
+    push = policy.validate(_argv("push", "staging"), catalog=catalog)
+    pull = policy.validate(_argv("pull", "prod", "--run-uid", "c6bc210e"), catalog=catalog)
     assert push.allowed and push.requires_approval
     assert pull.allowed and pull.requires_approval
 
 
-def test_allowlist_remote_uri_is_gcs_only(allowlist, catalog):
+def test_policy_remote_uri_is_gcs_only(policy, catalog):
     # s3:// is deliberately NOT accepted for a remote URI (GCS-only, matching upstream defaults).
-    ok = allowlist.validate(_argv("remote", "add", "prod", GS_URI), catalog=catalog)
+    ok = policy.validate(_argv("remote", "add", "prod", GS_URI), catalog=catalog)
     assert ok.allowed, ok.reason
-    bad = allowlist.validate(_argv("remote", "add", "prod", "s3://bucket/x"), catalog=catalog)
+    bad = policy.validate(_argv("remote", "add", "prod", "s3://bucket/x"), catalog=catalog)
     assert not bad.allowed
 
 
-def test_allowlist_rejects_unknown_store_command(allowlist, catalog):
-    d = allowlist.validate(_argv("frobnicate"), catalog=catalog)
+def test_policy_rejects_unknown_store_command(policy, catalog):
+    d = policy.validate(_argv("frobnicate"), catalog=catalog)
     assert not d.allowed
 
 
-def test_allowlist_rejects_missing_required_positionals(allowlist, catalog):
+def test_policy_rejects_missing_required_positionals(policy, catalog):
     # remote add needs name + uri; ls needs a remote; add needs >=1 path; remote needs an action.
-    assert not allowlist.validate(_argv("remote", "add", "prod"), catalog=catalog).allowed
-    assert not allowlist.validate(_argv("ls"), catalog=catalog).allowed
-    assert not allowlist.validate(_argv("add"), catalog=catalog).allowed
-    assert not allowlist.validate(_argv("remote"), catalog=catalog).allowed
+    assert not policy.validate(_argv("remote", "add", "prod"), catalog=catalog).allowed
+    assert not policy.validate(_argv("ls"), catalog=catalog).allowed
+    assert not policy.validate(_argv("add"), catalog=catalog).allowed
+    assert not policy.validate(_argv("remote"), catalog=catalog).allowed
 
 
-def test_allowlist_rejects_wildcard_run_uid(allowlist, catalog):
+def test_policy_rejects_wildcard_run_uid(policy, catalog):
     # Upstream supports `*` wildcards; we cannot (it is a blocked shell metacharacter). An exact
     # run-uid works; a wildcard is rejected by the blanket metachar screen.
-    d = allowlist.validate(_argv("pull", "prod", "--run-uid", "c6bc*"), catalog=catalog)
+    d = policy.validate(_argv("pull", "prod", "--run-uid", "c6bc*"), catalog=catalog)
     assert not d.allowed
 
 
-def test_allowlist_rejects_injection_in_store_value(allowlist, catalog):
-    d = allowlist.validate(_argv("remote", "add", "prod", "gs://evil/$(rm -rf /)"), catalog=catalog)
+def test_policy_rejects_injection_in_store_value(policy, catalog):
+    d = policy.validate(_argv("remote", "add", "prod", "gs://evil/$(rm -rf /)"), catalog=catalog)
     assert not d.allowed
 
 

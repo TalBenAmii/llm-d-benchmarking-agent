@@ -6,7 +6,7 @@ dataset-vs-synthetic JUDGMENT lives in knowledge/dataset_replay.md, not in Pytho
   * build_argv emits the SUBCOMMAND-AWARE dataset flag: a set ``flags["dataset"]`` => ``-x <url>``
     on run/experiment ONLY (standup/plan/smoketest/teardown reject it upstream); absent/None/empty
     => nothing (the synthetic workload profile still drives the load);
-  * the allowlist permits ``-x``/``--dataset`` (value-constrained to a dataset URL/path) on run and
+  * the policy permits ``-x``/``--dataset`` (value-constrained to a dataset URL/path) on run and
     experiment, and the flag does NOT change the command's mutating classification, while the
     metachar screen still rejects an injection-laden dataset value;
   * the ExecuteInput schema accepts ``dataset`` inside ``flags``;
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
@@ -76,13 +76,13 @@ def test_execute_schema_accepts_dataset_flag():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — -x/--dataset permitted (value-constrained) on run + experiment (DATA)
+# policy — -x/--dataset permitted (value-constrained) on run + experiment (DATA)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("flag", ["-x", "--dataset"])
-def test_allowlist_permits_dataset_on_run(allowlist, catalog, flag):
-    d = allowlist.validate(
+def test_policy_permits_dataset_on_run(policy, catalog, flag):
+    d = policy.validate(
         _argv("run", "-l", "vllm-benchmark", "-w", "sanity_random.yaml", flag, DATASET_URL),
         catalog=catalog,
     )
@@ -91,13 +91,13 @@ def test_allowlist_permits_dataset_on_run(allowlist, catalog, flag):
 
 
 @pytest.mark.parametrize("flag", ["-x", "--dataset"])
-def test_allowlist_permits_dataset_on_experiment(allowlist, catalog, flag):
-    d = allowlist.validate(_argv("experiment", "-e", "exp.yaml", flag, DATASET_URL), catalog=catalog)
+def test_policy_permits_dataset_on_experiment(policy, catalog, flag):
+    d = policy.validate(_argv("experiment", "-e", "exp.yaml", flag, DATASET_URL), catalog=catalog)
     assert d.allowed, f"{flag} should be allowed on experiment: {d.reason}"
     assert d.mode == MUTATING
 
 
-def test_allowlist_dataset_value_constraint_accepts_schemes(allowlist, catalog):
+def test_policy_dataset_value_constraint_accepts_schemes(policy, catalog):
     for url in (
         DATASET_URL,
         "hf://datasets/anon/shared-prefix",
@@ -106,17 +106,17 @@ def test_allowlist_dataset_value_constraint_accepts_schemes(allowlist, catalog):
         "workspace/datasets/local_trace.jsonl",
         "https://example.com/data/",  # trailing slash => directory replay
     ):
-        d = allowlist.validate(
+        d = policy.validate(
             _argv("run", "-l", "vllm-benchmark", "-w", "sanity_random.yaml", "-x", url),
             catalog=catalog,
         )
         assert d.allowed, f"dataset url {url!r} should pass the value constraint: {d.reason}"
 
 
-def test_allowlist_rejects_injection_laden_dataset_value(allowlist, catalog):
+def test_policy_rejects_injection_laden_dataset_value(policy, catalog):
     # A metachar-laden dataset value is rejected by the blanket screen (defense in depth),
     # even though the constraint regex would also reject it.
-    d = allowlist.validate(
+    d = policy.validate(
         _argv("run", "-l", "vllm-benchmark", "-w", "sanity_random.yaml",
               "-x", "https://evil/$(rm -rf /)"),
         catalog=catalog,
@@ -124,10 +124,10 @@ def test_allowlist_rejects_injection_laden_dataset_value(allowlist, catalog):
     assert not d.allowed
 
 
-def test_dataset_flag_keeps_read_only_preview(allowlist, catalog):
+def test_dataset_flag_keeps_read_only_preview(policy, catalog):
     # --dry-run still downgrades a dataset-bearing run to a read-only preview (the dataset flag
     # is orthogonal to the mode classification).
-    d = allowlist.validate(
+    d = policy.validate(
         _argv("run", "-l", "vllm-benchmark", "-w", "sanity_random.yaml",
               "-x", DATASET_URL, "--dry-run"),
         catalog=catalog,

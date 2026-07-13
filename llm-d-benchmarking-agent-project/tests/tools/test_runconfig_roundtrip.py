@@ -6,7 +6,7 @@ generate-vs-reuse-vs-author JUDGMENT lives in knowledge/runconfig_roundtrip.md, 
 
   * build_argv emits --generate-config (GENERATE + exit) and -c <path> (REPLAY) on ``run`` ONLY
     (upstream defines both on the run subcommand alone); absent/None/empty => nothing;
-  * the allowlist permits both on ``run``: --generate-config is a read_only_trigger (it
+  * the policy permits both on ``run``: --generate-config is a read_only_trigger (it
     generates-and-exits, deploys nothing, so it auto-runs), while a -c replay STAYS mutating
     (approval-gated) and is value-pinned to a *.yaml/*.yml config path (no `..`); the metachar
     screen still rejects an injection-laden config path;
@@ -14,13 +14,13 @@ generate-vs-reuse-vs-author JUDGMENT lives in knowledge/runconfig_roundtrip.md, 
   * the knowledge guide + tool descriptions point the agent at the judgment.
 
 ACCEPTANCE: the agent can generate a run-config with the CLI (--generate-config) and replay it
-via -c — both expressible through build_argv and both permitted by the allowlist.
+via -c — both expressible through build_argv and both permitted by the policy.
 """
 from __future__ import annotations
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 
@@ -104,7 +104,7 @@ def test_execute_schema_accepts_roundtrip_flags():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — both flags permitted on `run` (DATA); modes differ by intent
+# policy — both flags permitted on `run` (DATA); modes differ by intent
 # ---------------------------------------------------------------------------
 
 
@@ -112,10 +112,10 @@ def _argv(*rest):
     return ["llmdbenchmark", "--spec", "cicd/kind", "run", *rest]
 
 
-def test_allowlist_generate_config_auto_runs_read_only(allowlist, catalog):
+def test_policy_generate_config_auto_runs_read_only(policy, catalog):
     # --generate-config generates-and-exits (deploys nothing) => it downgrades the run to a
     # read-only AUTO-RUN, exactly like --dry-run / --list-endpoints.
-    d = allowlist.validate(
+    d = policy.validate(
         _argv("-p", "llmdbench", "-l", "inference-perf", "-w", "sanity_random.yaml",
               "--generate-config"),
         catalog=catalog,
@@ -125,55 +125,55 @@ def test_allowlist_generate_config_auto_runs_read_only(allowlist, catalog):
 
 
 @pytest.mark.parametrize("flag", ["-c", "--config"])
-def test_allowlist_replay_permitted_and_stays_mutating(allowlist, catalog, flag):
+def test_policy_replay_permitted_and_stays_mutating(policy, catalog, flag):
     # A -c/--config replay executes the load against an existing stack => it STAYS mutating
     # (approval-gated); it is NOT a read_only_trigger.
-    d = allowlist.validate(_argv("-p", "llmdbench", flag, RUN_CONFIG), catalog=catalog)
+    d = policy.validate(_argv("-p", "llmdbench", flag, RUN_CONFIG), catalog=catalog)
     assert d.allowed, f"{flag} should be allowed on run: {d.reason}"
     assert d.mode == MUTATING
 
 
-def test_allowlist_run_config_value_constraint_accepts_yaml_paths(allowlist, catalog):
+def test_policy_run_config_value_constraint_accepts_yaml_paths(policy, catalog):
     for path in (
         "run-config.yaml",
         "results/cicd-kind/run-config.yaml",
         "workspace/sess-123/run-config.yml",
     ):
-        d = allowlist.validate(_argv("-p", "llmdbench", "-c", path), catalog=catalog)
+        d = policy.validate(_argv("-p", "llmdbench", "-c", path), catalog=catalog)
         assert d.allowed, f"run-config path {path!r} should pass the value constraint: {d.reason}"
 
 
-def test_allowlist_rejects_non_yaml_and_traversal_run_config(allowlist, catalog):
+def test_policy_rejects_non_yaml_and_traversal_run_config(policy, catalog):
     for bad in (
         "run-config.txt",          # not a yaml
         "../../etc/passwd.yaml",   # directory-climbing escape
         "/etc/secret",             # no .yaml extension
     ):
-        d = allowlist.validate(_argv("-p", "llmdbench", "-c", bad), catalog=catalog)
+        d = policy.validate(_argv("-p", "llmdbench", "-c", bad), catalog=catalog)
         assert not d.allowed, f"run-config path {bad!r} must be refused"
 
 
-def test_allowlist_rejects_injection_laden_run_config(allowlist, catalog):
+def test_policy_rejects_injection_laden_run_config(policy, catalog):
     # A metachar-laden config path is rejected by the blanket screen (defense in depth),
     # even though the *.yaml/no-`..` constraint would also reject it.
-    d = allowlist.validate(
+    d = policy.validate(
         _argv("-p", "llmdbench", "-c", "run-config.yaml;$(rm -rf /)"), catalog=catalog
     )
     assert not d.allowed
 
 
-def test_roundtrip_in_one_session_acceptance(allowlist, catalog):
-    # ACCEPTANCE end-to-end at the argv/allowlist boundary: generate (auto-run, read-only) THEN
+def test_roundtrip_in_one_session_acceptance(policy, catalog):
+    # ACCEPTANCE end-to-end at the argv/policy boundary: generate (auto-run, read-only) THEN
     # replay (approval-gated, mutating) — both expressible and both permitted.
     gen = build_argv(
         "run", spec="cicd/kind", namespace="llmdbench", harness="inference-perf",
         workload="sanity_random.yaml", flags={"generate_config": True, "output": "local"},
     )
-    gd = allowlist.validate(gen, catalog=catalog)
+    gd = policy.validate(gen, catalog=catalog)
     assert gd.allowed and gd.mode == READ_ONLY
 
     replay = build_argv("run", namespace="llmdbench", flags={"run_config": RUN_CONFIG})
-    rd = allowlist.validate(replay, catalog=catalog)
+    rd = policy.validate(replay, catalog=catalog)
     assert rd.allowed and rd.mode == MUTATING
 
 

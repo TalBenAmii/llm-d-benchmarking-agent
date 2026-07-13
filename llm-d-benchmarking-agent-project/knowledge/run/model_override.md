@@ -51,7 +51,7 @@ before the next standup. The override and the pre-flight override are always the
 
 ## Notes
 
-- The id is constrained by the allowlist (`model_id`: the safe `org/name` charset) and the
+- The id is constrained by the command policy (`model_id`: the safe `org/name` charset) and the
   metacharacter screen — a shell-dangerous value is refused before any approval prompt.
 - `-m` does not change a command's mode: a `standup -m …` is still mutating (needs approval);
   a `plan -m …` / `--dry-run` is still a read-only preview you can use to confirm the override

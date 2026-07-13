@@ -11,7 +11,7 @@ existing ``write_and_validate_config(artifact_type="scenario", …)`` mechanism:
 * the live repo reference yields ``tracing`` as an allowed knob key (so the block validates
   against the real repo too);
 * the authored block lands in the SESSION workspace (never the read-only repo), emits a
-  companion ``--spec`` file, and that spec path passes the real allowlist for plan/--dry-run;
+  companion ``--spec`` file, and that spec path passes the real policy for plan/--dry-run;
 * the upstream jinja template + benchmark docs ground the keys + the config-only limitation.
 
 No network, no cluster, no GPU. The read-only sibling repo is the only on-disk dependency and
@@ -244,9 +244,9 @@ async def test_author_minimal_tracing_block(tool_ctx):
     }
 
 
-async def test_author_tracing_emits_gateable_spec_and_passes_allowlist(tool_ctx, catalog):
-    """The authored tracing scenario must have a real, allowlisted route into plan/--dry-run:
-    it emits a companion --spec file whose path the live allowlist accepts as a read-only
+async def test_author_tracing_emits_gateable_spec_and_passes_policy(tool_ctx, catalog):
+    """The authored tracing scenario must have a real, policy-allowed route into plan/--dry-run:
+    it emits a companion --spec file whose path the live policy accepts as a read-only
     plan --dry-run target. This is the determinism-gate plumbing for the tracing block."""
     out = await write_and_validate_config(
         tool_ctx,
@@ -262,9 +262,9 @@ async def test_author_tracing_emits_gateable_spec_and_passes_allowlist(tool_ctx,
     assert spec_doc["scenario_file"]["path"] == out["path"]
 
     argv = ["llmdbenchmark", "--spec", spec_path, "plan", "-p", "test-ns", "--dry-run"]
-    decision = tool_ctx.allowlist.validate(argv, catalog=catalog)
+    decision = tool_ctx.policy.validate(argv, catalog=catalog)
     assert decision.allowed, decision.reason
-    from app.security.allowlist import READ_ONLY
+    from app.security.policy import READ_ONLY
 
     assert decision.mode == READ_ONLY  # previewing the tracing block is read-only
 

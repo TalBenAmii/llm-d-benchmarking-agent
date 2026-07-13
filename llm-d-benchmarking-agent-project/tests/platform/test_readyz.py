@@ -36,7 +36,7 @@ def test_readyz_endpoint_and_lifespan_wiring():
 
 def test_readyz_body_does_not_leak_host_paths_or_username():
     """BUG: /readyz is UNAUTHENTICATED but the self-check's detail/data carried absolute host
-    paths (``writable at /home/<user>/…/workspace``, repo/allowlist paths), disclosing the host
+    paths (``writable at /home/<user>/…/workspace``, repo/policy paths), disclosing the host
     layout + OS username. The public body must relativize the home dir to ``~`` (server-side logs
     still keep the full paths)."""
     from app.main import app

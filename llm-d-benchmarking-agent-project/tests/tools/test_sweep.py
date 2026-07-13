@@ -3,13 +3,13 @@
 - find_reports (multi-report discovery)
 - the compare_reports tool (sources + experiment_dir modes)
 - execute build_argv for the `experiment` subcommand
-- allowlist coverage for `experiment` and `run --experiments`
+- policy coverage for `experiment` and `run --experiments`
 """
 from __future__ import annotations
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.analyze import compare
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.run.execute import _result_location, build_argv
@@ -232,10 +232,10 @@ def test_result_location_run_unchanged():
     assert _result_location("run", {}, None, "/o") is None
 
 
-# ---- allowlist coverage ----------------------------------------------------
+# ---- policy coverage ----------------------------------------------------
 
-def test_experiment_allowed_and_mutating(allowlist, catalog):
-    d = allowlist.validate(
+def test_experiment_allowed_and_mutating(policy, catalog):
+    d = policy.validate(
         ["llmdbenchmark", "--spec", "cicd/kind", "experiment",
          "-e", "workspace/exp.yaml", "-l", "inference-perf", "-w", "sanity_random.yaml"],
         catalog=catalog,
@@ -243,35 +243,35 @@ def test_experiment_allowed_and_mutating(allowlist, catalog):
     assert d.allowed and d.mode == MUTATING and d.requires_approval
 
 
-def test_experiment_dry_run_downgrades_to_read_only(allowlist, catalog):
-    d = allowlist.validate(
+def test_experiment_dry_run_downgrades_to_read_only(policy, catalog):
+    d = policy.validate(
         ["llmdbenchmark", "--spec", "cicd/kind", "experiment", "-e", "workspace/exp.yaml", "--dry-run"],
         catalog=catalog,
     )
     assert d.allowed and d.mode == READ_ONLY
 
 
-def test_experiment_two_namespaces_allowed(allowlist, catalog):
-    d = allowlist.validate(
+def test_experiment_two_namespaces_allowed(policy, catalog):
+    d = policy.validate(
         ["llmdbenchmark", "--spec", "cicd/kind", "experiment", "-e", "x.yaml", "-p", "deploy-ns,bench-ns"],
         catalog=catalog,
     )
     assert d.allowed
 
 
-def test_experiment_unknown_flag_now_allowed(allowlist, catalog):
-    # Relaxed policy: an unrecognized flag on an allowlisted subcommand is accepted...
-    assert allowlist.validate(
+def test_experiment_unknown_flag_now_allowed(policy, catalog):
+    # Relaxed policy: an unrecognized flag on an policy-allowed subcommand is accepted...
+    assert policy.validate(
         ["llmdbenchmark", "--spec", "cicd/kind", "experiment", "--bogus"], catalog=catalog
     ).allowed
     # ...but a metachar-laden value is still rejected by the screen.
-    assert not allowlist.validate(
+    assert not policy.validate(
         ["llmdbenchmark", "--spec", "cicd/kind", "experiment", "--bogus", "a;b"], catalog=catalog
     ).allowed
 
 
-def test_run_experiments_flag_allowed(allowlist, catalog):
-    d = allowlist.validate(
+def test_run_experiments_flag_allowed(policy, catalog):
+    d = policy.validate(
         ["llmdbenchmark", "--spec", "cicd/kind", "run",
          "-l", "inference-perf", "-w", "sanity_random.yaml", "-e", "workspace/sweep.yaml"],
         catalog=catalog,

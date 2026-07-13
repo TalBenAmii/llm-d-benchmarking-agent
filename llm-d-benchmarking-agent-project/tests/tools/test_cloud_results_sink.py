@@ -6,7 +6,7 @@ knowledge/cloud_results_sink.md, not in Python):
 
   * build_argv emits ``-r <output>`` verbatim, so an explicit gs://.../s3://... destination
     passes straight through, while an UNSET output still defaults to ``local`` for a run;
-  * the allowlist permits the cloud scheme on ``run``'s ``-r/--output`` ONLY via the dedicated
+  * the policy permits the cloud scheme on ``run``'s ``-r/--output`` ONLY via the dedicated
     ``results_sink`` constraint (OPT-IN), while a local path is still accepted as the default;
   * the cloud scheme is NOT silently widened elsewhere: --workspace/-e (output_dir) and the
     ``experiment`` subcommand's -r STILL reject gs://.../s3://... (cloud stays run-only, MVP);
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.run.execute import build_argv, execute_llmdbenchmark
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _approve_all, _capture_ctx
@@ -103,7 +103,7 @@ def test_execute_schema_accepts_cloud_output_flag():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — cloud scheme permitted on run -r/--output ONLY when opted in (DATA)
+# policy — cloud scheme permitted on run -r/--output ONLY when opted in (DATA)
 # ---------------------------------------------------------------------------
 
 
@@ -114,29 +114,29 @@ def _run_argv(*rest):
 
 @pytest.mark.parametrize("flag", ["-r", "--output"])
 @pytest.mark.parametrize("uri", [GS_URI, S3_URI])
-def test_allowlist_permits_cloud_sink_on_run(allowlist, catalog, flag, uri):
-    d = allowlist.validate(_run_argv(flag, uri), catalog=catalog)
+def test_policy_permits_cloud_sink_on_run(policy, catalog, flag, uri):
+    d = policy.validate(_run_argv(flag, uri), catalog=catalog)
     assert d.allowed, f"{flag} {uri} should be allowed on run (opt-in): {d.reason}"
     assert d.mode == MUTATING  # a real run stays mutating (approval-gated)
 
 
 @pytest.mark.parametrize("flag", ["-r", "--output"])
-def test_allowlist_local_default_still_accepted_on_run(allowlist, catalog, flag):
+def test_policy_local_default_still_accepted_on_run(policy, catalog, flag):
     # The LOCAL default must keep working under the widened constraint.
     for value in ("local", "results/run1"):
-        d = allowlist.validate(_run_argv(flag, value), catalog=catalog)
+        d = policy.validate(_run_argv(flag, value), catalog=catalog)
         assert d.allowed, f"{flag} {value} (local default) must stay allowed: {d.reason}"
 
 
-def test_allowlist_rejects_injection_laden_sink_value(allowlist, catalog):
+def test_policy_rejects_injection_laden_sink_value(policy, catalog):
     # A metachar-laden destination is rejected by the blanket screen (defense in depth).
-    d = allowlist.validate(_run_argv("-r", "gs://evil/$(rm -rf /)"), catalog=catalog)
+    d = policy.validate(_run_argv("-r", "gs://evil/$(rm -rf /)"), catalog=catalog)
     assert not d.allowed
 
 
-def test_cloud_sink_keeps_read_only_preview(allowlist, catalog):
+def test_cloud_sink_keeps_read_only_preview(policy, catalog):
     # --dry-run still downgrades a cloud-sink-bearing run to a read-only preview (orthogonal).
-    d = allowlist.validate(_run_argv("-r", GS_URI, "--dry-run"), catalog=catalog)
+    d = policy.validate(_run_argv("-r", GS_URI, "--dry-run"), catalog=catalog)
     assert d.allowed and d.mode == READ_ONLY
 
 
@@ -146,25 +146,25 @@ def test_cloud_sink_keeps_read_only_preview(allowlist, catalog):
 
 
 @pytest.mark.parametrize("flag", ["--workspace", "--ws", "-e", "--experiments"])
-def test_filesystem_path_flags_still_reject_cloud_scheme(allowlist, catalog, flag):
+def test_filesystem_path_flags_still_reject_cloud_scheme(policy, catalog, flag):
     # output_dir is SHARED by genuine filesystem-path flags; widening output_dir would have
     # let a bucket URI slip into --workspace/-e. The dedicated results_sink keeps those denied.
-    d = allowlist.validate(_run_argv(flag, GS_URI), catalog=catalog)
+    d = policy.validate(_run_argv(flag, GS_URI), catalog=catalog)
     assert not d.allowed, f"{flag} must NOT accept a {GS_URI!r} cloud scheme (it is a path)"
 
 
 @pytest.mark.parametrize("uri", [GS_URI, S3_URI])
-def test_experiment_output_still_local_only(allowlist, catalog, uri):
+def test_experiment_output_still_local_only(policy, catalog, uri):
     # The phase scopes the cloud sink to the `run` flag; experiment's -r stays on output_dir
     # (cloud stores deliberately not permitted there for the MVP).
     argv = ["llmdbenchmark", "--spec", "cicd/kind", "experiment", "-e", "exp.yaml", "-r", uri]
-    d = allowlist.validate(argv, catalog=catalog)
+    d = policy.validate(argv, catalog=catalog)
     assert not d.allowed, f"experiment -r must NOT accept {uri!r} (run-only for the MVP)"
 
 
-def test_experiment_local_output_still_accepted(allowlist, catalog):
+def test_experiment_local_output_still_accepted(policy, catalog):
     argv = ["llmdbenchmark", "--spec", "cicd/kind", "experiment", "-e", "exp.yaml", "-r", "local"]
-    d = allowlist.validate(argv, catalog=catalog)
+    d = policy.validate(argv, catalog=catalog)
     assert d.allowed, f"experiment -r local must stay allowed: {d.reason}"
 
 

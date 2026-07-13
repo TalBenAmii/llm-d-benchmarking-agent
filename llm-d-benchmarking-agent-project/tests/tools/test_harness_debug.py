@@ -8,7 +8,7 @@ interactive shell itself — across the layers it spans:
     the subcommand is ``run``/``experiment``; it is NEVER emitted on teardown (upstream ``-d`` on
     teardown is ``--deep`` — a DESTRUCTIVE wipe), nor on standup/plan/smoketest; it does not
     disturb the other run args;
-  * the allowlist permits ``-d``/``--debug`` under ``run`` AND ``experiment`` only, as a PLAIN
+  * the policy permits ``-d``/``--debug`` under ``run`` AND ``experiment`` only, as a PLAIN
     boolean flag (NO read_only_trigger) — a debug launch creates a REAL pod, so it stays MUTATING
     and approval-gated (unlike collect-only ``-z``); it is deliberately NOT permitted on teardown;
     the boolean-flag value-abuse screen still bites; and there is NO kubectl/oc ``exec`` subcommand
@@ -23,14 +23,14 @@ from pathlib import Path
 
 import yaml
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.access.knowledge_access import read_knowledge
 from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[2] / "knowledge"
-ALLOWLIST_PATH = Path(__file__).resolve().parents[2] / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = Path(__file__).resolve().parents[2] / "security" / "command_policy.yaml"
 
 # ---------------------------------------------------------------------------
 # build_argv — debug emission (PURE MECHANISM), subcommand-guarded
@@ -94,7 +94,7 @@ def test_execute_schema_accepts_debug_flag():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — -d/--debug permitted on run+experiment ONLY, and a debug launch is MUTATING
+# policy — -d/--debug permitted on run+experiment ONLY, and a debug launch is MUTATING
 # ---------------------------------------------------------------------------
 
 
@@ -103,66 +103,66 @@ def _run(*rest):
     return _argv("run", "-l", "inference-perf", "-w", "sanity_random.yaml", *rest)
 
 
-def test_allowlist_permits_debug_short_and_long_on_run(allowlist, catalog):
+def test_policy_permits_debug_short_and_long_on_run(policy, catalog):
     for flag in ("-d", "--debug"):
-        d = allowlist.validate(_run(flag), catalog=catalog)
+        d = policy.validate(_run(flag), catalog=catalog)
         assert d.allowed, f"{flag} should be allowed on run: {d.reason}"
 
 
-def test_allowlist_permits_debug_short_and_long_on_experiment(allowlist, catalog):
+def test_policy_permits_debug_short_and_long_on_experiment(policy, catalog):
     for flag in ("-d", "--debug"):
         argv = _argv("experiment", "-e", "workspace/exp.yaml", flag)
-        d = allowlist.validate(argv, catalog=catalog)
+        d = policy.validate(argv, catalog=catalog)
         assert d.allowed, f"{flag} should be allowed on experiment: {d.reason}"
 
 
-def test_debug_run_is_mutating_and_requires_approval(allowlist, catalog):
+def test_debug_run_is_mutating_and_requires_approval(policy, catalog):
     # The acceptance: a debug launch creates REAL harness pods (they sleep), so it MUTATES the
     # cluster — it is NOT a read-only/collect-only flag. So a debug run stays MUTATING and keeps
     # its approval gate (unlike -z/--skip, which downgrades a run to read-only/auto-run).
     for flag in ("-d", "--debug"):
-        d = allowlist.validate(_run(flag), catalog=catalog)
+        d = policy.validate(_run(flag), catalog=catalog)
         assert d.allowed
         assert d.mode == MUTATING
         assert d.requires_approval is True
 
 
-def test_debug_experiment_is_mutating_and_requires_approval(allowlist, catalog):
-    d = allowlist.validate(_argv("experiment", "-e", "workspace/exp.yaml", "-d"), catalog=catalog)
+def test_debug_experiment_is_mutating_and_requires_approval(policy, catalog):
+    d = policy.validate(_argv("experiment", "-e", "workspace/exp.yaml", "-d"), catalog=catalog)
     assert d.allowed
     assert d.mode == MUTATING
     assert d.requires_approval is True
 
 
-def test_debug_run_is_not_a_read_only_trigger(allowlist, catalog):
+def test_debug_run_is_not_a_read_only_trigger(policy, catalog):
     # Explicitly: -d must NOT downgrade the mode the way -z/--list-endpoints/--dry-run do.
-    assert allowlist.validate(_run("-d"), catalog=catalog).mode != READ_ONLY
+    assert policy.validate(_run("-d"), catalog=catalog).mode != READ_ONLY
 
 
-def test_debug_value_abuse_is_screened(allowlist, catalog):
+def test_debug_value_abuse_is_screened(policy, catalog):
     # -d is a bare boolean; a metachar-laden trailing token is still rejected by the screen.
-    assert not allowlist.validate(_run("-d", "a;rm -rf /"), catalog=catalog).allowed
+    assert not policy.validate(_run("-d", "a;rm -rf /"), catalog=catalog).allowed
 
 
-def test_no_kubectl_or_oc_exec_subcommand_is_allowlisted():
+def test_no_kubectl_or_oc_exec_subcommand_is_policy_allowed():
     # The interactive in-pod exec boundary is STRUCTURALLY enforced: there is no `exec` subcommand
-    # under kubectl or oc in the allowlist, so the agent literally cannot drive an interactive
+    # under kubectl or oc in the policy, so the agent literally cannot drive an interactive
     # shell — it can only EXPLAIN how the user does it.
-    data = yaml.safe_load(ALLOWLIST_PATH.read_text())
+    data = yaml.safe_load(COMMAND_POLICY_PATH.read_text())
     for exe in ("kubectl", "oc"):
         subs = data["executables"][exe].get("subcommands", {})
         assert "exec" not in subs, f"{exe} must NOT have an `exec` subcommand"
 
 
-def test_allowlist_debug_flags_have_no_read_only_trigger_on_run_and_experiment():
+def test_policy_debug_flags_have_no_read_only_trigger_on_run_and_experiment():
     # DATA assertion: -d/--debug are declared as PLAIN boolean flags (no read_only_trigger, no
     # takes_value) under run AND experiment, and exist under NEITHER teardown nor standup.
-    data = yaml.safe_load(ALLOWLIST_PATH.read_text())
+    data = yaml.safe_load(COMMAND_POLICY_PATH.read_text())
     subs = data["executables"]["llmdbenchmark"]["subcommands"]
     for sub in ("run", "experiment"):
         flags = subs[sub]["flags"]
         for f in ("-d", "--debug"):
-            assert f in flags, f"{f} must be allowlisted under {sub}"
+            assert f in flags, f"{f} must be policy-allowed under {sub}"
             spec = flags[f] or {}
             assert not spec.get("read_only_trigger"), f"{f} on {sub} must NOT be a read_only_trigger"
             assert not spec.get("takes_value"), f"{f} on {sub} must be a bare boolean"
@@ -177,15 +177,15 @@ def test_allowlist_debug_flags_have_no_read_only_trigger_on_run_and_experiment()
 # ---------------------------------------------------------------------------
 
 
-def test_debug_launch_argv_is_a_complete_allowed_mutating_run(allowlist, catalog):
-    """The agent launches a debug harness pod: a normal run argv plus -d. It builds, the allowlist
+def test_debug_launch_argv_is_a_complete_allowed_mutating_run(policy, catalog):
+    """The agent launches a debug harness pod: a normal run argv plus -d. It builds, the policy
     permits it, and it is MUTATING (approval-gated) — a real pod is created (it just sleeps)."""
     argv = build_argv(
         "run", spec="cicd/kind", harness="inference-perf", workload="sanity_random.yaml",
         flags={"debug": True, "output": "local"},
     )
     assert "-d" in argv
-    d = allowlist.validate(argv, catalog=catalog)
+    d = policy.validate(argv, catalog=catalog)
     assert d.allowed and d.mode == MUTATING and d.requires_approval is True
 
 

@@ -11,7 +11,7 @@ WHICH-stack / HOW-MANY-at-once JUDGMENT lives in knowledge/multi_stack.md, not i
         an explicit 0 IS honored (``is not None`` guard);
   * --stack and --parallel are DISTINCT from --parallelism/-j (parallel harness PODS) — the
     pre-existing -j emission is NOT regressed and the two never collide;
-  * the allowlist permits --stack (value-constrained to a stack_list) on standup/smoketest/run/
+  * the policy permits --stack (value-constrained to a stack_list) on standup/smoketest/run/
     teardown and --parallel (positive_int) on standup/smoketest (experiment already had it), the
     flags do NOT change the mutating classification, and the metachar screen rejects injection;
   * the ExecuteInput schema accepts ``stack``/``parallel`` inside ``flags``;
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
@@ -148,7 +148,7 @@ def test_execute_schema_accepts_stack_and_parallel_flags():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — --stack / --parallel permitted, value-constrained (DATA)
+# policy — --stack / --parallel permitted, value-constrained (DATA)
 # ---------------------------------------------------------------------------
 
 
@@ -162,8 +162,8 @@ def _run_args(subcommand):
 
 
 @pytest.mark.parametrize("subcommand", STACK_SUBCOMMANDS)
-def test_allowlist_permits_stack_on_supported_subcommands(allowlist, catalog, subcommand):
-    d = allowlist.validate(
+def test_policy_permits_stack_on_supported_subcommands(policy, catalog, subcommand):
+    d = policy.validate(
         _argv(subcommand, *_run_args(subcommand), "--stack", SUBSET), catalog=catalog
     )
     assert d.allowed, f"--stack should be allowed on {subcommand}: {d.reason}"
@@ -171,47 +171,47 @@ def test_allowlist_permits_stack_on_supported_subcommands(allowlist, catalog, su
 
 
 @pytest.mark.parametrize("subcommand", ["standup", "smoketest"])
-def test_allowlist_permits_parallel_on_standup_smoketest(allowlist, catalog, subcommand):
-    d = allowlist.validate(_argv(subcommand, "--parallel", "1"), catalog=catalog)
+def test_policy_permits_parallel_on_standup_smoketest(policy, catalog, subcommand):
+    d = policy.validate(_argv(subcommand, "--parallel", "1"), catalog=catalog)
     assert d.allowed, f"--parallel should be allowed on {subcommand}: {d.reason}"
     assert d.mode == MUTATING
 
 
-def test_allowlist_still_permits_parallel_on_experiment(allowlist, catalog):
+def test_policy_still_permits_parallel_on_experiment(policy, catalog):
     # experiment already carried --parallel pre-Phase-33; assert we did not regress it.
-    d = allowlist.validate(_argv("experiment", "-e", "exp.yaml", "--parallel", "2"), catalog=catalog)
+    d = policy.validate(_argv("experiment", "-e", "exp.yaml", "--parallel", "2"), catalog=catalog)
     assert d.allowed, f"--parallel must remain allowed on experiment: {d.reason}"
     assert d.mode == MUTATING
 
 
-def test_allowlist_stack_value_constraint_accepts_one_and_many(allowlist, catalog):
+def test_policy_stack_value_constraint_accepts_one_and_many(policy, catalog):
     for names in (STACK_ONE, SUBSET, "a,b,c-d,e0"):
-        d = allowlist.validate(
+        d = policy.validate(
             _argv("run", "-l", "vllm-benchmark", "-w", "sanity_random.yaml", "--stack", names),
             catalog=catalog,
         )
         assert d.allowed, f"stack list {names!r} should pass the value constraint: {d.reason}"
 
 
-def test_allowlist_rejects_injection_laden_stack_value(allowlist, catalog):
+def test_policy_rejects_injection_laden_stack_value(policy, catalog):
     # A metachar-laden stack value is rejected by the blanket screen (defense in depth);
     # the stack_list regex would also reject it.
-    d = allowlist.validate(
+    d = policy.validate(
         _argv("standup", "--stack", "qwen3-06b;rm -rf /"), catalog=catalog
     )
     assert not d.allowed
 
 
-def test_allowlist_rejects_non_int_parallel_value(allowlist, catalog):
+def test_policy_rejects_non_int_parallel_value(policy, catalog):
     # --parallel is value-pinned to positive_int; a non-int is refused.
-    d = allowlist.validate(_argv("standup", "--parallel", "lots"), catalog=catalog)
+    d = policy.validate(_argv("standup", "--parallel", "lots"), catalog=catalog)
     assert not d.allowed
 
 
-def test_stack_and_parallel_keep_read_only_preview(allowlist, catalog):
+def test_stack_and_parallel_keep_read_only_preview(policy, catalog):
     # --dry-run still downgrades a stack/parallel-bearing standup to a read-only preview
     # (these flags are orthogonal to the mode classification).
-    d = allowlist.validate(
+    d = policy.validate(
         _argv("standup", "--stack", STACK_ONE, "--parallel", "1", "--dry-run"), catalog=catalog
     )
     assert d.allowed and d.mode == READ_ONLY

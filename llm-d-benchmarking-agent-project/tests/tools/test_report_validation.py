@@ -127,7 +127,7 @@ def _report_ctx(workspace):
     from app.config import get_settings
     from app.tools.context import ToolContext
     s = get_settings()
-    return ToolContext(settings=s, allowlist=None, runner=None, workspace=workspace)
+    return ToolContext(settings=s, policy=None, runner=None, workspace=workspace)
 
 
 @pytest.mark.parametrize("evil", ["../outside", "../../../../etc", "/etc/passwd-dir"])

@@ -4,10 +4,10 @@
 # verified local-CLI benchmark path needs so that path works with NO host mounts when the agent
 # runs in-cluster:
 #   * the `llmdbenchmark` CLI (upstream llm-d-benchmark) in its OWN venv at
-#     /repos/llm-d-benchmark/.venv — the app resolves it at that ABSOLUTE path (allowlist "venv-bin"
+#     /repos/llm-d-benchmark/.venv — the app resolves it at that ABSOLUTE path (policy "venv-bin"
 #     runner, cwd = /repos/llm-d-benchmark). It is ALSO symlinked onto PATH so the SAME image can
 #     double as the ORCHESTRATOR_IMAGE for in-cluster benchmark Jobs (which resolve `llmdbenchmark`
-#     via the container PATH, not the allowlist).
+#     via the container PATH, not the policy).
 #   * all THREE sibling upstream repos under /repos — llm-d, llm-d-benchmark, llm-d-skills — because
 #     the app's readiness self-check AND the skill-grounding gate both require every one present on
 #     disk under $REPOS_DIR.
@@ -95,7 +95,7 @@ ENV VENV=/opt/venv \
     HELM_CONFIG_HOME=/tmp/helm/config
 
 # --- client toolchain (pinned) ----------------------------------------------------------
-# The `llmdbenchmark` CLI shells out to all of these at runtime; the agent also runs allowlisted
+# The `llmdbenchmark` CLI shells out to all of these at runtime; the agent also runs policy-allowed
 # kubectl directly (orchestrator + observability). curl is installed only to fetch the binaries and
 # is purged afterwards; git stays (the CLI + readiness/provenance shell out to it). Binaries land in
 # /usr/local/bin (on PATH). Kept in one layer so the whole toolchain caches together and only one
@@ -211,8 +211,8 @@ RUN set -eux; \
 WORKDIR /app
 
 # The resolved APP venv from the builder + the app source (which carries the static UI at
-# app/ui/) and the data files it reads at runtime (the allowlist, the knowledge files, and
-# scripts/ — the allowlist wires scripts/bridges/capacity_check.py + aggregate_runs.py +
+# app/ui/) and the data files it reads at runtime (the policy, the knowledge files, and
+# scripts/ — the policy wires scripts/bridges/capacity_check.py + aggregate_runs.py +
 # provision_hf_secret.py to run via the CLI venv). The .env is NOT baked in — it is configured
 # at deploy time.
 COPY --from=builder /opt/venv /opt/venv

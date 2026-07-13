@@ -1,7 +1,7 @@
 """Tests for the fetch_key_docs context tool, the vetted install_prereqs.sh prerequisite
 installer, the UPSTREAM llm-d guide client-prereq installer install-deps.sh, and the
-per-cluster install_metrics_server.sh installer (allowlist + runner resolution wiring — these
-scripts stay allowlisted; the agent now invokes them via run_shell)."""
+per-cluster install_metrics_server.sh installer (policy + runner resolution wiring — these
+scripts stay policy-allowed; the agent now invokes them via run_shell)."""
 from __future__ import annotations
 
 import os
@@ -12,7 +12,7 @@ import pytest
 from app.tools.access.knowledge_access import fetch_key_docs, read_knowledge, search_knowledge
 from app.tools.registry import dispatch
 
-# ---- allowlist + runner resolution for the vetted install scripts ----------
+# ---- policy + runner resolution for the vetted install scripts ----------
 
 @pytest.mark.parametrize("script_name,flag", [
     ("install_prereqs.sh", "--all"),
@@ -21,7 +21,7 @@ from app.tools.registry import dispatch
 def test_vetted_installer_resolves_to_executable_project_script(tool_ctx, script_name, flag):
     # The `project-script` runner invoke type must resolve each vetted installer to the real,
     # executable file shipped with the agent project, with flags passed through verbatim.
-    entry = tool_ctx.allowlist.executable(script_name)
+    entry = tool_ctx.policy.executable(script_name)
     real, cwd = tool_ctx.runner.resolve([script_name, flag], entry)
     script = Path(real[0])
     assert script.name == script_name
@@ -34,7 +34,7 @@ def test_install_deps_resolves_to_upstream_guide_script(tool_ctx):
     # script under the read-only llm-d guide repo, with cwd pinned to that repo root.
     if not tool_ctx.settings.guide_repo.is_dir():
         pytest.skip("guide repo (llm-d) not present")
-    entry = tool_ctx.allowlist.executable("install-deps.sh")
+    entry = tool_ctx.policy.executable("install-deps.sh")
     real, cwd = tool_ctx.runner.resolve(["install-deps.sh", "--dev"], entry)
     script = Path(real[0])
     assert script.name == "install-deps.sh"

@@ -8,7 +8,7 @@ Hermetic, no cluster / GPU / network. Covers the phase's ACCEPTANCE:
     the repo's own scenario examples (``kustomize`` IS a real top-level scenario knob key), lands
     in the SESSION workspace (never the read-only repo), and has a real route into the
     determinism gate via the companion ``*.spec.yaml`` (plan/--dry-run) — the determinism gate;
-  * ``-t kustomize`` stays ALLOWLISTED (the bare method was already permitted — Phase 46 must not
+  * ``-t kustomize`` stays POLICY-ALLOWED (the bare method was already permitted — Phase 46 must not
     regress it);
   * ``--llmd-repo-path`` is now a KNOWN, path-constrained standup flag, threaded by
     ``build_argv`` from ``flags["repo_path"]`` — pointing the kustomize method at a local llm-d
@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from app.tools.setup.config_artifact import (
@@ -145,7 +145,7 @@ async def test_author_kustomize_validates_against_real_repo_examples(tool_ctx):
     assert out["validated_against_examples"]
 
 
-async def test_authored_kustomize_spec_passes_plan_dry_run_allowlist(tool_ctx, catalog):
+async def test_authored_kustomize_spec_passes_plan_dry_run_policy(tool_ctx, catalog):
     """The companion spec path must be an ACCEPTED `--spec` value so a kustomize-method scenario
     can be GATED through plan/--dry-run — the determinism gate — without a live cluster."""
     out = await write_and_validate_config(
@@ -156,7 +156,7 @@ async def test_authored_kustomize_spec_passes_plan_dry_run_allowlist(tool_ctx, c
     )
     spec_path = out["spec_path"]
     argv = ["llmdbenchmark", "--spec", spec_path, "plan", "-p", "test-ns", "--dry-run"]
-    decision = tool_ctx.allowlist.validate(argv, catalog=catalog)
+    decision = tool_ctx.policy.validate(argv, catalog=catalog)
     assert decision.allowed, decision.reason
     assert decision.mode == READ_ONLY  # --dry-run is a read_only_trigger
 
@@ -190,7 +190,7 @@ def test_repo_path_field_accepted_in_flags_schema():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — -t kustomize STAYS allowlisted; --llmd-repo-path is known + value-pinned
+# policy — -t kustomize STAYS policy-allowed; --llmd-repo-path is known + value-pinned
 # ---------------------------------------------------------------------------
 
 
@@ -198,28 +198,28 @@ def _argv(subcommand, *rest):
     return ["llmdbenchmark", "--spec", "guides/optimized-baseline", subcommand, *rest]
 
 
-def test_kustomize_method_stays_allowlisted(allowlist, catalog):
+def test_kustomize_method_stays_policy_allowed(policy, catalog):
     # The phase must NOT regress the bare method: `-t kustomize` is permitted on standup, and
     # standup stays mutating with it (a --dry-run still downgrades to a read-only preview).
-    d = allowlist.validate(_argv("standup", "-t", "kustomize"), catalog=catalog)
+    d = policy.validate(_argv("standup", "-t", "kustomize"), catalog=catalog)
     assert d.allowed, d.reason
     assert d.mode == MUTATING
-    assert allowlist.validate(
+    assert policy.validate(
         _argv("standup", "-t", "kustomize", "--dry-run"), catalog=catalog
     ).mode == READ_ONLY
 
 
-def test_llmd_repo_path_is_allowlisted_and_value_pinned(allowlist, catalog):
+def test_llmd_repo_path_is_policy_allowed_and_value_pinned(policy, catalog):
     # The known flag is permitted with a local path, and its value is pinned: a '..' traversal
     # and a shell-metachar injection are BOTH refused (the regex + the metacharacter screen).
-    ok = allowlist.validate(
+    ok = policy.validate(
         _argv("standup", "-t", "kustomize", "--llmd-repo-path", "/home/me/llm-d"), catalog=catalog
     )
     assert ok.allowed, ok.reason
-    assert not allowlist.validate(
+    assert not policy.validate(
         _argv("standup", "--llmd-repo-path", "../../etc/passwd"), catalog=catalog
     ).allowed
-    assert not allowlist.validate(
+    assert not policy.validate(
         _argv("standup", "--llmd-repo-path", "/x; rm -rf /"), catalog=catalog
     ).allowed
 
@@ -229,8 +229,8 @@ def test_repo_path_value_constraint_present():
     edit, never a Python change)."""
     import re
 
-    from app.security.allowlist import Allowlist
-    al = Allowlist.from_file(Path(__file__).resolve().parents[2] / "security" / "allowlist.yaml")
+    from app.security.policy import CommandPolicy
+    al = CommandPolicy.from_file(Path(__file__).resolve().parents[2] / "security" / "command_policy.yaml")
     constraints = al._value_constraints
     assert "repo_path" in constraints
     rx = constraints["repo_path"]["regex"]

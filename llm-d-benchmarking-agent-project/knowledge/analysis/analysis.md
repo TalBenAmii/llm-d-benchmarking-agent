@@ -233,7 +233,7 @@ to run `analysis.ipynb`) or the pipeline overview `read_repo_doc('llm-d-benchmar
 
 **OPTIONAL scripted step — cross-run aggregation.** When the user has run the **same benchmark
 multiple times** and wants the run-to-run variance (mean/std/min/max across repeats), you MAY run
-`aggregate_runs.py` **read-only** against an **existing** results dir via the allowlisted
+`aggregate_runs.py` **read-only** against an **existing** results dir via the policy-allowed
 `scripts/aggregate_runs.py` wrapper (called through `run_shell` — it auto-runs, like
 `capacity_check.py`). The wrapper **imports the repo's own `aggregate_runs` module** (never
 reimplements its math), reads the BR v0.2 reports under `--results-prefix`, and writes the

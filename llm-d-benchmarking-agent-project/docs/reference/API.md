@@ -125,7 +125,7 @@ Every tool call is validated against its Pydantic input model before the handler
 
 | Tool | Class | Key inputs | What it does |
 |---|---|---|---|
-| `ensure_repos` | approve | `repos`, `ref` | Clone `llm-d-benchmark`/`llm-d` if missing (URL-allowlisted; idempotent; never overwrites). |
+| `ensure_repos` | approve | `repos`, `ref` | Clone `llm-d-benchmark`/`llm-d` if missing (URL-policy-allowed; idempotent; never overwrites). |
 | `run_setup` | approve | `use_uv`, `force` | Run `install.sh` in the benchmark repo to build its venv + verify tools. Required before any `llmdbenchmark` command. |
 | `write_and_validate_config` | approve | `artifact_type`, `target_filename`, `content` | Write a generated workload/run config into the session workspace and validate it. (MVP uses stock profiles; rarely needed.) |
 | `provision_hf_secret` | approve | `namespace`, `name` | Create/update the cluster's HuggingFace token Secret (default `llm-d-hf-token`) so a gated-model standup can pull weights; the follow-on to `check_capacity`'s gated-access pre-flight. The HF token stays backend-only (read from the backend `HF_TOKEN` env by the vetted script; never an input, never in argv or logs). |
@@ -218,6 +218,6 @@ facts is the LLM's job, guided by `knowledge/`.
 - **A new tool:** add a Pydantic model in the `app/tools/schemas/` package, a handler module under
   `app/tools/`, and a `ToolSpec` in `app/tools/registry.py` (with a description). The JSON
   Schema is emitted to the LLM automatically.
-- **A new command the agent may run:** edit only `security/allowlist.yaml` (see its header
-  for the worked recipe), no Python change, and add a case to `tests/platform/test_allowlist.py`.
+- **A new command the agent may run:** edit only `security/command_policy.yaml` (see its header
+  for the worked recipe), no Python change, and add a case to `tests/platform/test_command_policy.py`.
   Judgment about when to use it goes in `knowledge/`, not in code.

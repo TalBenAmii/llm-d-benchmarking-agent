@@ -1,4 +1,4 @@
-"""Phase 13 — allowlist governance: per-command timeouts (policy as DATA).
+"""Phase 13 — policy governance: per-command timeouts (policy as DATA).
 
 These tests assert the ACCEPTANCE criteria, all hermetically (no live cluster, no network,
 no GPU, no long real sleeps — a tiny timeout kills a would-be-long command in well under a
@@ -8,10 +8,10 @@ second):
       timeout;
   (b) the timeout value is honored FROM the YAML, not a Python constant (changing only the
       YAML number changes the deadline);
-  (c) a malformed allowlist RAISES at load.
+  (c) a malformed policy RAISES at load.
 
 Plus structural guarantees: the old ``app/tools/run/execute.py::_TIMEOUTS`` dict is gone, and the
-real shipped allowlist sources llmdbenchmark subcommand timeouts purely from its YAML.
+real shipped policy sources llmdbenchmark subcommand timeouts purely from its YAML.
 """
 from __future__ import annotations
 
@@ -22,12 +22,12 @@ from pathlib import Path
 import pytest
 
 from app.config import get_settings
-from app.security.allowlist import Allowlist, AllowlistError
+from app.security.policy import CommandPolicy, CommandPolicyError
 from app.security.runner import CommandRunner
 from app.tools.context import ToolContext
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 
 
 # A throwaway executable so the timeout number under test comes ONLY from the policy
@@ -43,13 +43,13 @@ def _policy_with(*, timeout_s=None, mode="read_only", with_positional=False):
         entry["positionals"] = [{}]
     if timeout_s is not None:
         entry["timeout_s"] = timeout_s
-    return Allowlist({"executables": {sys.executable: entry}})
+    return CommandPolicy({"executables": {sys.executable: entry}})
 
 
 def _sleep_argv(tmp_path: Path, seconds: float) -> list[str]:
     """A fake command: a script file that closes stdout then sleeps. Running it via a FILE
     path (not ``-c "..."``) keeps every argv token free of the shell metacharacters the
-    allowlist screen rejects, so it can flow through the real ToolContext gate AND be
+    policy screen rejects, so it can flow through the real ToolContext gate AND be
     executed by the real interpreter as ``[python, scriptpath]``. Closing stdout first
     mirrors the runner's whole-lifecycle-bound test: it proves the DEADLINE (not just stdout
     drain) is what kills the process."""
@@ -58,7 +58,7 @@ def _sleep_argv(tmp_path: Path, seconds: float) -> list[str]:
     return [sys.executable, str(script)]
 
 
-# ---- (c) malformed allowlist is rejected AT LOAD ---------------------------
+# ---- (c) malformed policy is rejected AT LOAD ---------------------------
 
 @pytest.mark.parametrize("bad_entry, needle", [
     ({"flat": True, "timeout_s": -1}, "positive integer"),
@@ -67,16 +67,16 @@ def _sleep_argv(tmp_path: Path, seconds: float) -> list[str]:
     ({"flat": True, "timeout_s": 1.5}, "positive integer"),
     ({"flat": True, "timeout_s": "fast"}, "positive integer"),
 ])
-def test_malformed_allowlist_rejected_at_load(bad_entry, needle):
-    with pytest.raises(AllowlistError) as ei:
-        Allowlist({"executables": {"foo": bad_entry}})
+def test_malformed_policy_rejected_at_load(bad_entry, needle):
+    with pytest.raises(CommandPolicyError) as ei:
+        CommandPolicy({"executables": {"foo": bad_entry}})
     assert needle in str(ei.value)
 
 
 def test_malformed_subcommand_governance_rejected_at_load():
     policy = {"executables": {"tool": {"subcommands": {"go": {"mode": "mutating", "timeout_s": -5}}}}}
-    with pytest.raises(AllowlistError) as ei:
-        Allowlist(policy)
+    with pytest.raises(CommandPolicyError) as ei:
+        CommandPolicy(policy)
     assert "timeout_s" in str(ei.value) and "positive integer" in str(ei.value)
 
 
@@ -86,9 +86,9 @@ def test_well_formed_governance_loads_cleanly():
     assert d.allowed and d.timeout_s == 42
 
 
-def test_real_shipped_allowlist_loads():
+def test_real_shipped_policy_loads():
     # The actual policy file must pass the same startup schema validation.
-    Allowlist.from_file(ALLOWLIST_PATH)
+    CommandPolicy.from_file(COMMAND_POLICY_PATH)
 
 
 # ---- governance flows from YAML into the Decision --------------------------
@@ -107,7 +107,7 @@ def test_subcommand_timeout_overrides_executable():
             "inherit": {"mode": "read_only"},
         },
     }}}
-    al = Allowlist(policy)
+    al = CommandPolicy(policy)
     assert al.validate(["tool", "slow"]).timeout_s == 999      # subcommand wins
     assert al.validate(["tool", "inherit"]).timeout_s == 100   # falls back to executable
 
@@ -115,7 +115,7 @@ def test_subcommand_timeout_overrides_executable():
 def test_shipped_llmdbenchmark_timeouts_come_from_yaml(catalog):
     """The per-subcommand budgets that USED to live in _TIMEOUTS now ride on the Decision,
     sourced from the YAML alone."""
-    al = Allowlist.from_file(ALLOWLIST_PATH)
+    al = CommandPolicy.from_file(COMMAND_POLICY_PATH)
     # `results` is now the git-like Results Store group (Phase 50): it REQUIRES a store-command
     # (mirroring upstream argparse `results_command` required=True), so it is exercised via
     # `results status` and carries the `results` entry's 600s budget on the Decision.
@@ -138,7 +138,7 @@ async def test_tiny_yaml_timeout_kills_command_and_reports_timeout(tmp_path):
     timeout — driven through the real ToolContext.run_readonly path, deadline sourced from
     the Decision (i.e. from the policy), not a caller override."""
     al = _policy_with(timeout_s=1, with_positional=True)  # 1 second cap declared in DATA
-    ctx = ToolContext(settings=get_settings(), allowlist=al,
+    ctx = ToolContext(settings=get_settings(), policy=al,
                       runner=CommandRunner({}), workspace=tmp_path / "ws")
     start = time.monotonic()
     # No timeout= override: the deadline MUST come from the policy's timeout_s.
@@ -153,13 +153,13 @@ async def test_timeout_value_is_honored_from_yaml_not_a_constant(tmp_path):
     under a 5s policy timeout, but the SAME command is killed under a 1s policy timeout. The
     only thing that changed is the data, proving there is no Python constant in the path."""
     ctx_generous = ToolContext(
-        settings=get_settings(), allowlist=_policy_with(timeout_s=5, with_positional=True),
+        settings=get_settings(), policy=_policy_with(timeout_s=5, with_positional=True),
         runner=CommandRunner({}), workspace=tmp_path / "a")
     res_ok = await ctx_generous.run_readonly(_sleep_argv(tmp_path, 0.2))
     assert res_ok.timed_out is False and res_ok.exit_code == 0
 
     ctx_tight = ToolContext(
-        settings=get_settings(), allowlist=_policy_with(timeout_s=1, with_positional=True),
+        settings=get_settings(), policy=_policy_with(timeout_s=1, with_positional=True),
         runner=CommandRunner({}), workspace=tmp_path / "b")
     start = time.monotonic()
     res_killed = await ctx_tight.run_readonly(_sleep_argv(tmp_path, 30))
@@ -171,7 +171,7 @@ async def test_caller_timeout_does_not_override_policy(tmp_path):
     """A declared policy timeout_s SUPERSEDES a caller fallback — there is one source of
     truth (the data). A long caller fallback cannot rescue a command past its YAML deadline."""
     ctx = ToolContext(
-        settings=get_settings(), allowlist=_policy_with(timeout_s=1, with_positional=True),
+        settings=get_settings(), policy=_policy_with(timeout_s=1, with_positional=True),
         runner=CommandRunner({}), workspace=tmp_path / "ws")
     start = time.monotonic()
     res = await ctx.run_readonly(_sleep_argv(tmp_path, 30), timeout=60.0)  # fallback ignored
@@ -184,7 +184,7 @@ async def test_no_policy_timeout_uses_caller_fallback(tmp_path):
     probe default via an explicit value) applies — the runner's global default is the last
     resort, exercised structurally elsewhere."""
     ctx = ToolContext(
-        settings=get_settings(), allowlist=_policy_with(with_positional=True),  # no timeout_s
+        settings=get_settings(), policy=_policy_with(with_positional=True),  # no timeout_s
         runner=CommandRunner({}), workspace=tmp_path / "ws")
     start = time.monotonic()
     res = await ctx.run_readonly(_sleep_argv(tmp_path, 30), timeout=1.0)
@@ -197,6 +197,6 @@ async def test_no_policy_timeout_uses_caller_fallback(tmp_path):
 def test_execute_timeouts_dict_removed():
     import app.tools.run.execute as execute_mod
     assert not hasattr(execute_mod, "_TIMEOUTS"), \
-        "the hardcoded _TIMEOUTS dict must be gone — timeouts live in the allowlist YAML"
+        "the hardcoded _TIMEOUTS dict must be gone — timeouts live in the policy YAML"
     src = Path(execute_mod.__file__).read_text()
     assert "_TIMEOUTS" not in src

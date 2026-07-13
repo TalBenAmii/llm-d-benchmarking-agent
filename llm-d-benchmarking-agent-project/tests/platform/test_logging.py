@@ -8,7 +8,7 @@ Pins the contract the acceptance criteria require:
 
 No network / cluster / GPU: the one real command is `git rev-parse --is-inside-work-tree`
 (read-only, auto-runs, and the project worktree is a git repo), exercising the runner's own
-log records through the allowlist gate.
+log records through the policy gate.
 """
 from __future__ import annotations
 

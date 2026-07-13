@@ -29,13 +29,13 @@ from app.capacity.planner import (
     merge_gated_access,
 )
 from app.config import Settings
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.tools.context import ToolContext
 from app.tools.setup.capacity import check_capacity
 from tests.flows.harness import CaptureRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 BRIDGE_PATH = PROJECT_ROOT / "scripts" / "bridges" / "capacity_check.py"
 
 # A sentinel token value the backend would hold. The whole point of the scrub assertions
@@ -320,7 +320,7 @@ def _real_repo_ctx(tmp_path, *, canned):
 
     ctx = ToolContext(
         settings=s,
-        allowlist=Allowlist.from_file(ALLOWLIST_PATH),
+        policy=CommandPolicy.from_file(COMMAND_POLICY_PATH),
         runner=runner,
         workspace=tmp_path / "ws",
         emit=emit,

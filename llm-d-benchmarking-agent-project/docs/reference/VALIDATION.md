@@ -10,7 +10,7 @@ flow fixtures); layers 3 and 4 are the agent self-eval harness (`tests/eval/`).
 
 | Layer | What it proves | Deterministic? | Needs | Gates CI? | Quota |
 |-------|----------------|----------------|-------|-----------|-------|
-| **Golden transcript** (`tests/flows/test_flows.py`) | The *mechanism*: the allowlist accepts the flow, argv is built correctly, read-only vs mutating is classified right, and every mutation is approval-gated. | ✅ yes | nothing (no key/Docker/kind/repos) | ✅ **yes** | none |
+| **Golden transcript** (`tests/flows/test_flows.py`) | The *mechanism*: the command policy accepts the flow, argv is built correctly, read-only vs mutating is classified right, and every mutation is approval-gated. | ✅ yes | nothing (no key/Docker/kind/repos) | ✅ **yes** | none |
 | **Live eval** (`tests/eval/live/test_flows_live.py`) | The *judgment*: a real LLM, given natural-language input, actually *chooses* the right commands. | ❌ no | an API key + `LLM_EVAL_LIVE=1` | ❌ no (opt-in) | **spends** |
 | **(3) Agent-quality SHADOW** (`tests/eval/test_scorecard_shadow.py`) | The judge *pipeline*: a deterministic rule-based scorer runs each golden transcript through serialize → score → aggregate → render → artifact, reusing the harness's `score_flow`/`gating_problems`; the rubric asset parses; the gate is real. A golden transcript shadow-scores 1.0. | ✅ yes | nothing | ✅ **yes** (runs in plain pytest) | none |
 | **(3) LLM-judge** (`tests/eval/live/test_judge_live.py`) | The *interaction quality* the flow-eval can't: a judge LLM scores each session transcript against the versioned rubric (tool-choice, safety, helpfulness, goal) → an aggregate **AGENT-QUALITY SCORE** + a gate. Catches behavioral regressions. | ❌ no | an API key + `LLM_EVAL_LIVE=1` | ❌ no (opt-in) | **spends** (1 judge call / scored flow) |
@@ -102,8 +102,8 @@ make bughunt           # autonomous exploratory bug-hunter       (OPT-IN, SPENDS
 ## How it works (and why it's hermetic)
 
 Every command the agent runs funnels through one seam:
-`ctx.run_command → allowlist.validate(...) → runner.execute(...)`. The harness
-(`tests/flows/harness.py`) keeps the real allowlist and the real approval gating, and
+`ctx.run_command → policy.validate(...) → runner.execute(...)`. The harness
+(`tests/flows/harness.py`) keeps the real command policy and the real approval gating, and
 swaps only two things:
 
 1. **`CaptureRunner`**: a `CommandRunner` that records the logical argv instead of
@@ -113,7 +113,7 @@ swaps only two things:
    happy path); a `CannedResult` value simulates a FAILING command (non-zero exit /
    timeout + error output) so error-path flows (a CrashLoopBackOff standup, a run that exits
    non-zero) can be exercised hermetically.
-2. **A frozen catalog** (`tests/flows/catalog_snapshot.py`): the allowlist's
+2. **A frozen catalog** (`tests/flows/catalog_snapshot.py`): the command policy's
    `ref_catalog` checks and the `SessionPlan` validator consult the live on-disk catalog;
    in CI the repos are empty gitlinks, so we seed a snapshot of the real
    `specs`/`harnesses`/`workloads`. `test_snapshot_matches_live` re-checks the snapshot
@@ -158,7 +158,7 @@ validated deterministically.
 | `teardown` | `teardown` runs; deeper `kind delete cluster` is offered, never run silently. |
 | `existing-stack-benchmark-only` | Probe detects a running stack → benchmark it directly, no `standup`/`smoketest`. |
 | `dry-run-preview` | `plan` + `standup --dry-run` only: read-only, no approval prompt, nothing changed. |
-| `safety-refusal` | Unknown spec / injected namespace / disallowed flag are refused; direct allowlist assertions that dangerous commands are denied and the legit ones are still allowed. |
+| `safety-refusal` | Unknown spec / injected namespace / disallowed flag are refused; direct command policy assertions that dangerous commands are denied and the legit ones are still allowed. |
 
 **Tool-choice coverage** (`TOOL_CHOICE_FLOWS`): the tool surfaces beyond the deploy
 vertical. Each is replayed deterministically (golden transcript + gating) and is also a
@@ -205,7 +205,7 @@ destructive cleanup without approval). Failures are injected hermetically: a `Ca
 | `error-endpoint-not-ready` | `check_endpoint_readiness` finds no ready backing endpoint → reads `readiness_probes`, offers standup; no `run` against a dead endpoint. |
 | `error-stuck-run-cancel` | A hung run in another chat → `cancel_run` frees the slot; the deeper `kind delete cluster` cleanup is offered, never run silently. |
 | `error-run-nonzero-exit` | A `run` that exits non-zero (no report written) → `search_knowledge`, explains honestly; no `analyze_results`/`compare_reports` fabrication. |
-| `error-catalog-drift-denied` | A typo'd spec/workload is denied by catalog validation → the agent corrects to a real catalog item (+ direct allowlist assertions). |
+| `error-catalog-drift-denied` | A typo'd spec/workload is denied by catalog validation → the agent corrects to a real catalog item (+ direct command policy assertions). |
 | `error-orchestrate-unready-endpoint` | The orchestrator's readiness gate finds no ready endpoint → submits no Job (nothing applied); offers standup. |
 
 ## Adding a flow

@@ -5,7 +5,7 @@ Hermetic, no cluster / GPU / network. Covers the acceptance criteria:
   * the agent can re-run a single step or step RANGE as a modeled flag (not via ``extra``) —
     ``build_argv`` emits ``-s <spec>`` as pure mechanism, after the subcommand, alongside the
     other flag emissions;
-  * the allowlist PERMITS ``-s``/``--step`` on exactly the four upstream-accepting subcommands
+  * the policy PERMITS ``-s``/``--step`` on exactly the four upstream-accepting subcommands
     (standup/smoketest/run/teardown), value-pins the step-list spec, and refuses an injection /
     a subcommand that doesn't accept it;
   * scoping a mutating command with ``-s`` does NOT change its mode (re-running a mutating step
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
@@ -84,7 +84,7 @@ def test_step_lives_in_flags_dict_on_schema():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — -s/--step permitted + value-pinned on the four accepting subcommands (DATA)
+# policy — -s/--step permitted + value-pinned on the four accepting subcommands (DATA)
 # ---------------------------------------------------------------------------
 
 
@@ -100,49 +100,49 @@ _REQUIRED_EXTRA = {
 @pytest.mark.parametrize("subcommand", STEP_SUBCOMMANDS)
 @pytest.mark.parametrize("flag", ["-s", "--step"])
 @pytest.mark.parametrize("spec_val", SPECS)
-def test_allowlist_permits_step_short_and_long(allowlist, catalog, subcommand, flag, spec_val):
-    d = allowlist.validate(
+def test_policy_permits_step_short_and_long(policy, catalog, subcommand, flag, spec_val):
+    d = policy.validate(
         _argv(subcommand, *_REQUIRED_EXTRA[subcommand], flag, spec_val), catalog=catalog
     )
     assert d.allowed, f"{flag} {spec_val} should be allowed on {subcommand}: {d.reason}"
 
 
 @pytest.mark.parametrize("subcommand", STEP_SUBCOMMANDS)
-def test_allowlist_value_pins_step_list_and_refuses_bad_specs(allowlist, catalog, subcommand):
+def test_policy_value_pins_step_list_and_refuses_bad_specs(policy, catalog, subcommand):
     # On the four accepting subcommands -s/--step is a KNOWN, value-pinned flag: valid
     # step-list specs pass; a value that's metachar-clean but NOT a step-list (e.g. 'abc',
     # '5-', '1 2', '1--2') is REFUSED by the step_list regex — that refusal is precisely the
     # guarantee the explicit per-subcommand flagspec buys over the relaxed unknown-flag path.
     extra = _REQUIRED_EXTRA[subcommand]
     for ok in SPECS:
-        assert allowlist.validate(_argv(subcommand, *extra, "-s", ok), catalog=catalog).allowed, ok
+        assert policy.validate(_argv(subcommand, *extra, "-s", ok), catalog=catalog).allowed, ok
     for bad in ["abc", "5-", "-3", "1--2", "5,", "1 2", "5.5"]:
-        d = allowlist.validate(_argv(subcommand, *extra, "-s", bad), catalog=catalog)
+        d = policy.validate(_argv(subcommand, *extra, "-s", bad), catalog=catalog)
         assert not d.allowed, f"step={bad!r} must be refused on {subcommand}: {d}"
     # Shell-injection values are blocked by the blanket metacharacter screen too.
     for inj in ["5; rm -rf /", "$(curl evil)", "5|cat", "5`x`"]:
-        assert not allowlist.validate(_argv(subcommand, *extra, "-s", inj), catalog=catalog).allowed
+        assert not policy.validate(_argv(subcommand, *extra, "-s", inj), catalog=catalog).allowed
 
 
-def test_step_value_pinning_is_what_the_flagspec_adds_over_relaxed_policy(allowlist, catalog):
+def test_step_value_pinning_is_what_the_flagspec_adds_over_relaxed_policy(policy, catalog):
     # Documents the value of adding the explicit flagspec (DATA) to ONLY the four accepting
     # subcommands: there, a metachar-clean-but-invalid step value is REJECTED (value-pinned).
-    # The allowlist's relaxed unknown-flag policy means an out-of-place -s elsewhere would just
+    # The policy's relaxed unknown-flag policy means an out-of-place -s elsewhere would just
     # pass through unchecked — so we deliberately pin it only where upstream actually accepts it,
     # and the knowledge file steers the agent to use -s only on standup/smoketest/run/teardown.
-    assert not allowlist.validate(_argv("standup", "-s", "abc"), catalog=catalog).allowed
+    assert not policy.validate(_argv("standup", "-s", "abc"), catalog=catalog).allowed
     # A mutating command scoped with -s never loses its approval gate (mode stays mutating).
-    assert allowlist.validate(_argv("standup", "-s", "5-9"), catalog=catalog).mode == MUTATING
+    assert policy.validate(_argv("standup", "-s", "5-9"), catalog=catalog).mode == MUTATING
 
 
-def test_step_does_not_change_mode_classification(allowlist, catalog):
+def test_step_does_not_change_mode_classification(policy, catalog):
     # A mutating standup/run/teardown stays MUTATING when scoped with -s — re-running a step
     # is still approval-gated. --dry-run still downgrades to a read-only preview.
-    assert allowlist.validate(_argv("standup", "-s", "5-9"), catalog=catalog).mode == MUTATING
-    assert allowlist.validate(_argv("teardown", "-s", "1-4"), catalog=catalog).mode == MUTATING
+    assert policy.validate(_argv("standup", "-s", "5-9"), catalog=catalog).mode == MUTATING
+    assert policy.validate(_argv("teardown", "-s", "1-4"), catalog=catalog).mode == MUTATING
     run_argv = _argv("run", *_REQUIRED_EXTRA["run"], "-s", "5-9")
-    assert allowlist.validate(run_argv, catalog=catalog).mode == MUTATING
-    dry = allowlist.validate(_argv("standup", "-s", "5-9", "--dry-run"), catalog=catalog)
+    assert policy.validate(run_argv, catalog=catalog).mode == MUTATING
+    dry = policy.validate(_argv("standup", "-s", "5-9", "--dry-run"), catalog=catalog)
     assert dry.allowed and dry.mode == READ_ONLY
 
 
@@ -169,7 +169,7 @@ def test_step_select_knowledge_exists_and_steers_rerun():
     assert "steps/" in text and "READ IT AT RUNTIME" in text
 
 
-def test_step_select_knowledge_is_autodiscoverable(allowlist, catalog, tmp_path):
+def test_step_select_knowledge_is_autodiscoverable(policy, catalog, tmp_path):
     # The on-demand knowledge index globs knowledge/*.md, so the new guide is reachable via
     # read_knowledge('step_select') with NO Python registration.
     from app.config import get_settings
@@ -179,7 +179,7 @@ def test_step_select_knowledge_is_autodiscoverable(allowlist, catalog, tmp_path)
 
     s = get_settings()
     ctx = ToolContext(
-        settings=s, allowlist=allowlist,
+        settings=s, policy=policy,
         runner=CommandRunner(s.repo_paths), workspace=tmp_path / "ws",
     )
     out = read_knowledge(ctx, name="step_select")

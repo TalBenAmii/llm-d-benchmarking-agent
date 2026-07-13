@@ -19,7 +19,7 @@ from unittest.mock import patch
 import yaml
 
 from app.config import Settings
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.tools.access.knowledge_access import read_knowledge
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.setup.probe import (
@@ -86,7 +86,7 @@ async def test_advise_accelerators_gpu_node_reports_advertised_resource(tmp_path
     assert out["any_accelerator"] is True
     assert out["cpu_only"] is False
     assert out["advertised_resources"] == ["nvidia.com/gpu"]
-    # It reached the runner via the already-allowlisted read-only kubectl get nodes.
+    # It reached the runner via the already-policy-allowed read-only kubectl get nodes.
     assert ["kubectl", "get", "nodes", "-o", "json"] in [c["argv"] for c in runner.calls]
     node = out["nodes"][0]
     assert node["name"] == "gpu-worker-0"
@@ -208,12 +208,12 @@ def test_advise_accelerators_description_points_to_knowledge_and_complements_cap
     assert "check_capacity" in desc  # explicitly complements the GPU-memory sizing check
 
 
-def test_no_allowlist_widening_reuses_existing_get_nodes(tmp_path):
-    """The tool reuses the EXISTING read-only `kubectl get nodes` allowlist entry — confirm it
+def test_no_policy_widening_reuses_existing_get_nodes(tmp_path):
+    """The tool reuses the EXISTING read-only `kubectl get nodes` policy entry — confirm it
     is present (no new mutating command, no per-command Python widening)."""
-    from app.security.allowlist import READ_ONLY
+    from app.security.policy import READ_ONLY
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    al = Allowlist.from_file(settings.allowlist_path)
+    al = CommandPolicy.from_file(settings.command_policy_path)
     decision = al.validate(["kubectl", "get", "nodes", "-o", "json"])
     assert decision.allowed is True
     assert decision.mode == READ_ONLY  # auto-runs, no approval

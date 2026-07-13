@@ -79,9 +79,9 @@ async def test_probe_node_capacity_large_cluster_min_is_smallest(tmp_path):
     assert {n["name"] for n in cap["nodes"]} == {"node-a", "node-b"}
 
 
-async def test_probe_node_capacity_in_all_and_uses_allowlisted_readonly(tmp_path):
+async def test_probe_node_capacity_in_all_and_uses_policy_allowed_readonly(tmp_path):
     """node_capacity runs as part of 'all' and reaches the runner via the read-only,
-    already-allowlisted `kubectl get nodes -o json` (no allowlist change needed)."""
+    already-policy-allowed `kubectl get nodes -o json` (no policy change needed)."""
     ctx, runner = _ctx(tmp_path, nodes_json=SMALL_NODE_JSON)
     with patch("app.tools.setup.probe.shutil.which", side_effect=lambda n, *a, **k: f"/usr/bin/{n}"):
         out = await probe_environment(ctx, namespace="llmd")  # checks defaults to "all"

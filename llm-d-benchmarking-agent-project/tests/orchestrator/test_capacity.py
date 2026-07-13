@@ -4,7 +4,7 @@ Hermetic: NO network, NO GPU, NO benchmark venv. The pure pieces (spec/scenario
 resolution, defaults+scenario merge, overrides, diagnostic classification) run against the
 real on-disk repo (file reads only). The tool is exercised end-to-end through a
 ``CaptureRunner`` that fakes the ``capacity_check.py`` bridge's JSON stdout — so the whole
-chain (render plan_config -> write request file -> allowlisted dispatch -> parse -> classify)
+chain (render plan_config -> write request file -> policy-allowed dispatch -> parse -> classify)
 is covered without ever invoking the real planner.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from app.capacity.planner import (
     resolve_scenario_file,
 )
 from app.dig import parse_bridge_dict
-from app.security.allowlist import READ_ONLY, Allowlist
+from app.security.policy import READ_ONLY, CommandPolicy
 from app.security.runner import CommandRunner, RunnerError
 from app.tools.context import ToolError
 from app.tools.registry import dispatch, tool_definitions
@@ -30,7 +30,7 @@ from app.tools.setup.capacity import check_capacity
 from tests._helpers import _real_repo_ctx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 
 
 # ---- diagnostic classification (the core verdict logic) -----------------------
@@ -248,25 +248,25 @@ def test_check_capacity_is_registered_as_a_tool():
     assert "check_capacity" in names
 
 
-# ---- allowlist + runner wiring -------------------------------------------------
+# ---- policy + runner wiring -------------------------------------------------
 
-def test_allowlist_capacity_check_is_read_only(allowlist):
-    d = allowlist.validate(["capacity_check.py", "workspace/sessions/s1/capacity_request.json"])
+def test_policy_capacity_check_is_read_only(policy):
+    d = policy.validate(["capacity_check.py", "workspace/sessions/s1/capacity_request.json"])
     assert d.allowed and d.mode == READ_ONLY and not d.requires_approval
 
 
-def test_allowlist_rejects_non_json_argument(allowlist):
-    d = allowlist.validate(["capacity_check.py", "workspace/evil.sh"])
+def test_policy_rejects_non_json_argument(policy):
+    d = policy.validate(["capacity_check.py", "workspace/evil.sh"])
     assert not d.allowed
 
 
-def test_allowlist_rejects_path_traversal(allowlist):
-    d = allowlist.validate(["capacity_check.py", "../../etc/passwd.json"])
+def test_policy_rejects_path_traversal(policy):
+    d = policy.validate(["capacity_check.py", "../../etc/passwd.json"])
     assert not d.allowed
 
 
-def test_allowlist_requires_the_positional(allowlist):
-    d = allowlist.validate(["capacity_check.py"])
+def test_policy_requires_the_positional(policy):
+    d = policy.validate(["capacity_check.py"])
     assert not d.allowed  # missing required positional
 
 
@@ -278,7 +278,7 @@ def test_runner_resolves_python_via_bench_venv(tmp_path):
     (venv_bin / "python").write_text("")  # presence is enough for resolve()
     runner = CommandRunner({"llm-d-benchmark": bench, "llm-d": tmp_path / "llm-d"})
 
-    entry = Allowlist.from_file(ALLOWLIST_PATH).executable("capacity_check.py")
+    entry = CommandPolicy.from_file(COMMAND_POLICY_PATH).executable("capacity_check.py")
     real, cwd = runner.resolve(["capacity_check.py", str(tmp_path / "req.json")], entry)
     assert real[0] == str(venv_bin / "python")
     assert real[1].endswith("scripts/bridges/capacity_check.py")
@@ -289,6 +289,6 @@ def test_runner_python_via_missing_venv_errors_clearly(tmp_path):
     bench = tmp_path / "llm-d-benchmark"
     bench.mkdir()
     runner = CommandRunner({"llm-d-benchmark": bench, "llm-d": tmp_path / "llm-d"})
-    entry = Allowlist.from_file(ALLOWLIST_PATH).executable("capacity_check.py")
+    entry = CommandPolicy.from_file(COMMAND_POLICY_PATH).executable("capacity_check.py")
     with pytest.raises(RunnerError):
         runner.resolve(["capacity_check.py", str(tmp_path / "req.json")], entry)

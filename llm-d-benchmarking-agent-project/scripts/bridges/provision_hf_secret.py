@@ -7,11 +7,11 @@ exactly as the upstream ``llm-d/helpers/hf-token.md`` recipe does:
     kubectl create secret generic <name> --from-literal=HF_TOKEN=$HF_TOKEN \
         --namespace <ns> --dry-run=client -o yaml | kubectl apply -f -
 
-WHY A SCRIPT (and not a raw allowlisted ``kubectl create secret``): the token MUST stay
+WHY A SCRIPT (and not a raw policy-allowed ``kubectl create secret``): the token MUST stay
 out of every argv. ``ToolContext._emit_command`` (app/tools/context.py) emits the FULL
 argv of every executed command into a ``command`` event that reaches the browser, the
 log, and the persisted command trail. A ``--from-literal=HF_TOKEN=<token>`` argument
-would leak the secret into all of those. So the agent's allowlist/argv NEVER carries the
+would leak the secret into all of those. So the agent's policy/argv NEVER carries the
 token: this script reads ``HF_TOKEN`` from the (already-scrubbed) child environment — the
 runner injects it from ``settings.extra_subprocess_env`` (app/config.py) exactly as
 ``capacity_check.py`` reads ``os.environ["HF_TOKEN"]`` — and feeds it to ``kubectl`` over
@@ -19,7 +19,7 @@ its OWN subprocess (the token is passed on the inner ``kubectl create`` argv, wh
 process spawns directly and which is never surfaced anywhere). The agent only ever sees
 ``["provision_hf_secret.py", "--namespace", "<ns>", "--name", "<name>"]``.
 
-This is a MUTATING step (it writes a Secret to the cluster). The allowlist marks it
+This is a MUTATING step (it writes a Secret to the cluster). The policy marks it
 ``mode: mutating`` so it is approval-gated like any other cluster mutation: the agent
 proposes it, the user clicks Approve, and only then does the runner execute it. WHEN to
 provision (only on a Phase 62 GATED+UNAUTHORIZED-with-no-token capacity verdict; never for
@@ -35,7 +35,7 @@ Contract (mechanism only — no judgment lives here):
     ``secret/llm-d-hf-token created``) — never the token value.
   * exit code 0 on success; non-zero with a token-free error otherwise.
 
-The allowlist pins the two flags' values (``--namespace`` to an RFC1123 label, ``--name``
+The policy pins the two flags' values (``--namespace`` to an RFC1123 label, ``--name``
 to an RFC1123 object name) and screens every token for shell metacharacters, so there is
 no arbitrary surface beyond this audited file. The script itself runs ``kubectl`` with
 ``shell=False`` (a real argv list, no shell string) so the pipeline in the upstream recipe

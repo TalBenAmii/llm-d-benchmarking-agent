@@ -47,10 +47,10 @@ detection:
     GPU-bearing nodes the model server will land on.
 
 # ---------------------------------------------------------------------------
-# (1) WHICH CLI. OpenShift ships `oc`, a kubectl-equivalent. The agent's read-only `oc` allowlist
+# (1) WHICH CLI. OpenShift ships `oc`, a kubectl-equivalent. The agent's read-only `oc` policy
 # entry carries the SAME constrained read-only subcommands as kubectl, so on a detected OpenShift
 # cluster the agent can prefer `oc` for the read-only probes/diagnostics it would otherwise run
-# with kubectl — without any Python oc-vs-kubectl branch (the allowlist is DATA-equivalent).
+# with kubectl — without any Python oc-vs-kubectl branch (the policy is DATA-equivalent).
 # Every OTHER provider uses `kubectl`. Mutating actions stay approval-gated regardless of CLI.
 cli:
   by_provider:
@@ -58,7 +58,7 @@ cli:
       cli: oc
       note: >-
         Use `oc` in place of `kubectl` for OpenShift commands (or `oc login` and keep kubectl).
-        The agent's `oc` allowlist entry mirrors kubectl's read-only subcommands exactly.
+        The agent's `oc` policy entry mirrors kubectl's read-only subcommands exactly.
     gke:        { cli: kubectl }
     doks:       { cli: kubectl }
     aks:        { cli: kubectl }
@@ -219,7 +219,7 @@ known_issues:
 # ---------------------------------------------------------------------------
 # How to apply this (the agent's judgment — NOT Python branches):
 verdict_guidance:
-  - "OpenShift detected (provider == openshift): prefer `oc` for read-only diagnostics (the oc allowlist entry mirrors kubectl's read-only subcommands); BEFORE standup confirm no ServiceMesh/Istio install conflicts with the gateway; if a gpu_taint leaves model-server pods Pending, author the matching nvidia.com/gpu toleration (Equal+value if the taint is value-bearing, else Exists) into the session workspace and propose it as an approval-gated patch."
+  - "OpenShift detected (provider == openshift): prefer `oc` for read-only diagnostics (the oc policy entry mirrors kubectl's read-only subcommands); BEFORE standup confirm no ServiceMesh/Istio install conflicts with the gateway; if a gpu_taint leaves model-server pods Pending, author the matching nvidia.com/gpu toleration (Equal+value if the taint is value-bearing, else Exists) into the session workspace and propose it as an approval-gated patch."
   - "DOKS / GKE / AKS detected: keep using kubectl; if a gpu_taint leaves pods Pending, author the nvidia.com/gpu Exists toleration into the session workspace and propose an approval-gated patch; surface the provider's known_issues (GKE: GMP for metrics, 'Undetected platform' on vLLM 0.10.0, NVSHMEM; DOKS: LoadBalancer-pending; AKS: NRI locked-memory, nvidia-peermem)."
   - "GKE specifically: when the user wants observability, the metrics path is Google Managed Prometheus (GMP) + automatic application monitoring — NOT a self-managed PodMonitor/ServiceMonitor. Mention the 'Undetected platform' vLLM 0.10.0 fix and the NVSHMEM DeepEP caveats if they run wide expert parallelism."
   - "kind / minikube / unknown (no cloud-provider labels): use kubectl; no managed GPU taints to tolerate on the local quickstart path (cicd/kind runs the CPU sim)."

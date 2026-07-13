@@ -1,6 +1,6 @@
-"""Deny-by-default command allowlist validator.
+"""Deny-by-default command policy validator.
 
-This module is a *pure validator* over ``security/allowlist.yaml``. It contains no
+This module is a *pure validator* over ``security/command_policy.yaml``. It contains no
 per-command knowledge: every rule lives in the YAML. Given a logical argv list
 (e.g. ``["llmdbenchmark", "--spec", "cicd/kind", "standup", "-p", "ns"]``) it returns
 a :class:`Decision` saying whether the command is permitted and whether it is
@@ -8,10 +8,10 @@ a :class:`Decision` saying whether the command is permitted and whether it is
 
 It never runs anything — see ``app/security/runner.py`` for execution.
 
-Flag policy: the allowlist gates *which* executables and subcommands may run, whether a
+Flag policy: the policy gates *which* executables and subcommands may run, whether a
 command is read-only or mutating (and thus approval-gated), and screens every token for
 shell metacharacters. It does **not** reject unrecognized *flags* — once an executable +
-subcommand are allowlisted, any additional flag is accepted (its value is still
+subcommand are policy-allowed, any additional flag is accepted (its value is still
 metachar-screened, but not checked against ``value_constraints``). Values consumed by
 *known* flags are still validated against their declared constraint, and unknown flags
 never downgrade a mutating command's mode. Positionals and subcommands remain
@@ -31,7 +31,7 @@ import yaml
 # module — keeping the public names stable.
 from app.security._validator import MUTATING, READ_ONLY, _Reject, _Validator
 
-__all__ = ["READ_ONLY", "MUTATING", "Decision", "AllowlistError", "Allowlist"]
+__all__ = ["READ_ONLY", "MUTATING", "Decision", "CommandPolicyError", "CommandPolicy"]
 
 # Tokens we generate never need shell metacharacters. We reject them on every token
 # as defense in depth, even though the runner uses shell=False (no shell to inject).
@@ -44,7 +44,7 @@ class Decision:
     mode: str = MUTATING  # conservative default
     reason: str = ""
     argv: list[str] = field(default_factory=list)
-    # --- governance, sourced PURELY from security/allowlist.yaml (Phase 13) ---
+    # --- governance, sourced PURELY from security/command_policy.yaml (Phase 13) ---
     # The per-command execution deadline (seconds) declared in the policy data, or None
     # when the command carries no `timeout_s` (the runner then applies its global default).
     # This is the ONE place timeouts come from — there is no Python per-command table.
@@ -59,7 +59,7 @@ def _deny(argv: list[str], reason: str) -> Decision:
     return Decision(allowed=False, mode=MUTATING, reason=reason, argv=list(argv))
 
 
-class AllowlistError(RuntimeError):
+class CommandPolicyError(RuntimeError):
     pass
 
 
@@ -74,12 +74,12 @@ class AllowlistError(RuntimeError):
 def _check_positive_int(value: Any, where: str) -> None:
     # bool is an int subclass — reject it explicitly so `timeout_s: true` can't slip through.
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise AllowlistError(f"{where} must be a positive integer, got {value!r}")
+        raise CommandPolicyError(f"{where} must be a positive integer, got {value!r}")
 
 
 def _validate_one_governance_block(block: dict[str, Any], where: str) -> None:
     """Validate the optional ``timeout_s`` field on a single executable or subcommand
-    entry. Raises :class:`AllowlistError` on any malformed value."""
+    entry. Raises :class:`CommandPolicyError` on any malformed value."""
     if "timeout_s" in block:
         _check_positive_int(block["timeout_s"], f"{where}.timeout_s")
 
@@ -87,18 +87,18 @@ def _validate_one_governance_block(block: dict[str, Any], where: str) -> None:
 def _validate_governance_schema(executables: dict[str, Any]) -> None:
     """Walk every executable + subcommand and schema-validate their governance fields."""
     if not isinstance(executables, dict):
-        raise AllowlistError("executables must be a mapping")
+        raise CommandPolicyError("executables must be a mapping")
     for exe, entry in executables.items():
         if not isinstance(entry, dict):
-            raise AllowlistError(f"executable {exe!r} must be a mapping")
+            raise CommandPolicyError(f"executable {exe!r} must be a mapping")
         _validate_one_governance_block(entry, f"executables.{exe}")
         subs = entry.get("subcommands")
         if subs is not None:
             if not isinstance(subs, dict):
-                raise AllowlistError(f"executables.{exe}.subcommands must be a mapping")
+                raise CommandPolicyError(f"executables.{exe}.subcommands must be a mapping")
             for sub, sub_entry in subs.items():
                 if not isinstance(sub_entry, dict):
-                    raise AllowlistError(f"executables.{exe}.subcommands.{sub} must be a mapping")
+                    raise CommandPolicyError(f"executables.{exe}.subcommands.{sub} must be a mapping")
                 _validate_one_governance_block(sub_entry, f"executables.{exe}.subcommands.{sub}")
 
 
@@ -113,7 +113,7 @@ def _validate_one_positional_list(positionals: Any, where: str) -> None:
         return
     for idx, spec in enumerate(positionals):
         if isinstance(spec, dict) and spec.get("repeated") and idx != len(positionals) - 1:
-            raise AllowlistError(
+            raise CommandPolicyError(
                 f"{where}: a `repeated` positional spec must be LAST (it consumes all following "
                 f"tokens), but one appears at index {idx} of {len(positionals)}"
             )
@@ -136,29 +136,29 @@ def _validate_positionals_schema(executables: dict[str, Any]) -> None:
             _walk_entry(entry, f"executables.{exe}")
 
 
-class Allowlist:
+class CommandPolicy:
     """Loads the policy once and validates argv lists against it."""
 
     def __init__(self, policy: dict[str, Any]):
         self._executables: dict[str, Any] = policy.get("executables", {})
         self._value_constraints: dict[str, Any] = policy.get("value_constraints", {})
         # Schema-validate the governance fields (timeout_s) AT STARTUP so a
-        # malformed allowlist fails loudly here instead of mis-enforcing at run time.
+        # malformed policy fails loudly here instead of mis-enforcing at run time.
         _validate_governance_schema(self._executables)
         # Enforce the positional walker's `repeated`-must-be-last invariant at LOAD time, so a
-        # future allowlist edit putting a repeated spec before another positional fails loudly here
+        # future policy edit putting a repeated spec before another positional fails loudly here
         # rather than silently swallowing the following positional's tokens in the hot _walk path.
         _validate_positionals_schema(self._executables)
 
     # ---- construction -----------------------------------------------------
     @classmethod
-    def from_file(cls, path: str | Path) -> Allowlist:
+    def from_file(cls, path: str | Path) -> CommandPolicy:
         try:
             data = yaml.safe_load(Path(path).read_text())
         except yaml.YAMLError as exc:
-            raise AllowlistError(f"allowlist policy at {path} is not valid YAML: {exc}") from exc
+            raise CommandPolicyError(f"policy policy at {path} is not valid YAML: {exc}") from exc
         if not isinstance(data, dict) or "executables" not in data:
-            raise AllowlistError(f"malformed allowlist policy at {path}")
+            raise CommandPolicyError(f"malformed policy policy at {path}")
         return cls(data)
 
     # ---- public API -------------------------------------------------------
@@ -187,7 +187,7 @@ class Allowlist:
         exe = argv[0]
         entry = self._executables.get(exe)
         if entry is None:
-            return _deny(argv, f"executable {exe!r} is not allowlisted")
+            return _deny(argv, f"executable {exe!r} is not policy-allowed")
 
         # The generic token walk is delegated to the engine, constructed per call with the
         # value-constraint table (for `ref` resolution) and the optional live catalog (for
@@ -220,7 +220,7 @@ class Allowlist:
             subname = rest[sub_idx]
             sub = subcommands.get(subname)
             if sub is None:
-                return _deny(argv, f"subcommand {subname!r} is not allowlisted for {exe!r}")
+                return _deny(argv, f"subcommand {subname!r} is not policy-allowed for {exe!r}")
 
             pre = rest[:sub_idx]   # leading global flags
             post = rest[sub_idx + 1:]

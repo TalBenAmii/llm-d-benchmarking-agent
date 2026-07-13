@@ -12,7 +12,7 @@ yours, grounded here, not in any Python branch.
 > (`fetch_key_docs(task='deploy_skill')`); this file is the per-command `--gateway-class` override.
 
 - **Valid on every subcommand** (`plan`, `standup`, `smoketest`, `run`,
-  `teardown`, `experiment`). It is a value-pinned enum in the allowlist, so an
+  `teardown`, `experiment`). It is a value-pinned enum in the command policy, so an
   out-of-enum value is refused.
 - **Override, not a default.** Omit it to inherit the spec's `gateway.className`.
   Precedence (highest wins): `--gateway-class` flag → scenario `gateway.className`
@@ -62,7 +62,7 @@ yours, grounded here, not in any Python branch.
 - **A typo is caught loudly** on the modelservice path: an unsupported value (e.g.
   `isto`) makes the CLI raise `ValueError: --gateway-class='isto' is not a
   supported value … Choose one of: epponly, istio, agentgateway, gke,
-  data-science-gateway-class.` The allowlist enum refuses it even earlier, so only
+  data-science-gateway-class.` The command policy enum refuses it even earlier, so only
   one of the five legitimate providers is expressible.
 - **Preview before you commit.** `plan` (read-only) with `gateway_class` set lets
   you render under the chosen provider and confirm the topology before a real

@@ -561,7 +561,7 @@ def recommend_next_steps(
 
     # 4) Dig into the latency tail with the CLI's matplotlib analysis plots. Re-running the
     #    benchmark with `--analyze` writes the extra per-request distribution / session-lifecycle
-    #    / Prometheus time-series charts (allowlisted `run` flag), beyond the analyzer math we
+    #    / Prometheus time-series charts (policy-allowed `run` flag), beyond the analyzer math we
     #    already returned. Always available, above teardown — a richer "what next" than stopping.
     add("analyze_with_plots", "execute_llmdbenchmark",
         "re-run with --analyze to write the latency-distribution / session / time-series plots")

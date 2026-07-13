@@ -86,7 +86,7 @@ headroom without over-requesting on a tiny node.
 - **Two launcher-resource knobs `execute_llmdbenchmark` exposes:** `harness_cpu_nr` (CPU request,
   `LLMDBENCH_HARNESS_CPU_NR`, default `16`) and `harness_mem` (MEMORY request,
   `LLMDBENCH_HARNESS_CPU_MEM`, default `32Gi`, per `docs/run.md`). Both are backend-only ENV VARS
-  (never CLI flags, never in the allowlist or a `command` event). `harness_mem` takes a Kubernetes
+  (never CLI flags, never in the command policy or a `command` event). `harness_mem` takes a Kubernetes
   memory quantity (`48Gi`, `512Mi`) — validated at the tool boundary, so a typo is a clean error,
   not a late pod-apply failure. **If a launcher OOMs, RAISE `harness_mem`** (e.g. `48Gi`/`64Gi`);
   lower it on a tiny node. Same headroom split as CPU: the multi-process `inference-perf` launcher

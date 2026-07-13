@@ -14,14 +14,14 @@ import yaml
 
 from app.agent.session import Session
 from app.config import Settings, get_settings
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner
 from app.tools.context import ToolContext
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 
 
 async def _approve_all(kind, payload):
@@ -33,7 +33,7 @@ def _argv(subcommand, *rest):
 
 
 def _real_repo_ctx(tmp_path, *, canned=None):
-    """A ToolContext wired to the REAL repos/allowlist but with a CaptureRunner that fakes the
+    """A ToolContext wired to the REAL repos/policy but with a CaptureRunner that fakes the
     bridge subprocess (CaptureRunner bypasses path resolution, so no real venv/tool is needed). No
     approval channel — the read-only tools that use this must auto-run."""
     s = get_settings()
@@ -45,7 +45,7 @@ def _real_repo_ctx(tmp_path, *, canned=None):
 
     ctx = ToolContext(
         settings=s,
-        allowlist=Allowlist.from_file(ALLOWLIST_PATH),
+        policy=CommandPolicy.from_file(COMMAND_POLICY_PATH),
         runner=runner,
         workspace=tmp_path / "ws",
         emit=emit,
@@ -70,7 +70,7 @@ def _capture_ctx(tmp_path, *, emit=None, approve=None, canned=None):
     runner = CaptureRunner(settings.repo_paths, canned=canned or {})
     ctx = ToolContext(
         settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
+        policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner,
         workspace=tmp_path / "ws",
         emit=emit,
@@ -84,9 +84,9 @@ def _capture_ctx(tmp_path, *, emit=None, approve=None, canned=None):
 
 def _session(tmp_path, *, sid="t") -> Session:
     s = get_settings()
-    al = Allowlist.from_file(PROJECT_ROOT / "security" / "allowlist.yaml")
+    al = CommandPolicy.from_file(PROJECT_ROOT / "security" / "command_policy.yaml")
     runner = CommandRunner(s.repo_paths)
-    ctx = ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
+    ctx = ToolContext(settings=s, policy=al, runner=runner, workspace=tmp_path / "ws")
     return Session(id=sid, ctx=ctx)
 
 

@@ -28,8 +28,8 @@ Contract (mechanism only — no judgment lives here):
         {"ok": false, "error": "..."}
 
 The agent never types this command; ``app/capacity/planner.py`` builds the request
-file inside the session workspace and runs this script through the allowlisted runner
-(``shell=False``, scrubbed env). The allowlist constrains the single argument to a
+file inside the session workspace and runs this script through the policy-allowed runner
+(``shell=False``, scrubbed env). The policy constrains the single argument to a
 ``.json`` path, so there is no arbitrary-code surface beyond this audited file.
 """
 from __future__ import annotations

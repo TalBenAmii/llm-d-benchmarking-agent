@@ -25,8 +25,8 @@ user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, 
    from logs. (Previewing a config via the CLI's `--dry-run`/`plan` is an agent convention the prompt
    asks for — **not** a code gate. Enumerated in `app/validation/CLAUDE.md`.)
 5. **Security: the mutating→approval gate is the guardrail.** Mutations need explicit approval; read-only
-   probes auto-run; subprocess env is scrubbed. The deny-by-default allowlist (data in
-   `security/allowlist.yaml`; `app/security` = pure validator) governs the dedicated command tools;
+   probes auto-run; subprocess env is scrubbed. The deny-by-default command policy (data in
+   `security/command_policy.yaml`; `app/security` = pure validator) governs the dedicated command tools;
    `run_shell` is gated by the read-only/mutating classifier instead. Detail → `app/security/CLAUDE.md` +
    the `coding-guidelines` skill.
 6. **Secrets stay in the backend** (`.env`, gitignored; subprocess env scrubbed; browser never sees keys).
@@ -42,7 +42,7 @@ llm-d-benchmarking-agent-project/
 │  ├─ agent/         📁   the agent loop + system prompt (prompt-cache byte-stability)
 │  ├─ tools/         📁   the tool registry (registry.py authoritative); handlers in setup/·run/·analyze/·access/ subpackages; schemas/ = tool I/O + SessionPlan JSON schemas
 │  ├─ validation/    📁   the four determinism gates
-│  ├─ security/      📁   allowlist validator (pure; the policy itself is data in /security)
+│  ├─ security/      📁   command policy validator (pure; the policy itself is data in /security)
 │  ├─ orchestrator/  📁   Kubernetes-native benchmark Job lifecycle + fault classification
 │  ├─ capacity/      📁   capacity pre-flight — feasibility check at the plan gate (pure, no-I/O half)
 │  ├─ readiness/     📁   endpoint/stack readiness — pure analyzer + thin probe layer
@@ -54,9 +54,9 @@ llm-d-benchmarking-agent-project/
 │  └─ web.py             pure, decorator-free HTTP/SSE helpers extracted from main (path-traversal 404s, CORS guard, share redaction)
 ├─ knowledge/       📁    the agent's editable brain (md/yaml) — ALL judgment lives here (62 files in
 │                         10 topic subfolders; resolved by basename via a recursive glob — see its CLAUDE.md)
-├─ security/             allowlist.yaml — the deny-by-default policy (DATA, not code)
+├─ security/             command_policy.yaml — the deny-by-default policy (DATA, not code)
 ├─ deploy/               Helm chart + observability manifests
-├─ scripts/              root entry points (run.sh · _env.sh shared lib) + install/ (service+host bootstrap: install_local.sh · install_service.sh · install_prereqs.sh · install_metrics_server.sh · install-git-hooks.sh · setup-claude-plan.sh · kind_egress_heal.sh) + bridges/ (allowlisted repo wrappers: aggregate_runs.py · capacity_check.py · provision_hf_secret.py) + eval/ (flow eval: validate_flows.py · run_eval_isolated.sh)
+├─ scripts/              root entry points (run.sh · _env.sh shared lib) + install/ (service+host bootstrap: install_local.sh · install_service.sh · install_prereqs.sh · install_metrics_server.sh · install-git-hooks.sh · setup-claude-plan.sh · kind_egress_heal.sh) + bridges/ (policy-allowed repo wrappers: aggregate_runs.py · capacity_check.py · provision_hf_secret.py) + eval/ (flow eval: validate_flows.py · run_eval_isolated.sh)
 ├─ tests/           📁    pytest suite in subsystem buckets (agent/ · tools/ · orchestrator/ · platform/, shared fixtures at root; + eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ harnesses/            non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ docs/                 documentation (README index + guides/ how-to · reference/ API·ARCHITECTURE·FEATURES·CONTEXT + images/ UI stills)

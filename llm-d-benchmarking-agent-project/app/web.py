@@ -177,7 +177,7 @@ def install_cors(target: FastAPI, origins: list[str]) -> None:
     true``) for ANY origin — so ``CORS_ALLOW_ORIGINS=*`` would silently let every website on the
     internet make authenticated cross-origin reads of the API. When the wildcard is configured we
     therefore drop credentials, yielding a safe ``Access-Control-Allow-Origin: *`` that browsers
-    will not pair with credentials. An explicit origin allowlist keeps credentials enabled."""
+    will not pair with credentials. An explicit origin policy keeps credentials enabled."""
     if origins:
         wildcard = "*" in origins
         target.add_middleware(

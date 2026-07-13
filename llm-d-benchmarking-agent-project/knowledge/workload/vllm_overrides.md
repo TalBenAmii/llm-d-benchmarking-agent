@@ -63,7 +63,7 @@ execute_llmdbenchmark(subcommand="plan", spec=<spec_path>, flags={"dry_run": tru
 execute_llmdbenchmark(subcommand="run",  spec=<spec_path>, flags={"dry_run": true})
 ```
 
-The CLI resolves a full file path for `--spec`, and the allowlist admits a workspace
+The CLI resolves a full file path for `--spec`, and the command policy admits a workspace
 `*.spec.yaml` (so this gate is reachable without touching the read-only repo). A clean
 dry-run/plan is the acceptance gate. If it errors, fix the knob and re-author — don't stand
 up a scenario that didn't pass the plan.

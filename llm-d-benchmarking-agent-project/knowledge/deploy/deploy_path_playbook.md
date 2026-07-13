@@ -13,7 +13,7 @@ deploy script); its `references/troubleshooting.md` + `references/connectivity-v
 (same `fetch_key_docs` task) carry the deploy-failure + endpoint-verification detail.
 
 **Adapt it to OUR tooling — our architecture stays authoritative.** Every mutating step flows
-through the **SessionPlan approval gate** + the allowlist, never the skill's `ask_followup_question`
+through the **SessionPlan approval gate** + the command policy, never the skill's `ask_followup_question`
 / ad-hoc `execute_command`: drive deploys via `execute_llmdbenchmark` (the `llmdbenchmark` CLI) or,
 for the raw kubectl/helm/kustomize the skill calls for, `run_shell` (classifier + approval), always
 namespace-scoped (`-n ${NAMESPACE}`), never cluster-level. Write only into the session workspace;

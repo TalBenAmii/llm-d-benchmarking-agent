@@ -75,9 +75,9 @@ def _normalize_metric_token(tok: str) -> str:
 @pytest.mark.parametrize("doc_path,needles", [
     (DOCS / "reference/SECURITY.md", (
         "Trust boundaries",
-        "allowlist",            # the allowlist/approval model
+        "policy",            # the policy/approval model
         "approval",
-        "security/allowlist.yaml",
+        "security/command_policy.yaml",
         "shell=False",
         "Secret handling",
         "scrub",                # secret scrubbing

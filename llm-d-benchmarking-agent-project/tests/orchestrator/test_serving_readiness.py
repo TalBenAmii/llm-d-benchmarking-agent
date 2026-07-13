@@ -8,7 +8,7 @@ Hermetic, no cluster / no GPU / no network. Three layers are exercised:
     knowledge/readiness_probes.md);
   * the curl status parsing (`_probe_status`) — reads the HTTP code from a `curl -i` status line
     and reports connection-refused as unreachable;
-  * the ALLOWLIST — the constrained `curl` GET probe is permitted ONLY for GET on ports
+  * the COMMAND POLICY — the constrained `curl` GET probe is permitted ONLY for GET on ports
     8000/8200 at /v1/models or /health against an in-namespace svc URL, and is REJECTED for any
     other verb/port/path/host.
 
@@ -35,7 +35,7 @@ from app.readiness.diagnostics import (
     classify_serving_readiness,
 )
 from app.readiness.probes import _probe_status, check_endpoint_readiness
-from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
+from app.security.policy import MUTATING, READ_ONLY, CommandPolicy
 from app.security.runner import RunResult
 from app.tools.context import ToolContext
 from tests._helpers import kubectl_present
@@ -209,12 +209,12 @@ def test_probe_status_parsing(output, expected):
 
 
 # ----------------------------------------------------------------------------
-# Allowlist: the constrained curl GET probe — permitted vs rejected
+# CommandPolicy: the constrained curl GET probe — permitted vs rejected
 # ----------------------------------------------------------------------------
 
 @pytest.fixture
-def allowlist() -> Allowlist:
-    return Allowlist.from_file(Settings(_env_file=None).allowlist_path)
+def policy() -> CommandPolicy:
+    return CommandPolicy.from_file(Settings(_env_file=None).command_policy_path)
 
 
 @pytest.mark.parametrize("argv", [
@@ -224,8 +224,8 @@ def allowlist() -> Allowlist:
     ["curl", "-i", "http://svc.bench.svc:8000/health"],                       # GET is the default
     ["curl", "-i", "http://svc.bench.svc.cluster.local:8200/v1/models"],      # full cluster DNS
 ])
-def test_allowlist_permits_constrained_get_probe(allowlist, argv):
-    d = allowlist.validate(argv)
+def test_policy_permits_constrained_get_probe(policy, argv):
+    d = policy.validate(argv)
     assert d.allowed is True
     assert d.mode == READ_ONLY, "the probe must auto-run (read-only), never need approval"
 
@@ -240,14 +240,14 @@ def test_allowlist_permits_constrained_get_probe(allowlist, argv):
     (["curl", "-i", "-X", "GET", "http://169.254.169.254:8000/v1/models"], "non-svc host (IP)"),
     (["curl", "-i", "-X", "GET", "https://svc.bench.svc:8000/v1/models"], "https scheme"),
 ])
-def test_allowlist_rejects_off_policy_probe(allowlist, argv, why):
-    d = allowlist.validate(argv)
+def test_policy_rejects_off_policy_probe(policy, argv, why):
+    d = policy.validate(argv)
     assert d.allowed is False, f"should have rejected {why}: {argv}"
 
 
-def test_allowlist_curl_metachar_screen_blocks_injection(allowlist):
+def test_policy_curl_metachar_screen_blocks_injection(policy):
     """The blanket metacharacter screen still applies to the URL positional (defense in depth)."""
-    d = allowlist.validate(["curl", "-i", "http://svc.bench.svc:8000/v1/models;rm -rf /"])
+    d = policy.validate(["curl", "-i", "http://svc.bench.svc:8000/v1/models;rm -rf /"])
     assert d.allowed is False
 
 
@@ -276,7 +276,7 @@ def _ctx(tmp_path, *, canned):
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
     runner = CaptureRunner(settings.repo_paths, canned=canned)
     ctx = ToolContext(
-        settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+        settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
     )
     frozen = frozen_catalog()
@@ -321,7 +321,7 @@ async def test_gate_reports_still_loading_facts_before_any_benchmark(tmp_path):
         canned={"get endpoints": ENDPOINTS_NOT_READY, "get pods": PODS_LOADING},
         models_body=_HTTP_503, health_body=_HTTP_200,
     )
-    ctx = ToolContext(settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+    ctx = ToolContext(settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
                       runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1")
     frozen = frozen_catalog()
     ctx._catalog = frozen
@@ -341,7 +341,7 @@ async def test_gate_reports_still_loading_facts_before_any_benchmark(tmp_path):
     probe_calls = [c["argv"] for c in runner.calls if c["argv"][0] == "curl"]
     assert probe_calls, "expected the gate to run the curl /v1/models + /health probes"
     for c in runner.calls:
-        d = ctx.allowlist.validate(c["argv"], catalog=ctx.catalog_for_allowlist())
+        d = ctx.policy.validate(c["argv"], catalog=ctx.catalog_for_policy())
         assert d.mode != MUTATING, f"the readiness gate ran a mutating command: {c['argv']}"
     assert not any(c["argv"][:2] == ["kubectl", "apply"] for c in runner.calls)
     # Both probe paths were exercised against an in-namespace svc URL on a model-server port.
@@ -359,7 +359,7 @@ async def test_gate_reports_wedged_facts(tmp_path):
         canned={"get endpoints": ENDPOINTS_NOT_READY, "get pods": PODS_CRASHING},
         models_body=_REFUSED, health_body=_REFUSED,
     )
-    ctx = ToolContext(settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+    ctx = ToolContext(settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
                       runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1")
     frozen = frozen_catalog()
     ctx._catalog = frozen
@@ -403,7 +403,7 @@ async def test_gate_degrades_when_pods_unreadable(tmp_path):
     runner = _PodsFail(settings.repo_paths,
                        canned={"get endpoints": ENDPOINTS_NOT_READY},
                        models_body=_HTTP_503, health_body=_HTTP_200)
-    ctx = ToolContext(settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+    ctx = ToolContext(settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
                       runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1")
     frozen = frozen_catalog()
     ctx._catalog = frozen

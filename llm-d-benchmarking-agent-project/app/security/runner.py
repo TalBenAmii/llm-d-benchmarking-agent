@@ -1,7 +1,7 @@
 """Subprocess runner: turns a validated *logical* argv into a real invocation and
 executes it with ``shell=False``, a pinned cwd, a scrubbed environment, and a timeout.
 
-The runner trusts that argv has already passed :class:`~app.security.allowlist.Allowlist`.
+The runner trusts that argv has already passed :class:`~app.security.policy.CommandPolicy`.
 It NEVER constructs a shell string, so command injection is structurally impossible.
 Secrets (LLM API keys) are excluded from the child environment.
 """
@@ -119,7 +119,7 @@ class CommandRunner:
         return base / sub if sub else base
 
     def resolve(self, logical_argv: list[str], entry: dict | None) -> tuple[list[str], str | None]:
-        """Map a logical argv to (real_argv, cwd). ``entry`` is the allowlist policy
+        """Map a logical argv to (real_argv, cwd). ``entry`` is the policy policy
         entry for argv[0] (carries optional runner/cwd hints)."""
         if not logical_argv:
             raise RunnerError("empty argv")
@@ -150,9 +150,9 @@ class CommandRunner:
             real = [str(script), *rest]
         elif invoke == "project-script":
             # A vetted script shipped with the agent project (e.g. scripts/install/install_prereqs.sh),
-            # resolved against the project root — not a cloned repo. The allowlist constrains
+            # resolved against the project root — not a cloned repo. The policy constrains
             # which script + flags may run; the script's own contents are the only commands it
-            # can execute (the allowlist grants no raw apt-get/curl/sudo).
+            # can execute (the policy grants no raw apt-get/curl/sudo).
             script = (PROJECT_ROOT / runner["script"]).resolve()
             if not is_within(script, PROJECT_ROOT.resolve()):
                 raise RunnerError(f"project script {runner['script']!r} escapes the project root")
@@ -162,7 +162,7 @@ class CommandRunner:
             # the benchmark repo's venv, which is the only interpreter carrying the `planner`
             # package the capacity pre-flight imports). Still a vetted, project-shipped script
             # — the interpreter only changes which dependencies are importable, not the
-            # command surface (the allowlist already pins the script + its single argument).
+            # command surface (the policy already pins the script + its single argument).
             python_via = runner.get("python_via")
             if python_via:
                 py = self._resolve_repo_ref(python_via) / "bin" / "python"
@@ -323,7 +323,7 @@ class CommandRunner:
         extra_env: dict[str, str] | None = None,
     ) -> RunResult:
         """Run an ARBITRARY shell command string through ``bash -lc`` — the path used by the
-        agent's always-on ``run_shell`` tool (it does NOT consult the command allowlist). The argv
+        agent's always-on ``run_shell`` tool (it does NOT consult the command policy). The argv
         handed to the OS is the fixed three-element ``["bash", "-lc", command]`` list, so ``shell=False``
         still holds (bash itself, not Python, interprets the command). It otherwise reuses the
         SAME execution body as :meth:`execute` — scrubbed env, pinned cwd, timeout, captured

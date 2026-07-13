@@ -21,9 +21,9 @@ user's benchmark results to a cloud bucket.
 - **Scope: `run` only (for the MVP).** A cloud sink is wired for `execute_llmdbenchmark` `run`.
   `experiment` (DoE sweeps) and `results` stay LOCAL here — don't try to point those at a bucket.
   Upstream `experiment` *itself* also declares a `-r`/`--output` accepting `local`/`gs://`/`s3://`,
-  so this is an AGENT-side scope, not a CLI gap: the allowlist's `results_sink` value-constraint only
+  so this is an AGENT-side scope, not a CLI gap: the command policy's `results_sink` value-constraint only
   permits the cloud sink on `run`'s `-r`/`--output` for now. So for a sweep, results stay local here
-  until the allowlist is widened — don't imply the agent can send an `experiment` to a bucket.
+  until the command policy is widened — don't imply the agent can send an `experiment` to a bucket.
 
 ## How to set it (mechanism — for grounding, not decisions)
 
@@ -33,8 +33,8 @@ user's benchmark results to a cloud bucket.
   — or `"s3://my-bucket/prefix"`. The URI is passed verbatim to the CLI's `-r/--output`.
 - `-r/--output` is a **destination KEYWORD**, not a filesystem path: it is `local`,
   `gs://bucket/…`, or `s3://bucket/…`. Passing an absolute path makes the run fail
-  ("Unknown output destination: …"). The allowlist value constraint `results_sink`
-  (`security/allowlist.yaml`) permits exactly those three shapes on `run`'s `-r/--output`.
+  ("Unknown output destination: …"). The command policy value constraint `results_sink`
+  (`security/command_policy.yaml`) permits exactly those three shapes on `run`'s `-r/--output`.
 
 ## Credentials and the upload (important)
 

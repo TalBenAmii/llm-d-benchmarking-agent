@@ -181,15 +181,15 @@ async def test_loop_does_not_emit_results_card_for_report_tool(tmp_path):
     from app.agent.session import Session
     from app.config import Settings
     from app.llm.provider import AssistantTurn, ToolCall
-    from app.security.allowlist import Allowlist
+    from app.security.policy import CommandPolicy
     from app.security.runner import SimRunner
     from app.tools.context import ToolContext
     from tests.flows.catalog_snapshot import frozen_catalog
 
     settings = Settings(_env_file=None, simulate=True,
                         repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    al = Allowlist.from_file(settings.allowlist_path)
-    ctx = ToolContext(settings=settings, allowlist=al, runner=SimRunner({}),
+    al = CommandPolicy.from_file(settings.command_policy_path)
+    ctx = ToolContext(settings=settings, policy=al, runner=SimRunner({}),
                       workspace=tmp_path / "ws" / "sessions" / "sim")
     frozen = frozen_catalog()
     ctx._catalog = frozen

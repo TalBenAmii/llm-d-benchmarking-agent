@@ -244,7 +244,7 @@ async def _probe_metrics_server(ctx: ToolContext) -> dict[str, Any]:
                             signal the live resource poller uses during a run).
       - ``installed``       the metrics-server Deployment exists in kube-system (queried by LABEL,
                             since ``kubectl get`` permits a single positional — ``get deployment
-                            metrics-server`` would be two positionals and the allowlist rejects it).
+                            metrics-server`` would be two positionals and the policy rejects it).
       - ``ready_replicas``  the Deployment's ``status.availableReplicas`` (0 == installed-but-
                             NotReady, the kind missing-``--kubelet-insecure-tls`` case), else None.
 
@@ -290,7 +290,7 @@ async def _probe_node_capacity(ctx: ToolContext, *, nodes_res: RunResult | None 
     reports the numbers; WHETHER to lower LLMDBENCH_HARNESS_CPU_NR and to WHAT value is the
     agent's judgment, grounded in knowledge/harness_sizing.md — never a Python branch here.
 
-    Uses the already-allowlisted read-only ``kubectl get nodes -o json``. ``nodes_res`` may carry
+    Uses the already-policy-allowed read-only ``kubectl get nodes -o json``. ``nodes_res`` may carry
     a PRE-FETCHED result (so probe_environment runs the node list query once for both node probes);
     when None we fetch it ourselves so the probe still works standalone. Returns a structured,
     never-raising result; ``min_allocatable_cpu`` (the binding constraint for scheduling) is the
@@ -313,7 +313,7 @@ async def _probe_node_capacity(ctx: ToolContext, *, nodes_res: RunResult | None 
 
 async def _probe_cluster_preconditions(ctx: ToolContext, spec: str | None) -> dict[str, Any]:
     """Report the FACTS an infra precondition gate needs BEFORE a long real-cluster standup:
-    the probed Kubernetes **server** major.minor (from the already-allowlisted read-only
+    the probed Kubernetes **server** major.minor (from the already-policy-allowed read-only
     ``kubectl version --output json``) and the chosen spec's pinned **image tags** (vLLM / NIXL /
     UCX / NVSHMEM and any other ``{repository, tag}`` in the scenario YAML on disk).
 
@@ -354,7 +354,7 @@ async def _probe_provider_detection(ctx: ToolContext, *, nodes_res: RunResult | 
     ``if/elif`` here. The label-prefix→provider mapping is a plain membership lookup against
     ``_PROVIDER_LABEL_HINTS`` (mirrored from that same knowledge file).
 
-    Uses the already-allowlisted read-only ``kubectl get nodes -o json`` (no allowlist change).
+    Uses the already-policy-allowed read-only ``kubectl get nodes -o json`` (no policy change).
     Never raises; the sibling repos stay read-only. Returns:
       - ``provider``        the single detected provider (the GPU-relevant one if mixed, else the
                             most common; ``kind`` when no node carries a cloud-provider label).
@@ -411,7 +411,7 @@ async def advise_accelerators(ctx: ToolContext, *, namespace: str | None = None)
     the Kind/CPU-sim exemption — lives in knowledge/accelerators.yaml (read_knowledge), NEVER as
     a Python branch here.
 
-    Uses the already-allowlisted read-only ``kubectl get nodes -o json`` (no allowlist change).
+    Uses the already-policy-allowed read-only ``kubectl get nodes -o json`` (no policy change).
     Returns a structured, never-raising result: ``any_accelerator`` is True if ANY node
     advertises a known accelerator resource, ``cpu_only`` is True if NO node does, and
     ``advertised_resources`` is the sorted union of accelerator keys seen across nodes."""

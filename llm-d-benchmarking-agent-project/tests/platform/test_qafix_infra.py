@@ -1,4 +1,4 @@
-# Merged QA-fix infra tests (allowlist + agent loop + command runner).
+# Merged QA-fix infra tests (policy + agent loop + command runner).
 # Concatenated from three sources; each section is preserved below under its own
 # `# ── <original file> ──` banner with the original module docstring kept verbatim
 # as a comment block.
@@ -13,12 +13,12 @@ import pytest
 from app.agent.loop import AgentLoop
 from app.config import get_settings
 from app.llm.provider import AssistantTurn, ToolCall
-from app.security.allowlist import READ_ONLY, Allowlist
+from app.security.policy import READ_ONLY, CommandPolicy
 from app.security.runner import TIMEOUT_MARKER, CommandRunner, RunResult, SimRunner
 from tests._helpers import _session
 
-# ── test_qafix_infra_allowlist.py ──
-# """QA-fix infra tests: narrow allowlist entries for multi-cluster context recovery.
+# ── test_qafix_infra_policy.py ──
+# """QA-fix infra tests: narrow policy entries for multi-cluster context recovery.
 #
 # Finding real-1 07:20: with multiple kind clusters present the active kubectl context drifted to
 # a sibling cluster and the agent could not recover because `kind export kubeconfig` and
@@ -34,59 +34,59 @@ _CATALOG = {"specs": [], "harnesses": [], "workloads": []}
 
 
 @pytest.fixture(scope="module")
-def allowlist() -> Allowlist:
+def policy() -> CommandPolicy:
     # Loading also runs the governance + positional schema validators — a malformed edit would
     # raise here, so this fixture doubles as a "yaml still loads" guard.
-    return Allowlist.from_file(PROJECT_ROOT / "security" / "allowlist.yaml")
+    return CommandPolicy.from_file(PROJECT_ROOT / "security" / "command_policy.yaml")
 
 
-def _v(allowlist, argv):
-    return allowlist.validate(argv, catalog=_CATALOG)
+def _v(policy, argv):
+    return policy.validate(argv, catalog=_CATALOG)
 
 
 # ---- kind export kubeconfig -------------------------------------------------
-def test_kind_export_kubeconfig_by_name(allowlist):
-    d = _v(allowlist, ["kind", "export", "kubeconfig", "--name", "ralph-real-1-x3"])
+def test_kind_export_kubeconfig_by_name(policy):
+    d = _v(policy, ["kind", "export", "kubeconfig", "--name", "ralph-real-1-x3"])
     assert d.allowed and d.mode == READ_ONLY
 
 
-def test_kind_export_kubeconfig_with_kubeconfig_path(allowlist):
-    d = _v(allowlist, ["kind", "export", "kubeconfig", "--name", "foo", "--kubeconfig", "/tmp/kc"])
+def test_kind_export_kubeconfig_with_kubeconfig_path(policy):
+    d = _v(policy, ["kind", "export", "kubeconfig", "--name", "foo", "--kubeconfig", "/tmp/kc"])
     assert d.allowed and d.mode == READ_ONLY
 
 
-def test_kind_export_rejects_unknown_positional(allowlist):
+def test_kind_export_rejects_unknown_positional(policy):
     # Only `kubeconfig` is a valid first positional for `export`.
-    d = _v(allowlist, ["kind", "export", "logs"])
+    d = _v(policy, ["kind", "export", "logs"])
     assert not d.allowed
 
 
-def test_kind_export_rejects_traversing_kubeconfig(allowlist):
+def test_kind_export_rejects_traversing_kubeconfig(policy):
     # kubeconfig_path forbids `..` traversal.
-    d = _v(allowlist, ["kind", "export", "kubeconfig", "--kubeconfig", "../../etc/passwd"])
+    d = _v(policy, ["kind", "export", "kubeconfig", "--kubeconfig", "../../etc/passwd"])
     assert not d.allowed
 
 
 # ---- kubectl config use-context ---------------------------------------------
-def test_kubectl_use_context(allowlist):
-    d = _v(allowlist, ["kubectl", "config", "use-context", "kind-ralph-real-1-x3"])
+def test_kubectl_use_context(policy):
+    d = _v(policy, ["kubectl", "config", "use-context", "kind-ralph-real-1-x3"])
     assert d.allowed and d.mode == READ_ONLY
 
 
-def test_kubectl_existing_config_verbs_still_work(allowlist):
+def test_kubectl_existing_config_verbs_still_work(policy):
     for verb in ("current-context", "view", "get-contexts"):
-        d = _v(allowlist, ["kubectl", "config", verb])
+        d = _v(policy, ["kubectl", "config", verb])
         assert d.allowed and d.mode == READ_ONLY, verb
 
 
-def test_kubectl_config_rejects_unknown_verb(allowlist):
-    d = _v(allowlist, ["kubectl", "config", "set-credentials", "bad"])
+def test_kubectl_config_rejects_unknown_verb(policy):
+    d = _v(policy, ["kubectl", "config", "set-credentials", "bad"])
     assert not d.allowed
 
 
-def test_kubectl_use_context_rejects_dangerous_context(allowlist):
+def test_kubectl_use_context_rejects_dangerous_context(policy):
     # The metacharacter screen still rejects shell-dangerous tokens.
-    d = _v(allowlist, ["kubectl", "config", "use-context", "foo;rm -rf /"])
+    d = _v(policy, ["kubectl", "config", "use-context", "foo;rm -rf /"])
     assert not d.allowed
 
 
@@ -98,17 +98,17 @@ def test_kubectl_use_context_rejects_dangerous_context(allowlist):
     ["kubectl", "get", "pods", "-n", "llm-d", "-o", "json"],
     ["kubectl", "top", "nodes"],
 ])
-def test_readonly_kubectl_probes_have_wsl2_deadline(allowlist, argv):
-    d = _v(allowlist, argv)
+def test_readonly_kubectl_probes_have_wsl2_deadline(policy, argv):
+    d = _v(policy, argv)
     assert d.allowed and d.mode == READ_ONLY
     # The YAML timeout_s (which OVERRIDES the probe tool's 12s caller timeout) is the WSL2-realistic 25s.
     assert d.timeout_s == 25, argv
 
 
-def test_mutating_kubectl_keeps_default_deadline(allowlist):
+def test_mutating_kubectl_keeps_default_deadline(policy):
     # apply/delete intentionally do NOT get the read-only probe deadline — they keep their own
     # (unset → runner global default) so a long apply isn't artificially capped.
-    d = _v(allowlist, ["kubectl", "apply", "-f", "job.yaml"])
+    d = _v(policy, ["kubectl", "apply", "-f", "job.yaml"])
     assert d.allowed and d.mode != READ_ONLY
     assert d.timeout_s is None
 
@@ -240,7 +240,7 @@ async def test_timeout_is_distinguishable_from_empty_success(tmp_path):
     """A command that exceeds its deadline → timed_out, exit_code -1, marker in output, deadline_s set."""
     runner = _runner()
     # `sleep 5` with a 0.3s deadline reliably times out without depending on a cluster.
-    # `sleep` resolves via PATH (no allowlist needed at the runner layer — the runner trusts
+    # `sleep` resolves via PATH (no policy needed at the runner layer — the runner trusts
     # a pre-validated argv; we exercise the timeout machinery directly).
     res = await runner.execute(["sleep", "5"], entry=None, timeout=0.3)
 

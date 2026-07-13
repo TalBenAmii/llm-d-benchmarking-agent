@@ -36,7 +36,7 @@ If unsure, ask the user whether they want *representative* (their data) or *cont
 
 - `-x`/`--dataset` is upstream-valid **only on `run` and `experiment`** — never on
   standup/plan/smoketest/teardown. The agent's `build_argv` enforces this (it emits `-x` for
-  those two subcommands only), and the allowlist (`security/allowlist.yaml`,
+  those two subcommands only), and the command policy (`security/command_policy.yaml`,
   `value_constraints.dataset_url`) permits the flag only there.
 - You pass a **URL or path**. Accepted forms: `http(s)://…`, `hf://…` (HuggingFace),
   `gs://…` (GCS), `s3://…` (S3), or a workspace/cluster filesystem path. Example trace URL:

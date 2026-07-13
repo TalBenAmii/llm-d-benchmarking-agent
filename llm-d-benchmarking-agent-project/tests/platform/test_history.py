@@ -337,15 +337,15 @@ def test_context_history_store_rooted_outside_session_dir():
     from pathlib import Path
 
     from app.config import get_settings
-    from app.security.allowlist import Allowlist
+    from app.security.policy import CommandPolicy
     from app.security.runner import CommandRunner
     from app.tools.context import ToolContext
-    from tests.conftest import ALLOWLIST_PATH
+    from tests.conftest import COMMAND_POLICY_PATH
 
     s = get_settings()
     root = Path("/tmp/kqg-test-root-xyz")
     ctx = ToolContext(
-        settings=s, allowlist=Allowlist.from_file(ALLOWLIST_PATH),
+        settings=s, policy=CommandPolicy.from_file(COMMAND_POLICY_PATH),
         runner=CommandRunner(s.repo_paths), workspace=root / "sessions" / "sess1",
     )
     assert ctx.history_store().dir == root / "history"

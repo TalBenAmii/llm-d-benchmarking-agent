@@ -7,7 +7,7 @@ pass case succeeds). Hermetic, sibling-independent.
 """
 from __future__ import annotations
 
-from app.security.allowlist import MUTATING
+from app.security.policy import MUTATING
 from tests.flows.harness import CapturedCommand, score_flow
 from tests.flows.test_eval_harness import _flow, _trivial_run
 

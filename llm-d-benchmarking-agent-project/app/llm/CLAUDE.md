@@ -26,7 +26,7 @@ behavioural branching.
   prewarm pool (`_PREWARM_TTL_S=120s`) — don't leak spares (BUG-033).
 - **Model + reasoning effort are per-session runtime-switchable (agent-SDK only)** via the chat-UI picker:
   `open_provider_turn(model=, effort=)` applies a PER-TURN override that NEVER mutates the provider
-  singleton or `.env` (`model_catalog.py` = the served allowlist + `valid_selection`). **Invariant:** the
+  singleton or `.env` (`model_catalog.py` = the served command policy + `valid_selection`). **Invariant:** the
   agent-SDK connection/prewarm `_fingerprint` MUST fold in model+reasoning, so a switch can't adopt a
   stale prewarmed connection built for a different model/effort.
 

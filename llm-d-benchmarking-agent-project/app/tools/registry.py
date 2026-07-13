@@ -125,7 +125,7 @@ _DESCRIPTIONS = {
     ),
     "advise_accelerators": (
         "Accelerator / CPU-inferencing PRE-FLIGHT: \"can my hardware actually run this?\" "
-        "Read-only; auto-runs. Reads each node's ADVERTISED resources via the already-allowlisted "
+        "Read-only; auto-runs. Reads each node's ADVERTISED resources via the already-policy-allowed "
         "`kubectl get nodes -o json` and reports which extended-resource key a node advertises "
         "(nvidia.com/gpu or the amd/habana/google-tpu/Intel-XPU siblings) vs CPU-only, plus each "
         "node's cpu + memory. FACTS ONLY — no verdict. It COMPLEMENTS check_capacity (which sizes "
@@ -492,7 +492,7 @@ _DESCRIPTIONS = {
 def build_registry() -> dict[str, ToolSpec]:
     """Build the name→ToolSpec map. ``run_shell`` is the agent's always-on ad-hoc command tool
     (an arbitrary ``bash -lc`` string, gated by the read-only/mutating classifier + approval,
-    NOT the allowlist). The allowlist governs the DEDICATED command tools (execute_llmdbenchmark,
+    NOT the policy). The policy governs the DEDICATED command tools (execute_llmdbenchmark,
     probes, orchestrator) via ``ctx.run_command``/``ctx.run_readonly``, not this tool."""
     specs = [
         ToolSpec("probe_environment", _DESCRIPTIONS["probe_environment"], ProbeEnvironmentInput, probe.probe_environment),

@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from app.security.allowlist import Decision
+    from app.security.policy import Decision
     from app.tools.context import ToolContext
 
 _CLI = "llmdbenchmark"

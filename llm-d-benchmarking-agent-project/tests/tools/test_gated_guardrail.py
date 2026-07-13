@@ -19,7 +19,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.config import Settings, get_settings
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.tools.context import ToolContext, ToolError
 from app.tools.run.gated_access import (
     gated_block,
@@ -37,7 +37,7 @@ MODEL = "meta-llama/Llama-3.1-8B"
 _GATED_UNAUTH = {"gated": True, "authorized": False, "gated_reason": "no token configured"}
 _GATED_AUTH = {"gated": True, "authorized": True, "gated_reason": ""}
 _PUBLIC = {"gated": False, "authorized": None, "gated_reason": ""}
-ALLOWLIST_PATH = Path(__file__).resolve().parents[2] / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = Path(__file__).resolve().parents[2] / "security" / "command_policy.yaml"
 
 
 def _stub_ctx(**verdicts):
@@ -46,14 +46,14 @@ def _stub_ctx(**verdicts):
 
 
 def _exec_ctx(tmp_path):
-    """A ToolContext wired to the real allowlist + the frozen catalog (so a cicd/kind standup
+    """A ToolContext wired to the real policy + the frozen catalog (so a cicd/kind standup
     validates) with a CaptureRunner — no real cluster. Auto-approves mutating commands so the
     guardrail (which fires BEFORE approval) is what blocks, not a declined prompt."""
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
     runner = CaptureRunner(settings.repo_paths)
     ctx = ToolContext(
         settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
+        policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner,
         workspace=tmp_path / "ws",
         request_approval=_approve_all,
@@ -236,7 +236,7 @@ async def test_check_capacity_records_gated_verdict():
     runner = CaptureRunner(s.repo_paths, canned={"capacity_check.py": _CAPACITY_GATED_NO_TOKEN})
     ctx = ToolContext(
         settings=s,
-        allowlist=Allowlist.from_file(ALLOWLIST_PATH),
+        policy=CommandPolicy.from_file(COMMAND_POLICY_PATH),
         runner=runner,
         workspace=td / "ws",
     )

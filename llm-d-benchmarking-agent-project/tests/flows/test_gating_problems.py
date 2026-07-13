@@ -7,13 +7,13 @@ sibling-independent.
 """
 from __future__ import annotations
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from tests.flows.harness import CapturedCommand, gating_problems, score_flow
 from tests.flows.test_eval_harness import _flow, _trivial_run
 
 
 async def test_denied_command_reaching_runner_is_flagged(tmp_path):
-    """A denied command that reached the runner is an allowlist bypass — flagged + fails scoring."""
+    """A denied command that reached the runner is an policy bypass — flagged + fails scoring."""
     run = await _trivial_run(tmp_path)
     run.commands = [
         CapturedCommand(argv=["kubectl", "delete", "ns", "x"], mode="denied", approved=False, cwd=None)

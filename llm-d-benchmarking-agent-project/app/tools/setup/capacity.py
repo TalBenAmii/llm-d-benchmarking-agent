@@ -9,7 +9,7 @@ Flow (all mechanism):
   1. Render the plan_config for the spec (scenario merged over repo defaults) + apply the
      agent's conversation-derived overrides (bigger model, longer context, a real GPU…).
   2. Write the request as a JSON file inside the session workspace.
-  3. Run the vetted ``capacity_check.py`` bridge through the allowlisted runner, using the
+  3. Run the vetted ``capacity_check.py`` bridge through the policy-allowed runner, using the
      benchmark venv's Python (the only one with the ``planner`` package). Read-only ->
      auto-runs, no approval prompt.
   4. Parse the bridge's JSON and classify the planner's diagnostics into a verdict.
@@ -76,7 +76,7 @@ async def check_capacity(
 
     argv = ["capacity_check.py", str(request_path)]
     try:
-        # Read-only per the allowlist -> auto-runs (no approval). The bridge is bounded;
+        # Read-only per the policy -> auto-runs (no approval). The bridge is bounded;
         # a HuggingFace lookup is the slow part, so give it a generous-but-finite budget.
         res = await ctx.run_command(argv, timeout=120.0)
     except ToolError as exc:

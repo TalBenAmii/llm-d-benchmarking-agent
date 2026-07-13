@@ -1,7 +1,7 @@
 """Phase 24 — endpoint health-check before submit (+ optional auto-standup).
 
 Hermetic, no cluster: the endpoint-readiness gate is exercised end-to-end through dispatch +
-the allowlisted kubectl runner (CaptureRunner returning canned `kubectl get endpoints` JSON).
+the policy-allowed kubectl runner (CaptureRunner returning canned `kubectl get endpoints` JSON).
 Asserts:
   * the gate is a REAL endpoint-readiness check (ready backing addresses), not pod presence;
   * an UNREADY endpoint blocks submission with a structured not-ready result + standup
@@ -18,7 +18,7 @@ import pytest
 from app.config import Settings
 from app.readiness.diagnostics import analyze_endpoints
 from app.readiness.probes import check_endpoint_readiness
-from app.security.allowlist import MUTATING, Allowlist
+from app.security.policy import MUTATING, CommandPolicy
 from app.tools.context import ToolContext, ToolError
 from app.tools.registry import dispatch
 from tests._helpers import kubectl_present
@@ -62,7 +62,7 @@ def _ctx(tmp_path, *, canned=None, image="", which_kubectl=True, simulate=False)
 
     runner = CaptureRunner(settings.repo_paths, canned=canned or {})
     ctx = ToolContext(
-        settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+        settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
         request_approval=approve,
     )
@@ -129,7 +129,7 @@ async def test_tool_ready_endpoint(tmp_path):
     # Every command the gate ran was read-only (it auto-runs, no approval, no mutation).
     assert runner.calls
     for c in runner.calls:
-        d = ctx.allowlist.validate(c["argv"], catalog=ctx.catalog_for_allowlist())
+        d = ctx.policy.validate(c["argv"], catalog=ctx.catalog_for_policy())
         assert d.mode != MUTATING, f"readiness gate ran a mutating command: {c['argv']}"
     assert not any(c["argv"][:2] == ["kubectl", "apply"] for c in runner.calls)
 
@@ -170,7 +170,7 @@ async def test_tool_cluster_unreachable_is_structured_not_ready(tmp_path):
 
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
     runner = _FailRunner(settings.repo_paths)
-    ctx = ToolContext(settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+    ctx = ToolContext(settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
                       runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1")
     frozen = frozen_catalog()
     ctx._catalog = frozen
@@ -211,7 +211,7 @@ async def test_tool_corroborates_with_cli_list_endpoints(tmp_path):
     assert le_calls and le_calls[-1][:3] == ["llmdbenchmark", "--spec", "cicd/kind"]
     # And nothing mutated.
     for c in runner.calls:
-        d = ctx.allowlist.validate(c["argv"], catalog=ctx.catalog_for_allowlist())
+        d = ctx.policy.validate(c["argv"], catalog=ctx.catalog_for_policy())
         assert d.mode != MUTATING
 
 

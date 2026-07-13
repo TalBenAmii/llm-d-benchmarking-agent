@@ -1,5 +1,5 @@
-"""Phase 3a — orchestrator foundation: the allowlist additions for managing K8s Jobs via
-kubectl, and the RealKubeClient that shells out to those allowlisted commands.
+"""Phase 3a — orchestrator foundation: the policy additions for managing K8s Jobs via
+kubectl, and the RealKubeClient that shells out to those policy-allowed commands.
 
 The KubeClient is exercised against the hermetic CaptureRunner (records argv, replays canned
 output) so we assert exact commands + JSON parsing + workspace confinement with no cluster.
@@ -40,13 +40,13 @@ from app.orchestrator.job import (
     job_name,
 )
 from app.orchestrator.kube import KubeError, RealKubeClient, parse_items
-from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
+from app.security.policy import MUTATING, READ_ONLY, CommandPolicy
 from app.tools.context import ToolContext
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
 from tests.orchestrator_fakes import FakeKubeClient, make_job, make_pod
 
-# ---- allowlist: the new kubectl surface -----------------------------------
+# ---- policy: the new kubectl surface -----------------------------------
 
 ALLOW = [
     (["kubectl", "apply", "-f", "/ws/job.yaml", "-n", "bench"], MUTATING),
@@ -69,14 +69,14 @@ DENY = [
 
 
 @pytest.mark.parametrize("argv,mode", ALLOW, ids=[" ".join(a) for a, _ in ALLOW])
-def test_orchestrator_kubectl_allowed(allowlist, catalog, argv, mode):
-    d = allowlist.validate(argv, catalog=catalog)
+def test_orchestrator_kubectl_allowed(policy, catalog, argv, mode):
+    d = policy.validate(argv, catalog=catalog)
     assert d.allowed and d.mode == mode
 
 
 @pytest.mark.parametrize("argv", DENY, ids=[" ".join(a) for a in DENY])
-def test_orchestrator_kubectl_denied(allowlist, catalog, argv):
-    assert not allowlist.validate(argv, catalog=catalog).allowed
+def test_orchestrator_kubectl_denied(policy, catalog, argv):
+    assert not policy.validate(argv, catalog=catalog).allowed
 
 
 # ---- parse_items ----------------------------------------------------------
@@ -124,7 +124,7 @@ def _ctx(tmp_path, *, canned=None):
     runner = CaptureRunner(settings.repo_paths, canned=canned or {})
     ctx = ToolContext(
         settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
+        policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner,
         workspace=settings.resolved_workspace_dir / "sessions" / "s1",
         request_approval=approve,

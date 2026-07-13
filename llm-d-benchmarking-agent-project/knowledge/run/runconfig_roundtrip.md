@@ -54,8 +54,8 @@ reproducible artifact; replay it only when they actually want the same run again
   anchored to `ctx.workspace`; a later `-c` reads that **workspace-relative path** back from the
   same session dir. Pass the path you got from the generate step (or one the user supplied that
   lives in the workspace). The agent never writes into the read-only sibling repos.
-- `flags.run_config` is value-pinned by the allowlist to a `*.yaml`/`*.yml` path with **no `..`
-  traversal** (`value_constraints.run_config_path`); `--generate-config` is allowlisted as a
+- `flags.run_config` is value-pinned by the command policy to a `*.yaml`/`*.yml` path with **no `..`
+  traversal** (`value_constraints.run_config_path`); `--generate-config` is policy-allowed as a
   read-only trigger (generates-and-exits) on `run` only.
 - **No env var** is involved — the CLI consumes `--generate-config` / `-c` directly. Don't set
   any `LLMDBENCH_*` config var yourself.

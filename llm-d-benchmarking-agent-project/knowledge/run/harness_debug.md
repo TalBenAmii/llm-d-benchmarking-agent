@@ -19,7 +19,7 @@ something completely different — and **destructive** — on `teardown`:
 | `teardown`        | `--deep`   | **full-namespace wipe** — removes cluster-scoped roles, deletes everything |
 
 So **never** set `debug: True` expecting a teardown to honor it as debug — it would request a
-*deep teardown*. The tool guards on the subcommand and the allowlist only permits `-d` on
+*deep teardown*. The tool guards on the subcommand and the command policy only permits `-d` on
 `run`/`experiment` (teardown has no `-d`/`--debug` entry). A deep teardown is a separate,
 explicit, destructive choice — not something to back into via this flag.
 
@@ -91,11 +91,11 @@ step**; **the agent never drives it**:
   ```
   (or `oc exec …` on OpenShift). Give the command and explain what to do once inside.
 - **Do not** run `kubectl exec -it … -- bash` yourself, stream an interactive shell, or invent an
-  `exec` tool. There is **no** `kubectl`/`oc` `exec` in the allowlist, on purpose — the boundary is
+  `exec` tool. There is **no** `kubectl`/`oc` `exec` in the command policy, on purpose — the boundary is
   structurally enforced, not just a convention. An interactive TTY session is a human activity; the
   agent's job ends at launching the pod and **explaining** how to get into it.
 - You *may* use existing **read-only** tools (`kubectl get pods` / logs / readiness probes already
-  in the allowlist) to confirm the debug pod is Running and point the user at the right pod name —
+  in the command policy) to confirm the debug pod is Running and point the user at the right pod name —
   but the interactive shell is theirs to drive.
 
 ## How it fits the workflow
@@ -110,7 +110,7 @@ step**; **the agent never drives it**:
 ## Notes
 
 - Mechanism vs. judgment: emitting `-d` on run/experiment is mechanism (`build_argv`); the
-  allowlist permits `-d`/`--debug` as a plain boolean flag (no `read_only_trigger`) under
+  command policy permits `-d`/`--debug` as a plain boolean flag (no `read_only_trigger`) under
   `run`/`experiment` only. WHETHER a debug launch is right, and the no-drive in-pod boundary, are
   the judgment that lives **here**, never in Python.
 - Debug mode changes only *what the harness pod runs* (`sleep infinity` vs. the load); it does not

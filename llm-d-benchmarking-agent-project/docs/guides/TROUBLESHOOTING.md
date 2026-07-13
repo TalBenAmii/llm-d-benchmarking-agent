@@ -43,7 +43,7 @@ transcript position on reconnect/resume.
   localizes a hang to the LLM call vs a tool.
 
 ### A command "isn't allowed" / is denied
-- The allowlist (`security/allowlist.yaml`) is deny-by-default. A denial means the
+- The command policy (`security/command_policy.yaml`) is deny-by-default. A denial means the
   executable, a subcommand, a flag value, or a token failed validation. The denial `reason`
   appears in the surfaced error and the log. Fix by widening the YAML policy, never by
   editing Python. See `docs/reference/SECURITY.md` for the model.
@@ -86,10 +86,10 @@ transcript position on reconnect/resume.
   point `REPOS_DIR` at a populated checkout.)
 
 ### A command hangs, then is killed
-- Every command has a deadline (`Decision.timeout_s` from the allowlist YAML, else a sane
+- Every command has a deadline (`Decision.timeout_s` from the command policy YAML, else a sane
   default). On timeout the runner logs `runner.exec.timeout` with `deadline_s` and SIGKILLs
   the child's whole process group. The result carries `timed_out: true`. If a class of command
-  legitimately needs longer, raise its `timeout_s` in `security/allowlist.yaml` (data, not
+  legitimately needs longer, raise its `timeout_s` in `security/command_policy.yaml` (data, not
   code).
 
 ### A benchmark run failed

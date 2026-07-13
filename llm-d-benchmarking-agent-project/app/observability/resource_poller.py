@@ -1,7 +1,7 @@
 """Backend-streamed live resource stats for a running benchmark — MECHANISM ONLY, ZERO LLM cost.
 
 While a benchmark runs, this polls the cluster's live CPU/memory for the run's pods via the
-allowlisted, read-only ``kubectl top`` and emits a ``resource_stats`` event the UI renders in a
+policy-allowed, read-only ``kubectl top`` and emits a ``resource_stats`` event the UI renders in a
 single in-place panel. It never enters the LLM message stream and never calls the model, so it
 adds NO tokens. It is purely an async context manager wrapped around the run: enter to start
 polling, exit to stop. No-op in simulate mode and when no emitter is wired (e.g. a bare unit
@@ -101,7 +101,7 @@ async def _poll_loop(
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 — a stat poll must NEVER kill the run
-            # A hard error (e.g. no cluster reachable, allowlist refusal) counts as a failed
+            # A hard error (e.g. no cluster reachable, policy refusal) counts as a failed
             # tick too, so we back off and STOP rather than spin the same erroring call forever.
             consecutive_failures += 1
         # STOP issuing kubectl entirely after repeated failures — silencing the UI emit alone

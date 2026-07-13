@@ -1,6 +1,6 @@
 """Agent tool: check inference-endpoint READINESS before submitting a benchmark.
 
-Goes BEYOND ``probe_environment``'s pod-presence check. It asks two read-only, allowlisted
+Goes BEYOND ``probe_environment``'s pod-presence check. It asks two read-only, policy-allowed
 questions about the target namespace and folds them into one structured verdict:
 
   1. **Kubernetes endpoint readiness** (authoritative): ``kubectl get endpoints -n <ns>
@@ -8,7 +8,7 @@ questions about the target namespace and folds them into one structured verdict:
      failing its readiness probe is NOT in a Service's ready addresses, so this is strictly
      stronger than "a pod is Running".
   2. **The benchmark CLI's own endpoint view** (corroborating, best-effort): ``llmdbenchmark
-     run --list-endpoints`` (already allowlisted, read-only) — how many inference endpoints
+     run --list-endpoints`` (already policy-allowed, read-only) — how many inference endpoints
      the tool that will actually drive the benchmark can see.
 
 Both are read-only (auto-run, no approval) and mutate nothing. When the stack is not ready
@@ -55,7 +55,7 @@ _STATUS_LINE_RE = re.compile(r"^HTTP/[\d.]+\s+(\d{3})", re.MULTILINE)
 _PORT_BY_ROLE = {"prefill": 8000, "decode": 8200, "standalone": 8000}
 
 # The two model-aware probe paths. /v1/models is serving-ready (startup+readiness probe);
-# /health is only process-alive (liveness probe). Constrained to this enum in the allowlist.
+# /health is only process-alive (liveness probe). Constrained to this enum in the policy.
 _MODELS_PATH = "/v1/models"
 _HEALTH_PATH = "/health"
 
@@ -111,15 +111,15 @@ def _probe_status(res: RunResult) -> tuple[int | None, bool]:
 
 
 def _svc_probe_url(namespace: str, service: str, port: int, path: str) -> str:
-    """Build the in-namespace cluster-DNS service URL the allowlist permits for the probe
-    (``http://<svc>.<ns>.svc:<port><path>``). The allowlist's ``modelserver_probe_url`` regex
+    """Build the in-namespace cluster-DNS service URL the policy permits for the probe
+    (``http://<svc>.<ns>.svc:<port><path>``). The policy's ``modelserver_probe_url`` regex
     re-validates host/port/path independently — this is just the construction side."""
     return f"http://{service}.{namespace}.svc:{port}{path}"
 
 
 async def _curl_probe(ctx: ToolContext, url: str) -> tuple[int | None, bool]:
     """Run ONE constrained, read-only GET probe and return ``(status, reachable)``. Best-effort:
-    any allowlist/runner failure degrades to ``(None, False)`` and never raises — a probe that
+    any policy/runner failure degrades to ``(None, False)`` and never raises — a probe that
     cannot run must not break the readiness gate."""
     argv = ["curl", "-s", "-S", "-i", "-m", "5", "-X", "GET", url]
     try:
@@ -144,7 +144,7 @@ async def _serving_readiness(
 ) -> ServingReadiness | None:
     """For a Running-but-NotReady endpoint, gather model-load serving-readiness FACTS.
 
-    Reads the already-allowlisted ``kubectl get pods -o json`` (read-only) and runs the
+    Reads the already-policy-allowed ``kubectl get pods -o json`` (read-only) and runs the
     tightly-constrained GET probes against the in-namespace service URL: ``/v1/models``
     (serving-ready) and ``/health`` (process-alive), on the model-server port. The pod JSON +
     the verbatim probe outcomes are folded into :class:`ServingReadiness` (signals only). Whether
@@ -193,7 +193,7 @@ async def _serving_readiness(
 async def _gateway_readiness(ctx: ToolContext, namespace: str) -> GatewayReadiness:
     """Read the Gateway-API control plane for ``namespace`` and fold it into condition FACTS.
 
-    Runs four already-allowlisted, read-only ``kubectl get <res> -o json`` probes — ``gateway``,
+    Runs four already-policy-allowed, read-only ``kubectl get <res> -o json`` probes — ``gateway``,
     ``inferencepool`` and ``httproute`` (namespaced), and ``gatewayclass`` (cluster-scoped, so NO
     ``-n``). Each is best-effort: a non-zero exit (gateway CRDs absent on a Kind cluster, namespace
     missing, cluster unreachable) degrades that resource to an empty string, never raises — a

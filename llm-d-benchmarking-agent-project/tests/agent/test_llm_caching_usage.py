@@ -17,12 +17,12 @@ from app.agent.session import SessionManager
 from app.config import Settings, get_settings
 from app.llm.anthropic_provider import AnthropicProvider, _mark_last_cacheable
 from app.llm.provider import AssistantTurn, Usage
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner
 from tests._helpers import _session
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 
 
 # ---- capturing fake provider clients -------------------------------------------------------
@@ -196,7 +196,7 @@ async def test_loop_emits_usage_and_accumulates_session_totals(tmp_path):
 
 
 async def test_session_token_totals_survive_persist_and_load(tmp_path):
-    al = Allowlist.from_file(ALLOWLIST_PATH)
+    al = CommandPolicy.from_file(COMMAND_POLICY_PATH)
     runner = CommandRunner(get_settings().repo_paths)
     # Point the manager's root at the temp workspace.
     s_settings = Settings(workspace_dir=tmp_path)
@@ -225,7 +225,7 @@ async def test_session_token_totals_survive_persist_and_load(tmp_path):
 
 
 def test_old_state_json_without_tokens_loads_as_zero(tmp_path):
-    al = Allowlist.from_file(ALLOWLIST_PATH)
+    al = CommandPolicy.from_file(COMMAND_POLICY_PATH)
     runner = CommandRunner(get_settings().repo_paths)
     s_settings = Settings(workspace_dir=tmp_path)
     mgr = SessionManager(s_settings, al, runner)

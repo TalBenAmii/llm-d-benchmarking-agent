@@ -2,7 +2,7 @@
 
 For each flow we replay its golden transcript through the real agent loop (no API key, no
 Docker, no kind, no repos) and assert the agent produces exactly the right commands, with
-correct read-only/mutating classification and approval gating. Plus direct allowlist
+correct read-only/mutating classification and approval gating. Plus direct policy
 assertions (deny-by-default holds) and a drift guard against the live catalog.
 """
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from app.config import get_settings
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 
 from .catalog_snapshot import HARNESSES, SPECS, WORKLOADS, frozen_catalog
 from .flows import ALL_FLOWS, FLOWS_BY_NAME
@@ -90,14 +90,14 @@ async def test_flow_runs_the_right_commands(flow, tmp_path):
         assert run.tool_errored(name), f"[{flow.name}] expected tool {name!r} to refuse, but it didn't"
 
 
-@pytest.mark.parametrize("flow", [f for f in ALL_FLOWS if f.allowlist_checks],
-                         ids=[f.name for f in ALL_FLOWS if f.allowlist_checks])
-def test_flow_allowlist_assertions(flow):
+@pytest.mark.parametrize("flow", [f for f in ALL_FLOWS if f.policy_checks],
+                         ids=[f.name for f in ALL_FLOWS if f.policy_checks])
+def test_flow_policy_assertions(flow):
     """Direct policy assertions attached to a flow (deny-by-default + positive controls)."""
-    allowlist = Allowlist.from_file(get_settings().allowlist_path)
+    policy = CommandPolicy.from_file(get_settings().command_policy_path)
     cat = {"specs": SPECS, "harnesses": HARNESSES, "workloads": WORKLOADS}
-    for chk in flow.allowlist_checks:
-        d = allowlist.validate(chk.argv, catalog=cat)
+    for chk in flow.policy_checks:
+        d = policy.validate(chk.argv, catalog=cat)
         assert d.allowed == chk.allowed, (
             f"[{flow.name}] {chk.argv}: expected allowed={chk.allowed} ({chk.why}); "
             f"got allowed={d.allowed} reason={d.reason!r}"
@@ -192,7 +192,7 @@ async def test_simulate_mode_still_approval_gates_every_mutating_command(tmp_pat
     dimension ("every mutating command approval-gated") is unobservable. We assert on a flow that
     genuinely drives a mutating command, and on the SAME flow run live as a control, to prove the
     two paths gate identically."""
-    from app.security.allowlist import MUTATING
+    from app.security.policy import MUTATING
 
     flow = next((f for f in ALL_FLOWS if any(e.mode == MUTATING for e in flow_expected(f))), None)
     assert flow is not None, "need ≥1 flow with a mutating command to exercise simulate gating"

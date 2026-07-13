@@ -1,6 +1,6 @@
 """W3 — live resource-stats poller (backend-streamed, ZERO LLM cost).
 
-Reuses the real ToolContext + allowlist (CaptureRunner stands in for the subprocess) from the
+Reuses the real ToolContext + policy (CaptureRunner stands in for the subprocess) from the
 observability tests, plus its canned `kubectl top pods` output. Asserts the poller emits parsed
 {available:true} samples, emits the {available:false} note exactly once on metrics-server absence,
 no-ops in simulate mode and when no emitter is wired, and cleans up its background task on exit.

@@ -1,5 +1,5 @@
 """T3 — the manage_orchestrated_runs tool: list / stop / reap the orchestrator's K8s Jobs ON
-THE CLUSTER, end-to-end through dispatch + the allowlisted kubectl runner (CaptureRunner), no
+THE CLUSTER, end-to-end through dispatch + the policy-allowed kubectl runner (CaptureRunner), no
 cluster. This is the surface that makes a submitted Job actually stoppable — cancel_run only
 stops the in-process watch. Mirrors tests/orchestrator/test_orchestrator_tools.py's hermetic setup.
 """
@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 
 from app.config import Settings
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.tools.context import ToolContext
 from app.tools.registry import dispatch
 from app.tools.run.manage_runs import manage_orchestrated_runs
@@ -42,7 +42,7 @@ def _ctx(tmp_path, *, canned=None):
 
     runner = CaptureRunner(settings.repo_paths, canned={"get jobs": JOBS, **(canned or {})})
     ctx = ToolContext(
-        settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+        settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
         request_approval=approve,
     )

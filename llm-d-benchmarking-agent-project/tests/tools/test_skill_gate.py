@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.security.allowlist import MUTATING
+from app.security.policy import MUTATING
 from app.tools.access.knowledge_access import fetch_key_docs
 from app.tools.context import ToolError
 from app.tools.run.execute import _SUBCOMMANDS
@@ -44,7 +44,7 @@ def _dec(*argv):
 
 
 def _ungrounded(tmp_path, **kw):
-    """A real ToolContext (real allowlist + frozen catalog + CaptureRunner) with an EMPTY
+    """A real ToolContext (real policy + frozen catalog + CaptureRunner) with an EMPTY
     consulted_skills — undoing the conftest autouse pre-grounding so the gate is live here."""
     ctx, runner = _capture_ctx(tmp_path, **kw)
     ctx.consulted_skills.clear()
@@ -163,15 +163,15 @@ async def test_plan_gate_blocks_kind_plan_until_quickstart(tmp_path):
 
 # --- denylist completeness: the gate map covers every MUTATING subcommand --------------------
 
-def test_gate_covers_every_mutating_subcommand(allowlist):
+def test_gate_covers_every_mutating_subcommand(policy):
     """A new mutating subcommand added to execute.py::_SUBCOMMANDS but forgotten in
     _TASK_BY_SUBCOMMAND would run ungrounded (the command chokepoint only gates keys in this map).
-    Derive the mutating subset PROGRAMMATICALLY from the allowlist's per-subcommand `mode` (matching
+    Derive the mutating subset PROGRAMMATICALLY from the policy's per-subcommand `mode` (matching
     the executor's own conservative default of MUTATING for an unclassified subcommand) and assert
     the gate map covers it. plan/results are read_only, so they are legitimately absent."""
-    subs = allowlist.executable("llmdbenchmark")["subcommands"]
+    subs = policy.executable("llmdbenchmark")["subcommands"]
     mutating = {name for name in _SUBCOMMANDS if subs.get(name, {}).get("mode", MUTATING) == MUTATING}
-    # Sanity-guard the derivation: an allowlist shape change that silently emptied `mutating` would
+    # Sanity-guard the derivation: an policy shape change that silently emptied `mutating` would
     # make the >= below trivially pass. Pin the known mutating set the gate exists to cover.
     assert mutating == {"standup", "smoketest", "run", "teardown", "experiment"}
     assert set(_TASK_BY_SUBCOMMAND) >= mutating

@@ -87,14 +87,14 @@ class RunReadonly(Protocol):
 
 
 async def capture_repo_state(repo_path: str | Path, run_readonly: RunReadonly) -> dict[str, Any]:
-    """Capture one repo's git state via the already-allowlisted ``git rev-parse`` /
+    """Capture one repo's git state via the already-policy-allowed ``git rev-parse`` /
     ``git status --porcelain``.
 
     Returns ``{sha, dirty}`` (short SHA + uncommitted-changes flag) for a present, readable repo.
     A missing/empty directory (the worktree case — empty sibling repos) or any failing/erroring
     git read degrades to ``{sha: None, dirty: None, unavailable: True}`` — it NEVER raises and
-    NEVER fabricates a SHA. (Only the two already-allowlisted READ-ONLY reads are used; no new
-    allowlist entry beyond the small ``git rev-parse --short`` addition.)
+    NEVER fabricates a SHA. (Only the two already-policy-allowed READ-ONLY reads are used; no new
+    policy entry beyond the small ``git rev-parse --short`` addition.)
     """
     p = Path(repo_path)
     # Cheap, no-subprocess miss for the common worktree case (empty/absent sibling repo).
@@ -102,12 +102,12 @@ async def capture_repo_state(repo_path: str | Path, run_readonly: RunReadonly) -
         return {"sha": None, "dirty": None, "unavailable": True}
 
     try:
-        # Only the two already-allowlisted READ-ONLY git reads (no new allowlist entry beyond
+        # Only the two already-policy-allowed READ-ONLY git reads (no new policy entry beyond
         # the small `git rev-parse --short` addition): a short SHA + the dirty flag.
         sha_res = await run_readonly(["git", "rev-parse", "--short", "HEAD"], cwd=str(p))
         status_res = await run_readonly(["git", "status", "--porcelain"], cwd=str(p))
     except Exception:
-        # Any allowlist/runner error → honest "unavailable" rather than a crash or a fake SHA.
+        # Any policy/runner error → honest "unavailable" rather than a crash or a fake SHA.
         return {"sha": None, "dirty": None, "unavailable": True}
 
     if not getattr(sha_res, "ok", False):

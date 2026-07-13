@@ -21,7 +21,7 @@ from typing import Any, TypeGuard
 
 from app.config import Settings
 from app.dig import num_or_zero as _as_num
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner
 from app.tools.context import ToolContext
 
@@ -307,10 +307,10 @@ _SessionIds = list[str]
 
 
 class SessionManager:
-    def __init__(self, settings: Settings, allowlist: Allowlist, runner: CommandRunner,
+    def __init__(self, settings: Settings, policy: CommandPolicy, runner: CommandRunner,
                  run_semaphore=None, runs=None):
         self._settings = settings
-        self._allowlist = allowlist
+        self._policy = policy
         self._runner = runner
         # Shared cap on concurrent heavy runs across every session (None = unlimited).
         self._run_semaphore = run_semaphore
@@ -326,7 +326,7 @@ class SessionManager:
     def _ctx_for(self, sid: str) -> ToolContext:
         return ToolContext(
             settings=self._settings,
-            allowlist=self._allowlist,
+            policy=self._policy,
             runner=self._runner,
             workspace=self._root / sid,
             run_semaphore=self._run_semaphore,

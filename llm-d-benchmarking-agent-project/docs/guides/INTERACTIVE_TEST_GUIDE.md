@@ -79,7 +79,7 @@ curl -s 'localhost:8000/api/history/trend?metric=ttft' | jq .
 - [ ] **[A/B]** `/healthz` → `{"ok":true}`.
 - [ ] **[A/B]** `/readyz` → `ready:true` with all self-checks green: `workspace_writable`,
   `provider_coherent` (shows your provider), `repos_resolvable` (llm-d, llm-d-benchmark),
-  `runner_ok` (N allowlisted executables), `auth_coherent`. *(§9)*
+  `runner_ok` (N policy-allowed executables), `auth_coherent`. *(§9)*
 - [ ] **[A/B]** `/metrics` exposes `llmdbench_agent_commands_total`, `_command_duration_seconds`,
   `llmdbench_orchestrator_run_attempts_total`, `_run_faults_total`, `_runs_in_flight`,
   `_runs_submitted_total`, `_runs_terminal_total`. *(§7)*
@@ -206,7 +206,7 @@ After a run/sweep exists in the session:
 
 ## 6. Security & trust surfaces *(§8)*
 
-The allowlist/approval behavior you already saw in §3. This is a single-user in-cluster service
+The command policy/approval behavior you already saw in §3. This is a single-user in-cluster service
 with no Bearer auth or rate limiting — CORS is the one optional trust control, and it needs a
 restart with an env flag; easiest in a separate instance so your main one stays usable:
 

@@ -3,7 +3,7 @@
 This is the agent's general-purpose command surface for any CLI step that has no dedicated
 tool (creating the kind cluster, the install scripts, ad-hoc kubectl/git, …). It runs an
 ARBITRARY command string through a real ``bash -lc``. It does NOT consult the command
-allowlist — the deny-by-default allowlist (``security/allowlist.yaml``) governs the DEDICATED
+policy — the deny-by-default policy (``security/command_policy.yaml``) governs the DEDICATED
 command tools (``execute_llmdbenchmark``, the probes, the orchestrator) via
 ``ctx.run_command``/``ctx.run_readonly``, not this tool.
 
@@ -27,7 +27,7 @@ import shlex
 from typing import Any
 
 from app.observability import metrics as instrument
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.security.runner import simulated_run_result
 from app.tools.context import ApprovalRejected, ToolContext, ToolError
 from app.tools.run import gated_access
@@ -128,7 +128,7 @@ def _segment_is_read_only(seg: list[str]) -> bool:
     return False
 
 
-def classify_shell_command(command: str) -> str:  # returns the allowlist READ_ONLY | MUTATING vocab
+def classify_shell_command(command: str) -> str:  # returns the policy READ_ONLY | MUTATING vocab
     """Classify an arbitrary shell command READ_ONLY vs MUTATING — the human-approval gate for
     the unrestricted shell tool. FAILS SAFE: anything not POSITIVELY proven read-only is
     MUTATING, so an unrecognized binary always prompts.
@@ -238,7 +238,7 @@ async def run_shell(
     auto_run = not requires_approval
     await _emit_command(ctx, argv=argv, mode=mode, auto_run=auto_run)
 
-    # Stream output to the UI exactly like the allowlisted path (when an emit is wired).
+    # Stream output to the UI exactly like the policy-allowed path (when an emit is wired).
     async def _emit_line(line: str) -> None:
         if ctx.emit is not None:
             await ctx.emit("output", {"line": line})
@@ -267,7 +267,7 @@ async def run_shell(
 
 
 async def _emit_command(ctx: ToolContext, *, argv: list[str], mode: str, auto_run: bool) -> None:
-    """Announce the shell command with the SAME ``command`` event shape the allowlisted executor
+    """Announce the shell command with the SAME ``command`` event shape the policy-allowed executor
     emits (see app/tools/command_exec.py::_emit_command), so the debug-view / command-trail
     plumbing records it identically."""
     if ctx.emit is not None:
@@ -288,7 +288,7 @@ def _record_metric(
     duration_s: float, exit_code: int, timed_out: bool,
 ) -> None:
     """File the executed-shell fact into the metrics registry + structured log, mirroring the
-    allowlisted executor's _record_metric. ``exe`` is fixed at ``bash`` (bounded cardinality —
+    policy-allowed executor's _record_metric. ``exe`` is fixed at ``bash`` (bounded cardinality —
     never the arbitrary command, which would explode the label space). Best-effort."""
     with contextlib.suppress(Exception):
         instrument.record_command(exe="bash", mode=mode, auto_run=auto_run, duration_s=duration_s)

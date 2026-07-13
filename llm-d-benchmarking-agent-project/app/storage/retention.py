@@ -456,20 +456,20 @@ def _check_repos_resolvable(settings: Settings) -> CheckOutcome:
 
 def _check_runner_ok(settings: Settings) -> CheckOutcome:
     """The command runner's PRECONDITION is a well-formed security policy: the deny-by-default
-    allowlist must load + schema-validate (malformed YAML / bad governance limits raise at load).
+    policy must load + schema-validate (malformed YAML / bad governance limits raise at load).
     Without it the runner can validate nothing and every command would be refused. Phase 16 adds
     this as the ``runner ok`` readiness component the spec calls for — observing config only (it
     loads the policy file; it never executes anything), so it stays hermetic."""
     try:
-        from app.security.allowlist import Allowlist
+        from app.security.policy import CommandPolicy
 
-        al = Allowlist.from_file(settings.allowlist_path)
+        al = CommandPolicy.from_file(settings.command_policy_path)
         n = len(getattr(al, "_executables", {}) or {})
     except Exception as exc:  # noqa: BLE001 — a bad policy is a readiness failure, not a crash
-        return CheckOutcome("runner_ok", False, f"allowlist failed to load: {exc}",
-                            {"allowlist_path": str(settings.allowlist_path)})
-    return CheckOutcome("runner_ok", True, f"command runner ready ({n} allowlisted executables)",
-                        {"allowlist_path": str(settings.allowlist_path), "executables": n})
+        return CheckOutcome("runner_ok", False, f"policy failed to load: {exc}",
+                            {"command_policy_path": str(settings.command_policy_path)})
+    return CheckOutcome("runner_ok", True, f"command runner ready ({n} policy-allowed executables)",
+                        {"command_policy_path": str(settings.command_policy_path), "executables": n})
 
 
 # The ordered set of self-check probes. DATA (a list of callables) — adding a probe is a list

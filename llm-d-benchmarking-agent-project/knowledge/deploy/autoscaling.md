@@ -28,8 +28,8 @@ acceleratorName` label, the `VariantAutoscaling` + HPA/ScaledObject objects, and
   any resource; mutating → SessionPlan/approval gate (the skill's `ask_followup_question` maps onto
   our gate). Config snapshots / generated scripts go to the **session workspace**, never a repo.
 - The **WVA controller repo** (`llm-d-workload-variant-autoscaler`) is NOT one of our three cloned
-  read-only repos and is NOT in the dedicated clone tool's allowlist — if the user proceeds, clone
-  it via `run_shell('git clone …')` (approval-gated; run_shell isn't bound by the clone allowlist).
+  read-only repos and is NOT in the dedicated clone tool's command policy — if the user proceeds, clone
+  it via `run_shell('git clone …')` (approval-gated; run_shell isn't bound by the clone command policy).
 - The payoff is a benchmark: once WVA is configured, **benchmark the autoscaled stack** under
   bursty / elastic load (`welllit_path_advisor.yaml` routes bursty + SLO-aware load here) and read
   whether scaling held the SLO.

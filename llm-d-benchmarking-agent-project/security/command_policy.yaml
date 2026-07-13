@@ -1,7 +1,7 @@
-# Deny-by-default command allowlist.
+# Deny-by-default command policy.
 #
 # This file is the SINGLE source of truth for what the agent may execute.
-# app/security/allowlist.py is a pure validator over this data — it contains no
+# app/security/policy.py is a pure validator over this data — it contains no
 # per-command knowledge. Widening the agent's powers = a reviewed edit here, not a
 # code change.
 #
@@ -37,7 +37,7 @@
 # Every token is additionally screened for shell metacharacters (defense in depth,
 # even though commands run with shell=False).
 #
-# FLAG POLICY (relaxed): once an executable + subcommand are allowlisted, ANY additional
+# FLAG POLICY (relaxed): once an executable + subcommand are policy-allowed, ANY additional
 # flag is accepted — unrecognized flags are NOT rejected. The flagspecs below still matter:
 # a KNOWN flag's value is validated against its `value` constraint, and `read_only_trigger`
 # still downgrades the effective mode. Unknown flags are accepted with their value
@@ -58,7 +58,7 @@
 #     source of timeouts — there is no Python per-command timeout table.
 #
 # The loader SCHEMA-VALIDATES this field at startup: a non-positive/non-int timeout_s REJECTS
-# the whole allowlist with a clear error (fail loud, never mis-enforce).
+# the whole policy with a clear error (fail loud, never mis-enforce).
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # HOW TO ADD A NEW COMMAND (this is the ONLY file you edit to widen the agent)
@@ -74,9 +74,9 @@
 # 3. Pick the mode: `read_only` (auto-runs, no prompt) or `mutating` (requires the user to
 #    click Approve). If a *flag* makes an otherwise-mutating command safe to preview
 #    (e.g. `--dry-run`), mark that flag `read_only_trigger: true`.
-# 4. That's it — NO Python change. The agent reaches any allowlisted command through the
-#    generic `run_command` tool, and the pure validator (app/security/allowlist.py) and
-#    runner already handle the rest. Add a test case in tests/platform/test_allowlist.py.
+# 4. That's it — NO Python change. The agent reaches any policy-allowed command through the
+#    generic `run_command` tool, and the pure validator (app/security/policy.py) and
+#    runner already handle the rest. Add a test case in tests/platform/test_command_policy.py.
 # Worked examples: the `kind create cluster` / `kind delete cluster` subcommands and the
 # `install_prereqs.sh` script below were each added with nothing more than the lines you
 # see here — no new Python.
@@ -99,10 +99,10 @@ value_constraints:
   # defaults it to `local`, so the LOCAL default stands. This is a DEDICATED constraint (NOT a
   # widening of output_dir): output_dir is shared by --workspace/--ws/-e/--experiments, which are
   # genuine filesystem paths that must NOT accept a `gs://`/`s3://` scheme. The blanket
-  # metacharacter screen in app/security/allowlist.py still rejects shell-dangerous tokens
+  # metacharacter screen in app/security/policy.py still rejects shell-dangerous tokens
   # (`;|&$<>(){}[]*?` etc.) regardless. The actual upload runs INSIDE the benchmark CLI subprocess
   # (gcloud storage cp / aws s3 cp, using the USER's own cloud credentials) — that is the DEFERRED
-  # Phase 47, NOT built/allowlisted here. WHETHER the user has a bucket (and WHICH) is the agent's
+  # Phase 47, NOT built/policy-allowed here. WHETHER the user has a bucket (and WHICH) is the agent's
   # judgment in knowledge/cloud_results_sink.md, not data here.
   results_sink:    { regex: "^(gs|s3)://[A-Za-z0-9._/-]+$|^[A-Za-z0-9._/-]+$" }
   # ---- results store (Phase 50): the git-like CLI Results Store positionals ----
@@ -251,7 +251,7 @@ value_constraints:
   # harness fetches from — http(s)://, hf:// (HuggingFace), gs:// (GCS), s3:// (S3) — OR a
   # bare workspace/cluster filesystem path. The safe charset matches the README's `-x DATASET`
   # examples (e.g. a https://.../qwen_traceA_blksz_16.jsonl trace URL); the blanket
-  # metacharacter screen in app/security/allowlist.py already rejects `;|&$<>(){}[]*?` etc. as
+  # metacharacter screen in app/security/policy.py already rejects `;|&$<>(){}[]*?` etc. as
   # defense-in-depth, so no shell-dangerous token is expressible regardless. WHICH dataset (and
   # dataset-vs-synthetic) is the agent's judgment in knowledge/dataset_replay.md, not data here.
   dataset_url:
@@ -263,7 +263,7 @@ value_constraints:
   # --workspace; so this is a plain, workspace-relative *.yaml/*.yml path. Pinned with NO `..`
   # traversal (mirrors json_path/manifest_path/spec_workspace_path) so only a normal config
   # file is expressible, never a directory-climbing escape; the blanket metacharacter screen in
-  # app/security/allowlist.py rejects shell-dangerous tokens as defense-in-depth. WHEN to
+  # app/security/policy.py rejects shell-dangerous tokens as defense-in-depth. WHEN to
   # generate-vs-replay-vs-author-in-workspace is the agent's judgment in
   # knowledge/runconfig_roundtrip.md, not data here.
   run_config_path: { regex: "^(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.ya?ml$" }
@@ -536,7 +536,7 @@ executables:
   #   • install_prereqs.sh (project) installs the Docker daemon + the kind binary.
   # install-deps.sh overlaps neither's job — it provisions the helm/helmfile/kustomize client
   # the GUIDE deploy path uses. Like install.sh it is a `repo-script` resolved against the
-  # READ-ONLY llm-d guide repo (cwd_must_be "repo:llm-d"); the allowlist only PINS the script +
+  # READ-ONLY llm-d guide repo (cwd_must_be "repo:llm-d"); the policy only PINS the script +
   # its flags — the only commands it can run are the ones baked into the audited script (it
   # grants NO raw apt-get/curl/sudo). Mutating → the agent invokes it via run_command and the
   # user must Approve. WHEN to offer it (missing client prereqs before a guide deploy) is
@@ -556,7 +556,7 @@ executables:
   # framework toolchain (kubectl/helm/jq/…) but NOT the Docker daemon or the kind binary;
   # this script does exactly that and nothing else. The agent invokes it via run_command
   # (mutating → approval). The *only* commands it can run are the ones pinned inside the
-  # script — the allowlist does NOT grant raw apt-get/curl/sudo. Resolved against the
+  # script — the policy does NOT grant raw apt-get/curl/sudo. Resolved against the
   # agent project root by the runner's `project-script` invoke type.
   install_prereqs.sh:
     flat: true
@@ -576,7 +576,7 @@ executables:
   # live resource sparklines read) — it is a PER-CLUSTER add-on. This script installs it on the
   # CURRENT kube-context's cluster and nothing else. The agent invokes it via run_command
   # (mutating → approval). The *only* commands it can run are the pinned `kubectl` calls baked
-  # into the audited script — the allowlist grants NO raw kubectl apply/patch. Resolved against
+  # into the audited script — the policy grants NO raw kubectl apply/patch. Resolved against
   # the agent project root by the runner's `project-script` invoke type. WHEN to offer it (live
   # stats requested + observe_run_metrics reports available:false + the cluster lacks it) is
   # JUDGMENT in knowledge/observability.md, never here. On kind, pass --kubelet-insecure-tls.
@@ -646,7 +646,7 @@ executables:
   # into a `command` event (browser + log + persisted trail), so a `--from-literal=
   # HF_TOKEN=<token>` argument would leak the secret. Instead the script reads HF_TOKEN from
   # the (already-scrubbed) child env — the runner injects settings.extra_subprocess_env →
-  # HF_TOKEN — and runs kubectl over its OWN subprocess. The agent's allowlisted argv only
+  # HF_TOKEN — and runs kubectl over its OWN subprocess. The agent's policy-allowed argv only
   # ever carries `--namespace`/`--name`, never the token.
   #
   # WHEN to provision (only on a Phase 62 GATED+UNAUTHORIZED-with-no-token capacity verdict;
@@ -928,7 +928,7 @@ executables:
           # still creates a REAL pod, so it STAYS mutating/approval-gated. run/experiment ONLY
           # upstream; deliberately NOT added under teardown (there -d means --deep, a DESTRUCTIVE
           # full-namespace wipe). The interactive in-pod exec is a MANUAL user step the agent never
-          # drives — there is NO kubectl/oc `exec` subcommand in this allowlist, so that boundary is
+          # drives — there is NO kubectl/oc `exec` subcommand in this policy, so that boundary is
           # structurally enforced; WHEN-to-debug judgment lives in knowledge/harness_debug.md.
           "-d": {}
           "--debug": {}
@@ -1122,7 +1122,7 @@ executables:
           # harness pods with `sleep infinity` instead of running the load. Plain boolean flag (NO
           # read_only_trigger): a debug launch still creates a REAL pod, so it STAYS mutating/
           # approval-gated. Deliberately NOT under teardown (there -d means --deep, destructive).
-          # The interactive in-pod exec is a MANUAL user step (no kubectl/oc `exec` is allowlisted);
+          # The interactive in-pod exec is a MANUAL user step (no kubectl/oc `exec` is policy-allowed);
           # WHEN-to-debug judgment lives in knowledge/harness_debug.md.
           "-d": {}
           "--debug": {}

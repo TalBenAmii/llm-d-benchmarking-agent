@@ -86,7 +86,7 @@ State these plainly to a non-expert — never bury them:
 
 ## What the bundle does NOT do
 
-It does not widen any capability: the only new allowlist entry is the read-only `git rev-parse
+It does not widen any capability: the only new command policy entry is the read-only `git rev-parse
 --short`. It refuses to certify an **unvalidated** report (determinism gate d) and reads numbers
 ONLY from `summarize_report` — never scraped from logs. The knowledge hash is a *coarse* signal: any
 knowledge edit bumps it even if behavior-neutral. The HTML report card is fully self-contained (no

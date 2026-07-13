@@ -6,7 +6,7 @@
 >
 > Read this first, because "the app looks unchanged" is expected: most recent work is
 > backend / ops / trust / quality plumbing with no chat-UI surface by design (structured
-> logging, allowlist governance, run lifecycle, workspace GC, CI quality
+> logging, command policy governance, run lifecycle, workspace GC, CI quality
 > gates). Only a handful of commits touched the visible chat. The changes live at the HTTP/WS,
 > cluster, security, and CI surfaces, not in the chat bubbles; this file shows where.
 
@@ -24,7 +24,7 @@ A local chat assistant (FastAPI backend + static chat UI over a WebSocket) that 
 deploys an llm-d stack, runs a benchmark, parses the report against the repo's schema, and
 explains the numbers. Around that core sit a Kubernetes-native orchestrator, a results analyzer
 (SLO/goodput/Pareto), cross-session history and trends, Prometheus observability, a
-deny-by-default security allowlist with per-action approval, optional CORS,
+deny-by-default security command policy with per-action approval, optional CORS,
 run lifecycle controls (cancel/reattach/readiness), workspace GC, a one-command Helm deploy,
 and a token-usage counter with prompt caching. All judgment lives in editable `knowledge/`
 files; Python is mechanism only.
@@ -92,7 +92,7 @@ operability features and are the easiest to verify with `curl`.
 
 > Note: `app/tools/registry.py:build_registry` is the authoritative count; the enumerated list
 > below mirrors it. `run_shell` (arbitrary `bash -lc`) is the agent's always-on ad-hoc command
-> tool, gated by the read-only/mutating classifier + approval, NOT the allowlist.
+> tool, gated by the read-only/mutating classifier + approval, NOT the command policy.
 
 **Sensing / grounding (read-only, auto-run):** `probe_environment`, `list_catalog`,
 `inspect_workload_profile`, `estimate_run_duration`, `read_knowledge`, `search_knowledge`,
@@ -178,7 +178,7 @@ result.
 |---|---|---|
 | Prometheus metrics endpoint (agent's own counters/histograms/gauges) | `app/observability/metrics.py`, `GET /metrics` | 🟢 `curl /metrics` exposes `llmdbench_agent_commands_total`, `_command_duration_seconds`, `llmdbench_orchestrator_run_attempts_total`, `_run_faults_total`, `_runs_in_flight`, `_runs_submitted_total`, `_runs_terminal_total`. |
 | Live cluster resource usage during a run (`kubectl top`) | `app/tools/run/manage_runs.py`, `observe_run_metrics` tool | 🔵 Call it while a run is in flight (needs the in-cluster metrics-server, which kind / the `cicd/kind` spec do NOT install; add it separately). |
-| Per-cluster metrics-server installer (enables the live stats above) | `scripts/install/install_metrics_server.sh`, `install_metrics_server.sh` allowlist exec | 🔵 `probe_environment` reports `metrics_server.available` up front (pre-flight); on kind where it is false the agent OFFERS `run_shell("install_metrics_server.sh --kubelet-insecure-tls")` BEFORE the run (mutating → approval). Judgment in `knowledge/observability.md`; rule in `app/agent/prompt.py` HARD_RULES. |
+| Per-cluster metrics-server installer (enables the live stats above) | `scripts/install/install_metrics_server.sh`, `install_metrics_server.sh` command policy exec | 🔵 `probe_environment` reports `metrics_server.available` up front (pre-flight); on kind where it is false the agent OFFERS `run_shell("install_metrics_server.sh --kubelet-insecure-tls")` BEFORE the run (mutating → approval). Judgment in `knowledge/observability.md`; rule in `app/agent/prompt.py` HARD_RULES. |
 | Grafana dashboard + Prometheus scrape config + **alert rules** | `deploy/observability/{grafana-dashboard.json,prometheus-scrape.yaml,alerts.rules.yaml}` | ⚪ Files render/import directly. |
 
 ---
@@ -187,12 +187,12 @@ result.
 
 | Feature | Where | How to see / verify |
 |---|---|---|
-| **Deny-by-default allowlist**, argv-only (`shell=False`), policy-as-data | `security/allowlist.yaml`, `app/security/allowlist.py` | ⚪ `tests/platform/test_allowlist.py`; `/readyz` reports "15 allowlisted executables". |
+| **Deny-by-default command policy**, argv-only (`shell=False`), policy-as-data | `security/command_policy.yaml`, `app/security/policy.py` | ⚪ `tests/platform/test_command_policy.py`; `/readyz` reports "15 policy-allowed executables". |
 | Read-only probes auto-run; mutating commands require UI approval | `app/agent/loop.py`, `app/security/runner.py` | 🔵 Standup prompts; probes don't. |
 | **Gated-model access guardrail**: once `check_capacity` reports a model `gated:true`+`authorized:false`, any `standup`/`run`/`smoketest` of it is REFUSED at the command chokepoint (both `execute_llmdbenchmark` and the ad-hoc `run_shell`) until a later `check_capacity` clears it; the refusal nudges `provision_hf_secret`. A deterministic MECHANISM backstop to the HARD_RULE + `knowledge/capacity.md` steering (a flaky model could otherwise stand up an un-pullable model that fails opaquely minutes in). CLI matched by basename (no path bypass); `-m`/`--models`/`--model` parsed in space- and equals-form; the verdict clears on re-auth; HF token never leaves the backend | `app/tools/run/gated_access.py`, `app/tools/setup/capacity.py` (records the verdict), `command_exec.py`/`shell.py` (chokepoints), `app/agent/prompt.py` (HARD_RULE) | ⚪ `tests/tools/test_gated_guardrail.py`, `tests/orchestrator/test_capacity_gated.py`; 🟢 live flow `error-gated-model-access` (the harness materializes the real bench `config/` so the live capacity tools reach the canned bridge). |
 | **Skill-grounding gate**: a mutating `llmdbenchmark` op is REFUSED until its grounding doc was fetched THIS session (the enforcement backstop that replaced the de-inlined always-on quickstart steering; `consulted_skills` ledger written by `fetch_key_docs`). Spec-aware: the kind/CPU-sim path (`--spec cicd/kind*`) requires `fetch_key_docs(task="quickstart")`, the project runbook, loaded on demand via a `kind: knowledge` `key_docs.yaml` entry (de-inlined from CORE_KNOWLEDGE, served through `fetch_key_docs` exactly like the guides); the GPU/guide path requires the op's `*_skill` (standup→deploy_skill, run/smoketest→benchmark_skill, teardown→teardown_skill, experiment→compare_skill). Wired at the command chokepoint (`command_exec.py`) + as an early deploy gate in `propose_session_plan` (`plan.py`); `run_shell` is intentionally NOT gated. WVA autoscaling is description-driven, not gated: the agent fetches `wva_skill` when the ask is about autoscaling (no command chokepoint to gate) | `app/tools/run/skill_gate.py`, `command_exec.py`/`plan.py` (wiring), `knowledge/key_docs.yaml` (`kind: knowledge`), `app/tools/access/knowledge_access.py` (`fetch_key_docs`) | ⚪ `tests/tools/test_skill_gate.py` (unit) + the deterministic `scripts/eval/validate_flows.py` (42/42 flows pass with the gate live); the gated live-LLM check is `tests/eval/simulate/test_skill_usage_live.py` (6 scenarios × 3 runs, majority passes). |
 | Secrets stay backend-only; child-process env scrubbed | `app/config.py:child_env` | ⚪ Read `child_env`; browser never receives keys. |
-| **Allowlist governance**: per-command timeouts (P13) | `app/security/allowlist.py`, `security/allowlist.yaml` | ⚪ `tests/platform/test_governance.py`. |
+| **CommandPolicy governance**: per-command timeouts (P13) | `app/security/policy.py`, `security/command_policy.yaml` | ⚪ `tests/platform/test_governance.py`. |
 | Optional CORS (`CORS_ALLOW_ORIGINS`); off = no CORS headers (today's default) | `app/config.py:cors_origins_list`, `app/main.py` | ⚪ Set the env var and inspect response headers. |
 
 ---
@@ -261,8 +261,8 @@ kind/CPU-sim `quickstart` runbook is enforced the same way and loads on demand v
 `kind: knowledge` `key_docs.yaml` fetch (de-inlined from CORE), while WVA autoscaling stays
 description-driven (no command chokepoint → no gate). Verify:
 `fetch_key_docs(task='teardown_skill')` returns the live SKILL.md (the repo is cloned by
-`ensure_repos` / `git clone .../llm-d-incubation/llm-d-skills`); the clone allowlist + read-only
-guard are pinned in `tests/platform/test_allowlist.py` (`test_git_clone_skills_allowed`) and the root
+`ensure_repos` / `git clone .../llm-d-incubation/llm-d-skills`); the clone command policy + read-only
+guard are pinned in `tests/platform/test_command_policy.py` (`test_git_clone_skills_allowed`) and the root
 `.claude/settings.json`. Each golden operation-flow grounds in its grounding doc first (its
 `*_skill`, or the `quickstart` runbook on the kind/CPU-sim path) and all 5 operations are
 exemplified (compare/wva added), enforced hermetically by
@@ -299,7 +299,7 @@ expected responses, not the test runs.
 ```
 GET /healthz   → {"ok":true}
 GET /readyz    → 200 {"ready":true,"self_check":{checks:[workspace_writable, provider_coherent,
-                 repos_resolvable (llm-d, llm-d-benchmark), runner_ok (allowlisted execs)]}}
+                 repos_resolvable (llm-d, llm-d-benchmark), runner_ok (policy-allowed execs)]}}
 GET /metrics   → Prometheus: llmdbench_agent_commands_total, _command_duration_seconds,
                  llmdbench_orchestrator_run_attempts_total, _run_faults_total, _runs_in_flight,
                  _runs_submitted_total, _runs_terminal_total
@@ -327,5 +327,5 @@ drift; ambiguous latency units) were all fixed on 2026-06-02 (`1515959`, merged 
 **Counts (current).** Verified against the running app: the agent tools enumerated in §4
 (authoritative: `registry.py:build_registry`; `run_shell` is the agent's always-on ad-hoc command
 tool), 11 trendable history metrics (incl. `kv_cache_hit_rate`, `gpu_utilization`,
-`schedule_delay`), 15 allowlisted executables, 7 `/metrics` families. All ROADMAP_V4 active
+`schedule_delay`), 15 policy-allowed executables, 7 `/metrics` families. All ROADMAP_V4 active
 phases (27–66) are merged.

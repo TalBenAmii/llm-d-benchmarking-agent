@@ -2,9 +2,9 @@
 
 Hermetic: NO network, NO cluster, NO real discovery tool. The handler is exercised end-to-end
 through a ``CaptureRunner`` that fakes the ``llm-d-discover`` subprocess' JSON stdout — so the
-whole chain (build argv -> allowlisted READ-ONLY dispatch -> parse the JSON list of BR-v0.2
+whole chain (build argv -> policy-allowed READ-ONLY dispatch -> parse the JSON list of BR-v0.2
 stack components -> wrap as scenario capture in the workspace -> structured facts) is covered
-without ever invoking the real tool. The allowlist value-pinning + read-only classification is
+without ever invoking the real tool. The policy value-pinning + read-only classification is
 asserted directly against the real policy DATA.
 """
 from __future__ import annotations
@@ -14,14 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from app.security.allowlist import READ_ONLY
+from app.security.policy import READ_ONLY
 from app.tools.context import ToolError
 from app.tools.registry import dispatch, tool_definitions
 from app.tools.setup.discover import _parse_components, _summarize_stack, discover_stack
 from tests._helpers import _real_repo_ctx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 
 
 # A realistic `llm-d-discover -f benchmark-report` payload: a JSON LIST of BR-v0.2
@@ -209,42 +209,42 @@ def test_discover_stack_is_registered_as_a_tool():
     assert "discover_stack" in names
 
 
-# ---- allowlist wiring (the policy DATA) -----------------------------------------
+# ---- policy wiring (the policy DATA) -----------------------------------------
 
-def test_allowlist_discover_is_read_only_and_autoruns(allowlist):
-    d = allowlist.validate(
+def test_policy_discover_is_read_only_and_autoruns(policy):
+    d = policy.validate(
         ["llm-d-discover", "https://model.example.com/v1", "-f", "benchmark-report"]
     )
     assert d.allowed and d.mode == READ_ONLY and not d.requires_approval
 
 
-def test_allowlist_discover_value_pins_output_format(allowlist):
+def test_policy_discover_value_pins_output_format(policy):
     # A bogus output format is refused (enum-pinned).
-    d = allowlist.validate(["llm-d-discover", "https://x/v1", "-f", "evil-format"])
+    d = policy.validate(["llm-d-discover", "https://x/v1", "-f", "evil-format"])
     assert not d.allowed
     # Every real upstream format is accepted.
     for fmt in ("json", "yaml", "summary", "native", "native-yaml", "benchmark-report"):
-        ok = allowlist.validate(["llm-d-discover", "https://x/v1", "-f", fmt])
+        ok = policy.validate(["llm-d-discover", "https://x/v1", "-f", fmt])
         assert ok.allowed, fmt
 
 
-def test_allowlist_discover_pins_url_and_kubeconfig(allowlist):
+def test_policy_discover_pins_url_and_kubeconfig(policy):
     # A non-URL positional is refused (endpoint_url constraint).
-    assert not allowlist.validate(["llm-d-discover", "not-a-url"]).allowed
+    assert not policy.validate(["llm-d-discover", "not-a-url"]).allowed
     # Path traversal in the kubeconfig is refused (kubeconfig_path: no '..').
-    bad_kc = allowlist.validate(
+    bad_kc = policy.validate(
         ["llm-d-discover", "https://x/v1", "-k", "../../etc/passwd"]
     )
     assert not bad_kc.allowed
 
 
-def test_allowlist_discover_requires_the_url_positional(allowlist):
-    assert not allowlist.validate(["llm-d-discover"]).allowed
+def test_policy_discover_requires_the_url_positional(policy):
+    assert not policy.validate(["llm-d-discover"]).allowed
 
 
-def test_allowlist_discover_rejects_metacharacters(allowlist):
+def test_policy_discover_rejects_metacharacters(policy):
     # The blanket metacharacter screen still applies (defense in depth).
-    assert not allowlist.validate(
+    assert not policy.validate(
         ["llm-d-discover", "https://x/v1; rm -rf /"]
     ).allowed
 

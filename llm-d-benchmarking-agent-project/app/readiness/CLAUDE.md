@@ -2,7 +2,7 @@
 
 Endpoint/stack readiness as one deep module with a clean seam: **`diagnostics.py` does ZERO I/O** (pure
 analysis of `kubectl get -o json` strings → structured verdicts, fully unit-testable on canned JSON) under
-a thin probe layer **`probes.py` that does ALL I/O** (read-only allowlisted `kubectl`/`curl` via
+a thin probe layer **`probes.py` that does ALL I/O** (read-only policy-allowed `kubectl`/`curl` via
 `ToolContext.run_readonly`). Goes beyond pod-presence: gates on a Service having a *ready backing endpoint
 address*, classifies a Running-but-NotReady pod's model-load signals, and reads the Gateway-API control
 plane. The wait-vs-stand-up-vs-config-error *judgment* is deferred to `knowledge/readiness_probes.md` /
