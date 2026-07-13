@@ -232,6 +232,17 @@ def test_helm_values_pin_image_and_default_safely():
     assert vals["securityContext"]["capabilities"]["drop"] == ["ALL"]
 
 
+def test_helm_values_enforce_pod_security_baseline():
+    # The agent's ServiceAccount can create Jobs; enforcing namespace Pod Security stops a
+    # hostPath/privileged Job from escaping the pod's read-only rootfs onto the node. Baseline
+    # (NOT Restricted) is deliberate — Restricted requires non-root, which would reject root-capable
+    # benchmark harness images; Baseline still forbids the hostPath escape vector.
+    vals = yaml.safe_load((helm_chart_dir() / "values.yaml").read_text())
+    ps = vals["podSecurity"]
+    assert ps["enforce"] == "baseline"
+    assert ps["warn"] == "baseline" and ps["audit"] == "baseline"
+
+
 def test_pod_is_scrape_annotated_for_metrics():
     text = (helm_chart_dir() / "templates" / "deployment.yaml").read_text()
     assert "prometheus.io/scrape" in text
@@ -256,6 +267,19 @@ def test_install_service_wires_provider_selection():
     assert "--anthropic-key" in text
     assert "config.llmProvider=anthropic" in text
     assert "secret.anthropicApiKey=" in text
+
+
+def test_install_service_labels_namespace_with_pod_security():
+    # The installer enforces the Baseline Pod Security Standard on the deploy namespace by LABELLING
+    # it (the chart does not template a Namespace object, so a raw `helm ... --create-namespace`
+    # deploy keeps working). The applied enforce level must match the chart's documented source of
+    # truth (values.yaml podSecurity.enforce) — a cross-file consistency check.
+    text = (PROJECT_ROOT / "scripts" / "install" / "install_service.sh").read_text()
+    assert "label_namespace" in text
+    assert "pod-security.kubernetes.io/enforce=" in text
+    assert "--create-namespace" in text  # raw-helm namespace creation still works
+    vals = yaml.safe_load((helm_chart_dir() / "values.yaml").read_text())
+    assert f"level={vals['podSecurity']['enforce']}" in text
 
 
 # ===========================================================================

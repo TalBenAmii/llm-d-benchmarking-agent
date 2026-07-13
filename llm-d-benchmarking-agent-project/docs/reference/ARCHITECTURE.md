@@ -171,10 +171,12 @@ scrape config ship under `deploy/observability/`. (Distinct from the `observe_ru
 tool, which reads live cluster CPU/memory via `kubectl top`.)
 
 ### Packaging: `Dockerfile` + `deploy/` + `app/packaging/`
-A hardened non-root image and a one-command Helm chart that renders the
-Deployment + Service + ServiceAccount + a namespaced least-privilege Role/RoleBinding
-granting exactly the `kubectl` verbs `RealKubeClient` uses. See [`DEPLOYMENT.md`](../guides/DEPLOYMENT.md)
-and `knowledge/packaging.md`.
+A hardened non-root image (read-only rootfs; only `/workspace` + `/tmp` writable) and a one-command
+Helm chart that renders the Deployment + Service + ServiceAccount + a namespaced least-privilege
+Role/RoleBinding granting exactly the `kubectl` verbs `RealKubeClient` uses. The installer also labels
+the namespace with the Baseline Pod Security Standard, so a mistaken/crafted Job can't mount a
+`hostPath` and escape onto the node. See [`DEPLOYMENT.md`](../guides/DEPLOYMENT.md),
+[`CLUSTER_SERVICE_DEPLOY.md`](../guides/CLUSTER_SERVICE_DEPLOY.md) §Security model, and `knowledge/packaging.md`.
 
 ## The four determinism gates
 

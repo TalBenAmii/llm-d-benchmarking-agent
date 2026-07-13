@@ -117,6 +117,21 @@ build_image() {
   warn "Built $IMAGE:$TAG locally — make sure it is loaded onto the cluster nodes (e.g. 'kind load docker-image $IMAGE:$TAG') before the pod schedules."
 }
 
+# Enforce the Baseline Pod Security Standard on the target namespace. The agent's ServiceAccount can
+# create Jobs, and Kubernetes does not restrict a Job's pod spec by default — so without this a
+# mistaken or crafted Job could mount a hostPath and reach the node filesystem, escaping the agent
+# pod's read-only rootfs. Baseline (NOT Restricted) forbids hostPath / privileged / host-namespace
+# pods at admission WITHOUT requiring non-root, so root-capable benchmark harness images still run.
+# Applied here (idempotent) rather than as a chart object so a raw `helm ... --create-namespace`
+# deploy keeps working; the level mirrors deploy/helm/.../values.yaml podSecurity.enforce.
+label_namespace() {
+  local level=baseline
+  kubectl ${KUBECTL_CTX[@]+"${KUBECTL_CTX[@]}"} label namespace "$NAMESPACE" \
+    "pod-security.kubernetes.io/enforce=$level" \
+    "pod-security.kubernetes.io/warn=$level" \
+    "pod-security.kubernetes.io/audit=$level" --overwrite >/dev/null
+}
+
 # Assembles + runs the Helm upgrade. Value assembly reads the module-level vars so a sourcing
 # adapter can override image/tag/pullPolicy (etc.) and call this directly.
 deploy_agent() {
@@ -178,6 +193,7 @@ main() {
   fi
   step "Deploying '$RELEASE' to '$NAMESPACE' (image $IMAGE:$TAG, pullPolicy $IMAGE_PULL_POLICY, timeout $TIMEOUT)"
   deploy_agent
+  [[ "$DRY_RUN" == 1 ]] || label_namespace
   print_success
   trap - EXIT
 }

@@ -250,6 +250,18 @@ commands can only affect this one namespace. Residual risk to keep in mind: beca
 Jobs, a Job it defines could mount any Secret that lives in this namespace. Therefore keep sensitive
 Secrets out of the agent's namespace (give it a dedicated namespace with only its own LLM/HF Secret).
 
+Because that Job-create power means the pod's own read-only filesystem is not the only boundary,
+`install_service.sh` also enforces the **Baseline Pod Security Standard** on the namespace (it runs
+`kubectl label ns … pod-security.kubernetes.io/enforce=baseline`, mirroring `values.yaml`
+`podSecurity.enforce`). The API server then refuses any pod — including one a mistaken or crafted Job
+might define — that mounts a `hostPath`, runs privileged, or shares a host namespace, so nothing the
+agent submits can reach the node filesystem. Baseline (not Restricted) is deliberate: it does not
+force non-root, so benchmark harness images that need root still run. A raw `helm` install that
+bypasses the installer does **not** apply the label — set it yourself with the same command. Verify a
+live deployment end-to-end with `scripts/eval/validate_fs_isolation.sh -n <ns>`: it confirms the
+pod's only writable mounts are `/workspace` + `/tmp`, that the root filesystem rejects writes, and
+that the namespace refuses a `hostPath` pod.
+
 ### Enable persistence (optional)
 
 By default `/workspace` is an ephemeral `emptyDir`, so sessions do not survive a pod restart. Back it

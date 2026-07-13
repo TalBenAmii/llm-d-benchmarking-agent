@@ -55,6 +55,19 @@ serviceAccount:
 rbac:
   create: true
 
+# --- namespace Pod Security admission ---------------------------------------------------
+# The Baseline Pod Security Standard levels install_service.sh stamps on the deploy namespace, so a
+# mistaken/crafted Job (the agent's SA can create Jobs) can't mount a hostPath and reach the node —
+# see docs/guides/CLUSTER_SERVICE_DEPLOY.md §Security model for why Baseline (not Restricted). NOTE:
+# the chart does NOT template a Namespace object and does not read these keys at render time — the
+# installer applies the labels, and tests/platform/test_packaging.py asserts it uses this exact
+# `enforce` value so the two can't silently diverge. A chart-only `helm` deploy must label the
+# namespace itself: kubectl label ns <ns> pod-security.kubernetes.io/enforce=baseline --overwrite.
+podSecurity:
+  enforce: baseline   # blocks non-conforming pods at admission
+  warn: baseline      # surfaces violations to the API caller
+  audit: baseline     # records violations in the audit log
+
 # --- networking -------------------------------------------------------------------------
 service:
   type: ClusterIP
