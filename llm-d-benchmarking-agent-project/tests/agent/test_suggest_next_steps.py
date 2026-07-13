@@ -92,7 +92,7 @@ async def test_loop_emits_buttons_and_persists_them_for_replay(tmp_path):
     from app.agent.session import Session
     from app.config import get_settings
     from app.llm.provider import AssistantTurn, ToolCall
-    from app.security.allowlist import Allowlist
+    from app.security.policy import CommandPolicy
     from app.security.runner import CommandRunner
     from app.tools.context import ToolContext
 
@@ -108,8 +108,8 @@ async def test_loop_emits_buttons_and_persists_them_for_replay(tmp_path):
             return turn
 
     s = get_settings()
-    al = Allowlist.from_file(project_root / "security" / "allowlist.yaml")
-    ctx = ToolContext(settings=s, allowlist=al, runner=CommandRunner(s.repo_paths),
+    al = CommandPolicy.from_file(project_root / "security" / "command_policy.yaml")
+    ctx = ToolContext(settings=s, policy=al, runner=CommandRunner(s.repo_paths),
                       workspace=tmp_path / "ws")
     session = Session(id="t", ctx=ctx)
 
@@ -145,14 +145,14 @@ def _loop_harness(tmp_path):
 
     from app.agent.session import Session
     from app.config import get_settings
-    from app.security.allowlist import Allowlist
+    from app.security.policy import CommandPolicy
     from app.security.runner import CommandRunner
     from app.tools.context import ToolContext
 
     project_root = Path(__file__).resolve().parents[2]
     s = get_settings()
-    al = Allowlist.from_file(project_root / "security" / "allowlist.yaml")
-    ctx = ToolContext(settings=s, allowlist=al, runner=CommandRunner(s.repo_paths),
+    al = CommandPolicy.from_file(project_root / "security" / "command_policy.yaml")
+    ctx = ToolContext(settings=s, policy=al, runner=CommandRunner(s.repo_paths),
                       workspace=tmp_path / "ws")
     return Session(id="t", ctx=ctx), ctx
 

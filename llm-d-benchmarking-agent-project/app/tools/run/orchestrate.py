@@ -2,7 +2,7 @@
 
 Thin wiring — it builds a :class:`~app.orchestrator.job.JobSpec` from the agent's intent and
 drives :class:`~app.orchestrator.controller.BenchmarkOrchestrator` (submit → watch → diagnose,
-with optional retry). All cluster access flows through the allowlisted kubectl runner on the
+with optional retry). All cluster access flows through the policy-allowed kubectl runner on the
 session's ToolContext, so apply/delete stay approval-gated. Judgment (which spec/harness/
 workload, retry budget) is the agent's; this is mechanism.
 """

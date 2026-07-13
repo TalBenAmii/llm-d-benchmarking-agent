@@ -5,14 +5,14 @@ WHY THIS EXISTS
 Flow validation must run **hermetically** in CI, where ``llm-d-benchmark`` and ``llm-d``
 are empty gitlinks. But the things we want to validate consult the *live on-disk catalog*:
 
-  * the command allowlist's ``ref_catalog`` checks (``--spec``/``-l``/``-w`` must name a
+  * the command policy's ``ref_catalog`` checks (``--spec``/``-l``/``-w`` must name a
     real spec/harness/workload), and
   * the ``SessionPlan`` validator (``validate_plan``).
 
 With no repo present those lists are empty and *every* spec/harness/workload would fail to
 validate — so the harness could not exercise the real policy. Seeding a ``ToolContext``
 with this snapshot lets the harness validate the agent's commands against the **real**
-allowlist exactly as it would in production, with zero repos on disk.
+policy exactly as it would in production, with zero repos on disk.
 
 This is a *snapshot*, not a source of truth. ``test_flows.py::test_snapshot_matches_live``
 asserts that every name the flows reference still exists in the **live** catalog whenever

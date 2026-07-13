@@ -3,13 +3,13 @@
 Covers the read/write classifier (which decides auto-run vs approval), that the tool is
 registered on the default tool surface, and the preserved human-approval flow (mutating
 commands prompt; read-only commands do not). `run_shell` does NOT consult the command
-allowlist — the classifier + approval gate are its guardrail.
+policy — the classifier + approval gate are its guardrail.
 """
 from __future__ import annotations
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.context import ApprovalRejected
 from app.tools.registry import build_registry, dispatch, tool_definitions
 from app.tools.run.shell import classify_shell_command, run_shell

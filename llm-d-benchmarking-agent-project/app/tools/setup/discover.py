@@ -8,9 +8,9 @@ parallelism / accelerator). It is a strict COMPLEMENT to the agent's own endpoin
 this adds detail when the user wants a precise capture of what is actually deployed.
 
 Mechanism only (mirrors ``readiness.py`` — a thin async handler over ``ctx.run_command`` validated
-by the allowlist — and ``capacity.py``'s fail-loud "needs the benchmark venv" pattern):
+by the policy — and ``capacity.py``'s fail-loud "needs the benchmark venv" pattern):
 
-  1. Run the allowlisted, READ-ONLY ``llm-d-discover`` (auto-runs; it has its OWN read-only
+  1. Run the policy-allowed, READ-ONLY ``llm-d-discover`` (auto-runs; it has its OWN read-only
      Kubernetes RBAC + env-var redaction upstream, so it never mutates the cluster).
   2. Write the raw discovery JSON into ``ctx.workspace`` (the read-only repos are never written).
   3. Parse the JSON LIST of stack-component dicts and wrap it as the BR-v0.2 scenario-capture
@@ -134,8 +134,8 @@ async def discover_stack(
     ctx.workspace.mkdir(parents=True, exist_ok=True)
 
     try:
-        # Read-only per the allowlist -> auto-runs (no approval). A live trace is bounded; the
-        # allowlist also pins a 120s deadline.
+        # Read-only per the policy -> auto-runs (no approval). A live trace is bounded; the
+        # policy also pins a 120s deadline.
         res = await ctx.run_command(argv, timeout=120.0)
     except ToolError as exc:
         # e.g. the discovery tool isn't installed in the benchmark venv yet.

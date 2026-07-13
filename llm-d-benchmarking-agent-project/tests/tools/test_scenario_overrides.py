@@ -354,9 +354,9 @@ async def test_author_scenario_also_writes_companion_spec_into_workspace(tool_ct
     assert "dry_run" in out["note"]
 
 
-async def test_companion_spec_path_passes_the_allowlist_as_a_spec_value(tool_ctx, catalog):
+async def test_companion_spec_path_passes_the_policy_as_a_spec_value(tool_ctx, catalog):
     """The authored spec path must be an ACCEPTED --spec value so plan/--dry-run can target it.
-    Build the exact argv execute_llmdbenchmark would and assert the real allowlist allows it
+    Build the exact argv execute_llmdbenchmark would and assert the real policy allows it
     (and classifies the dry-run plan as read-only). This closes the 'no demonstrated route into
     the gate' gap structurally, without needing a live cluster."""
     out = await write_and_validate_config(
@@ -370,14 +370,14 @@ async def test_companion_spec_path_passes_the_allowlist_as_a_spec_value(tool_ctx
         "llmdbenchmark", "--spec", spec_path, "plan",
         "-p", "test-ns", "--dry-run",
     ]
-    decision = tool_ctx.allowlist.validate(argv, catalog=catalog)
+    decision = tool_ctx.policy.validate(argv, catalog=catalog)
     assert decision.allowed, decision.reason
     # --dry-run is a read_only_trigger, so previewing the authored scenario is read-only.
-    from app.security.allowlist import READ_ONLY
+    from app.security.policy import READ_ONLY
 
     assert decision.mode == READ_ONLY
     # A bogus non-workspace, non-catalog spec value is still refused (the gate didn't widen).
-    bad = tool_ctx.allowlist.validate(
+    bad = tool_ctx.policy.validate(
         ["llmdbenchmark", "--spec", "not-a-real-spec", "plan", "--dry-run"], catalog=catalog
     )
     assert not bad.allowed

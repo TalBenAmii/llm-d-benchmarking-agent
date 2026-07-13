@@ -6,7 +6,7 @@ backend HuggingFace token can't pull. Steering alone proved unreliable against a
 this module is the non-bypassable BACKSTOP: once ``check_capacity`` reports a model is
 ``gated: true`` + ``authorized: false``, any attempt to ``standup`` / ``run`` / ``smoketest`` is
 REFUSED at the command chokepoint (``CommandExecutor.run_command`` — exactly where the
-allowlist / approval gates live) until a later ``check_capacity`` for that model reports
+policy / approval gates live) until a later ``check_capacity`` for that model reports
 ``authorized`` (provision the HF secret, then re-check). A standup of an un-pullable model only
 fails opaquely minutes in; this turns that into an instant, actionable refusal.
 

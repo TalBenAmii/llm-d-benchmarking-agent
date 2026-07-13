@@ -17,7 +17,7 @@ from app.config import Settings
 from app.orchestrator.checkpoint import SweepCheckpoint, build_configmap_manifest
 from app.orchestrator.controller import BenchmarkOrchestrator
 from app.orchestrator.job import LABEL_SESSION, JobSpec, job_name
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.tools.context import ToolContext, ToolError
 from app.tools.registry import dispatch
 from app.tools.run.orchestrate import _sweep_run_id, orchestrate_benchmark_run, orchestrate_sweep
@@ -27,7 +27,7 @@ from tests.orchestrator_fakes import FakeKubeClient, make_pod
 
 # ── test_orchestrator_tool.py ──
 # Phase 3e — the orchestrate_benchmark_run agent tool: wires the orchestrator to the agent,
-# end-to-end through dispatch + the allowlisted kubectl runner (CaptureRunner), no cluster.
+# end-to-end through dispatch + the policy-allowed kubectl runner (CaptureRunner), no cluster.
 
 SUCCEEDED_JOB = json.dumps({"items": [{
     "metadata": {"name": "llmd-bench-x", "labels": {}},
@@ -56,7 +56,7 @@ def _ctx_tool(tmp_path, *, canned=None, image=""):
     canned = {"get endpoints": ENDPOINTS_READY, **(canned or {})}
     runner = CaptureRunner(settings.repo_paths, canned=canned)
     ctx = ToolContext(
-        settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+        settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
         request_approval=approve,
     )
@@ -87,7 +87,7 @@ async def test_tool_submits_watches_and_succeeds(tmp_path):
 
 
 async def test_tool_streams_pod_logs_as_output_events(tmp_path):
-    """Phase 21 end-to-end: through dispatch + the REAL RealKubeClient + the allowlisted
+    """Phase 21 end-to-end: through dispatch + the REAL RealKubeClient + the policy-allowed
     `kubectl logs -f` runner path, the benchmark pod's log lines surface as `output` events
     (the SAME event the UI renders) DURING the run — not just at the end."""
     pod_logs = "starting benchmark\nload point 1/2\nload point 2/2\nbenchmark complete: 30/30 ok"
@@ -113,7 +113,7 @@ async def test_tool_streams_pod_logs_as_output_events(tmp_path):
         assert expected in output_lines
     assert output_lines.index("starting benchmark") < output_lines.index("benchmark complete: 30/30 ok")
 
-    # And it really used the allowlisted `kubectl logs -f` path (read-only, argv-only).
+    # And it really used the policy-allowed `kubectl logs -f` path (read-only, argv-only).
     log_calls = [c["argv"] for c in runner.calls if c["argv"][:2] == ["kubectl", "logs"]]
     assert log_calls and "-f" in log_calls[-1]
 
@@ -158,7 +158,7 @@ async def test_tool_retries_transient_then_succeeds(tmp_path):
         return True
 
     runner = _SeqRunner(settings.repo_paths)
-    ctx = ToolContext(settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+    ctx = ToolContext(settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
                       runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
                       request_approval=approve)
     frozen = frozen_catalog()
@@ -204,7 +204,7 @@ async def test_tool_runs_job_under_configured_service_account(tmp_path):
         return True
 
     runner = CaptureRunner(settings.repo_paths, canned={"get endpoints": ENDPOINTS_READY})
-    ctx = ToolContext(settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+    ctx = ToolContext(settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
                       runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
                       request_approval=approve)
     frozen = frozen_catalog()
@@ -222,7 +222,7 @@ async def test_tool_runs_job_under_configured_service_account(tmp_path):
 # ── test_orchestrator_sweep_tool.py ──
 # G7 — the orchestrate_sweep agent tool: exposes the orchestrator's parallel-treatment
 # run_sweep (concurrency cap + per-treatment retry/dead-letter + cluster-checkpointed resume)
-# as a real benchmark path, end-to-end through dispatch + the allowlisted kubectl runner
+# as a real benchmark path, end-to-end through dispatch + the policy-allowed kubectl runner
 # (CaptureRunner), no cluster. Mirrors tests/orchestrator/test_orchestrator_tools.py's hermetic setup.
 
 FAILED_JOB = json.dumps({"items": [{
@@ -242,7 +242,7 @@ def _ctx(tmp_path, *, canned=None, image="ghcr.io/llm-d/bench:0"):
     canned = {"get endpoints": ENDPOINTS_READY, **(canned or {})}
     runner = CaptureRunner(settings.repo_paths, canned=canned)
     ctx = ToolContext(
-        settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+        settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
         request_approval=approve,
     )

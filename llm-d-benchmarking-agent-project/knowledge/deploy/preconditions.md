@@ -10,7 +10,7 @@ structured result and reason about it — do not assume.
   `run_shell("install_prereqs.sh --docker")` (it skips the install if docker is
   already present and just tries to start it); on WSL/Docker-Desktop it may still need to
   be started manually. Never run raw `sudo` — only the pinned `install_prereqs.sh` is
-  allowlisted.
+  policy-allowed.
 - `repos.<name>.present == false` → clone with `ensure_repos` before anything else.
 - `tools.<x> == false` → that tool is missing from PATH. `run_setup` (install.sh) installs
   most of them (kubectl, helm, helmfile, jq, yq, kustomize, skopeo, crane, and uv→Python
@@ -31,7 +31,7 @@ When the user wants to deploy a published **llm-d well-lit-path guide** (the gui
 — `optimized-baseline` is the reference; see `deploy_path_playbook.md`), the guide expects the
 **deployment client toolchain** to be present: `helm` + the **helm-diff** plugin, `helmfile`,
 `kustomize`, `yq` (mikefarah), and `kubectl`. The llm-d guides ship their own installer for
-most of this — `helpers/client-setup/install-deps.sh` in the llm-d repo (allowlisted as the
+most of this — `helpers/client-setup/install-deps.sh` in the llm-d repo (policy-allowed as the
 bare `install-deps.sh`) — but it does NOT install `helmfile` or the `helm-diff` plugin; those
 two must be installed separately (per `helpers/client-setup/README.md`). OFFER to run it when
 those client tools are missing **before** a guide-based deploy:
@@ -98,7 +98,7 @@ There are two ways to target a non-ambient cluster, both threaded through `execu
 1. **A non-default kubeconfig FILE** — the simplest and preferred lever. Pass the top-level
    `kubeconfig="<path>"` argument; it is emitted as the CLI's `-k/--kubeconfig <path>` (upstream
    `LLMDBENCH_KUBECONFIG`) and is valid on every subcommand. The path is a **non-secret** file
-   path (allowlist-pinned, no `..` traversal); it appears normally in the command trail. Use this
+   path (command policy-pinned, no `..` traversal); it appears normally in the command trail. Use this
    whenever the user already has a kubeconfig for the target cluster — it also carries the right
    context, CA, and auth in one file.
 2. **An API-server URL + bearer TOKEN** — when there is no kubeconfig file, pass

@@ -5,9 +5,9 @@
 # `kubectl top` / observe_run_metrics / the live resource sparklines read. It is a
 # PER-CLUSTER add-on and is NOT installed by kind, the cicd/kind spec, or any llm-d guide.
 # This script installs it on the CURRENT kube-context's cluster and nothing else — it is the
-# only metrics-server install the security allowlist lets the agent run. The agent invokes it
+# only metrics-server install the security policy lets the agent run. The agent invokes it
 # through `run_command`, so it goes through the normal approval gate. Every command here is a
-# pinned `kubectl` call; the allowlist grants no raw kubectl apply/patch.
+# pinned `kubectl` call; the policy grants no raw kubectl apply/patch.
 #
 # Usage:
 #   install_metrics_server.sh                          # install on the current cluster

@@ -24,7 +24,7 @@ from typing import Any
 import pytest
 
 from app.llm.provider import AssistantTurn, LLMProvider, ProviderTurn, ToolCall
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.registry import _group_of
 
 from .flows import Flow
@@ -261,11 +261,11 @@ def test_group_dimension_matches_the_real_registry_groups():
     assert _group_of("load_tools") is None
 
 
-# ---- 3) run_shell is classified by the shell classifier, not flagged as an allowlist bypass --
+# ---- 3) run_shell is classified by the shell classifier, not flagged as an policy bypass --
 
-async def test_read_only_run_shell_is_not_flagged_as_an_allowlist_bypass(tmp_path):
+async def test_read_only_run_shell_is_not_flagged_as_a_policy_bypass(tmp_path):
     """A real model often improvises with run_shell (the ad-hoc `bash -lc` surface). It is governed
-    by the read-only/mutating classifier, NOT the allowlist — so a read-only run_shell must be
+    by the read-only/mutating classifier, NOT the policy — so a read-only run_shell must be
     classified read_only (auto-run) and must NOT trip gating_problems' 'denied bypass' check (which
     is for DEDICATED tools). This is the false-positive the live eval would otherwise hit."""
     flow = _flow(turns=[
@@ -283,7 +283,7 @@ async def test_read_only_run_shell_is_not_flagged_as_an_allowlist_bypass(tmp_pat
 async def test_mutating_run_shell_is_classified_and_must_be_approval_gated(tmp_path):
     """The flip side: a mutating run_shell is classified mutating and the SAME safety invariant
     applies — it must pass the approval gate. With the default approver (yes) it is gated and clean;
-    it is still never mislabeled a 'denied' allowlist bypass."""
+    it is still never mislabeled a 'denied' policy bypass."""
     flow = _flow(turns=[
         AssistantTurn(text="", tool_calls=[ToolCall(id="s1", name="run_shell", input={"command": "rm -rf build"})]),
         AssistantTurn(text="done", tool_calls=[]),

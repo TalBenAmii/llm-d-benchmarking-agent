@@ -8,7 +8,7 @@ WHICH-provider JUDGMENT lives in knowledge/gateway_class.md, not in Python):
     experiment) — upstream registers the flag on every one of them, so there is no
     subcommand guard and no if/elif on the value; absent/None/empty => nothing emitted
     (the spec's scenario gateway.className stands);
-  * the allowlist permits ``--gateway-class`` (value-constrained to the gateway_class
+  * the policy permits ``--gateway-class`` (value-constrained to the gateway_class
     enum: epponly/istio/agentgateway/gke/data-science-gateway-class) on each of the six
     subcommands, the flag does NOT change a command's mode, and an out-of-enum /
     injection-laden value is refused;
@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
@@ -34,9 +34,9 @@ PROVIDERS = ["epponly", "istio", "agentgateway", "gke", "data-science-gateway-cl
 # build_argv accepts a free-form subcommand string; --gateway-class is upstream-valid on all six.
 GATEWAY_SUBCOMMANDS = ["plan", "standup", "smoketest", "run", "teardown", "experiment"]
 
-# Subcommands whose ALLOWLIST entry carries the --gateway-class flagspec + their base mode.
+# Subcommands whose COMMAND POLICY entry carries the --gateway-class flagspec + their base mode.
 # `results` is read-only and does NOT take --gateway-class upstream, so it is excluded.
-ALLOWLIST_SUBCOMMAND_MODE = {
+POLICY_SUBCOMMAND_MODE = {
     "plan": READ_ONLY,
     "standup": MUTATING,
     "smoketest": MUTATING,
@@ -95,7 +95,7 @@ def test_execute_schema_accepts_gateway_class_flag():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — --gateway-class permitted, value-constrained (DATA)
+# policy — --gateway-class permitted, value-constrained (DATA)
 # ---------------------------------------------------------------------------
 
 
@@ -108,46 +108,46 @@ def _run_args(subcommand):
     return []
 
 
-@pytest.mark.parametrize("subcommand", list(ALLOWLIST_SUBCOMMAND_MODE))
+@pytest.mark.parametrize("subcommand", list(POLICY_SUBCOMMAND_MODE))
 @pytest.mark.parametrize("provider", PROVIDERS)
-def test_allowlist_permits_gateway_class_on_each_subcommand(
-    allowlist, catalog, subcommand, provider
+def test_policy_permits_gateway_class_on_each_subcommand(
+    policy, catalog, subcommand, provider
 ):
-    d = allowlist.validate(
+    d = policy.validate(
         _argv(subcommand, *_run_args(subcommand), "--gateway-class", provider), catalog=catalog
     )
     assert d.allowed, f"--gateway-class {provider} should be allowed on {subcommand}: {d.reason}"
     # The flag does NOT change the base mode of the subcommand.
-    assert d.mode == ALLOWLIST_SUBCOMMAND_MODE[subcommand]
+    assert d.mode == POLICY_SUBCOMMAND_MODE[subcommand]
 
 
-def test_allowlist_rejects_out_of_enum_gateway_class(allowlist, catalog):
+def test_policy_rejects_out_of_enum_gateway_class(policy, catalog):
     # A plausible-but-wrong provider (a typo) is refused by the value enum.
-    d = allowlist.validate(_argv("standup", "--gateway-class", "isto"), catalog=catalog)
+    d = policy.validate(_argv("standup", "--gateway-class", "isto"), catalog=catalog)
     assert not d.allowed
 
 
-def test_allowlist_rejects_injection_laden_gateway_class(allowlist, catalog):
+def test_policy_rejects_injection_laden_gateway_class(policy, catalog):
     # A metachar-laden value is rejected by the blanket screen (defense in depth); the enum
     # would also reject it.
-    d = allowlist.validate(
+    d = policy.validate(
         _argv("standup", "--gateway-class", "istio;rm -rf /"), catalog=catalog
     )
     assert not d.allowed
 
 
-def test_gateway_class_keeps_read_only_preview(allowlist, catalog):
+def test_gateway_class_keeps_read_only_preview(policy, catalog):
     # --dry-run still downgrades a gateway-class-bearing standup to a read-only PREVIEW
     # (the flag is orthogonal to the mode classification).
-    d = allowlist.validate(
+    d = policy.validate(
         _argv("standup", "--gateway-class", "agentgateway", "--dry-run"), catalog=catalog
     )
     assert d.allowed and d.mode == READ_ONLY
 
 
-def test_gateway_class_on_plan_stays_read_only(allowlist, catalog):
+def test_gateway_class_on_plan_stays_read_only(policy, catalog):
     # plan is read-only; previewing a provider override must not flip it to mutating.
-    d = allowlist.validate(_argv("plan", "--gateway-class", "epponly"), catalog=catalog)
+    d = policy.validate(_argv("plan", "--gateway-class", "epponly"), catalog=catalog)
     assert d.allowed and d.mode == READ_ONLY
 
 

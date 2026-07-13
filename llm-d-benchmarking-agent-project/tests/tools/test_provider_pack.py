@@ -1,7 +1,7 @@
 """Phase 64 — Provider-aware precondition pack.
 
 The `provider_detection` check on `probe_environment` reads each node's LABELS + TAINTS via the
-already-allowlisted read-only `kubectl get nodes -o json` and reports FACTS only: the detected
+already-policy-allowed read-only `kubectl get nodes -o json` and reports FACTS only: the detected
 cloud provider (openshift / gke / doks / aks / minikube vs kind) and the per-node GPU taints that
 leave model-server pods Pending. The MECHANISM (label→provider membership + taint extraction) is
 pinned here; the per-provider PLAYBOOK (which CLI, which toleration, which known issue) lives in
@@ -114,7 +114,7 @@ async def test_openshift_provider_and_value_bearing_l40s_taint(tmp_path):
     assert pd["available"] is True
     assert pd["provider"] == "openshift"
     assert pd["providers_seen"] == ["openshift"]
-    # It reached the runner via the already-allowlisted read-only kubectl get nodes.
+    # It reached the runner via the already-policy-allowed read-only kubectl get nodes.
     assert ["kubectl", "get", "nodes", "-o", "json"] in [c["argv"] for c in runner.calls]
     # The GPU taint is surfaced with node + key + value + effect (value-bearing → Equal+value).
     assert pd["gpu_taints"] == [{

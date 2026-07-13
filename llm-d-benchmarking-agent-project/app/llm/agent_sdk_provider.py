@@ -10,7 +10,7 @@ ONE :class:`AssistantTurn`. To do that without letting the SDK *run* anything:
   them with native tool-calling), but a ``can_use_tool`` callback **denies every call** — the
   SDK never executes a handler. We read the emitted ``tool_use`` blocks off the assistant
   message and hand them back to the loop, which runs them under the app's own
-  allowlist/approval gating.
+  policy/approval gating.
 * ``max_turns=1`` stops after exactly one assistant turn. A text-only turn ends cleanly; a
   tool-calling turn raises a terminal ``error_max_turns`` AFTER delivering the assistant
   message — that is the EXPECTED stop, swallowed below.
@@ -61,7 +61,7 @@ _PREWARM_TTL_S = 120.0
 _NEUTRALIZE_ENV = {"ANTHROPIC_API_KEY": "", "ANTHROPIC_AUTH_TOKEN": ""}
 
 # Shown to the model (via can_use_tool deny) when it calls a tool. The HOST app runs every tool
-# under its own allowlist/approval gating, so the SDK must never execute one. On the persistent
+# under its own policy/approval gating, so the SDK must never execute one. On the persistent
 # per-turn client (_AgentSdkTurn) this denial stays in the CLI's conversation state and is
 # replayed to the model on the next step, so it must clearly tell the model that the REAL result
 # arrives as the following user message — otherwise the model could read "denied" as a failure.

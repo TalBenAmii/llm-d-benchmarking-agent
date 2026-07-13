@@ -10,7 +10,7 @@ rather than a hope:
 1. the production image's build context (the Dockerfile ``COPY`` set) only pulls the product
    dirs (app — which includes the static UI at app/ui — security, knowledge, scripts) + the
    metadata files (pyproject.toml, README.md, NOTICE) — never ``harnesses/``;
-2. ``.dockerignore`` excludes ``harnesses/`` (belt-and-suspenders on the COPY allowlist, and
+2. ``.dockerignore`` excludes ``harnesses/`` (belt-and-suspenders on the COPY policy, and
    it makes the build context *physically unable* to include it);
 3. no module under ``app/`` imports from ``harnesses/`` (the product can't depend on the mock).
 
@@ -26,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # The ONLY build-context sources the production image is allowed to COPY. Anything else
 # (notably ``harnesses/``) entering the image is a product-boundary leak. Keep in sync with
 # the Dockerfile COPY lines: the runtime dirs (app — the static UI ships inside it at app/ui —
-# security, knowledge, and scripts — the allowlist wires scripts/*.py to run via the bundled
+# security, knowledge, and scripts — the policy wires scripts/*.py to run via the bundled
 # CLI venv), the two files pip needs in the builder (pyproject.toml, README.md), and the NOTICE
 # attribution file. The sibling repos + toolchain are cloned/installed via RUN layers, never
 # COPY'd from the context.

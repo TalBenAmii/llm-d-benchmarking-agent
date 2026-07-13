@@ -8,7 +8,7 @@ go/no-go verdict lives entirely in knowledge/infrastructure_preconditions.yaml. 
     server_version major.minor — including stripping a managed-cluster trailing '+';
   * parse a canned scenario YAML's vLLM/NIXL/UCX image tags off disk and assert image_tags;
   * assert the probe is read-only (it only ran `kubectl version --output json`, un-gated) and
-    that exact argv is permitted read-only by the allowlist;
+    that exact argv is permitted read-only by the policy;
   * assert the threshold DATA (K8s 1.29 / 1.33 / 1.28 sidecar gotcha; vLLM 0.10.0 / NIXL 0.5.0
     / UCX 0.19.0 / NVSHMEM 3.3.9) lives in knowledge/infrastructure_preconditions.yaml — NOT in
     Python (no version-comparison if/elif in app/tools/setup/probe.py).
@@ -22,7 +22,7 @@ import pytest
 import yaml
 
 from app.config import Settings
-from app.security.allowlist import READ_ONLY, Allowlist
+from app.security.policy import READ_ONLY, CommandPolicy
 from app.tools.context import ToolContext
 from app.tools.registry import dispatch
 from tests._helpers import kubectl_present
@@ -81,7 +81,7 @@ def _probe_ctx(tmp_path: Path, *, canned, spec: str | None = None, scenario_yaml
         scen.write_text(scenario_yaml)
     runner = CaptureRunner(settings.repo_paths, canned=canned)
     ctx = ToolContext(
-        settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+        settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
     )
     frozen = frozen_catalog()
@@ -194,7 +194,7 @@ def test_image_tags_spec_rejects_path_traversal(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# the threshold DATA lives in knowledge/, and the probe is read-only-allowlisted
+# the threshold DATA lives in knowledge/, and the probe is read-only-policy-allowed
 # ---------------------------------------------------------------------------
 
 KNOWLEDGE = Path(__file__).resolve().parents[2] / "knowledge" / "deploy/infrastructure_preconditions.yaml"
@@ -274,8 +274,8 @@ def test_no_version_comparison_logic_in_python():
         )
 
 
-def test_kubectl_version_json_is_read_only_allowlisted(tmp_path):
+def test_kubectl_version_json_is_read_only_policy_allowed(tmp_path):
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
-    al = Allowlist.from_file(settings.allowlist_path)
+    al = CommandPolicy.from_file(settings.command_policy_path)
     d = al.validate(["kubectl", "version", "--output", "json"], catalog=None)
     assert d.allowed and d.mode == READ_ONLY

@@ -5,7 +5,7 @@ ai.<name>.sh + ai.<name>.yaml INTO the read-only benchmark repo; this tool must 
 the session workspace. The agent supplies an already-resolved LLMDBENCH_* env map (the mapping
 JUDGMENT is knowledge/convert_guide.md). Python only EMITS the sorted, shell-quoted scenario .sh
 and a VALIDATABLE companion YAML scenario + .spec.yaml twin (reusing the Phase-45 mechanism) so
-the required "validate via plan/--dry-run" gate has a real, allowlisted target.
+the required "validate via plan/--dry-run" gate has a real, policy-allowed target.
 
 No network, no cluster, no GPU — the read-only sibling repo (for the live scenario examples) is
 the only on-disk dependency, and the structural validator degrades gracefully if it is absent.
@@ -270,13 +270,13 @@ async def test_convert_invalid_twin_surfaces_errors_without_claiming_valid(tool_
 
 
 # ---------------------------------------------------------------------------
-# The authored spec is a real, allowlisted route into the determinism gate
+# The authored spec is a real, policy-allowed route into the determinism gate
 # ---------------------------------------------------------------------------
 
 
-async def test_authored_spec_passes_the_allowlist_as_a_spec_value(tool_ctx, catalog):
+async def test_authored_spec_passes_the_policy_as_a_spec_value(tool_ctx, catalog):
     """The companion spec path must be an ACCEPTED --spec value so plan/--dry-run can target it
-    — without any allowlist widening (workspace *.spec.yaml is admitted via spec_workspace_path).
+    — without any policy widening (workspace *.spec.yaml is admitted via spec_workspace_path).
     """
     out = await convert_guide_to_scenario(
         tool_ctx,
@@ -285,9 +285,9 @@ async def test_authored_spec_passes_the_allowlist_as_a_spec_value(tool_ctx, cata
     )
     spec_path = out["spec_path"]
     argv = ["llmdbenchmark", "--spec", spec_path, "plan", "-p", "test-ns", "--dry-run"]
-    decision = tool_ctx.allowlist.validate(argv, catalog=catalog)
+    decision = tool_ctx.policy.validate(argv, catalog=catalog)
     assert decision.allowed, decision.reason
-    from app.security.allowlist import READ_ONLY
+    from app.security.policy import READ_ONLY
 
     assert decision.mode == READ_ONLY  # previewing the authored scenario is read-only
 

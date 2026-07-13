@@ -1,7 +1,7 @@
 # Step selection / re-run (`-s` / `--step`)
 
 This is the JUDGMENT half of Phase 31. The mechanism (emitting `-s <spec>`, value-pinning the
-spec in the allowlist) is in `app/tools/run/execute.py` + `security/allowlist.yaml`. WHICH step to
+spec in the command policy) is in `app/tools/run/execute.py` + `security/command_policy.yaml`. WHICH step to
 re-run — and the per-phase step numbering — is your call, grounded here. Set
 `ExecuteInput.flags['step']` (NOT `extra`).
 
@@ -32,7 +32,7 @@ The value is a STRING in the upstream step-list grammar (parsed by the CLI's
 | `N,M`       | a comma list of individual steps         | `3,7`     |
 | combos      | mix ranges and individual steps          | `3-5,9`   |
 
-No spaces. Only digits, commas and hyphens — that's all the allowlist permits, so anything
+No spaces. Only digits, commas and hyphens — that's all the command policy permits, so anything
 else is refused before it runs. Out-of-range or reversed (`9-5`) specs are tolerated by the CLI
 (they just select nothing / an empty range), but DON'T rely on that — name real steps.
 
@@ -40,7 +40,7 @@ else is refused before it runs. Out-of-range or reversed (`9-5`) specs are toler
 
 `-s`/`--step` is valid ONLY on **standup, smoketest, run, teardown** (verified against the
 upstream interface — each of those `interface/<name>.py` declares `-s`/`--step`). It is NOT a
-flag on **plan, experiment, results** — never set `step` there. The allowlist value-pins the
+flag on **plan, experiment, results** — never set `step` there. The command policy value-pins the
 step spec only on the four accepting subcommands (so a malformed spec is refused) and adds no
 step flagspec to plan/experiment/results, so the CLI would reject one as an unknown flag.
 

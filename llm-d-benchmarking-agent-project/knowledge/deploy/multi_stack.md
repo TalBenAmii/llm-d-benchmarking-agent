@@ -69,7 +69,7 @@ same small-cluster reasoning applies there.
   still **mutating** and stays approval-gated; only `--dry-run`/`-n` previews it.
 - `--stack`/`--parallel` compose with the other modeled flags (`monitoring`, `step`, `dataset`,
   `models`, `kubeconfig`, …) — they ride alongside, they don't replace.
-- Stack names are value-pinned by the allowlist (`stack_list` — RFC1123 labels, comma-separated)
+- Stack names are value-pinned by the command policy (`stack_list` — RFC1123 labels, comma-separated)
   and `--parallel` by `positive_int`; an injection-laden value is refused. You still must use a
   name that actually exists in the scenario.
 - For a SINGLE-stack scenario, do not set either flag — there is nothing to subset or cap.

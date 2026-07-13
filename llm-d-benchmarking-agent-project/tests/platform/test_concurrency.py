@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from app.agent.session import SessionManager
 from app.config import Settings, get_settings
 from app.llm.provider import AssistantTurn, ToolCall
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner, RunResult
 from app.tools.context import ToolContext
 from tests.flows.catalog_snapshot import frozen_catalog
@@ -61,7 +61,7 @@ def _ctx(tmp_path, runner, *, sem=None):
 
     ctx = ToolContext(
         settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
+        policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner,
         workspace=tmp_path / "ws",
         request_approval=approve,
@@ -127,7 +127,7 @@ def test_session_manager_wires_shared_cap_and_isolated_workspaces(tmp_path):
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
     sem = asyncio.Semaphore(2)
     mgr = SessionManager(
-        settings, Allowlist.from_file(settings.allowlist_path),
+        settings, CommandPolicy.from_file(settings.command_policy_path),
         CommandRunner(settings.repo_paths), run_semaphore=sem,
     )
     s1, s2 = mgr.create(), mgr.create()

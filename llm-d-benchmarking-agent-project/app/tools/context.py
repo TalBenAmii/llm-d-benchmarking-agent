@@ -1,8 +1,8 @@
 """Shared dependencies passed to every tool handler.
 
-Bundles config, the security allowlist, the command runner, and the per-session
+Bundles config, the security policy, the command runner, and the per-session
 workspace. Provides a single ``run_readonly`` helper so even probe commands pass
-through the allowlist gate (defense in depth — nothing bypasses validation).
+through the policy gate (defense in depth — nothing bypasses validation).
 """
 from __future__ import annotations
 
@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import Any
 
 from app.config import Settings
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner, RunResult
 from app.storage.history import HistoryStore
-from app.tools.setup.catalog import build_catalog, catalog_for_allowlist
+from app.tools.setup.catalog import build_catalog, catalog_for_policy
 
 
 class ToolError(RuntimeError):
@@ -41,7 +41,7 @@ EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 @dataclass
 class ToolContext:
     settings: Settings
-    allowlist: Allowlist
+    policy: CommandPolicy
     runner: CommandRunner
     workspace: Path
     # Wired by the agent loop before each tool dispatch.
@@ -107,25 +107,25 @@ class ToolContext:
         root = ws.parent.parent if ws.parent.name == "sessions" else ws.parent
         return HistoryStore(root)
 
-    def catalog_for_allowlist(self) -> dict[str, list[str]]:
-        return catalog_for_allowlist(self.catalog())
+    def catalog_for_policy(self) -> dict[str, list[str]]:
+        return catalog_for_policy(self.catalog())
 
     async def run_readonly(
         self, argv: list[str], *, timeout: float | None = 20.0, quiet: bool = False,
         cwd: str | Path | None = None,
     ) -> RunResult:
-        """Validate + run a command that MUST be read-only. Raises if the allowlist
+        """Validate + run a command that MUST be read-only. Raises if the policy
         would not classify it read-only (these are trusted probes, but we still gate).
         The policy's ``timeout_s`` (if declared) supersedes ``timeout``; probes default to
         a short 20s bound when the policy declares none.
 
-        ``quiet=True`` skips ONLY the ``command`` event emit — every gate (allowlist, read-only
+        ``quiet=True`` skips ONLY the ``command`` event emit — every gate (policy, read-only
         classification) still applies and the command still runs/records metrics. Used by
         the live resource poller so its 5s ``kubectl top`` polls don't flood the persisted,
         500-capped command trail with hundreds of identical rows.
 
         ``cwd`` narrows where a read-only probe runs (e.g. a ``git rev-parse`` against a specific
-        read-only repo for provenance capture). It cannot widen capability — the allowlist /
+        read-only repo for provenance capture). It cannot widen capability — the policy /
         read-only gates still apply and an entry's own pinned ``cwd_must_be`` wins.
 
         Mechanism lives in app/tools/command_exec.py (CommandExecutor); this thin delegator keeps
@@ -149,7 +149,7 @@ class ToolContext:
 
         ``on_line`` (when given) receives each output line as it arrives and OVERRIDES the
         default UI ``output`` emission (so the caller — e.g. the orchestrator's live log tail —
-        owns where each line goes, while still passing through the SAME allowlist/runner path).
+        owns where each line goes, while still passing through the SAME policy/runner path).
         ``stream`` still gates the default UI emission when ``on_line`` is not supplied.
 
         ``env`` is a BACKEND-ONLY per-run env overlay merged last into the child process

@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from app.agent.prompt import HARD_RULES
 from app.config import Settings
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.tools.context import ToolContext
 from app.tools.setup.probe import probe_environment
 from tests.flows.catalog_snapshot import frozen_catalog
@@ -32,7 +32,7 @@ def _ctx(tmp_path, *, canned):
     runner = CaptureRunner(settings.repo_paths, canned=canned)
     ctx = ToolContext(
         settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
+        policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner,
         workspace=tmp_path / "ws",
     )
@@ -110,7 +110,7 @@ def _grafana_ctx(tmp_path, *, grafana_url=""):
     runner = CaptureRunner(settings.repo_paths, canned={})
     ctx = ToolContext(
         settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
+        policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner,
         workspace=tmp_path / "ws",
     )

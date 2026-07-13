@@ -21,19 +21,19 @@ from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.session import Session, SessionManager, derive_title
 from app.config import Settings, get_settings
 from app.llm.provider import AssistantTurn, ToolCall, Usage
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner
 from app.tools.context import ToolContext
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 
 
 def _ctx(tmp_path) -> ToolContext:
     s = get_settings()
-    al = Allowlist.from_file(ALLOWLIST_PATH)
+    al = CommandPolicy.from_file(COMMAND_POLICY_PATH)
     runner = CommandRunner(s.repo_paths)
-    return ToolContext(settings=s, allowlist=al, runner=runner, workspace=tmp_path / "ws")
+    return ToolContext(settings=s, policy=al, runner=runner, workspace=tmp_path / "ws")
 
 
 def _session(tmp_path) -> Session:
@@ -92,7 +92,7 @@ async def test_loop_injects_catalog_message_once(tmp_path):
 
 
 def test_catalog_injected_flag_survives_persist_and_load(tmp_path):
-    al = Allowlist.from_file(ALLOWLIST_PATH)
+    al = CommandPolicy.from_file(COMMAND_POLICY_PATH)
     runner = CommandRunner(get_settings().repo_paths)
     mgr = SessionManager(Settings(workspace_dir=tmp_path), al, runner)
     sess = mgr.create()
@@ -118,7 +118,7 @@ def test_title_skips_synthetic_injected_messages():
 
 def test_old_state_json_without_catalog_flag_defaults_false(tmp_path):
     import json
-    al = Allowlist.from_file(ALLOWLIST_PATH)
+    al = CommandPolicy.from_file(COMMAND_POLICY_PATH)
     runner = CommandRunner(get_settings().repo_paths)
     mgr = SessionManager(Settings(workspace_dir=tmp_path), al, runner)
     sess = mgr.create()

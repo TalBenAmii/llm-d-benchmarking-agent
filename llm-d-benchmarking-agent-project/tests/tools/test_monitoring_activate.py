@@ -6,7 +6,7 @@ CONSUMER half — parsing results.observability — is Phase 25, covered in test
   * build_argv emits the SUBCOMMAND-AWARE monitoring flag: True => --monitoring on
     standup/run/experiment/plan; False => --no-monitoring on STANDUP ONLY (run/experiment/plan
     have no such upstream flag and simply omit it); None/absent => nothing;
-  * the allowlist permits EXACTLY those flags per subcommand (and rejects --no-monitoring's
+  * the policy permits EXACTLY those flags per subcommand (and rejects --no-monitoring's
     value-laden abuse via the metachar screen), with the flagged commands keeping their
     read-only/mutating classification;
   * the prometheus_crds probe is a read-only fact-reporter (present iff BOTH CRDs exist), and
@@ -20,7 +20,7 @@ import pytest
 import yaml
 
 from app.config import Settings
-from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
+from app.security.policy import MUTATING, READ_ONLY, CommandPolicy
 from app.tools.analyze import analyze
 from app.tools.context import ToolContext
 from app.tools.registry import dispatch
@@ -82,38 +82,38 @@ def test_execute_schema_accepts_monitoring_flag():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — exactly the right flags are permitted per subcommand (DATA)
+# policy — exactly the right flags are permitted per subcommand (DATA)
 # ---------------------------------------------------------------------------
 
 
-def test_allowlist_permits_monitoring_on_standup_run_experiment_plan(allowlist, catalog):
+def test_policy_permits_monitoring_on_standup_run_experiment_plan(policy, catalog):
     for sub, extra in (
         ("standup", []),
         ("run", ["-l", "inference-perf", "-w", "sanity_random.yaml"]),
         ("experiment", ["-e", "workspace/exp.yaml"]),
         ("plan", []),
     ):
-        d = allowlist.validate(_argv(sub, *extra, "--monitoring"), catalog=catalog)
+        d = policy.validate(_argv(sub, *extra, "--monitoring"), catalog=catalog)
         assert d.allowed, f"--monitoring should be allowed on {sub}: {d.reason}"
 
 
-def test_allowlist_permits_no_monitoring_on_standup(allowlist, catalog):
-    d = allowlist.validate(_argv("standup", "--no-monitoring"), catalog=catalog)
+def test_policy_permits_no_monitoring_on_standup(policy, catalog):
+    d = policy.validate(_argv("standup", "--no-monitoring"), catalog=catalog)
     assert d.allowed and d.mode == MUTATING and d.requires_approval
 
 
-def test_monitoring_flags_do_not_change_mode_classification(allowlist, catalog):
+def test_monitoring_flags_do_not_change_mode_classification(policy, catalog):
     # standup stays mutating with --monitoring; plan stays read-only with --monitoring.
-    assert allowlist.validate(_argv("standup", "--monitoring"), catalog=catalog).mode == MUTATING
-    assert allowlist.validate(_argv("plan", "--monitoring"), catalog=catalog).mode == READ_ONLY
+    assert policy.validate(_argv("standup", "--monitoring"), catalog=catalog).mode == MUTATING
+    assert policy.validate(_argv("plan", "--monitoring"), catalog=catalog).mode == READ_ONLY
     # --dry-run still downgrades a monitored standup to a read-only preview.
-    d = allowlist.validate(_argv("standup", "--monitoring", "--dry-run"), catalog=catalog)
+    d = policy.validate(_argv("standup", "--monitoring", "--dry-run"), catalog=catalog)
     assert d.allowed and d.mode == READ_ONLY
 
 
-def test_no_monitoring_value_abuse_is_screened(allowlist, catalog):
+def test_no_monitoring_value_abuse_is_screened(policy, catalog):
     # It is a boolean flag; a metachar-laden trailing value is still rejected by the screen.
-    assert not allowlist.validate(
+    assert not policy.validate(
         _argv("standup", "--no-monitoring", "a;rm -rf /"), catalog=catalog
     ).allowed
 
@@ -139,7 +139,7 @@ def _probe_ctx(tmp_path, *, canned):
                         workspace_dir=tmp_path / "ws")
     runner = CaptureRunner(settings.repo_paths, canned=canned)
     ctx = ToolContext(
-        settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+        settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
     )
     frozen = frozen_catalog()
@@ -268,12 +268,12 @@ async def test_analyze_results_surfaces_observability_for_single_run(tool_ctx, b
 
 
 # ---------------------------------------------------------------------------
-# sanity: the canned probe really validated through the allowlist (no metachar leak)
+# sanity: the canned probe really validated through the policy (no metachar leak)
 # ---------------------------------------------------------------------------
 
 
-def test_get_crd_is_read_only_allowlisted(allowlist):
+def test_get_crd_is_read_only_policy_allowed(policy):
     # The probe lists ALL CRDs read-only and filters in Python (one positional: the resource
     # type), so this exact argv is what the prometheus_crds probe issues.
-    d = allowlist.validate(["kubectl", "get", "crd", "-o", "name"], catalog=None)
+    d = policy.validate(["kubectl", "get", "crd", "-o", "name"], catalog=None)
     assert d.allowed and d.mode == READ_ONLY

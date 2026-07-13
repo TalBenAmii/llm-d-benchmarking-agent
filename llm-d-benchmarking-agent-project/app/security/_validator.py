@@ -1,21 +1,21 @@
-"""Generic token-walk engine for the command allowlist (private to ``app.security``).
+"""Generic token-walk engine for the command policy (private to ``app.security``).
 
-This is the *validator engine* extracted from :mod:`app.security.allowlist`: the pure,
+This is the *validator engine* extracted from :mod:`app.security.policy`: the pure,
 per-command-knowledge-free machinery that walks a region of argv tokens against the policy
 shape (executables -> subcommands -> flags -> positionals -> value_constraints) and returns
 the effective mode (``read_only`` / ``mutating``), raising :class:`_Reject` on any
 unrecognized flag/positional or bad value.
 
 It contains **no** ``if exe == "..."`` / ``if sub == "..."`` branches: every rule is read out
-of the parsed YAML structures it is handed. The :class:`Allowlist` facade in
-:mod:`app.security.allowlist` constructs a :class:`_Validator` per ``validate()`` call (holding
+of the parsed YAML structures it is handed. The :class:`CommandPolicy` facade in
+:mod:`app.security.policy` constructs a :class:`_Validator` per ``validate()`` call (holding
 the resolved value-constraint table + the optional live catalog) and delegates the token walk
-to it; it then builds the public :class:`~app.security.allowlist.Decision` from the returned
+to it; it then builds the public :class:`~app.security.policy.Decision` from the returned
 mode plus the policy's governance fields.
 
-Import direction is one-way to avoid a cycle: ``allowlist.py`` imports FROM this module; this
-module imports nothing from ``allowlist.py``. The mode constants and the :class:`_Reject`
-control-flow exception therefore live HERE and are re-exported by ``allowlist.py`` so the
+Import direction is one-way to avoid a cycle: ``policy.py`` imports FROM this module; this
+module imports nothing from ``policy.py``. The mode constants and the :class:`_Reject`
+control-flow exception therefore live HERE and are re-exported by ``policy.py`` so the
 public names (``READ_ONLY`` / ``MUTATING``) stay where external code already imports them.
 """
 from __future__ import annotations
@@ -37,7 +37,7 @@ class _Validator:
     Holds the per-call state the walk needs — the resolved ``value_constraints`` table (for
     ``ref`` resolution) and the optional live ``catalog`` (for ``ref_catalog`` membership) — so
     the walk methods don't have to thread it through every recursive call. The methods are a
-    verbatim move of the former ``Allowlist._walk*`` family: pure mechanism over the YAML shape,
+    verbatim move of the former ``CommandPolicy._walk*`` family: pure mechanism over the YAML shape,
     with zero per-command knowledge.
     """
 
@@ -92,7 +92,7 @@ class _Validator:
             nested_name = tokens[idx]
             nested_sub = nested.get(nested_name)
             if nested_sub is None:
-                raise _Reject(f"subcommand {nested_name!r} is not allowlisted for {subname!r}")
+                raise _Reject(f"subcommand {nested_name!r} is not policy-allowed for {subname!r}")
             pre = tokens[:idx]
             post = tokens[idx + 1:]
             # Validate this level's leading flags (flags only — no positionals before the nested
@@ -123,7 +123,7 @@ class _Validator:
                 spec = global_flags.get(tok)
                 if spec is None:
                     # Unknown global flag: accepted (policy allows any flag once the
-                    # executable is allowlisted). Treat as boolean so we don't swallow
+                    # executable is policy-allowed). Treat as boolean so we don't swallow
                     # what might be the subcommand token.
                     i += 1
                     continue
@@ -159,7 +159,7 @@ class _Validator:
                 spec = flags.get(tok)
                 if spec is None:
                     # Policy: any flag is accepted once the executable + subcommand are
-                    # allowlisted. The unknown flag's arity is unknown, so greedily consume
+                    # policy-allowed. The unknown flag's arity is unknown, so greedily consume
                     # a following non-option token as its value (handles `-l inference-perf`);
                     # `--flag=value` is self-contained. Every token is already metachar-screened
                     # in validate(), and unknown flags never downgrade the mode — so mutating

@@ -33,7 +33,7 @@ class ExecuteInput(BaseModel):
         description="Path to a NON-DEFAULT kubeconfig FILE to target a remote cluster for THIS "
                     "command instead of the ambient kube context. Emitted as `-k <path>` (upstream "
                     "--kubeconfig / LLMDBENCH_KUBECONFIG); valid on every subcommand; a non-secret "
-                    "path, allowlist value-pinned (no `..`). WHEN/WHICH cluster is YOUR judgment "
+                    "path, policy value-pinned (no `..`). WHEN/WHICH cluster is YOUR judgment "
                     "(knowledge/preconditions.md; no enumerable catalog). Omit for the ambient "
                     "context (the local Kind cluster for the quickstart). To target by API URL + "
                     "bearer TOKEN instead, see flags.cluster_url / flags.cluster_token — the TOKEN "

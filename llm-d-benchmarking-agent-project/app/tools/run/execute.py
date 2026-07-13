@@ -2,7 +2,7 @@
 
 Every standup / smoketest / run / teardown / plan goes through here. The handler builds
 an argv list from structured arguments (never a shell string), validates it against the
-allowlist for a clean early error, then runs it via the approval-gated runner.
+policy for a clean early error, then runs it via the approval-gated runner.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ _K8S_MEM_QUANTITY_RE = re.compile(r"^\d+(\.\d+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|k|m
 _POLLED_SUBCOMMANDS = {"run", "experiment", "smoketest"}
 
 # Per-subcommand RUNNER execution timeouts are POLICY DATA: they live as `timeout_s` on each
-# llmdbenchmark subcommand in security/allowlist.yaml and are sourced from there by the
+# llmdbenchmark subcommand in security/command_policy.yaml and are sourced from there by the
 # command runner (via the Decision). That is the OUTER, host-side deadline (asyncio.wait_for
 # in runner.execute) — one mechanism, not two (Phase 13). It is unchanged here.
 #
@@ -37,7 +37,7 @@ _POLLED_SUBCOMMANDS = {"run", "experiment", "smoketest"}
 # and the rule that every value must stay BELOW the runner `timeout_s` ceiling so the two layers
 # do not fight, live in knowledge/phase_timeouts.md. Flag spellings + type=int + accepting
 # subcommands are verified against llm-d-benchmark/llmdbenchmark/interface/{standup,run,
-# experiment,teardown}.py and are value-pinned (positive_int) in security/allowlist.yaml.
+# experiment,teardown}.py and are value-pinned (positive_int) in security/command_policy.yaml.
 # The git-like CLI Results Store (Phase 50). `llmdbenchmark results <store-command>` is an
 # OPTIONAL, team-shared store (GCS remotes + push/pull) that is SEPARATE from the agent's own
 # local history store (the result_history tool / app/storage/history.py). build_argv emits the
@@ -45,7 +45,7 @@ _POLLED_SUBCOMMANDS = {"run", "experiment", "smoketest"}
 # if/elif on a VALUE: the only branch is on the discrete `command` enum token (mirroring the
 # _PHASE_TIMEOUT_FLAGS table style). WHEN/WHETHER to use this store vs the local one is judgment
 # in knowledge/history.md, never encoded here. The store-commands' shapes are verified against
-# llm-d-benchmark/llmdbenchmark/interface/results.py and value-pinned in security/allowlist.yaml
+# llm-d-benchmark/llmdbenchmark/interface/results.py and value-pinned in security/command_policy.yaml
 # (init/status/ls/remote-ls read-only; add/rm/push/pull/remote-add/remote-rm mutating).
 _RESULTS_STORE_COMMANDS = frozenset(
     {"init", "remote", "status", "add", "rm", "ls", "push", "pull"}
@@ -57,7 +57,7 @@ def _build_results_store_argv(store: dict[str, Any]) -> list[str]:
     sub-positionals. PURE MECHANISM — the single branch is on the discrete ``command`` enum
     token (a fixed set), never on a value. Optional slots emit nothing when absent; a missing
     REQUIRED sub-field raises a clean ToolError the agent can self-correct from, rather than a
-    raw KeyError. The allowlist + the CLI's own argparse still reject a malformed shape."""
+    raw KeyError. The policy + the CLI's own argparse still reject a malformed shape."""
     command = str(store.get("command", ""))
     if command not in _RESULTS_STORE_COMMANDS:
         raise ToolError(
@@ -76,7 +76,7 @@ def _build_results_store_argv(store: dict[str, Any]) -> list[str]:
     if command in ("add", "rm"):
         # `results add|rm <paths...>` — one or more local dir paths / run-uids to (un)stage.
         # Guard the shape: a non-iterable `paths` (e.g. a scalar) would raise TypeError BEFORE the
-        # allowlist could reject it; a bare string would silently iterate per-character. Both must
+        # policy could reject it; a bare string would silently iterate per-character. Both must
         # be a clean, self-correctable ToolError instead.
         paths = store.get("paths") or []
         if not isinstance(paths, (list, tuple)):
@@ -162,10 +162,10 @@ _SUBCOMMAND_FLAGS: dict[str, tuple[str, tuple[str, ...], bool, bool]] = {
     "parallel": ("--parallel", ("standup", "smoketest", "experiment"), True, True),
     # Gateway PROVIDER selection (Phase 32): --gateway-class <provider> OVERRIDES the scenario's
     # gateway.className. Registered on ALL SIX subcommands upstream, so NO guard (empty tuple).
-    # knowledge/gateway_class.md; value is allowlist-pinned to the gateway_class enum.
+    # knowledge/gateway_class.md; value is policy-pinned to the gateway_class enum.
     "gateway_class": ("--gateway-class", (), True, False),
     # Step selection / re-run (Phase 31): -s <spec> re-runs one step / step range. -s is valid on
-    # standup/smoketest/run/teardown upstream, but the allowlist screens an -s on a non-accepting
+    # standup/smoketest/run/teardown upstream, but the policy screens an -s on a non-accepting
     # subcommand, so this kept NO Python subcommand guard before — preserved (empty tuple).
     # knowledge/step_select.md.
     "step": ("-s", (), True, False),
@@ -401,7 +401,7 @@ async def execute_llmdbenchmark(
 
     # Right-size the harness launcher's CPU request for small/Kind nodes. This is an ENV VAR
     # (LLMDBENCH_HARNESS_CPU_NR), NOT a CLI flag and NOT an executable, so it bypasses the
-    # allowlist entirely and is carried backend-only through the child env — it never reaches
+    # policy entirely and is carried backend-only through the child env — it never reaches
     # the browser (no `command` event emits env). PURE MECHANISM: we forward whatever value the
     # agent chose; WHETHER to lower it from the default (16) and to WHAT — given the probed node
     # CPU and the harness (inference-perf's multi-process launcher needs more headroom than
@@ -426,8 +426,8 @@ async def execute_llmdbenchmark(
 
     # Remote-cluster access by API-server URL + bearer TOKEN (Phase 29). These ride the SAME
     # backend-only `env=child_env` overlay as LLMDBENCH_HARNESS_CPU_NR — they are ENV VARS, NOT
-    # CLI flags, so they bypass the allowlist and NEVER enter argv. The token is a SECRET: it is
-    # therefore deliberately NOT an allowlisted flag (it could never be expressed as an argv
+    # CLI flags, so they bypass the policy and NEVER enter argv. The token is a SECRET: it is
+    # therefore deliberately NOT an policy-allowed flag (it could never be expressed as an argv
     # token) and it never appears in a `command` event — `_emit_command` emits only argv/text/
     # mode, so the browser/log/persisted trail never sees it (mirrors the HF_TOKEN non-leak
     # rationale in scripts/bridges/provision_hf_secret.py + settings.extra_subprocess_env). The benchmark
@@ -444,12 +444,12 @@ async def execute_llmdbenchmark(
     child_env_or_none: dict[str, str] | None = child_env or None
 
     # Validate up front for a clean, specific error message before any approval prompt.
-    decision = ctx.allowlist.validate(argv, catalog=ctx.catalog_for_allowlist())
+    decision = ctx.policy.validate(argv, catalog=ctx.catalog_for_policy())
     if not decision.allowed:
-        raise ToolError(f"command refused by allowlist: {decision.reason}\n  argv: {' '.join(argv)}")
+        raise ToolError(f"command refused by policy: {decision.reason}\n  argv: {' '.join(argv)}")
 
     # No timeout override: ctx.run_command sources the per-command deadline from the
-    # allowlist's `timeout_s` for this subcommand (data), falling back to the runner's
+    # policy's `timeout_s` for this subcommand (data), falling back to the runner's
     # global default when the policy declares none. For the cluster-exercising subcommands,
     # stream live resource stats alongside the run (backend-only, zero LLM cost; no-op without
     # a UI emitter or in simulate mode).

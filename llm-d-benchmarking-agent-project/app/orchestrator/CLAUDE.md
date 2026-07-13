@@ -35,7 +35,7 @@ ConfigMap checkpoint).
 - `controller.py` — `BenchmarkOrchestrator`: submit / watch / diagnose / `run_with_retries` / `run_sweep` / reconstruct / cleanup.
 - `job.py` — `JobSpec`/`JobStatus`, phase classification, manifest rendering, `Scheduling` (GPU/affinity/tolerations — type-validated, no policy).
 - `faults.py` — failure classification.
-- `kube.py` — `KubeClient`: allowlisted `kubectl` (apply/delete mutating + approval-gated; get/logs read-only).
+- `kube.py` — `KubeClient`: policy-allowed `kubectl` (apply/delete mutating + approval-gated; get/logs read-only).
 - `checkpoint.py` — sweep ConfigMap checkpoint load/write/resume.
 
 (Readiness analysis moved to its own package — see `app/readiness/CLAUDE.md`.)

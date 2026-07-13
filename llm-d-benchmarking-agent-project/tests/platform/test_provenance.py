@@ -1,7 +1,7 @@
 """Reproducibility — the provenance capture mechanism (app/storage/provenance.py).
 
 Hermetic: real BR v0.2 report fixtures, a real tmp git repo for SHA/dirty capture (created with
-the local git binary), and a fake read-only runner so capture_repo_state runs no allowlist gate
+the local git binary), and a fake read-only runner so capture_repo_state runs no policy gate
 here. No cluster, no GPU, no network.
 """
 from __future__ import annotations

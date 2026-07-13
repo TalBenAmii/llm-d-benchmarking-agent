@@ -1,9 +1,9 @@
 """The command-execution engine for :class:`~app.tools.context.ToolContext`.
 
 ToolContext is the dependency-injection hub every tool receives (settings, the security
-allowlist, the command runner, the per-session workspace, and the emit / approval callbacks
+policy, the command runner, the per-session workspace, and the emit / approval callbacks
 the agent loop wires in per dispatch). The logic that actually VALIDATES a command against the
-allowlist, GATES it (approval when mutating), runs + times it, announces it to the UI, and
+policy, GATES it (approval when mutating), runs + times it, announces it to the UI, and
 records its metric/log used to live on ToolContext itself — mixing a state container with an
 execution engine.
 
@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.observability import metrics as instrument
-from app.security.allowlist import MUTATING, READ_ONLY, Decision
+from app.security.policy import MUTATING, READ_ONLY, Decision
 from app.security.runner import RunResult, simulated_run_result
 from app.tools.context import ApprovalRejected, ToolError
 from app.tools.run import gated_access, skill_gate
@@ -111,19 +111,19 @@ class CommandExecutor:
         cwd: str | Path | None = None,
     ) -> RunResult:
         """Validate + run a command that MUST be read-only (see ToolContext.run_readonly for
-        the public contract). Raises if the allowlist would not classify it read-only.
+        the public contract). Raises if the policy would not classify it read-only.
 
         ``cwd`` overrides the resolved working directory for the read-only probe (e.g. a
         ``git rev-parse`` against a specific repo for provenance capture). It can ONLY narrow
-        where the probe reads — every gate (allowlist, read-only classification) still
-        applies — and an allowlist entry's own pinned ``cwd_must_be`` still takes precedence."""
+        where the probe reads — every gate (policy, read-only classification) still
+        applies — and an policy entry's own pinned ``cwd_must_be`` still takes precedence."""
         ctx = self._ctx
-        decision = ctx.allowlist.validate(argv, catalog=ctx.catalog_for_allowlist())
+        decision = ctx.policy.validate(argv, catalog=ctx.catalog_for_policy())
         if not decision.allowed:
-            raise ToolError(f"probe command denied by allowlist: {decision.reason}")
+            raise ToolError(f"probe command denied by policy: {decision.reason}")
         if decision.mode != READ_ONLY:
             raise ToolError(f"probe command is not read-only: {' '.join(argv)}")
-        entry = ctx.allowlist.executable(argv[0])
+        entry = ctx.policy.executable(argv[0])
         if not quiet:
             await self._emit_command(decision, auto_run=True)
         # An entry that pins its own cwd (cwd_must_be) wins; otherwise honor the caller's cwd.
@@ -147,9 +147,9 @@ class CommandExecutor:
         """Validate, gate (approval if mutating), then run a command (see
         ToolContext.run_command for the public contract — streaming, ``on_line``, ``env``)."""
         ctx = self._ctx
-        decision = ctx.allowlist.validate(argv, catalog=ctx.catalog_for_allowlist())
+        decision = ctx.policy.validate(argv, catalog=ctx.catalog_for_policy())
         if not decision.allowed:
-            raise ToolError(f"command denied by allowlist: {decision.reason}")
+            raise ToolError(f"command denied by policy: {decision.reason}")
         # Gated-model access guardrail (a SAFETY gate, like the approval gate below): refuse to
         # stand up / run / smoketest a model the backend HF token can't pull, once check_capacity
         # has reported it gated+unauthorized. Mechanism enforcing a stated boundary on the
@@ -190,7 +190,7 @@ class CommandExecutor:
             )
             self._record_metric(decision, auto_run=False, result=result)
             return result
-        entry = ctx.allowlist.executable(argv[0])
+        entry = ctx.policy.executable(argv[0])
         # Announce the command for the full executed-command trail / debug view. For a
         # mutating command this fires only after approval, so it records what truly ran.
         await self._emit_command(decision, auto_run=not decision.requires_approval)

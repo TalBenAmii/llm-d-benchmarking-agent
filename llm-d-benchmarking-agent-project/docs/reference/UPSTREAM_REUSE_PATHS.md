@@ -15,7 +15,7 @@ resolved, fail loudly (non-negotiable rule 7). Split out of `PROJECT_BRAIN_REFER
 
 ## `llm-d-skills/`: the 3rd REQUIRED read-only repo (incubation skills library)
 Canonical, upstream-maintained operational procedures, read live (never vendored; clone via
-`ensure_repos` / the allowlisted `git clone .../llm-d-incubation/llm-d-skills`). It is the canonical
+`ensure_repos` / the policy-allowed `git clone .../llm-d-incubation/llm-d-skills`). It is the canonical
 default source for the deploy / teardown / benchmark / compare / autoscale procedures, so it is a
 REQUIRED repo alongside `llm-d` + `llm-d-benchmark`: it's in `Settings.repo_paths` (gates `/readyz`
 and is captured in provenance / reproducibility; a missing skills repo 503s the startup self-check,

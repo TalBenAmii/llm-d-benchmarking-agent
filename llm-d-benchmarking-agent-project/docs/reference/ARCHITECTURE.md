@@ -15,7 +15,7 @@ boundaries, and the two invariants that keep the system safe and reliable.
 Everything below follows from two rules (see [`CLAUDE.md`](../../CLAUDE.md)):
 
 1. **Thin code, thick agent.** Python is mechanism only: a chat UI, an agent loop, a
-   set of tools, a command allowlist, and schema validation. All judgment (which
+   set of tools, a command command policy, and schema validation. All judgment (which
    spec/harness/workload to use, what flags to pass, how to read a result) lives in the LLM
    plus editable Markdown/YAML under [`knowledge/`](../../knowledge/). There are no
    `if/elif` decision branches encoding benchmarking expertise in Python.
@@ -50,7 +50,7 @@ Everything below follows from two rules (see [`CLAUDE.md`](../../CLAUDE.md)):
    │                                      │                                 │
    │                       ToolContext.run_command / run_readonly           │
    │                                      ▼                                 │
-   │            allowlist.validate (deny-by-default)  ── gate ──► approval   │
+   │            policy.validate (deny-by-default)  ── gate ──► approval   │
    │                                      ▼                                 │
    │            CommandRunner: argv list, shell=False, env scrubbed         │
    └──────────────────────────────────────────────────────────────────────┘
@@ -78,7 +78,7 @@ text, structured events, and Approve/Reject decisions. Responsibilities:
 - **HTTP/WS surface**: see [`API.md`](API.md). `/` and `/static` serve the UI; `/ws` hosts
   the agent; `/healthz`, `/metrics`, `/api/sessions`, `/api/history*` are control/observe
   endpoints.
-- **Lifespan wiring**: loads `Settings`, the `Allowlist`, the `CommandRunner`, the
+- **Lifespan wiring**: loads `Settings`, the `CommandPolicy`, the `CommandRunner`, the
   cross-session concurrency `Semaphore`, the `SessionManager`, and the LLM provider (built
   tolerantly so a missing key doesn't crash the server).
 - **Connection handling**: resume a saved chat via `/ws?session=<id>`; replay history and
@@ -102,16 +102,16 @@ text, structured events, and Approve/Reject decisions. Responsibilities:
 `registry.py` maps each tool name to a Pydantic input model plus a handler.
 `dispatch()` validates the LLM's arguments against the model (determinism gate a) and
 returns validation errors to the model instead of raising, so it can self-correct.
-`ToolContext` (`context.py`) bundles the shared dependencies (settings, allowlist, runner,
+`ToolContext` (`context.py`) bundles the shared dependencies (settings, command policy, runner,
 per-session workspace, the approval/emit callbacks, the concurrency semaphore) and exposes
 the single command seam `run_command` / `run_readonly` that every execution passes
 through. The agent's tools and their schemas are catalogued in [`API.md`](API.md).
 
-### Security: `app/security/` + `security/allowlist.yaml`
-- `allowlist.yaml` is data: a deny-by-default policy that is the single source of truth
+### Security: `app/security/` + `security/command_policy.yaml`
+- `command_policy.yaml` is data: a deny-by-default policy that is the single source of truth
   for what may be executed. Widening the agent's powers is a reviewed edit here, never a
   code change.
-- `allowlist.py` is a pure validator with no per-command knowledge: it checks
+- `policy.py` is a pure validator with no per-command knowledge: it checks
   `argv[0]` (known executable), `argv[1]` (allowed subcommand), every remaining token
   (allowed flag / constrained value / allowed positional), screens for shell metacharacters,
   cross-checks `spec`/`harness`/`workload` against the live catalog, and computes the
@@ -135,7 +135,7 @@ through. The agent's tools and their schemas are catalogued in [`API.md`](API.md
 
 ### Orchestrator: `app/orchestrator/` (the Kubernetes-native centerpiece)
 Runs a benchmark as a managed Kubernetes Job rather than a blocking local subprocess:
-- `kube.py`: `KubeClient` over the allowlisted `kubectl` runner (`RealKubeClient`) plus a
+- `kube.py`: `KubeClient` over the policy-allowed `kubectl` runner (`RealKubeClient`) plus a
   `FakeKubeClient` for hermetic tests. Deliberately not the Python client, to keep the
   deny-by-default + approval + env-scrub model.
 - `job.py`: the Job manifest model (`backoffLimit: 0`, `activeDeadlineSeconds`, run-id
@@ -158,7 +158,7 @@ tool and the UI trends view.
 ### Capacity: `app/capacity/` + `scripts/bridges/capacity_check.py`
 A pre-flight that answers "will this fit?" before a ~10-minute standup fails opaquely with
 OOM. It runs the benchmark repo's own capacity planner (which lives only in that repo's
-venv) through a vetted, allowlisted bridge script over a workspace-confined JSON request,
+venv) through a vetted, policy-allowed bridge script over a workspace-confined JSON request,
 plus weights + activation + KV-cache arithmetic. Pure math and diagnostics in `planner.py`;
 the verdict-interpretation judgment is in `knowledge/capacity.md`.
 
@@ -182,7 +182,7 @@ and `knowledge/packaging.md`.
 |---|---|---|
 | **a. Tool args** | `tools/registry.py` `dispatch()` | The LLM can only act through schema-validated tool calls; bad args return errors to the model. |
 | **b. SessionPlan** | `validation/session_plan.py` + `tools/setup/plan.py` | A structured plan (enum fields checked against the live catalog) is approved before any mutation. |
-| **c. Config preview** | allowlist `read_only_trigger` on `--dry-run`/`plan`/`--list-endpoints` | Generated configs are validated by the CLI's own preview before execution. |
+| **c. Config preview** | command policy `read_only_trigger` on `--dry-run`/`plan`/`--list-endpoints` | Generated configs are validated by the CLI's own preview before execution. |
 | **d. Result schema** | `validation/report.py` | Results are parsed from a validated Benchmark Report v0.2 object, never scraped from logs. |
 
 ## Request flow (one user turn)
@@ -193,7 +193,7 @@ and `knowledge/packaging.md`.
 3. The LLM streams `assistant_text` and emits `tool_call`s.
 4. For each tool call, `dispatch` validates the arguments (gate a) and runs the handler.
 5. A handler that runs a command goes through `ToolContext.run_command`, then
-   `allowlist.validate`. Read-only commands auto-run and emit a `command` event; mutating
+   `policy.validate`. Read-only commands auto-run and emit a `command` event; mutating
    commands emit an `approval_request` and block until the user clicks Approve (then the
    command is re-validated, as defense in depth, and run, emitting the `command` event for
    what truly ran).

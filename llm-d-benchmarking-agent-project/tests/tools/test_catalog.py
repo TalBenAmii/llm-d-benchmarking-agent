@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.tools.setup.catalog import build_catalog, catalog_for_allowlist
+from app.tools.setup.catalog import build_catalog, catalog_for_policy
 
 
 @pytest.fixture(scope="module")
@@ -32,8 +32,8 @@ def test_workloads_include_sanity_random(cat):
     assert "sanity_random.yaml" in cat["workloads_by_harness"]["inference-perf"]
 
 
-def test_catalog_slice_for_allowlist(cat):
-    sliced = catalog_for_allowlist(cat)
+def test_catalog_slice_for_policy(cat):
+    sliced = catalog_for_policy(cat)
     assert set(sliced) == {"specs", "harnesses", "workloads"}
     assert "cicd/kind" in sliced["specs"]
 
@@ -55,7 +55,7 @@ def test_plain_yaml_profile_is_catalogued(tmp_path):
     ``-w`` value — upstream step_05_render_profiles resolves ``<name>`` before ``<name>.in`` —
     so the catalog must list it too, not only the ``*.yaml.in`` templates. Regression: the
     glob used to be ``*.yaml.in`` only, silently dropping plain-yaml profiles (e.g. the real
-    repo's ``guide_predicted-latency-routing_1.yaml``) so the allowlist/plan rejected them."""
+    repo's ``guide_predicted-latency-routing_1.yaml``) so the policy/plan rejected them."""
     _profile(tmp_path, "inference-perf", "sanity_random.yaml.in")  # template
     _profile(tmp_path, "inference-perf", "guide_plain_1.yaml")     # plain, no .in
     cat = build_catalog(tmp_path)

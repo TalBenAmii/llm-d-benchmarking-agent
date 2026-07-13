@@ -36,7 +36,7 @@ from fastapi.testclient import TestClient
 from app.agent.session import NO_NAMESPACE, SessionManager
 from app.config import Settings, get_settings
 from app.llm.provider import AssistantTurn, ToolCall
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import SimRunner
 
 # Background frames the env pre-probe / resource poller can stream onto a connection; they're
@@ -61,7 +61,7 @@ class FuzzProvider:
     a cursor.
     """
 
-    # A valid mutating turn against the REAL registry + allowlist: propose a plan (gated), then
+    # A valid mutating turn against the REAL registry + policy: propose a plan (gated), then
     # a standup (mutating command → no-op under SimRunner, but still drives the gate machinery).
     @staticmethod
     def _mutating_script(tag: str) -> list[AssistantTurn]:
@@ -124,14 +124,14 @@ def install_isolated_state(app, tmp_path) -> FuzzProvider:
         workspace_dir=tmp_path / "ws",        # isolated, empty session store on disk
         default_session_namespace=None,       # let plans/fuzz drive namespaces
     )
-    allowlist = Allowlist.from_file(settings.allowlist_path)
+    policy = CommandPolicy.from_file(settings.command_policy_path)
     runner = SimRunner(settings.repo_paths, extra_env=settings.extra_subprocess_env)
     app.state.settings = settings
-    app.state.allowlist = allowlist
+    app.state.policy = policy
     app.state.runner = runner
     app.state.channels = {}
     app.state.running = {}
-    app.state.sessions = SessionManager(settings, allowlist, runner)
+    app.state.sessions = SessionManager(settings, policy, runner)
     provider = FuzzProvider()
     app.state.provider = provider
     app.state.provider_error = None

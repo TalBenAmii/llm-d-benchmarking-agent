@@ -11,7 +11,7 @@ and merges the prior outcomes into the final roll-up.
 This is **mechanism only**:
 
 * The store is a thin read/serialize/write over a :class:`~app.orchestrator.kube.KubeClient`
-  (the same allowlisted ``kubectl`` surface as the Job lifecycle). It holds NO local
+  (the same policy-allowed ``kubectl`` surface as the Job lifecycle). It holds NO local
   source-of-truth and NO judgment — *which* treatments to run, retry budgets, parallelism are
   the agent's / controller's decisions.
 * The ConfigMap is the single source of truth. It is labelled ``managed-by`` + the sweep
@@ -203,7 +203,7 @@ class CheckpointStore:
     async def write(self, checkpoint: SweepCheckpoint, *, namespace: str) -> None:
         """Persist the checkpoint to the cluster ConfigMap (create-or-update via apply). The
         manifest is written into the workspace (the same confinement as Job manifests) so the
-        allowlisted ``kubectl apply -f`` accepts it."""
+        policy-allowed ``kubectl apply -f`` accepts it."""
         manifest = build_configmap_manifest(checkpoint.sweep_id, checkpoint, namespace=namespace)
         path = self._workspace / "sweeps" / f"{checkpoint.sweep_id}.checkpoint.yaml"
         path.parent.mkdir(parents=True, exist_ok=True)

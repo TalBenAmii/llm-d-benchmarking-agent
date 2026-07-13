@@ -19,7 +19,7 @@ editable files under `knowledge/`.
 ### Architecture & invariants
 
 **Thin code, thick agent**:
-The governing rule that Python is mechanism only (UI, agent loop, tools, allowlist, schema validation) while all judgment (which spec/harness/workload to use, what flags to pass, how to read results) lives in the LLM plus editable Markdown/YAML under `knowledge/`. A decision encoded as a Python `if/elif` branch violates it.
+The governing rule that Python is mechanism only (UI, agent loop, tools, command policy, schema validation) while all judgment (which spec/harness/workload to use, what flags to pass, how to read results) lives in the LLM plus editable Markdown/YAML under `knowledge/`. A decision encoded as a Python `if/elif` branch violates it.
 _Avoid_: "business logic in code", "config-driven" (it's LLM-reasoned, not a config switch), "rules engine".
 
 **Determinism gate**:
@@ -36,11 +36,11 @@ The small set of `knowledge/` files inlined verbatim into every system prompt (t
 _Avoid_: "default knowledge", "base prompt".
 
 **catalog**:
-The set of valid specs, harnesses, and workloads, discovered live from the `llm-d-benchmark` repo on disk at runtime, never hardcoded or invented. SessionPlan and allowlist values are cross-checked against it.
+The set of valid specs, harnesses, and workloads, discovered live from the `llm-d-benchmark` repo on disk at runtime, never hardcoded or invented. SessionPlan and command policy values are cross-checked against it.
 _Avoid_: "registry" (that's the tool registry), "options list", "presets".
 
 **ToolContext**:
-The shared dependency bundle (settings, allowlist, runner, per-session workspace, approval/emit callbacks, concurrency semaphore) passed to every tool handler, exposing the single command seam `run_command` / `run_readonly` that all execution passes through.
+The shared dependency bundle (settings, command policy, runner, per-session workspace, approval/emit callbacks, concurrency semaphore) passed to every tool handler, exposing the single command seam `run_command` / `run_readonly` that all execution passes through.
 _Avoid_: "context object" generically, "session" (the Session is separate).
 
 ### Workflow stages
@@ -139,9 +139,9 @@ _Avoid_: "health check", "liveness", "pod-exists check".
 
 ### Security & safety
 
-**allowlist**:
-The deny-by-default policy data (`security/allowlist.yaml`) that is the single source of truth for what commands may execute. `allowlist.py` is a pure validator with zero per-command Python branches; widening capability is a reviewed YAML edit, never code.
-_Avoid_: "whitelist" (use allowlist), "permissions" loosely, "config"; it is the policy data specifically.
+**command policy**:
+The deny-by-default policy data (`security/command_policy.yaml`) that is the single source of truth for what commands may execute. `policy.py` is a pure validator with zero per-command Python branches; widening capability is a reviewed YAML edit, never code.
+_Avoid_: "whitelist" (use command policy), "permissions" loosely, "config"; it is the policy data specifically.
 
 **approval gate / per-action approval**:
 The rule that read-only probes auto-run but every mutating command blocks until the user clicks Approve on a card showing the exact `argv`. A flag like `--dry-run` (a `read_only_trigger`) downgrades a mutating command to an auto-running preview.
@@ -152,7 +152,7 @@ The deterministic rule that a mutating `llmdbenchmark` operation is refused unti
 _Avoid_: "skill check", "doc gate"; and don't confuse it with the approval gate (which gates on user approval, this on grounding).
 
 **read-only vs mutating**:
-The two execution modes the allowlist computes for a command. Read-only commands auto-run and are never concurrency-capped; mutating commands require approval and count against the run semaphore.
+The two execution modes the command policy computes for a command. Read-only commands auto-run and are never concurrency-capped; mutating commands require approval and count against the run semaphore.
 _Avoid_: "safe/unsafe", "GET/POST", "passive/active".
 
 **env scrubbing**:

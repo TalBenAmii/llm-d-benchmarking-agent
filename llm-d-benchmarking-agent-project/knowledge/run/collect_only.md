@@ -43,7 +43,7 @@ Do **not** use it:
 - **For a first/fresh measurement** — there is nothing to collect yet; run normally (no `skip`).
 - **To "make a run cheaper"** in general — if you actually want new load/numbers, you must run.
 - **On `standup`/`plan`/`experiment`** — they have no such flag; setting `skip` there would be a
-  no-op (the tool only emits `-z` for the `run` you set it on, and the allowlist only permits it
+  no-op (the tool only emits `-z` for the `run` you set it on, and the command policy only permits it
   under `run`).
 
 ## How it fits the workflow
@@ -57,6 +57,6 @@ Do **not** use it:
 
 ## Notes
 
-- Pure mechanism vs. judgment: emitting `-z` is mechanism (`build_argv`); the allowlist permits
+- Pure mechanism vs. judgment: emitting `-z` is mechanism (`build_argv`); the command policy permits
   `-z`/`--skip` as a `read_only_trigger` under `run` (data). WHETHER a collect-only re-derivation
   is the right move — vs. a fresh run — is the judgment that lives **here**, never in Python.

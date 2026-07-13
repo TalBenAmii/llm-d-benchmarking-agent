@@ -24,7 +24,7 @@ from app.orchestrator.job import (
     Scheduling,
     build_job_manifest,
 )
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.tools.context import ToolContext, ToolError
 from app.tools.registry import dispatch
 from app.tools.run.orchestrate import orchestrate_benchmark_run
@@ -269,7 +269,7 @@ def test_from_dict_accepts_valid_shapes():
     assert s.gpu_quantity() == "4" and s.gpu_resource == "habana.ai/gaudi"
 
 
-# --- 8. End-to-end through the agent tool (dispatch + allowlisted runner) ----
+# --- 8. End-to-end through the agent tool (dispatch + policy-allowed runner) ----
 
 # Phase 24: orchestrate_benchmark_run gates on endpoint readiness before submitting. These
 # manifest-mechanics tests stand the endpoint up READY so the gate is transparent.
@@ -287,7 +287,7 @@ def _tool_ctx(tmp_path):
 
     runner = CaptureRunner(settings.repo_paths, canned={"get endpoints": _ENDPOINTS_READY})
     ctx = ToolContext(
-        settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+        settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
         request_approval=approve,
     )

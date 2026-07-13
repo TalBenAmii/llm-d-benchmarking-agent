@@ -24,8 +24,8 @@ referenced. It is not a roadmap.
                            │  └──────────────┘   UNTRUSTED OUTPUT          │
                            │     │ proposes argv                           │
                            │  ┌──▼──────────────────────────────────────┐ │
-                           │  │ Allowlist validator (security/)         │ │  ← THE trust gate
-                           │  │  data: security/allowlist.yaml          │ │
+                           │  │ CommandPolicy validator (security/)         │ │  ← THE trust gate
+                           │  │  data: security/command_policy.yaml          │ │
                            │  └──┬──────────────────────────────────────┘ │
                            │     │ validated argv only                     │
                            │  ┌──▼──────────────┐  shell=False, scrubbed   │
@@ -41,7 +41,7 @@ Three boundaries matter:
    mutations. The backend has no auth/rate-limit of its own on this surface — see Network
    exposure, below.
 2. **LLM output ↔ execution.** The LLM is treated as an untrusted source of proposed
-   actions. Nothing the LLM emits runs directly: every command is validated by the allowlist
+   actions. Nothing the LLM emits runs directly: every command is validated by the command policy
    and every mutating command additionally needs explicit human approval. Prompt injection in
    a user message, a repo doc, or a tool result can at worst cause the LLM to propose a
    command; it cannot widen what is allowed or auto-run a mutation.
@@ -49,31 +49,31 @@ Three boundaries matter:
    environment, and a timeout (`app/security/runner.py`). In-cluster, the deploy grants a
    namespaced least-privilege Role (see `docs/guides/DEPLOYMENT.md` and the packaging contract).
 
-## The allowlist + approval model (the core control)
+## The command policy + approval model (the core control)
 
 This is the heart of the security model and the project's thin-code / thick-agent law:
 the policy is data, the validator is mechanism.
 
-- **`security/allowlist.yaml`** is the deny-by-default policy. It enumerates the executables
+- **`security/command_policy.yaml`** is the deny-by-default policy. It enumerates the executables
   that may run, their permitted subcommands/flags, value constraints, and per-command execution
   limits (`timeout_s`). You widen capability by editing this YAML, never by adding a
   per-command branch in Python.
-- **`app/security/allowlist.py`** (`Allowlist.validate`) is a pure validator with no embedded
+- **`app/security/policy.py`** (`CommandPolicy.validate`) is a pure validator with no embedded
   per-command knowledge. Given a logical argv it returns a `Decision`:
-  - **denied**: `argv[0]` not allowlisted, an unpermitted subcommand/value, an empty command,
+  - **denied**: `argv[0]` not policy-allowed, an unpermitted subcommand/value, an empty command,
     or a token containing a shell metacharacter (rejected on every token as defense in depth,
     even though the runner never uses a shell).
   - **`read_only`**: a probe (e.g. `kubectl get`, `git status`). Auto-runs, no prompt.
   - **`mutating`**: anything that changes state (e.g. `kind create cluster`, `kubectl apply`).
     `requires_approval` is `True`; it runs only after explicit UI approval.
 - The default mode is `mutating` (conservative): an entry must opt in to read-only.
-- The agent cannot escalate. The LLM never sees or edits the allowlist; it can only request
+- The agent cannot escalate. The LLM never sees or edits the command policy; it can only request
   an argv, which is then validated. Approval is a human decision relayed over the WebSocket
   (`approval` frame, Phase 15 schema-validated).
 
 ### Why this holds against a misbehaving LLM
 A compromised or confused LLM (including via prompt injection) is confined to the union of
-(allowlisted commands) ∩ (commands a human approves). It cannot run an arbitrary binary,
+(policy-allowed commands) ∩ (commands a human approves). It cannot run an arbitrary binary,
 inject a shell, read a secret out of the environment, or escape into an un-vetted code path.
 
 ## Command execution hardening (`app/security/runner.py`)
@@ -82,7 +82,7 @@ Every validated command is executed by `CommandRunner`:
 
 - **`shell=False`, argv list only.** No shell string is ever constructed, so command injection
   is structurally impossible: there is no shell to inject into.
-- **Scrubbed environment.** The child process gets only an allowlisted passthrough set
+- **Scrubbed environment.** The child process gets only an policy-allowed passthrough set
   (`PATH`, `HOME`, `KUBECONFIG`, locale/TLS vars, `LLMDBENCH_*` config) plus any explicitly
   configured `HF_TOKEN`. `ANTHROPIC_API_KEY` is excluded
   by construction; it is never in the child's environment.
@@ -147,6 +147,6 @@ acceptable:
 ## Reporting
 
 This is a research/quickstart project, not a hosted service. If you find a security issue in
-the agent's own code (an allowlist bypass, a secret leak, a shell-injection path), open an
+the agent's own code (a command policy bypass, a secret leak, a shell-injection path), open an
 issue describing the boundary that is violated and a minimal reproduction. Do not include
 real tokens or kubeconfigs in the report.

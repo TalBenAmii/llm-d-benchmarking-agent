@@ -53,7 +53,7 @@ pass/fail + reason). Probes:
 - **repos_resolvable** — all three read-only sibling repos (`llm-d/`, `llm-d-benchmark/`,
   `llm-d-skills/`) resolve on disk. Missing repos break catalog/report/capacity paths (and the
   skills grounding). Set `REPOS_DIR` correctly.
-- **runner_ok** — the deny-by-default allowlist policy loads + schema-validates. Without it the
+- **runner_ok** — the deny-by-default command policy policy loads + schema-validates. Without it the
   command runner can validate nothing and every command would be refused. Config-only — it never
   executes anything.
 

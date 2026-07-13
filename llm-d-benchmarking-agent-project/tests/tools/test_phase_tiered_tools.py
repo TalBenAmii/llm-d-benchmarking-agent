@@ -18,13 +18,13 @@ from app.agent.prompt import CORE_KNOWLEDGE, GROUP_CATALOG_NOTE, build_system_pr
 from app.agent.session import Session, SessionManager
 from app.config import Settings, get_settings
 from app.llm.provider import AssistantTurn, ToolCall
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner
 from app.tools.registry import _GROUPED_TOOLS, _TOOL_GROUPS, REGISTRY, STARTER_KIT, tool_definitions
 from app.tools.schemas import LoadToolsInput
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 
 # Representative tools that must ALWAYS be present (starter kit), incl. the loader tool itself.
 _CORE_ALWAYS = {"probe_environment", "list_catalog", "propose_session_plan", "load_tools"}
@@ -156,7 +156,7 @@ def test_de_inlined_guides_not_inlined_but_reachable(tool_ctx):
 
 def test_loaded_groups_survive_persist_and_load(tmp_path):
     mgr = SessionManager(Settings(workspace_dir=tmp_path),
-                         Allowlist.from_file(ALLOWLIST_PATH),
+                         CommandPolicy.from_file(COMMAND_POLICY_PATH),
                          CommandRunner(get_settings().repo_paths))
     sess = mgr.create()
     sess.messages.append({"role": "user", "content": "hi"})
@@ -172,7 +172,7 @@ def test_pre_feature_advanced_flag_migrates_to_advanced_group(tmp_path):
     must migrate to the 'advanced' group so a resumed advanced workflow keeps its tools."""
     import json
     mgr = SessionManager(Settings(workspace_dir=tmp_path),
-                         Allowlist.from_file(ALLOWLIST_PATH),
+                         CommandPolicy.from_file(COMMAND_POLICY_PATH),
                          CommandRunner(get_settings().repo_paths))
     sess = mgr.create()
     sess.persist()

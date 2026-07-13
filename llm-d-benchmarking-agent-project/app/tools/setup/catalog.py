@@ -1,5 +1,5 @@
 """Enumerate the legal universe of choices straight from the llm-d-benchmark repo on
-disk, so the agent (and the allowlist) can only ever name things that actually exist.
+disk, so the agent (and the policy) can only ever name things that actually exist.
 
 Nothing here is hardcoded knowledge — it is a live directory listing. If the repo is
 absent, every list is empty (and the agent should clone it first).
@@ -89,8 +89,8 @@ def _scenarios(repo: Path) -> list[str]:
     return sorted(out)
 
 
-def catalog_for_allowlist(catalog: dict[str, Any]) -> dict[str, list[str]]:
-    """Slice the catalog down to what the allowlist's ref_catalog checks need."""
+def catalog_for_policy(catalog: dict[str, Any]) -> dict[str, list[str]]:
+    """Slice the catalog down to what the policy's ref_catalog checks need."""
     return {
         "specs": catalog.get("specs", []),
         "harnesses": catalog.get("harnesses", []),

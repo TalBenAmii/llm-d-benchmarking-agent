@@ -3,7 +3,7 @@
 Focus: the catalog refresh that ``ensure_repos`` triggers MUST run even when a later repo's
 clone is rejected/denied mid-loop — otherwise a successfully-cloned earlier repo is left
 invisible behind a STALE (empty) per-context catalog cache, and every downstream tool that
-reads ``ctx.catalog()`` without ``refresh`` (plan validation + the allowlist ref_catalog
+reads ``ctx.catalog()`` without ``refresh`` (plan validation + the policy ref_catalog
 checks) rejects valid names for the rest of the turn.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from app.config import BENCH_REPO_NAME, GUIDE_REPO_NAME, Settings
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner
 from app.tools.context import ApprovalRejected, ToolContext
 from app.tools.setup import repos
@@ -30,7 +30,7 @@ def _ctx(tmp_path: Path) -> ToolContext:
     s = Settings(repos_dir=str(tmp_path), workspace_dir=str(tmp_path / "ws"))
     return ToolContext(
         settings=s,
-        allowlist=Allowlist.from_file(s.allowlist_path),
+        policy=CommandPolicy.from_file(s.command_policy_path),
         runner=CommandRunner(s.repo_paths),
         workspace=tmp_path / "ws" / "sessions" / "s1",
     )
@@ -72,7 +72,7 @@ async def test_catalog_refreshed_even_when_a_later_clone_is_rejected(tmp_path, m
 
     # The bench repo really was cloned to disk...
     assert (ctx.settings.bench_repo / ".git").exists()
-    # ...and the per-context catalog cache (read WITHOUT refresh, like plan/allowlist do) now
+    # ...and the per-context catalog cache (read WITHOUT refresh, like plan/policy do) now
     # reflects it, instead of the stale empty pre-clone snapshot.
     assert ctx.catalog()["present"] is True
 

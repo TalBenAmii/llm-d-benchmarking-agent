@@ -1,9 +1,9 @@
-"""Kubernetes access for the orchestrator — a thin abstraction over the allowlisted
+"""Kubernetes access for the orchestrator — a thin abstraction over the policy-allowed
 ``kubectl`` runner.
 
 We shell out to ``kubectl`` (consistent with the agent's deny-by-default security model and
 with how llm-d-benchmark itself talks to the cluster) rather than the Python kubernetes
-client, which would bypass the allowlist, the approval gate, and the env scrub. ``apply`` and
+client, which would bypass the policy, the approval gate, and the env scrub. ``apply`` and
 ``delete`` are mutating (approval-gated via ``ctx.run_command``); ``get``/``logs`` are
 read-only and auto-run. A ``FakeKubeClient`` (in tests) mirrors this interface so the whole
 Job lifecycle is testable with no cluster.
@@ -73,12 +73,12 @@ class KubeClient(Protocol):
 
 
 class RealKubeClient:
-    """Shells out to allowlisted ``kubectl`` through the session's :class:`ToolContext`.
+    """Shells out to policy-allowed ``kubectl`` through the session's :class:`ToolContext`.
 
     apply/delete route through ``ctx.run_command`` (mutating → approval-gated, concurrency-
     capped); get/logs are read-only and auto-run (logs stream to the UI via the standard
     ``output`` event). ``-f`` manifests are confined to the session workspace — defense in
-    depth on top of the allowlist's ``.yaml``-only regex."""
+    depth on top of the policy's ``.yaml``-only regex."""
 
     def __init__(self, ctx: ToolContext):
         self._ctx = ctx
@@ -133,7 +133,7 @@ class RealKubeClient:
         self, *, namespace: str, selector: str, tail: int | None = None,
     ) -> AsyncIterator[str]:
         """Follow a run's pod logs as a live line-by-line stream, yielding each line as the
-        pod produces it. Same allowlisted, read-only ``kubectl logs -f`` path as :meth:`logs`
+        pod produces it. Same policy-allowed, read-only ``kubectl logs -f`` path as :meth:`logs`
         (argv-only, ``shell=False``) — but instead of returning the captured text at the end,
         it bridges the runner's per-line callback into an async generator so the caller can
         forward each line as it arrives (e.g. a live ``output`` event during a benchmark run).

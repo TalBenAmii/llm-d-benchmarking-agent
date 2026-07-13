@@ -122,4 +122,4 @@ groups:
             llmdbench_orchestrator_runs_in_flight has stayed above 0 for 2h. A
             benchmark Job may be hung (holding a concurrency slot). Check the run's pod
             and the agent logs (corr_id / run_id); consider whether the per-command
-            timeout (security/allowlist.yaml) is firing.
+            timeout (security/command_policy.yaml) is firing.

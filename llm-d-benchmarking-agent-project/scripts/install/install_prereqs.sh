@@ -3,9 +3,9 @@
 #
 # install.sh (in llm-d-benchmark) installs the framework toolchain (kubectl/helm/jq/…)
 # but NOT the Docker daemon or the `kind` binary. This script installs exactly those two
-# (plus optionally kubectl) and nothing else — it is the ONLY thing the security allowlist
+# (plus optionally kubectl) and nothing else — it is the ONLY thing the security policy
 # lets the agent run with install privileges. The agent invokes it through `run_command`,
-# so it goes through the normal approval gate. Every command here is pinned; the allowlist
+# so it goes through the normal approval gate. Every command here is pinned; the policy
 # grants no raw apt-get/curl/sudo.
 #
 # Usage:

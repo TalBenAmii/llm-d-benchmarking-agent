@@ -9,7 +9,7 @@ asserting the mutating command is approval-gated and the configured ``HF_TOKEN``
 appears in the tool input, the argv, the command events, or the result.
 
 Acceptance covered:
-  * the secret-provision command is allowlisted as MUTATING (approval-gated) + value-pinned;
+  * the secret-provision command is policy-allowed as MUTATING (approval-gated) + value-pinned;
   * the token is read from the env (never an argument) and never leaks into events/argv/result;
   * the upstream kubectl shape is reproduced exactly, idempotently;
   * non-gated/public flows are untouched (the tool is opt-in; the token stays absent unless used).
@@ -26,7 +26,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.config import Settings
-from app.security.allowlist import MUTATING, Allowlist
+from app.security.policy import MUTATING, CommandPolicy
 from app.security.runner import CommandRunner
 from app.tools.context import ToolContext
 from app.tools.registry import REGISTRY, tool_definitions
@@ -34,7 +34,7 @@ from app.tools.setup.repos import provision_hf_secret
 from tests.flows.harness import CaptureRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "bridges" / "provision_hf_secret.py"
 
 # A sentinel token the backend would hold. The point of the scrub assertions is that THIS
@@ -188,15 +188,15 @@ def test_script_success_surfaces_only_kubectl_confirmation(monkeypatch, capsys):
 
 
 # =========================================================================== #
-# 2. The allowlist: the provision command is MUTATING (approval-gated) + value-pinned
+# 2. The policy: the provision command is MUTATING (approval-gated) + value-pinned
 # =========================================================================== #
 @pytest.fixture
-def allowlist():
-    return Allowlist.from_file(ALLOWLIST_PATH)
+def policy():
+    return CommandPolicy.from_file(COMMAND_POLICY_PATH)
 
 
-def test_provision_command_is_mutating_and_allowed(allowlist):
-    d = allowlist.validate(
+def test_provision_command_is_mutating_and_allowed(policy):
+    d = policy.validate(
         ["provision_hf_secret.py", "--namespace", "llmd-quickstart", "--name", "llm-d-hf-token"]
     )
     assert d.allowed
@@ -205,39 +205,39 @@ def test_provision_command_is_mutating_and_allowed(allowlist):
     assert d.timeout_s == 120
 
 
-def test_provision_command_allowed_without_name(allowlist):
-    d = allowlist.validate(["provision_hf_secret.py", "--namespace", "ns"])
+def test_provision_command_allowed_without_name(policy):
+    d = policy.validate(["provision_hf_secret.py", "--namespace", "ns"])
     assert d.allowed and d.mode == MUTATING
 
 
-def test_provision_namespace_is_value_pinned(allowlist):
+def test_provision_namespace_is_value_pinned(policy):
     # An RFC1123 violation (uppercase) is rejected by the namespace constraint.
-    d = allowlist.validate(["provision_hf_secret.py", "--namespace", "Bad_NS"])
+    d = policy.validate(["provision_hf_secret.py", "--namespace", "Bad_NS"])
     assert not d.allowed
 
 
-def test_provision_name_is_value_pinned(allowlist):
-    d = allowlist.validate(["provision_hf_secret.py", "--namespace", "ns", "--name", "Bad Name!"])
+def test_provision_name_is_value_pinned(policy):
+    d = policy.validate(["provision_hf_secret.py", "--namespace", "ns", "--name", "Bad Name!"])
     assert not d.allowed
 
 
-def test_provision_rejects_token_bearing_arg(allowlist):
+def test_provision_rejects_token_bearing_arg(policy):
     """Even though the FLAG policy is relaxed (unknown flags accepted), an embedded
     `--from-literal=HF_TOKEN=...` carries shell-dangerous '=' value with metachars in a way
-    the screen rejects — and critically, the allowlist NEVER adds a token flag here, so the
+    the screen rejects — and critically, the policy NEVER adds a token flag here, so the
     only argv the agent can express carries --namespace/--name. Assert a literal token arg
     can't sneak through the metacharacter screen."""
-    d = allowlist.validate([
+    d = policy.validate([
         "provision_hf_secret.py", "--namespace", "ns",
         "--from-literal=HF_TOKEN=hf_x; rm -rf /",
     ])
     assert not d.allowed  # the `;`/`/` etc. trip the metacharacter screen
 
 
-def test_kubectl_create_secret_subcommand_is_NOT_allowlisted(allowlist):
+def test_kubectl_create_secret_subcommand_is_NOT_policy_allowed(policy):
     """The plan's invariant: provisioning goes through the vetted script, NOT a raw
-    `kubectl create secret` (which would put the token on an allowlisted argv → leak)."""
-    d = allowlist.validate([
+    `kubectl create secret` (which would put the token on an policy-allowed argv → leak)."""
+    d = policy.validate([
         "kubectl", "create", "secret", "generic", "llm-d-hf-token",
         "--from-literal=HF_TOKEN=" + _FAKE_HF_TOKEN, "--namespace", "ns",
     ])
@@ -262,7 +262,7 @@ def _ctx_with_token(tmp_path, *, approve=True):
 
     ctx = ToolContext(
         settings=s,
-        allowlist=Allowlist.from_file(ALLOWLIST_PATH),
+        policy=CommandPolicy.from_file(COMMAND_POLICY_PATH),
         runner=runner,
         workspace=tmp_path / "ws",
         emit=emit,
@@ -354,7 +354,7 @@ def test_non_gated_flow_does_not_provision(tmp_path):
 # =========================================================================== #
 # 5. The REAL runner exec path — the script must be directly executable.
 #
-# The allowlist entry is `invoke: project-script` with NO `python_via`, so
+# The policy entry is `invoke: project-script` with NO `python_via`, so
 # app/security/runner.py builds real=[str(script), *rest] and spawns it with
 # create_subprocess_exec. If the script lacks its execute bit, that spawn raises
 # PermissionError BEFORE any kubectl runs, breaking the feature end-to-end. The
@@ -412,11 +412,11 @@ async def test_real_runner_execs_script_and_injects_token_only_via_env(tmp_path,
     assert s.extra_subprocess_env == {"HF_TOKEN": _FAKE_HF_TOKEN}
     runner = CommandRunner(s.repo_paths, extra_env=s.extra_subprocess_env)
 
-    allowlist = Allowlist.from_file(ALLOWLIST_PATH)
+    policy = CommandPolicy.from_file(COMMAND_POLICY_PATH)
     logical_argv = ["provision_hf_secret.py", "--namespace", "llmd-quickstart", "--name", "llm-d-hf-token"]
-    decision = allowlist.validate(logical_argv)
+    decision = policy.validate(logical_argv)
     assert decision.allowed and decision.mode == MUTATING
-    entry = allowlist.executable(logical_argv[0])
+    entry = policy.executable(logical_argv[0])
 
     # The REAL spawn. If the script lacks +x this raises (RunnerError wrapping PermissionError).
     result = await runner.execute(logical_argv, entry, timeout=30)

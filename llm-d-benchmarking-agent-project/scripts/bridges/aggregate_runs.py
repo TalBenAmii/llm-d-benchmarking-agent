@@ -28,8 +28,8 @@ Contract (mechanism only — no judgment lives here):
         {"ok": false, "error": "..."}
 
 The agent never types this command; ``app/tools/analyze/aggregate_runs.py`` builds the request file
-inside the session workspace and runs this script through the allowlisted runner
-(``shell=False``, scrubbed env). The allowlist constrains the single argument to a ``.json``
+inside the session workspace and runs this script through the policy-allowed runner
+(``shell=False``, scrubbed env). The policy constrains the single argument to a ``.json``
 path with no ``..`` traversal, so there is no arbitrary-code surface beyond this audited
 file and the (read-only) upstream module it imports. WHEN to aggregate (>=2 repeats of the
 same benchmark, run-to-run variance) is JUDGMENT in knowledge/analysis.md, not here.

@@ -31,12 +31,12 @@ Why these substitutions (and only these):
     invariants are then crisp and independent of any leftover chats.
   * ``FuzzProvider`` — a scripted LLM that, per turn, deterministically (seeded) plays EITHER a
     read-only turn or a turn that calls ``propose_session_plan`` then a mutating
-    ``execute_llmdbenchmark`` standup (a real registry tool, valid against the real allowlist),
+    ``execute_llmdbenchmark`` standup (a real registry tool, valid against the real policy),
     so approval gates actually fire under the real loop.
 
 Everything else is the REAL app: the real ``/ws`` handler, the real ``Channel`` (resume
 buffer + pending-approval restore), the real ``SessionManager`` persistence, the real
-inbound-frame validation, the real agent loop + tool dispatch + allowlist.
+inbound-frame validation, the real agent loop + tool dispatch + policy.
 """
 from __future__ import annotations
 

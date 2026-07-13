@@ -12,7 +12,7 @@ import json
 
 from app.agent.session import _COMMANDS_MAX, Session
 from app.config import Settings
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner
 from app.tools.context import ApprovalRejected, ToolContext
 from tests._helpers import _capture_ctx
@@ -188,7 +188,7 @@ def _persist_ctx(tmp_path):
     settings = Settings(_env_file=None, repos_dir=tmp_path / "repos", workspace_dir=tmp_path / "ws")
     return ToolContext(
         settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
+        policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=CommandRunner(settings.repo_paths),
         workspace=tmp_path / "ws" / "sessions" / "s1",
     )
@@ -203,7 +203,7 @@ def test_session_persists_and_reloads_commands(tmp_path):
 
     from app.agent.session import SessionManager
 
-    mgr = SessionManager(ctx.settings, ctx.allowlist, ctx.runner)
+    mgr = SessionManager(ctx.settings, ctx.policy, ctx.runner)
     reloaded = mgr.load("s1")
     assert reloaded is not None
     assert reloaded.commands and reloaded.commands[0]["argv"] == RO
@@ -278,7 +278,7 @@ def test_session_persists_and_reloads_card_results(tmp_path):
 
     from app.agent.session import SessionManager
 
-    mgr = SessionManager(ctx.settings, ctx.allowlist, ctx.runner)
+    mgr = SessionManager(ctx.settings, ctx.policy, ctx.runner)
     reloaded = mgr.load("s1")
     assert reloaded is not None
     assert reloaded.card_results and reloaded.card_results[0]["name"] == "locate_and_parse_report"
@@ -297,7 +297,7 @@ def test_session_persists_and_reloads_tool_durations(tmp_path):
 
     from app.agent.session import SessionManager
 
-    mgr = SessionManager(ctx.settings, ctx.allowlist, ctx.runner)
+    mgr = SessionManager(ctx.settings, ctx.policy, ctx.runner)
     reloaded = mgr.load("s1")
     assert reloaded is not None
     assert reloaded.tool_durations.get("tc1") == 42.14   # rounded to 2dp on record

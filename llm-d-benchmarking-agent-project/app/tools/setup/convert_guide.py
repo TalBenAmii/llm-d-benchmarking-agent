@@ -25,15 +25,15 @@ Thin-code / thick-agent split (the whole point of this module):
   2. a VALIDATABLE companion ``ai.<name>.yaml`` scenario + ``ai.<name>.spec.yaml`` — by
      REUSING the Phase-45 mechanism in ``app/tools/setup/config_artifact.py`` so the REQUIRED
      "validate via plan/--dry-run" determinism gate actually has a YAML ``--spec`` to target
-     (a bare ``.sh`` is not consumable by the allowlisted gate, which takes a YAML ``--spec``
+     (a bare ``.sh`` is not consumable by the policy-allowed gate, which takes a YAML ``--spec``
      whose ``scenario_file.path`` is a YAML). The ``.sh`` is the upstream-shaped artifact; the
      YAML+spec is its gate-able twin.
 
 Hard rule: every output path is confined to ``ctx.workspace`` exactly like
 ``config_artifact.author_scenario`` (workspace mkdir, bare-filename screen rejecting ``/``,
-``..``, enforcing the ``ai.<name>.sh`` / ``ai.<name>.yaml`` names). No allowlist change is
+``..``, enforcing the ``ai.<name>.sh`` / ``ai.<name>.yaml`` names). No policy change is
 needed — file writes are not commands; the agent previews the authored YAML via the EXISTING,
-already-allowlisted ``execute_llmdbenchmark(subcommand="plan", spec=<spec_path>,
+already-policy-allowed ``execute_llmdbenchmark(subcommand="plan", spec=<spec_path>,
 flags={"dry_run": True})`` route.
 """
 from __future__ import annotations

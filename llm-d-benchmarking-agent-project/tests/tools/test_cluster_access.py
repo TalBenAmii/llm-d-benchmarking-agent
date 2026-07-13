@@ -4,13 +4,13 @@ Target a REMOTE cluster instead of relying only on the ambient kube context. Her
 live cluster / kubeconfig / network. Covers the acceptance criteria:
 
   * a NON-DEFAULT kubeconfig FILE is threaded into the CLI call — ``build_argv`` emits it as
-    ``-k <path>`` (pure mechanism), the allowlist permits + value-pins it on every
+    ``-k <path>`` (pure mechanism), the policy permits + value-pins it on every
     cluster-touching subcommand, and ``ExecuteInput`` carries it as a top-level field;
   * the cluster URL + bearer TOKEN travel BACKEND-ONLY — they become the
     ``LLMDBENCH_CLUSTER_URL`` / ``LLMDBENCH_CLUSTER_TOKEN`` child-env vars (never argv), and the
     TOKEN NEVER reaches the browser: it is absent from every ``command`` event AND from the
     emitted child env surfaced to the UI;
-  * the token is deliberately NOT expressible as an allowlisted flag (so it can never be an
+  * the token is deliberately NOT expressible as an policy-allowed flag (so it can never be an
     argv token), mirroring the HF-token non-leak pattern.
 
 The WHEN/WHICH-cluster judgment lives in knowledge/preconditions.md (asserted present).
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.run.execute import build_argv, execute_llmdbenchmark
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _approve_all, _argv, _capture_ctx
@@ -86,7 +86,7 @@ def test_execute_schema_kubeconfig_defaults_to_none():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — -k/--kubeconfig permitted + value-pinned (DATA); no token flag
+# policy — -k/--kubeconfig permitted + value-pinned (DATA); no token flag
 # ---------------------------------------------------------------------------
 
 
@@ -99,40 +99,40 @@ _EXTRA = {
 
 
 @pytest.mark.parametrize("subcommand", KUBECONFIG_SUBCOMMANDS)
-def test_allowlist_permits_kubeconfig_short_and_long(allowlist, catalog, subcommand):
+def test_policy_permits_kubeconfig_short_and_long(policy, catalog, subcommand):
     for flag in ("-k", "--kubeconfig"):
-        d = allowlist.validate(_argv(subcommand, *_EXTRA[subcommand], flag, KUBECONFIG), catalog=catalog)
+        d = policy.validate(_argv(subcommand, *_EXTRA[subcommand], flag, KUBECONFIG), catalog=catalog)
         assert d.allowed, f"{flag} should be allowed on {subcommand}: {d.reason}"
 
 
-def test_kubeconfig_value_constraint_is_pinned(allowlist, catalog):
+def test_kubeconfig_value_constraint_is_pinned(policy, catalog):
     # A normal path passes; a traversal path and a metachar-laden injection are REFUSED.
-    assert allowlist.validate(_argv("standup", "-k", KUBECONFIG), catalog=catalog).allowed
-    assert not allowlist.validate(
+    assert policy.validate(_argv("standup", "-k", KUBECONFIG), catalog=catalog).allowed
+    assert not policy.validate(
         _argv("standup", "-k", "../../etc/passwd"), catalog=catalog
     ).allowed, "no '..' traversal must be expressible"
-    assert not allowlist.validate(
+    assert not policy.validate(
         _argv("standup", "--kubeconfig", "x; rm -rf /"), catalog=catalog
     ).allowed
 
 
-def test_kubeconfig_does_not_change_mode_classification(allowlist, catalog):
+def test_kubeconfig_does_not_change_mode_classification(policy, catalog):
     # standup stays mutating with -k; plan stays a read-only preview with -k.
-    assert allowlist.validate(_argv("standup", "-k", KUBECONFIG), catalog=catalog).mode == MUTATING
-    assert allowlist.validate(_argv("plan", "-k", KUBECONFIG), catalog=catalog).mode == READ_ONLY
+    assert policy.validate(_argv("standup", "-k", KUBECONFIG), catalog=catalog).mode == MUTATING
+    assert policy.validate(_argv("plan", "-k", KUBECONFIG), catalog=catalog).mode == READ_ONLY
     # --dry-run still downgrades a remote-cluster standup to a read-only preview.
-    d = allowlist.validate(_argv("standup", "-k", KUBECONFIG, "--dry-run"), catalog=catalog)
+    d = policy.validate(_argv("standup", "-k", KUBECONFIG, "--dry-run"), catalog=catalog)
     assert d.allowed and d.mode == READ_ONLY
 
 
-def test_no_cluster_token_or_url_flag_is_allowlisted():
+def test_no_cluster_token_or_url_flag_is_policy_allowed():
     """The token must never be expressible as an argv token: NO flag KEY anywhere in the
     llmdbenchmark policy mentions a token or a cluster url/token. We inspect the actual loaded
     policy's flag NAMES (not a substring of the whole YAML — our own explanatory comments
     legitimately mention LLMDBENCH_CLUSTER_TOKEN as the backend-only env path)."""
     import yaml
 
-    doc = yaml.safe_load(ALLOWLIST_TEXT)
+    doc = yaml.safe_load(COMMAND_POLICY_TEXT)
     llmd = doc["executables"]["llmdbenchmark"]
     flag_keys: set[str] = set(llmd.get("global_flags", {}))
     for sub in llmd.get("subcommands", {}).values():
@@ -257,7 +257,7 @@ async def test_token_never_appears_in_browser_command_events(tmp_path):
 # ---------------------------------------------------------------------------
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[2] / "knowledge"
-ALLOWLIST_TEXT = (Path(__file__).resolve().parents[2] / "security" / "allowlist.yaml").read_text()
+COMMAND_POLICY_TEXT = (Path(__file__).resolve().parents[2] / "security" / "command_policy.yaml").read_text()
 
 
 def test_remote_cluster_knowledge_documents_the_levers_and_secret_rule():

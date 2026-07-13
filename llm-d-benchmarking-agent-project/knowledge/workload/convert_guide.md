@@ -149,7 +149,7 @@ version; only set registry/repo/name when they differ from the default `ghcr.io/
 ## The validatable YAML twin (`scenario` override)
 
 `ai.<name>.sh` is the upstream-shaped artifact but a bare `.sh` is NOT consumable by the
-allowlisted determinism gate (that gate takes a YAML `--spec` whose `scenario_file.path` is a
+policy-allowed determinism gate (that gate takes a YAML `--spec` whose `scenario_file.path` is a
 YAML). So the tool ALSO authors a YAML scenario twin + companion spec it CAN gate. Omit
 `scenario` for a minimal twin (just the name). To gate richer knobs, pass `scenario` as
 dotted upstream scenario field paths (e.g. `{'model.shortName': 'qwen3-32b',

@@ -174,7 +174,7 @@ async def export_run_bundle(
 
 async def _safe_env_snapshot(ctx: ToolContext, namespace: str | None) -> dict[str, Any] | None:
     """A best-effort, read-only environment snapshot (what the run targeted). Never raises:
-    a probe failure (no cluster, allowlist denial mid-probe) degrades to None rather than
+    a probe failure (no cluster, policy denial mid-probe) degrades to None rather than
     aborting the capture — the results are still real, the env signal is just absent."""
     try:
         from app.tools.setup.probe import probe_environment

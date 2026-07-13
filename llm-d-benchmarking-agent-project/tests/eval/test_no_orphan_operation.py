@@ -1,13 +1,13 @@
 """No mutating llmdbenchmark operation is missing a skill grounding.
 
-Derives the set of MUTATING subcommands from the security allowlist (the source of truth that
+Derives the set of MUTATING subcommands from the security policy (the source of truth that
 gates the runner), then asserts every one is classified — either a grounded operation (mapped
 to a real *_skill in SKILL_TASKS) or an explicitly-exempt sub-step (a mutating verification
 step that only ever runs inside an already-grounded operation and has no dedicated skill of its
-own). If a new mutating subcommand is ever added to the allowlist, the partition assertion fails
+own). If a new mutating subcommand is ever added to the policy, the partition assertion fails
 until it is classified — guarding against an un-grounded operation slipping in unnoticed.
 
-Hermetic: reads the checked-in allowlist + the skill task map; no cluster, no LLM, no siblings.
+Hermetic: reads the checked-in policy + the skill task map; no cluster, no LLM, no siblings.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ _EXEMPT_STORE = {
 
 def _mutating_subcommands() -> set[str]:
     """Every mutating llmdbenchmark subcommand, top-level AND nested, as dotted paths."""
-    node = yaml.safe_load((PROJECT_ROOT / "security" / "allowlist.yaml").read_text())
+    node = yaml.safe_load((PROJECT_ROOT / "security" / "command_policy.yaml").read_text())
     root = node["executables"]["llmdbenchmark"]
     out: set[str] = set()
 
@@ -60,7 +60,7 @@ def test_every_mutating_subcommand_is_classified():
     orphan = mutating - classified  # a mutating op with neither a skill nor an exemption
     stale = classified - mutating  # a classification for a subcommand that no longer mutates/exists
     assert not orphan, f"mutating subcommands lack a skill mapping: {sorted(orphan)}"
-    assert not stale, f"classified subcommands are not mutating in the allowlist: {sorted(stale)}"
+    assert not stale, f"classified subcommands are not mutating in the policy: {sorted(stale)}"
 
 
 def test_operation_subcommands_map_to_real_skills():

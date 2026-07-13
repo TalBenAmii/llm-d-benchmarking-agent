@@ -4,7 +4,7 @@ These are the *pure*, hermetic pieces of the capacity pre-flight (no subprocess,
 network, no cluster): resolving a spec's scenario file, deep-merging it over the repo's
 defaults, applying agent overrides, and parsing the planner's flat diagnostic list into a
 structured verdict. The subprocess that actually invokes the repo's planner lives in
-``app/tools/setup/capacity.py`` (it goes through the allowlisted runner). Keeping the two apart
+``app/tools/setup/capacity.py`` (it goes through the policy-allowed runner). Keeping the two apart
 is what lets the tests exercise the real classification logic without HuggingFace/GPU.
 
 The diagnostic *markers* (``DEPLOYMENT WILL FAIL``, ``ERROR:``, ``WARNING:``) are the

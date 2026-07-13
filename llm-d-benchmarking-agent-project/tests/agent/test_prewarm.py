@@ -155,7 +155,7 @@ async def test_prewarm_not_reinjected_after_persist_reload(tmp_path):
     # snapshot mid-transcript, leaking it into the rendered chat + sidebar title.
     from app.agent.session import SessionManager
     from app.config import Settings as _Settings
-    from app.security.allowlist import Allowlist as _Allowlist
+    from app.security.policy import CommandPolicy as _CommandPolicy
     from app.security.runner import CommandRunner as _Runner
 
     if not get_settings().bench_repo.is_dir():
@@ -164,7 +164,7 @@ async def test_prewarm_not_reinjected_after_persist_reload(tmp_path):
     # A SessionManager rooted under tmp so persist() + load() agree on the on-disk location and
     # we never touch the real workspace (mirrors test_sessions.make_manager).
     settings = _Settings(workspace_dir=tmp_path)
-    mgr = SessionManager(settings, _Allowlist.from_file(settings.allowlist_path),
+    mgr = SessionManager(settings, _CommandPolicy.from_file(settings.command_policy_path),
                          _Runner(settings.repo_paths))
     session = mgr.create()
 

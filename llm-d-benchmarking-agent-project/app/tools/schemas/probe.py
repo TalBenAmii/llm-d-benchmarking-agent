@@ -70,14 +70,14 @@ class DiscoverStackInput(BaseModel):
                     "accelerator) for richer ENVIRONMENT capture than the agent's own endpoint "
                     "probing. It COMPLEMENTS — it does NOT replace — probe_environment / "
                     "check_endpoint_readiness, which remain the default. WHEN to use it is "
-                    "read_knowledge('stack_discovery'). Value-pinned by the allowlist endpoint_url "
+                    "read_knowledge('stack_discovery'). Value-pinned by the policy endpoint_url "
                     "constraint (same as `run -U/--endpoint-url`).",
     )
     kubeconfig: str | None = Field(
         default=None,
         description="Optional path to a NON-DEFAULT kubeconfig FILE to target a remote cluster "
                     "(emitted as `-k`). A plain, NON-SECRET file path, value-pinned by the "
-                    "allowlist (no `..` traversal); omit it to use the ambient kube context. The "
+                    "policy (no `..` traversal); omit it to use the ambient kube context. The "
                     "secret cluster-by-URL+TOKEN route is NOT exposed here — it stays backend-only "
                     "(as for execute_llmdbenchmark).",
     )

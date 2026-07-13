@@ -277,7 +277,7 @@ def _define(registry: MetricsRegistry) -> None:
 
     commands_total = registry.counter(
         "llmdbench_agent_commands_total",
-        "Total commands executed by the agent, by executable, allowlist mode, and whether "
+        "Total commands executed by the agent, by executable, policy mode, and whether "
         "they auto-ran (read-only) or were approval-gated (mutating).",
     )
     command_duration_seconds = registry.histogram(
@@ -331,7 +331,7 @@ def use_registry(registry: MetricsRegistry) -> Iterator[MetricsRegistry]:
 # --- record helpers (called from the central mechanism points) ---------------
 
 def record_command(*, exe: str, mode: str, auto_run: bool, duration_s: float | None = None) -> None:
-    """One executed command. ``exe``/``mode``/``auto_run`` come straight from the allowlist
+    """One executed command. ``exe``/``mode``/``auto_run`` come straight from the policy
     Decision (already classified there) — this just files the fact."""
     commands_total.inc(labels={"exe": exe, "mode": mode, "auto_run": str(auto_run).lower()})
     if duration_s is not None:

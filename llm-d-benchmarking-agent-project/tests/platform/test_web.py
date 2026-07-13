@@ -105,7 +105,7 @@ def test_cors_wildcard_origin_never_reflects_arbitrary_origin_with_credentials()
 
 
 def test_cors_explicit_origin_list_keeps_credentials():
-    """A non-wildcard explicit allowlist still gets credentialed CORS (the intended use): the
+    """A non-wildcard explicit policy still gets credentialed CORS (the intended use): the
     configured origin is reflected WITH ``Access-Control-Allow-Credentials: true``, while an
     unlisted origin is not reflected at all."""
     from fastapi import FastAPI

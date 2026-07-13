@@ -9,8 +9,8 @@ Two halves, both hermetic (NO cluster, NO GPU, NO network, NO real benchmark run
       the registry descriptions route there.
 
   (B) THE OPTIONAL SCRIPTED STEP (run a standalone plot script against a results dir):
-      the `aggregate_runs` tool + the vetted `scripts/bridges/aggregate_runs.py` wrapper, allowlisted
-      READ-ONLY against a results dir. Covered three ways: the allowlist classification, the
+      the `aggregate_runs` tool + the vetted `scripts/bridges/aggregate_runs.py` wrapper, policy-allowed
+      READ-ONLY against a results dir. Covered three ways: the policy classification, the
       tool end-to-end through a CaptureRunner faking the bridge, and a REAL end-to-end run of
       the wrapper (importing the repo's OWN aggregate_runs module) over fixture BR v0.2
       reports — proving the import-and-call mechanism without reimplementing any math.
@@ -28,7 +28,7 @@ import yaml
 
 from app.config import get_settings
 from app.dig import parse_bridge_dict
-from app.security.allowlist import READ_ONLY, Allowlist
+from app.security.policy import READ_ONLY, CommandPolicy
 from app.security.runner import CommandRunner, RunnerError
 from app.tools.analyze.aggregate_runs import aggregate_runs
 from app.tools.context import ToolError
@@ -37,7 +37,7 @@ from app.validation.report import load_report
 from tests._helpers import _real_repo_ctx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ALLOWLIST_PATH = PROJECT_ROOT / "security" / "allowlist.yaml"
+COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 WRAPPER = PROJECT_ROOT / "scripts" / "bridges" / "aggregate_runs.py"
 
 
@@ -91,7 +91,7 @@ def test_registry_read_repo_doc_points_at_the_notebook():
 def test_the_template_plot_scripts_really_are_hardcoded():
     """Justify the pointer-only judgment with repo truth: the to_be_incorporated/ scripts
     hardcode a repo-relative data dir and write their PNG back INTO the repo dir — so they
-    CANNOT be allowlisted read-only against a results dir (the agent must not run them)."""
+    CANNOT be policy-allowed read-only against a results dir (the agent must not run them)."""
     bench = get_settings().bench_repo
     script = bench / "docs" / "analysis" / "to_be_incorporated" / "plot_ttft_vs_qps.py"
     body = script.read_text()
@@ -100,26 +100,26 @@ def test_the_template_plot_scripts_really_are_hardcoded():
 
 
 # ============================================================================
-# (B) THE OPTIONAL SCRIPTED STEP — allowlist classification
+# (B) THE OPTIONAL SCRIPTED STEP — policy classification
 # ============================================================================
 
-def test_allowlist_aggregate_runs_is_read_only(allowlist):
-    d = allowlist.validate(["aggregate_runs.py", "workspace/sessions/s1/aggregate_request.json"])
+def test_policy_aggregate_runs_is_read_only(policy):
+    d = policy.validate(["aggregate_runs.py", "workspace/sessions/s1/aggregate_request.json"])
     assert d.allowed and d.mode == READ_ONLY and not d.requires_approval
 
 
-def test_allowlist_rejects_non_json_argument(allowlist):
-    d = allowlist.validate(["aggregate_runs.py", "workspace/evil.sh"])
+def test_policy_rejects_non_json_argument(policy):
+    d = policy.validate(["aggregate_runs.py", "workspace/evil.sh"])
     assert not d.allowed
 
 
-def test_allowlist_rejects_path_traversal(allowlist):
-    d = allowlist.validate(["aggregate_runs.py", "../../etc/passwd.json"])
+def test_policy_rejects_path_traversal(policy):
+    d = policy.validate(["aggregate_runs.py", "../../etc/passwd.json"])
     assert not d.allowed
 
 
-def test_allowlist_requires_the_positional(allowlist):
-    d = allowlist.validate(["aggregate_runs.py"])
+def test_policy_requires_the_positional(policy):
+    d = policy.validate(["aggregate_runs.py"])
     assert not d.allowed  # missing required positional
 
 
@@ -131,7 +131,7 @@ def test_runner_resolves_wrapper_via_bench_venv(tmp_path):
     (venv_bin / "python").write_text("")  # presence is enough for resolve()
     runner = CommandRunner({"llm-d-benchmark": bench, "llm-d": tmp_path / "llm-d"})
 
-    entry = Allowlist.from_file(ALLOWLIST_PATH).executable("aggregate_runs.py")
+    entry = CommandPolicy.from_file(COMMAND_POLICY_PATH).executable("aggregate_runs.py")
     real, _cwd = runner.resolve(["aggregate_runs.py", str(tmp_path / "req.json")], entry)
     assert real[0] == str(venv_bin / "python")
     assert real[1].endswith("scripts/bridges/aggregate_runs.py")
@@ -142,7 +142,7 @@ def test_runner_wrapper_missing_venv_errors_clearly(tmp_path):
     bench = tmp_path / "llm-d-benchmark"
     bench.mkdir()
     runner = CommandRunner({"llm-d-benchmark": bench, "llm-d": tmp_path / "llm-d"})
-    entry = Allowlist.from_file(ALLOWLIST_PATH).executable("aggregate_runs.py")
+    entry = CommandPolicy.from_file(COMMAND_POLICY_PATH).executable("aggregate_runs.py")
     with pytest.raises(RunnerError):
         runner.resolve(["aggregate_runs.py", str(tmp_path / "req.json")], entry)
 

@@ -21,7 +21,7 @@ in `knowledge/capacity.md`.
   `ignoreFailedValidation` (BUG-030 false-fit defense).
 - `apply_overrides` keeps `model.huggingfaceId` in lockstep when only `model` is overridden (both the
   sizing path and the gating check prefer `huggingfaceId`); unknown override keys raise `CapacityError`
-  (loud, no silent no-op); `_OVERRIDE_PATHS` is the closed allowlist of what an override may touch.
+  (loud, no silent no-op); `_OVERRIDE_PATHS` is the closed command policy of what an override may touch.
 
 ## Thin-code watch
 `classify_diagnostics` looks judgment-adjacent (feasible / infeasible / inconclusive) but is **faithfully

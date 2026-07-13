@@ -19,7 +19,7 @@ MCP_IMPORT_SURFACE = {
     "app.agent.lifecycle": ["RunRegistry"],
     "app.agent.prompt": ["_one_line_purpose"],
     "app.config": ["Settings"],
-    "app.security.allowlist": ["Allowlist"],
+    "app.security.policy": ["CommandPolicy"],
     "app.security.runner": ["CommandRunner"],
     "app.tools.context": ["ApproveFn", "EmitFn", "ToolContext", "ApprovalRejected", "ToolError"],
     "app.tools.access.knowledge_access": ["EXCLUDED_KNOWLEDGE_FILES"],

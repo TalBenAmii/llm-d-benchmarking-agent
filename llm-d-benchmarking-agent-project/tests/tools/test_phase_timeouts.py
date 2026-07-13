@@ -7,10 +7,10 @@ not in Python):
   * build_argv emits each per-phase timeout flag as ``--<name>-timeout <seconds>`` ONLY on the
     upstream-accepting subcommand(s) — an out-of-place key emits nothing — and passes the int
     value through verbatim (no if/elif on the value);
-  * the allowlist permits each ``--*-timeout`` flag (value-pinned to a positive integer) under
+  * the policy permits each ``--*-timeout`` flag (value-pinned to a positive integer) under
     exactly those subcommands, and refuses a non-integer / injection-laden value;
   * the per-phase flag does NOT change a command's mutating classification (standup/run/teardown
-    stay approval-gated), and the runner deadline (allowlist ``timeout_s``) still bounds the whole
+    stay approval-gated), and the runner deadline (policy ``timeout_s``) still bounds the whole
     process and stays the OUTER ceiling the per-phase value must stay below (the reconcile);
   * the ExecuteInput schema accepts the timeout keys inside ``flags``;
   * the knowledge guide + tool description point the agent at the judgment.
@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.run.execute import _PHASE_TIMEOUT_FLAGS, build_argv
 from app.tools.schemas import ExecuteInput
 from tests._helpers import _argv
@@ -127,7 +127,7 @@ def test_execute_schema_accepts_timeout_flags():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — each --*-timeout permitted (value-pinned positive int) on its subcommand(s) (DATA)
+# policy — each --*-timeout permitted (value-pinned positive int) on its subcommand(s) (DATA)
 # ---------------------------------------------------------------------------
 
 
@@ -141,9 +141,9 @@ _REQUIRED = {
 
 
 @pytest.mark.parametrize("key,cli_flag,accepts", _EXPECTED)
-def test_allowlist_permits_timeout_on_accepting_subcommands(allowlist, catalog, key, cli_flag, accepts):
+def test_policy_permits_timeout_on_accepting_subcommands(policy, catalog, key, cli_flag, accepts):
     for subcommand in accepts:
-        d = allowlist.validate(
+        d = policy.validate(
             _argv(subcommand, *_REQUIRED[subcommand], cli_flag, "1800"), catalog=catalog
         )
         assert d.allowed, f"{cli_flag} should be allowed on {subcommand}: {d.reason}"
@@ -152,49 +152,49 @@ def test_allowlist_permits_timeout_on_accepting_subcommands(allowlist, catalog, 
 
 
 @pytest.mark.parametrize("key,cli_flag,accepts", _EXPECTED)
-def test_allowlist_value_pins_timeout_where_declared(allowlist, catalog, key, cli_flag, accepts):
+def test_policy_value_pins_timeout_where_declared(policy, catalog, key, cli_flag, accepts):
     # Where the flagspec is DECLARED (the accepting subcommand), the positive_int value
     # constraint is enforced — that is the security property of adding the flagspec. Note the
-    # allowlist's documented policy is permissive about UNKNOWN flags elsewhere (they pass but
+    # policy's documented policy is permissive about UNKNOWN flags elsewhere (they pass but
     # their VALUE is unchecked, and mode is never downgraded); build_argv is what guarantees the
     # flag is only ever EMITTED on the accepting subcommand (see the build_argv tests above), so
     # an unconstrained-elsewhere value can never originate from the agent's own argv builder.
     for subcommand in accepts:
         # a valid positive int is accepted...
-        ok = allowlist.validate(
+        ok = policy.validate(
             _argv(subcommand, *_REQUIRED[subcommand], cli_flag, "1800"), catalog=catalog
         )
         assert ok.allowed, f"{cli_flag}=1800 should be allowed on {subcommand}: {ok.reason}"
         # ...but a non-integer value is REFUSED by the declared positive_int constraint here.
-        bad = allowlist.validate(
+        bad = policy.validate(
             _argv(subcommand, *_REQUIRED[subcommand], cli_flag, "notanumber"), catalog=catalog
         )
         assert not bad.allowed, f"{cli_flag}=notanumber must be refused on {subcommand}"
 
 
 @pytest.mark.parametrize("key,cli_flag,accepts", _EXPECTED)
-def test_allowlist_rejects_non_integer_timeout_value(allowlist, catalog, key, cli_flag, accepts):
+def test_policy_rejects_non_integer_timeout_value(policy, catalog, key, cli_flag, accepts):
     subcommand = accepts[0]
     for bad in ("notanumber", "-5", "30s", "12.5"):
-        d = allowlist.validate(
+        d = policy.validate(
             _argv(subcommand, *_REQUIRED[subcommand], cli_flag, bad), catalog=catalog
         )
         assert not d.allowed, f"{cli_flag} {bad!r} must fail the positive_int constraint"
 
 
-def test_allowlist_rejects_injection_laden_timeout_value(allowlist, catalog):
+def test_policy_rejects_injection_laden_timeout_value(policy, catalog):
     # Defense in depth: a metachar-laden value is rejected by the blanket screen even before the
     # positive_int constraint.
-    d = allowlist.validate(
+    d = policy.validate(
         _argv("standup", "--pvc-bind-timeout", "600$(rm -rf /)"), catalog=catalog
     )
     assert not d.allowed
 
 
-def test_timeout_flag_keeps_read_only_preview(allowlist, catalog):
+def test_timeout_flag_keeps_read_only_preview(policy, catalog):
     # --dry-run still downgrades a timeout-bearing standup to a read-only preview: the per-phase
     # timeout is orthogonal to the mode classification.
-    d = allowlist.validate(
+    d = policy.validate(
         _argv("standup", "--pvc-bind-timeout", "600", "--dry-run"), catalog=catalog
     )
     assert d.allowed and d.mode == READ_ONLY
@@ -205,19 +205,19 @@ def test_timeout_flag_keeps_read_only_preview(allowlist, catalog):
 # stays the OUTER ceiling the per-phase value must remain below (two layers do not fight)
 # ---------------------------------------------------------------------------
 
-# The runner deadline is sourced from the allowlist `timeout_s` per subcommand (Phase 13). These
+# The runner deadline is sourced from the policy `timeout_s` per subcommand (Phase 13). These
 # are the documented ceilings the knowledge guide tells the agent to stay below.
 _RUNNER_CEILING = {"standup": 3600, "run": 3600, "teardown": 900, "experiment": 14400}
 
 
 @pytest.mark.parametrize("subcommand,ceiling", _RUNNER_CEILING.items())
-def test_runner_deadline_still_bounds_the_process(allowlist, catalog, subcommand, ceiling):
+def test_runner_deadline_still_bounds_the_process(policy, catalog, subcommand, ceiling):
     # The Decision carries the runner deadline (timeout_s) regardless of any per-phase CLI flag —
     # the outer asyncio.wait_for ceiling is UNCHANGED by Phase 38. Pick a timeout flag valid here.
     cli_flag = next(c for _, c, acc in _EXPECTED if subcommand in acc)
     # set the per-phase timeout to a sane DEEPER value (below the ceiling), as the guide prescribes
     inner = ceiling - 600
-    d = allowlist.validate(
+    d = policy.validate(
         _argv(subcommand, *_REQUIRED[subcommand], cli_flag, str(inner)), catalog=catalog
     )
     assert d.allowed, d.reason

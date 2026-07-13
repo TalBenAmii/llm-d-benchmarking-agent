@@ -15,7 +15,7 @@ _KNOWN_REPOS = (BENCH_REPO_NAME, GUIDE_REPO_NAME, SKILLS_REPO_NAME)
 
 # GitHub org each repo clones from. Most live under `llm-d`; the skills library lives under
 # `llm-d-incubation`. This map only BUILDS the URL — the clone target is still pinned by the
-# allowlist (llmd_clone_url regex), so this grants no capability on its own.
+# policy (llmd_clone_url regex), so this grants no capability on its own.
 _REPO_ORG = {SKILLS_REPO_NAME: "llm-d-incubation"}
 
 
@@ -32,7 +32,7 @@ async def ensure_repos(ctx: ToolContext, *, repos: list[str] | None = None, ref:
     # already have been cloned successfully; without this ``finally`` the early exception would skip
     # the refresh and leave the per-context catalog cache STALE (empty, present=False). Downstream
     # callers that read ``ctx.catalog()`` WITHOUT refresh — ``plan.validate_plan`` and the
-    # ``catalog_for_allowlist`` check inside every ``run_command``/``run_readonly`` — would then
+    # ``catalog_for_policy`` check inside every ``run_command``/``run_readonly`` — would then
     # reject every valid spec/harness/workload/ref for the rest of the turn even though the repo is
     # on disk and usable. (This is exactly the "after cloning, call ctx.catalog(refresh=True) or
     # later tools see the stale catalog" hazard, realized by an early-exit path.)
@@ -143,7 +143,7 @@ def _scan_missing_tools(output: str) -> list[str]:
 # configured cluster-side; this is the mutating step that fixes it.
 #
 # This handler is pure MECHANISM: it builds the argv for the vetted ``provision_hf_secret.py``
-# script and calls ``ctx.run_command``, which routes the (mutating, per the allowlist) command
+# script and calls ``ctx.run_command``, which routes the (mutating, per the policy) command
 # through the approval gate. There is NO decision logic here — WHEN a gated model is in scope
 # and WHEN to provision lives in ``knowledge/capacity.md``.
 #
@@ -165,7 +165,7 @@ async def provision_hf_secret(
 ) -> dict[str, Any]:
     """Create/update the cluster HuggingFace token Secret in ``namespace``.
 
-    Mutating → routed through the approval gate by ``ctx.run_command`` (the allowlist marks
+    Mutating → routed through the approval gate by ``ctx.run_command`` (the policy marks
     ``provision_hf_secret.py`` ``mode: mutating``). The token is read backend-side by the
     script from the scrubbed child env and is never part of the argv built here.
     """

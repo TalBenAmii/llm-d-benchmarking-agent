@@ -10,15 +10,15 @@ from fastapi.testclient import TestClient
 from app.agent.session import SessionManager, derive_title
 from app.config import Settings
 from app.main import app
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner
 
 
 def make_manager(tmp_path) -> SessionManager:
     settings = Settings(workspace_dir=tmp_path)
-    allowlist = Allowlist.from_file(settings.allowlist_path)
+    policy = CommandPolicy.from_file(settings.command_policy_path)
     runner = CommandRunner(settings.repo_paths)
-    return SessionManager(settings, allowlist, runner)
+    return SessionManager(settings, policy, runner)
 
 
 @pytest.fixture

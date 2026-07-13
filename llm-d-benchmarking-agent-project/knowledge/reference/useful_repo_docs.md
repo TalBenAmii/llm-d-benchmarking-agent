@@ -18,7 +18,7 @@ the matching `knowledge/` adapters (`deploy_path_playbook`, `sweep_playbook`, `t
 ## Start here (the must-reads)
 
 1. `llm-d-benchmark/README.md` — every `llmdbenchmark` subcommand/flag/`LLMDBENCH_*` var + the spec/scenario/harness/profile vocabulary.
-2. `llm-d-benchmark/llmdbenchmark/interface/README.md` — per-subcommand flag + env-var enumeration that backs our allowlist + `build_argv`.
+2. `llm-d-benchmark/llmdbenchmark/interface/README.md` — per-subcommand flag + env-var enumeration that backs our command policy + `build_argv`.
 3. `llm-d-benchmark/llmdbenchmark/README.md` — package map of the CLI: seven subcommands (plan, standup, smoketest, run, teardown, experiment, results) + the standup→smoketest→run→teardown lifecycle.
 4. `llm-d-benchmark/docs/developer-guide.md` — best single map of how scenarios/experiments/harnesses/profiles/lifecycle fit together.
 5. `llm-d-benchmark/config/README.md` — config override chain + every scenario knob (model/replicas/namespace/monitoring/vLLM).

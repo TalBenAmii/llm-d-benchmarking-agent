@@ -14,7 +14,7 @@ Kubernetes-native benchmark orchestrator, and results analyzer for
 | [GPU_CLUSTER_RUNBOOK.md](guides/GPU_CLUSTER_RUNBOOK.md) | end users / operators | Going beyond the CPU `cicd/kind` quickstart: stand up a real single-GPU cluster (minikube + NVIDIA, WSL2/RTX 4060 worked example), author a tiny-model scenario that fits 8 GB, and a feature-by-feature checklist of what's real vs simulated on one card. |
 | [VALIDATION.md](reference/VALIDATION.md) | contributors | The flow-validation harness: proving the agent runs the right commands. |
 | [MCP.md](reference/MCP.md) | Claude Code users | Pointer: the `llm-d-bench` MCP server split into its own repo ([llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)); the stub carries the install one-liner. |
-| [SECURITY.md](reference/SECURITY.md) | operators / reviewers | Threat model: trust boundaries, the allowlist/approval model, secret scrubbing, network-exposure guidance, what requires isolation. |
+| [SECURITY.md](reference/SECURITY.md) | operators / reviewers | Threat model: trust boundaries, the command policy/approval model, secret scrubbing, network-exposure guidance, what requires isolation. |
 | [TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md) | operators | Symptom → what to check; debug mode; the structured logs + `corr_id`; the readiness/metrics endpoints. |
 | [INTERACTIVE_TEST_GUIDE.md](guides/INTERACTIVE_TEST_GUIDE.md) | contributors / testers | Follow-along runbook to drive every feature by hand with a real LLM. |
 | [BENCHMARK_FEATURE_COVERAGE.md](reference/BENCHMARK_FEATURE_COVERAGE.md) | contributors / reviewers | Benchmark-CLI feature-coverage catalog (✅/🟡/⬜): what's wired, per upstream feature. |
@@ -37,7 +37,7 @@ feature proposals) is preserved in git history only (`docs/history/`, removed 20
 ## Design in one line
 
 **Thin code, thick agent.** Python is mechanism only (UI, agent loop, tools, security
-allowlist, schema validation). All judgment lives in the LLM plus editable files under
+command policy, schema validation). All judgment lives in the LLM plus editable files under
 `knowledge/`. Reliability comes from schema-validated handoffs at every boundary
 ([the four determinism gates](reference/ARCHITECTURE.md#the-four-determinism-gates)), not hard-coded
 scripts.

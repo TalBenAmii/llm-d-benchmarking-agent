@@ -25,7 +25,7 @@ version-controlled, so a clone starts with NO merge gate — run the installer t
 `main`-only ruff + mypy + pytest + dangling-skill-ref hooks (`pre-commit` + `pre-merge-commit`).
 
 ## Run a scoped subset
-- One area: `pytest tests/orchestrator/` · one file: `pytest tests/platform/test_allowlist.py` · one test: `pytest tests/tools/test_foo.py::test_bar`.
+- One area: `pytest tests/orchestrator/` · one file: `pytest tests/platform/test_command_policy.py` · one test: `pytest tests/tools/test_foo.py::test_bar`.
 - Flow replays (deterministic golden transcripts): `pytest tests/flows/`.
 - The per-subsystem `CLAUDE.md` files list the exact scoped command for each area.
 
@@ -35,7 +35,7 @@ The unit suite is grouped into four subpackages; a file's bucket = the **dominan
 - `tests/agent/` — `app/agent` + `app/llm`: loop, events, sessions, context mgmt, WS, providers, prompt.
 - `tests/tools/` — `app/tools`: registry + schemas, the setup/run/analyze/access handlers, command exec.
 - `tests/orchestrator/` — `app/orchestrator` + `app/capacity` + `app/readiness`: jobs, capacity pre-flight, readiness probes, infra preconditions.
-- `tests/platform/` — everything else: config/dig/web/main, security + allowlist, storage, packaging/sharing, observability, validation gates, knowledge-file checks, product boundary, UI/HTTP e2e.
+- `tests/platform/` — everything else: config/dig/web/main, security + command policy, storage, packaging/sharing, observability, validation gates, knowledge-file checks, product boundary, UI/HTTP e2e.
 - Shared plumbing stays at the root: `conftest.py` · `_helpers.py` · `_auth.py` · `orchestrator_fakes.py`.
 - **subdirs** — `tests/flows/` (golden-transcript replays + shared harness/flows + hermetic skill-grounding guards — each golden operation-flow must fetch its grounding doc first (its `*_skill`, or the `quickstart` runbook on the kind/CPU-sim path)) · `tests/eval/` (live-LLM agent evals split into `live/` = default-live/real-app + `simulate/` = the SIMULATE-only skill-usage eval, plus hermetic shadow/oracle guards directly under `eval/` — gated, never auto-run) · `tests/integration/` (opt-in).
 
@@ -88,7 +88,7 @@ The unit suite is grouped into four subpackages; a file's bucket = the **dominan
 - **Never `git add -A` at the monorepo root** — it grabs `.claude/worktrees/*` gitlinks. Add specific paths.
 
 ## Fixtures / fakes worth knowing
-- `conftest.py` — resolves the bench repo (`REPOS_DIR`-aware), schema/example paths, the allowlist, and a `tool_ctx` (ToolContext on real repos + an isolated temp workspace).
+- `conftest.py` — resolves the bench repo (`REPOS_DIR`-aware), schema/example paths, the command policy, and a `tool_ctx` (ToolContext on real repos + an isolated temp workspace).
 - `_helpers.py` — shared verbatim input-builders (`_real_repo_ctx`/`_ctx`/`_session`/`_approve_all`/`_argv`); import these instead of re-pasting a ToolContext/Session/argv builder into a new test.
 - `orchestrator_fakes.py` — in-memory `FakeKubeClient` + `make_job`/`make_pod`; the whole Job lifecycle runs with no cluster.
 - `tests/integration/` — opt-in (`LLMD_SIM_INTEGRATION=1`); skipped by default.

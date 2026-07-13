@@ -2,8 +2,8 @@
 
 Tools validate their args against Pydantic schemas, gate mutating commands, and return a flat
 JSON-serializable dict to the agent. The DEDICATED command tools (execute_llmdbenchmark, probes,
-orchestrator) run allowlisted argv through the executor; the agent's ad-hoc `run_shell` tool runs
-an arbitrary `bash -lc` string (classifier + approval gate, NOT the allowlist). `registry.py` is
+orchestrator) run policy-allowed argv through the executor; the agent's ad-hoc `run_shell` tool runs
+an arbitrary `bash -lc` string (classifier + approval gate, NOT the command policy). `registry.py` is
 the authoritative list. Judgment about *what to do with* results lives in `knowledge/`, not here.
 
 ## Layout (navigational subpackages)
@@ -33,10 +33,10 @@ map for humans, NOT a mirror of the runtime tool groups (`registry._TOOL_GROUPS`
 - **Read-only vs mutating is decided by the executor, not the tool.** Call `ctx.run_readonly(argv)`
   for probes (auto-runs) and `ctx.run_command(argv)` for mutations (routes through approval; rejection
   raises `ApprovalRejected`). A handler that calls neither just auto-runs (pure Python, e.g. analyze).
-- **Raise `ToolError` for any non-retryable failure** (bad input, missing repo, allowlist denial) — the
+- **Raise `ToolError` for any non-retryable failure** (bad input, missing repo, command policy denial) — the
   loop turns it into a clean `{"error": ...}`. Never raise *other* exceptions (they break the session).
-- **An allowlist denial is defense, not a bug** — widen capability in `security/allowlist.yaml` (data),
-  don't work around it. (The allowlist-vs-`run_shell` scope split → `app/security/CLAUDE.md`.)
+- **A command policy denial is defense, not a bug** — widen capability in `security/command_policy.yaml` (data),
+  don't work around it. (The command-policy-vs-`run_shell` scope split → `app/security/CLAUDE.md`.)
 - **Write only to `ctx.workspace`** (per-session). Never write into the READ-ONLY repos or `/tmp`.
 - **Return flat, JSON-serializable, secret-free dicts.** Pass HF tokens via `ctx.run_command(..., env=…)`,
   never in argv or the result. Emitted command events carry argv only, never env.
@@ -50,7 +50,7 @@ map for humans, NOT a mirror of the runtime tool groups (`registry._TOOL_GROUPS`
 - `setup/probe_parse.py` — pure parser for `setup/probe.py` output. (The tolerant tail-of-JSON helper `find_last_json`/`parse_bridge_dict` now lives in `app/dig.py`.)
 - `run/gated_access.py` — gated-model deploy refusal (`gated_block`) at the command chokepoint; wired into `command_exec.py`/`run/shell.py`, verdicts recorded by the capacity bridge.
 - `run/skill_gate.py` — skill-grounding gate (`skill_gate_block`/`plan_skill_gate_block`): refuses a mutating llmdbenchmark op (in `command_exec.py`, NOT `run/shell.py`) + the plan proposing it (in `setup/plan.py`) until its grounding doc was fetched (`ctx.consulted_skills`, written by `fetch_key_docs`). Spec-aware: cicd/kind → `quickstart`, else the op's `*_skill`.
-- `setup/catalog.py` — `build_catalog()`: live spec/harness/workload listing from the bench repo (+ `catalog_for_allowlist`); used by `context.py`/`analyze/workload_profile.py`.
+- `setup/catalog.py` — `build_catalog()`: live spec/harness/workload listing from the bench repo (+ `catalog_for_policy`); used by `context.py`/`analyze/workload_profile.py`.
 
 ## Tool index (by workflow phase — mirrors the subpackages above)
 `registry.py` is the source of truth for the registered set/order.
@@ -65,17 +65,17 @@ default; only the `registry.STARTER_KIT` is shown. The model loads a group with 
 
 ## Gotchas
 - Schema validation errors are **returned, not raised** — surface your own enum/range errors as a dict with `"error"`, don't raise mid-handler.
-- A `timeout_s` declared in `allowlist.yaml` **overrides** any `timeout=` you pass.
+- A `timeout_s` declared in `command_policy.yaml` **overrides** any `timeout=` you pass.
 - Result dicts are not schema-checked — a typo'd key silently misleads the agent; assert key presence in tests.
 
 ## Audit note (don't re-litigate)
 A 2026-06-19 verified audit found the set genuinely lean — every result-cluster tool, `run_shell` (ad-hoc)
 vs `execute_llmdbenchmark` (the CLI), and `fetch_key_docs` vs `read_repo_doc` has a distinct role pinned by a live-eval flow;
 do NOT re-propose merging them. DEFERRED (only if advanced-GPU-flag coverage is wanted): `execute_llmdbenchmark`
-flag passthroughs (wva/deep/serviceaccount/release/non_admin/envvarspod/full_infra) — each needs an allowlist +
-`test_allowlist.py`/`test_command_events.py` entry, and the `-d`/`-r` flag collisions need disjoint keys.
+flag passthroughs (wva/deep/serviceaccount/release/non_admin/envvarspod/full_infra) — each needs a command policy +
+`test_command_policy.py`/`test_command_events.py` entry, and the `-d`/`-r` flag collisions need disjoint keys.
 
 ## Scoped tests
 ```bash
-pytest tests/tools/test_new_tools.py tests/tools/test_schemas.py tests/agent/test_command_events.py tests/platform/test_allowlist.py
+pytest tests/tools/test_new_tools.py tests/tools/test_schemas.py tests/agent/test_command_events.py tests/platform/test_command_policy.py
 ```

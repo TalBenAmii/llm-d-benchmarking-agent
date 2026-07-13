@@ -204,7 +204,7 @@ class BenchmarkOrchestrator:
         * EVERY other failure (pod not ready yet, log rotation, the follow stream erroring out,
           a raised ``on_log_line``) is swallowed — a failing tail leaves the run untouched.
 
-        The lines ride the existing allowlisted, read-only ``kubectl logs -f`` path (argv-only,
+        The lines ride the existing policy-allowed, read-only ``kubectl logs -f`` path (argv-only,
         ``shell=False``); ``on_log_line`` is the same ``output`` event the UI already renders."""
         try:
             stream = self._kube.stream_log_lines(
@@ -380,7 +380,7 @@ class BenchmarkOrchestrator:
         sem = asyncio.Semaphore(max(1, max_parallel))
 
         # Phase 22 checkpoint wiring. The ConfigMap is the source of truth; the store is a thin
-        # read/serialize/write over the same allowlisted kubectl surface as the Job lifecycle.
+        # read/serialize/write over the same policy-allowed kubectl surface as the Job lifecycle.
         store: CheckpointStore | None = None
         checkpoint = SweepCheckpoint(sweep_id=sweep_id or "")
         if sweep_id is not None:

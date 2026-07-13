@@ -1,7 +1,7 @@
 """Phase 65 — Gateway-mode readiness gate (Gateway PROGRAMMED + InferencePool Accepted/ResolvedRefs).
 
 Hermetic, no cluster: feeds canned `kubectl get gateway,gatewayclass,inferencepool,httproute -o json`
-permutations into the pure analyzer and through the allowlisted kubectl runner (CaptureRunner). It
+permutations into the pure analyzer and through the policy-allowed kubectl runner (CaptureRunner). It
 proves the gate distinguishes "the model pods are Ready" from "traffic can actually reach them":
 
   * the verdict carries the PROGRAMMED + Accepted/ResolvedRefs condition FACTS + GatewayClass-exists;
@@ -9,7 +9,7 @@ proves the gate distinguishes "the model pods are Ready" from "traffic can actua
   * a fully-programmed Gateway with ResolvedRefs:True yields control_plane_ready;
   * all wait-vs-standup-vs-error decisions come from knowledge/gateway_readiness.md, not Python
     (the tool only emits a `read_knowledge('gateway_readiness')` pointer);
-  * security/allowlist.yaml permits exactly the four new read-only kubectl_resource values under get.
+  * security/command_policy.yaml permits exactly the four new read-only kubectl_resource values under get.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ import yaml
 from app.config import Settings
 from app.readiness.diagnostics import analyze_gateway
 from app.readiness.probes import check_endpoint_readiness
-from app.security.allowlist import MUTATING, Allowlist
+from app.security.policy import MUTATING, CommandPolicy
 from app.tools.context import ToolContext
 from app.tools.registry import dispatch
 from tests._helpers import kubectl_present
@@ -211,7 +211,7 @@ def _ctx(tmp_path, *, canned):
 
     runner = CaptureRunner(settings.repo_paths, canned=canned)
     ctx = ToolContext(
-        settings=settings, allowlist=Allowlist.from_file(settings.allowlist_path),
+        settings=settings, policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner, workspace=settings.resolved_workspace_dir / "sessions" / "s1",
         request_approval=approve,
     )
@@ -259,7 +259,7 @@ async def test_tool_pods_ready_but_gateway_not_programmed(tmp_path):
     # Every gateway probe was read-only and nothing mutated.
     assert runner.calls
     for c in runner.calls:
-        d = ctx.allowlist.validate(c["argv"], catalog=ctx.catalog_for_allowlist())
+        d = ctx.policy.validate(c["argv"], catalog=ctx.catalog_for_policy())
         assert d.mode != MUTATING, f"gateway gate ran a mutating command: {c['argv']}"
 
 
@@ -309,19 +309,19 @@ async def test_dispatch_default_enables_gateway_facts(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Allowlist (DATA): exactly the four new read-only resources under `get`
+# CommandPolicy (DATA): exactly the four new read-only resources under `get`
 # ---------------------------------------------------------------------------
 
 _NEW_RESOURCES = ["gateway", "gatewayclass", "inferencepool", "httproute"]
 
 
-def _allowlist():
+def _policy():
     settings = Settings(_env_file=None)
-    return Allowlist.from_file(settings.allowlist_path), settings.allowlist_path
+    return CommandPolicy.from_file(settings.command_policy_path), settings.command_policy_path
 
 
-def test_allowlist_yaml_adds_exactly_the_four_resources():
-    _, path = _allowlist()
+def test_policy_yaml_adds_exactly_the_four_resources():
+    _, path = _policy()
     data = yaml.safe_load(path.read_text())
     enum = data["value_constraints"]["kubectl_resource"]["enum"]
     for r in _NEW_RESOURCES:
@@ -334,8 +334,8 @@ def test_allowlist_yaml_adds_exactly_the_four_resources():
     assert present == set(_NEW_RESOURCES), f"unexpected Gateway-API resources: {present}"
 
 
-def test_allowlist_permits_each_new_resource_as_readonly_get(tmp_path):
-    allowlist, _ = _allowlist()
+def test_policy_permits_each_new_resource_as_readonly_get(tmp_path):
+    policy, _ = _policy()
     catalog = frozen_catalog()
     # Namespaced read (gateway/inferencepool/httproute) and cluster-scoped read (gatewayclass).
     cases = [
@@ -345,14 +345,14 @@ def test_allowlist_permits_each_new_resource_as_readonly_get(tmp_path):
         ["kubectl", "get", "gatewayclass", "-o", "json"],
     ]
     for argv in cases:
-        decision = allowlist.validate(argv, catalog=catalog)
+        decision = policy.validate(argv, catalog=catalog)
         assert decision.mode != MUTATING, f"{argv} should be read-only"
 
 
-def test_allowlist_does_not_permit_mutating_gateway_verbs():
+def test_policy_does_not_permit_mutating_gateway_verbs():
     """The four resources are DATA-only: `kubectl delete gateway` is NOT newly permitted — delete is
     still pinned to job/jobs by positional enum, so a gateway delete is denied (allowed=False)."""
-    allowlist, _ = _allowlist()
+    policy, _ = _policy()
     catalog = frozen_catalog()
-    decision = allowlist.validate(["kubectl", "delete", "gateway", "g", "-n", "bench"], catalog=catalog)
+    decision = policy.validate(["kubectl", "delete", "gateway", "g", "-n", "bench"], catalog=catalog)
     assert decision.allowed is False

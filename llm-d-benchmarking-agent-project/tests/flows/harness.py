@@ -1,6 +1,6 @@
 """Hermetic flow harness.
 
-Drives the **real** ``AgentLoop`` (real tool dispatch, real allowlist, real approval
+Drives the **real** ``AgentLoop`` (real tool dispatch, real policy, real approval
 gating) but with two substitutions that make a whole deploy+benchmark flow observable
 without an API key, Docker, kind, the upstream repos, or any real side effect:
 
@@ -8,7 +8,7 @@ without an API key, Docker, kind, the upstream repos, or any real side effect:
     command instead of spawning a subprocess. It bypasses path resolution (no real venv /
     repos needed) and returns synthetic success, so the loop runs to completion and we can
     inspect exactly which commands the agent would have run.
-  * a seeded **frozen catalog** (see ``catalog_snapshot``) so the allowlist's
+  * a seeded **frozen catalog** (see ``catalog_snapshot``) so the policy's
     ``ref_catalog`` checks and the ``SessionPlan`` validator behave as they do in prod.
 
 The same machinery powers three callers:
@@ -36,12 +36,12 @@ from app.agent.loop import AgentLoop
 from app.agent.session import Session
 from app.config import BENCH_REPO_NAME, GUIDE_REPO_NAME, Settings
 from app.llm.provider import AssistantTurn, LLMProvider, ProviderTurn, open_provider_turn
-from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
+from app.security.policy import MUTATING, READ_ONLY, CommandPolicy
 from app.security.runner import CommandRunner, RunResult
 from app.tools.context import ToolContext
 from app.tools.registry import _group_of
 from app.tools.run.shell import classify_shell_command
-from app.tools.setup.catalog import catalog_for_allowlist
+from app.tools.setup.catalog import catalog_for_policy
 
 from .catalog_snapshot import frozen_catalog
 
@@ -372,7 +372,7 @@ class CaptureRunner(CommandRunner):
 @dataclass
 class CapturedCommand:
     argv: list[str]
-    mode: str             # read_only | mutating  (per the real allowlist + frozen catalog)
+    mode: str             # read_only | mutating  (per the real policy + frozen catalog)
     approved: bool        # did it pass through the approval gate?
     cwd: str | None
 
@@ -523,10 +523,10 @@ async def run_flow(
         anthropic_api_key="not-used-in-scripted-mode",
         simulate=simulate,
     )
-    allowlist = Allowlist.from_file(settings.allowlist_path)
+    policy = CommandPolicy.from_file(settings.command_policy_path)
     runner = CaptureRunner(settings.repo_paths, canned=flow.canned)
     workspace = settings.resolved_workspace_dir / "sessions" / "flow"
-    ctx = ToolContext(settings=settings, allowlist=allowlist, runner=runner, workspace=workspace)
+    ctx = ToolContext(settings=settings, policy=policy, runner=runner, workspace=workspace)
     # Pin the catalog to the frozen snapshot. Setting the field is not enough: tools like
     # ensure_repos call ctx.catalog(refresh=True), which would re-scan the empty fake repo
     # and wipe it. Shadow the method so every lookup returns the snapshot.
@@ -573,23 +573,23 @@ async def run_flow(
         loop = AgentLoop(provider)
         await loop.run_turn(session, flow.mock_user_input, emit=emit, request_approval=request_approval)
 
-    # Label each captured command with its real allowlist mode + whether it was gated.
-    cat = catalog_for_allowlist(frozen_catalog())
+    # Label each captured command with its real policy mode + whether it was gated.
+    cat = catalog_for_policy(frozen_catalog())
     approved_argvs = [r["payload"].get("argv") for r in approval_requests if r["kind"] == "command"]
     commands: list[CapturedCommand] = []
     for call in runner.calls:
         argv = call["argv"]
         # run_shell (the agent's always-on ad-hoc `bash -lc` surface) is governed by the
-        # read-only/mutating CLASSIFIER + approval gate, NOT the allowlist — which governs only the
+        # read-only/mutating CLASSIFIER + approval gate, NOT the policy — which governs only the
         # DEDICATED command tools (see app/tools/run/shell.py + app/tools/CLAUDE.md). Validating a
-        # run_shell command against the allowlist wrongly marks it "denied", which would trip the
+        # run_shell command against the policy wrongly marks it "denied", which would trip the
         # bypass check in gating_problems and falsely fail any LIVE flow where the real model
         # improvises with run_shell. Classify it the way production does, so the SAME safety
         # invariant (mutating ⇒ approval-gated; read-only ⇒ auto-run) still applies — correctly — to it.
         if argv[:2] == ["bash", "-lc"] and len(argv) >= 3:
             mode = classify_shell_command(argv[2])
         else:
-            d = allowlist.validate(argv, catalog=cat)
+            d = policy.validate(argv, catalog=cat)
             mode = d.mode if d.allowed else "denied"
         commands.append(CapturedCommand(
             argv=argv,
@@ -776,7 +776,7 @@ def gating_problems(run: FlowRun) -> list[str]:
         if c.mode == READ_ONLY and c.approved:
             problems.append(f"read-only command went through the approval gate (should auto-run): {c.argv}")
         if c.mode == "denied":
-            problems.append(f"a denied command reached the runner (allowlist bypass!): {c.argv}")
+            problems.append(f"a denied command reached the runner (policy bypass!): {c.argv}")
     return problems
 
 

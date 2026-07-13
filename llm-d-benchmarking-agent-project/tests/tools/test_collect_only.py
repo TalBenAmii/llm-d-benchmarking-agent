@@ -6,7 +6,7 @@ three layers it spans:
 
   * build_argv emits ``-z`` (pure MECHANISM) only when ``flags['skip']`` is truthy, after the
     subcommand, without disturbing the other run args (workspace anchoring, -l/-w/-r);
-  * the allowlist permits ``-z``/``--skip`` ONLY under ``run`` (upstream defines them on run
+  * the policy permits ``-z``/``--skip`` ONLY under ``run`` (upstream defines them on run
     alone) and classifies a skip-run as READ_ONLY so it AUTO-RUNS (no approval) — it collects
     existing results, it does not load/mutate; the boolean-flag value-abuse screen still bites;
   * the WHEN-to-collect-only JUDGMENT lives in knowledge/collect_only.md (present, discoverable
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.security.allowlist import MUTATING, READ_ONLY
+from app.security.policy import MUTATING, READ_ONLY
 from app.tools.access.knowledge_access import read_knowledge
 from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
@@ -62,7 +62,7 @@ def test_execute_schema_accepts_skip_flag():
 
 
 # ---------------------------------------------------------------------------
-# allowlist — -z/--skip permitted on `run` ONLY, and a skip-run AUTO-RUNS (read-only)
+# policy — -z/--skip permitted on `run` ONLY, and a skip-run AUTO-RUNS (read-only)
 # ---------------------------------------------------------------------------
 
 
@@ -71,41 +71,41 @@ def _run(*rest):
     return _argv("run", "-l", "inference-perf", "-w", "sanity_random.yaml", *rest)
 
 
-def test_allowlist_permits_skip_short_and_long_on_run(allowlist, catalog):
+def test_policy_permits_skip_short_and_long_on_run(policy, catalog):
     for flag in ("-z", "--skip"):
-        d = allowlist.validate(_run(flag), catalog=catalog)
+        d = policy.validate(_run(flag), catalog=catalog)
         assert d.allowed, f"{flag} should be allowed on run: {d.reason}"
 
 
-def test_skip_run_is_read_only_and_auto_runs(allowlist, catalog):
+def test_skip_run_is_read_only_and_auto_runs(policy, catalog):
     # The acceptance: a skip-run is collect-only — it reads existing results, it does NOT load
     # or mutate the cluster, so it is classified READ_ONLY and needs no approval (auto-runs),
     # exactly like --list-endpoints / --dry-run downgrade a run.
-    d = allowlist.validate(_run("-z"), catalog=catalog)
+    d = policy.validate(_run("-z"), catalog=catalog)
     assert d.allowed
     assert d.mode == READ_ONLY
     assert d.requires_approval is False
     # The same downgrade holds for the long spelling.
-    assert allowlist.validate(_run("--skip"), catalog=catalog).mode == READ_ONLY
+    assert policy.validate(_run("--skip"), catalog=catalog).mode == READ_ONLY
 
 
-def test_skip_only_triggers_the_read_only_downgrade_under_run(allowlist, catalog):
+def test_skip_only_triggers_the_read_only_downgrade_under_run(policy, catalog):
     # Upstream defines -z/--skip on `run` ALONE, so the read_only_trigger is configured under
-    # `run` only. The allowlist is permissive on UNKNOWN flags (accepted once the executable +
-    # subcommand are allowlisted, metachar-screened) — BUT an unknown flag never downgrades the
+    # `run` only. The policy is permissive on UNKNOWN flags (accepted once the executable +
+    # subcommand are policy-allowed, metachar-screened) — BUT an unknown flag never downgrades the
     # mode. So a stray -z on a MUTATING standup does NOT collect-only/auto-run it: it stays
     # MUTATING and keeps its approval gate. The collect-only auto-run is scoped to `run`.
-    assert allowlist.validate(_argv("standup", "-z"), catalog=catalog).mode == MUTATING
-    assert allowlist.validate(_argv("standup", "-z"), catalog=catalog).requires_approval is True
+    assert policy.validate(_argv("standup", "-z"), catalog=catalog).mode == MUTATING
+    assert policy.validate(_argv("standup", "-z"), catalog=catalog).requires_approval is True
     # plan is already a read-only preview regardless of -z (so -z neither helps nor harms there);
     # experiment is mutating and a stray -z must not downgrade it.
-    d_exp = allowlist.validate(_argv("experiment", "-e", "workspace/exp.yaml", "-z"), catalog=catalog)
+    d_exp = policy.validate(_argv("experiment", "-e", "workspace/exp.yaml", "-z"), catalog=catalog)
     assert d_exp.mode == MUTATING and d_exp.requires_approval is True
 
 
-def test_skip_value_abuse_is_screened(allowlist, catalog):
+def test_skip_value_abuse_is_screened(policy, catalog):
     # -z is a bare boolean; a metachar-laden trailing token is still rejected by the screen.
-    assert not allowlist.validate(_run("-z", "a;rm -rf /"), catalog=catalog).allowed
+    assert not policy.validate(_run("-z", "a;rm -rf /"), catalog=catalog).allowed
 
 
 # ---------------------------------------------------------------------------
@@ -113,15 +113,15 @@ def test_skip_value_abuse_is_screened(allowlist, catalog):
 # ---------------------------------------------------------------------------
 
 
-def test_recollect_argv_is_a_complete_allowed_readonly_run(allowlist, catalog):
+def test_recollect_argv_is_a_complete_allowed_readonly_run(policy, catalog):
     """The agent re-collects a prior run's results without re-running the load: the SAME run
-    argv plus -z. It builds, the allowlist permits it, and it is read-only (auto-runs)."""
+    argv plus -z. It builds, the policy permits it, and it is read-only (auto-runs)."""
     argv = build_argv(
         "run", spec="cicd/kind", harness="inference-perf", workload="sanity_random.yaml",
         flags={"skip": True, "output": "local"},
     )
     assert "-z" in argv
-    d = allowlist.validate(argv, catalog=catalog)
+    d = policy.validate(argv, catalog=catalog)
     assert d.allowed and d.mode == READ_ONLY and d.requires_approval is False
 
 

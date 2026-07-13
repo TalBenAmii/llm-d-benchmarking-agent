@@ -1,7 +1,7 @@
 """Phase 7 — observability instrumentation, the /metrics endpoint, and observe_run_metrics.
 
 Hermetic: no live cluster, no scrape server. Command instrumentation runs through the REAL
-ToolContext + allowlist (CaptureRunner stands in for the subprocess); orchestrator metrics run
+ToolContext + policy (CaptureRunner stands in for the subprocess); orchestrator metrics run
 through the REAL controller against the FakeKubeClient; the endpoint is hit via FastAPI's
 TestClient. Every test isolates the metric registry with use_registry so global state never
 leaks between tests or into the process REGISTRY.
@@ -13,7 +13,7 @@ import pytest
 from app.config import Settings
 from app.observability import metrics as instrument
 from app.observability.metrics import MetricsRegistry, render_prometheus
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.tools.context import ApprovalRejected, ToolContext
 from tests.flows.catalog_snapshot import frozen_catalog
 from tests.flows.harness import CaptureRunner
@@ -25,7 +25,7 @@ def _ctx(tmp_path, *, approve=None):
     runner = CaptureRunner(settings.repo_paths)
     ctx = ToolContext(
         settings=settings,
-        allowlist=Allowlist.from_file(settings.allowlist_path),
+        policy=CommandPolicy.from_file(settings.command_policy_path),
         runner=runner,
         workspace=tmp_path / "ws" / "sessions" / "s1",
         request_approval=approve,
@@ -265,12 +265,12 @@ async def test_observe_handles_metrics_server_absent(tmp_path):
     assert "Metrics API not available" in res["error_tail"]
 
 
-def test_kubectl_top_is_allowlisted_read_only():
-    """The new live-metrics command is DATA-gated (allowlist.yaml), read-only, and constrained:
+def test_kubectl_top_is_policy_allowed_read_only():
+    """The new live-metrics command is DATA-gated (command_policy.yaml), read-only, and constrained:
     only pod/node usage, namespaced, never a mutation."""
-    from app.security.allowlist import READ_ONLY
+    from app.security.policy import READ_ONLY
 
-    al = Allowlist.from_file(Settings(_env_file=None).allowlist_path)
+    al = CommandPolicy.from_file(Settings(_env_file=None).command_policy_path)
     d = al.validate(["kubectl", "top", "pods", "-n", "bench", "-l", "llmd-bench/run-id=r1"])
     assert d.allowed and d.mode == READ_ONLY
     assert al.validate(["kubectl", "top", "nodes"]).allowed

@@ -25,9 +25,9 @@ Two artifact modes:
   scenario and whose ``values_file``/``template_dir`` point at the read-only repo's stock
   ``defaults.yaml`` + ``jinja`` dir. THAT is the concrete plumbing into the determinism gate:
   the returned ``spec_path`` is fed straight to ``execute_llmdbenchmark(spec=<spec_path>, …)``
-  — the CLI's ``resolve_specification_file`` accepts an exact file path, and the allowlist
+  — the CLI's ``resolve_specification_file`` accepts an exact file path, and the policy
   permits a workspace-confined ``*.spec.yaml`` (constraint ``spec_workspace_path``), so the
-  just-authored scenario has a real, allowlisted route into plan/--dry-run.
+  just-authored scenario has a real, policy-allowed route into plan/--dry-run.
 
 The authored scenario is then previewed via the CLI's own determinism gate using that spec:
 ``execute_llmdbenchmark(subcommand="plan"/"run", spec=<spec_path>, flags.dry_run=True)``.
@@ -67,8 +67,8 @@ _TEMPLATE_DIR_SUBPATH = ("config", "templates", "jinja")
 _STRUCTURAL_LEAF_SEGMENTS = frozenset({"flags", "name"})
 
 # Suffix for the companion specification file authored beside a scenario. A bare ``*.spec.yaml``
-# under the session workspace is what the allowlist's ``spec_workspace_path`` constraint admits
-# as a ``--spec`` value (in addition to live-catalog names), so this file is the allowlisted
+# under the session workspace is what the policy's ``spec_workspace_path`` constraint admits
+# as a ``--spec`` value (in addition to live-catalog names), so this file is the policy-allowed
 # route the authored scenario takes into the CLI's determinism gate.
 _SPEC_SUFFIX = ".spec.yaml"
 
@@ -359,7 +359,7 @@ def author_scenario(
                 "errors": [f"emitted YAML did not re-parse: {exc}"], "path": str(dest)}
 
     # Author the companion --spec file beside the scenario so the authored artifact has a real,
-    # allowlisted route into the CLI's determinism gate. It points scenario_file at THIS file
+    # policy-allowed route into the CLI's determinism gate. It points scenario_file at THIS file
     # and values_file/template_dir at the read-only repo's stock copies. Workspace-only write.
     spec_doc = _build_spec_document(ctx.settings.bench_repo, dest)
     spec_dest = ctx.workspace / _spec_filename(target_filename)

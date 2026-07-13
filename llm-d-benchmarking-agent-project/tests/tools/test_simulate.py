@@ -1,7 +1,7 @@
 """Hermetic tests for Simulate Mode (SIMULATE=1).
 
 No sibling repos, no network, no API key. Like the flow harness, we shadow the live
-catalog with the frozen snapshot so the allowlist's ref-catalog checks behave as in prod
+catalog with the frozen snapshot so the policy's ref-catalog checks behave as in prod
 even though the bench repo is absent here.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ import pytest
 
 from app.agent.prompt import SIMULATE_NOTE, build_system_prompt
 from app.config import Settings
-from app.security.allowlist import MUTATING, READ_ONLY, Allowlist
+from app.security.policy import MUTATING, READ_ONLY, CommandPolicy
 from app.security.runner import CommandRunner, RunResult, SimRunner
 from app.tools.analyze.report_locate import locate_and_parse_report
 from app.tools.context import ApprovalRejected, ToolContext
@@ -33,15 +33,15 @@ def _settings(tmp_path: Path, *, simulate: bool) -> Settings:
 
 def _ctx(tmp_path: Path, *, simulate: bool, runner, request_approval=None) -> ToolContext:
     settings = _settings(tmp_path, simulate=simulate)
-    allowlist = Allowlist.from_file(settings.allowlist_path)
+    policy = CommandPolicy.from_file(settings.command_policy_path)
     ctx = ToolContext(
         settings=settings,
-        allowlist=allowlist,
+        policy=policy,
         runner=runner,
         workspace=tmp_path / "ws" / "sessions" / "sim",
         request_approval=request_approval,
     )
-    # Shadow the catalog so allowlist ref-checks work with no repos on disk (see harness).
+    # Shadow the catalog so policy ref-checks work with no repos on disk (see harness).
     frozen = frozen_catalog()
     ctx._catalog = frozen
     ctx.catalog = lambda *, refresh=False: frozen
@@ -50,7 +50,7 @@ def _ctx(tmp_path: Path, *, simulate: bool, runner, request_approval=None) -> To
 
 # A representative mutating command (would prompt for approval outside simulate mode).
 STANDUP = ["llmdbenchmark", "--spec", "cicd/kind", "standup", "-p", "ns"]
-# A representative READ-ONLY command (allowlisted; probe.py runs exactly this).
+# A representative READ-ONLY command (policy-allowed; probe.py runs exactly this).
 GET_NODES = ["kubectl", "get", "nodes", "-o", "json"]
 
 
@@ -73,11 +73,11 @@ class _SpyRunner(CommandRunner):
 
 
 async def test_simulate_runs_readonly_command_for_real(tmp_path):
-    """THE fix: under SIMULATE a READ-ONLY allowlisted command must actually reach the runner so
+    """THE fix: under SIMULATE a READ-ONLY policy-allowed command must actually reach the runner so
     the agent gathers genuine context — it is NOT no-opped to empty (the old all-no-op behaviour)."""
     spy = _SpyRunner()
     ctx = _ctx(tmp_path, simulate=True, runner=spy)
-    decision = ctx.allowlist.validate(GET_NODES, catalog=ctx.catalog_for_allowlist())
+    decision = ctx.policy.validate(GET_NODES, catalog=ctx.catalog_for_policy())
     assert decision.allowed and decision.mode == READ_ONLY  # sanity: really read-only
     res = await ctx.run_readonly(GET_NODES)
     assert spy.calls == [GET_NODES]      # it RAN
@@ -90,7 +90,7 @@ async def test_simulate_noops_mutating_command_before_real_runner(tmp_path):
     approve = AsyncMock(return_value=True)
     spy = _SpyRunner()
     ctx = _ctx(tmp_path, simulate=True, runner=spy, request_approval=approve)
-    decision = ctx.allowlist.validate(STANDUP, catalog=ctx.catalog_for_allowlist())
+    decision = ctx.policy.validate(STANDUP, catalog=ctx.catalog_for_policy())
     assert decision.allowed and decision.mode == MUTATING  # sanity: really mutating
     res = await ctx.run_command(STANDUP)
     assert spy.calls == []               # the mutation never reached the runner
@@ -166,8 +166,8 @@ async def test_run_command_simulate_still_requires_approval(tmp_path):
     approve = AsyncMock(return_value=True)
     ctx = _ctx(tmp_path, simulate=True, runner=SimRunner({}), request_approval=approve)
 
-    # Sanity: this command IS mutating per the real allowlist + frozen catalog.
-    decision = ctx.allowlist.validate(STANDUP, catalog=ctx.catalog_for_allowlist())
+    # Sanity: this command IS mutating per the real policy + frozen catalog.
+    decision = ctx.policy.validate(STANDUP, catalog=ctx.catalog_for_policy())
     assert decision.allowed and decision.requires_approval
 
     res = await ctx.run_command(STANDUP)

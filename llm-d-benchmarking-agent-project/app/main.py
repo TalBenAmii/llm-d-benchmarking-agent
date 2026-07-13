@@ -46,7 +46,7 @@ from app.orchestrator.controller import BenchmarkOrchestrator
 from app.orchestrator.kube import RealKubeClient
 from app.packaging.report_card import render_report_card
 from app.packaging.shared_chat import render_shared_chat
-from app.security.allowlist import Allowlist
+from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner
 from app.storage.history import HistoryStore, available_metrics, trend
 from app.storage.retention import readiness, run_gc, self_check
@@ -78,10 +78,10 @@ async def lifespan(app: FastAPI):
     setup_logging(level=settings.log_level, log_format=settings.log_format)
     log.info("startup", extra={"log_format": settings.log_format, "provider": settings.llm_provider})
     app.state.settings = settings
-    # The allowlist still governs the DEDICATED command tools (execute_llmdbenchmark, probes,
+    # The policy still governs the DEDICATED command tools (execute_llmdbenchmark, probes,
     # orchestrator) via ctx.run_command/ctx.run_readonly. The agent's ad-hoc `run_shell` tool runs
     # arbitrary `bash -lc` and does NOT consult it (human approval still gates mutating commands).
-    app.state.allowlist = Allowlist.from_file(settings.allowlist_path)
+    app.state.policy = CommandPolicy.from_file(settings.command_policy_path)
     # Always the REAL runner — even under SIMULATE=1. SIMULATE no longer swaps in a runner that
     # empties EVERY command (which left the agent blind: read-only greps/probes returned nothing).
     # Instead the caller-gate (CommandExecutor / run_shell) no-ops only MUTATING commands, so
@@ -104,7 +104,7 @@ async def lifespan(app: FastAPI):
     # is currently attached, so a turn (incl. one parked at an approval) survives reconnects.
     app.state.channels = {}
     app.state.sessions = SessionManager(
-        settings, app.state.allowlist, app.state.runner,
+        settings, app.state.policy, app.state.runner,
         run_semaphore=app.state.run_semaphore, runs=app.state.runs,
     )
     # Build the provider tolerantly: a missing key shouldn't crash the server.
@@ -221,7 +221,7 @@ async def healthz() -> JSONResponse:
 @app.get("/readyz")
 async def readyz() -> JSONResponse:
     """Readiness probe: reports per-component readiness from the startup configuration self-check
-    — workspace writable, provider configured, repos present, runner ok (the allowlist policy
+    — workspace writable, provider configured, repos present, runner ok (the policy policy
     loads; Phase 16 splits this from /healthz liveness). Returns 200 when ready, 503 when not,
     with the STRUCTURED self-check reasons so an operator/orchestrator can see *why*. Liveness
     stays on the minimal /healthz; this is the readiness gate a K8s readinessProbe / load
@@ -298,14 +298,14 @@ async def list_orchestrated_jobs(
     locally). This is the SAME state ``manage_orchestrated_runs(action='list')`` returns, exposed
     as a plain HTTP GET so a programmatic client can poll run state without driving the chat LLM.
 
-    READ-ONLY by design: it runs an allowlisted ``kubectl get jobs`` and mutates nothing —
+    READ-ONLY by design: it runs an policy-allowed ``kubectl get jobs`` and mutates nothing —
     submitting and stopping runs stay approval-gated through the chat tool, keeping the
     agent-first surface intact. Scope with ``session_id`` and/or ``sweep_id`` (query params), or
     omit both to span the namespace. Degrades to an empty, honest result when no cluster is
     reachable instead of 500-ing."""
     ctx = ToolContext(
         settings=app.state.settings,
-        allowlist=app.state.allowlist,
+        policy=app.state.policy,
         runner=app.state.runner,
         workspace=app.state.settings.resolved_workspace_dir,
     )

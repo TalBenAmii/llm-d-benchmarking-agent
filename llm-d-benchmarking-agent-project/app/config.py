@@ -222,8 +222,8 @@ class Settings(BaseSettings):
         }
 
     @property
-    def allowlist_path(self) -> Path:
-        return PROJECT_ROOT / "security" / "allowlist.yaml"
+    def command_policy_path(self) -> Path:
+        return PROJECT_ROOT / "security" / "command_policy.yaml"
 
     @property
     def knowledge_dir(self) -> Path:

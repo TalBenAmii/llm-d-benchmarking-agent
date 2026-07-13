@@ -448,8 +448,8 @@ def test_self_check_good_config_passes(tmp_path):
     assert res.ok is True
     assert res.failures == []
     names = {c.name for c in res.checks}
-    # Phase 16 added the runner_ok component (the allowlist policy loads) alongside the
-    # Phase-18 checks; the shipped allowlist loads, so a good config still passes overall.
+    # Phase 16 added the runner_ok component (the policy policy loads) alongside the
+    # Phase-18 checks; the shipped policy loads, so a good config still passes overall.
     assert names == {"workspace_writable", "provider_coherent", "repos_resolvable", "runner_ok"}
     # The structured payload carries per-check booleans + reasons.
     js = res.to_json()

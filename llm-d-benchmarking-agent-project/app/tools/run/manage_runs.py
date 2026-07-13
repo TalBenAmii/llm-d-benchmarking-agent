@@ -14,8 +14,8 @@ reaches the CLUSTER itself:
 
 Deleting a Job never touches the results PVC, so benchmark artifacts survive a stop/cleanup.
 
-All cluster access flows through the same allowlisted ``kubectl`` runner on the session's
-ToolContext (deny-by-default allowlist + env scrub), so ``list`` auto-runs while ``stop`` and
+All cluster access flows through the same policy-allowed ``kubectl`` runner on the session's
+ToolContext (deny-by-default policy + env scrub), so ``list`` auto-runs while ``stop`` and
 ``cleanup`` route through the approval gate like every other mutation. Judgment about WHEN to
 stop or reap a run lives in knowledge/run_lifecycle.md — never here; this is mechanism.
 """
@@ -174,7 +174,7 @@ async def cancel_run(
 # observe_run_metrics — live system metrics during a run (Phase 7 observability).
 #
 # Read-only. Surfaces the cluster's live CPU/memory usage for the benchmark pods (and,
-# optionally, nodes) via the allowlisted ``kubectl top`` (which reads the in-cluster
+# optionally, nodes) via the policy-allowed ``kubectl top`` (which reads the in-cluster
 # metrics-server). This is the "live system metrics during a run" half of the observability
 # phase; the agent/orchestrator's *own* counters are exported separately at ``/metrics`` in
 # Prometheus format.
