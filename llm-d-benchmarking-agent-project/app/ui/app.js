@@ -828,6 +828,10 @@ document.addEventListener("keydown", (e) => {
 // folders (not the expanded ones) so a brand-new folder defaults to expanded automatically —
 // anything not in the set is open. Mirrors the localStorage try/catch used for theme/debug.
 const NO_NAMESPACE = "no_namespace";
+// The pytest suite stamps every chat it creates with this namespace (tests/conftest.py sets
+// DEFAULT_SESSION_NAMESPACE="test") and writes into the same live store — hide that folder so
+// hundreds of test chats never clutter the sidebar. Backend list/delete APIs still see them.
+const HIDDEN_NAMESPACE = "test";
 function loadCollapsedFolders() {
   try { return new Set(JSON.parse(localStorage.getItem("llmd-folders-collapsed") || "[]")); }
   catch (e) { return new Set(); }
@@ -839,6 +843,7 @@ let collapsedFolders = loadCollapsedFolders();
 
 function renderSidebar(sessions) {
   convList.innerHTML = "";
+  sessions = sessions.filter((s) => s.namespace !== HIDDEN_NAMESPACE);
   if (!sessions.length) {
     convList.appendChild(el("div", "conv-empty", "No conversations yet."));
     return;
