@@ -78,7 +78,7 @@ check `success_rate_met` too, since a run can look fast only because requests we
 ### Absent metric ⇒ inconclusive, never a fabricated verdict
 
 Apply the `results_interpretation.md` **§ "Honesty floor" (rule 2)** verbatim: an absent metric
-is "not available — inconclusive", never an estimated/interpolated verdict.
+is "not available — inconclusive", never a definitive verdict on an unmeasured metric.
 Analyze-path specifics: on a SIMULATE report (only
 `ttft_ms_p50` / `ttft_ms_p90`, **no p99**) `analyze_results` returns `analyzed: false` ("no valid
 benchmark report") rather than a p99 verdict; offer to **re-run the real harness** so the percentile
