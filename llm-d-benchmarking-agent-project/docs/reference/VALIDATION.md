@@ -25,53 +25,30 @@ flow fixtures); layers 3 and 4 are the agent self-eval harness (`tests/eval/`).
 > `make eval-judge` and `make bughunt` (each `--timeout=600`). Verify off-by-default:
 > with no key and no flag, `pytest tests/eval/` runs only the shadow tests and SKIPS the live ones.
 
-> **Live-eval mechanics (layer 2).** The live flow eval runs in two modes: `LLM_EVAL_LIVE=1`
-> (the live set: tool-choice / error-recovery / safety) and `LLM_EVAL_LIVE=1
-> LLM_EVAL_SIMULATE=1` (the simulate set: multi-step deploy walks). Both are also runnable
-> WITHOUT pytest via `python scripts/eval/validate_flows.py --live` / `--simulate` (same harness +
-> scoring). Two safeguards back the real-model run. First, a per-call watchdog gives each LLM
-> call (and the turn warm-up) a deadline (`LLM_EVAL_CALL_TIMEOUT`, default 90s) and, because
-> neither `asyncio.timeout` nor `task.cancel()` can abort a wedged `claude` CLI subprocess,
-> force-kills the SDK child and its whole worker subtree (via the SDK's own per-process
-> `_ACTIVE_CHILDREN` registry; a marker-scoped descendant scan is the fallback, and both stay
-> inside this process, so a co-running live app is never touched), then settles the call under
-> a BOUNDED grace (never an unbounded await, which re-hung when a kill missed) so it fails
-> fast instead of hanging. A per-FLOW cap (`LLM_EVAL_FLOW_TIMEOUT`, default 300s, same bounded
-> force-kill) backs it for slow multi-step flows. Second, `score_flow` checks the model loaded
-> the right `load_tools` group(s) for the grouped tools each flow needs (an extra group is a
-> NOTE, a missing one fails). Both are guarded hermetically in
+> **Live-eval mechanics (layer 2).** Two modes: `LLM_EVAL_LIVE=1` (the live set: tool-choice /
+> error-recovery / safety) and `LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1` (the simulate set: multi-step
+> deploy walks); both also runnable WITHOUT pytest via `python scripts/eval/validate_flows.py --live` /
+> `--simulate` (same harness + scoring). Two safeguards: a per-call watchdog (`LLM_EVAL_CALL_TIMEOUT`,
+> default 90s) that force-kills a wedged SDK subprocess tree and fails fast, backed by a per-FLOW cap
+> (`LLM_EVAL_FLOW_TIMEOUT`, default 300s); and a `score_flow` check that the model loaded the right
+> `load_tools` group(s) (an extra group is a NOTE, a missing one fails). Both guarded hermetically in
 > `tests/flows/test_eval_harness.py` (ZERO quota).
 
 ### Isolated eval runner
 
-The in-process watchdogs above are a first-line defense, and they have a blind spot: they're
-`asyncio.wait(timeout=…)` timers, so a frozen event loop never fires them. Two real failure
-modes do exactly that: (1) a blocking/synchronous call freezes the loop (a flow ran ~336s under a
-"300s" cap and the cap never fired), and (2) the `claude-agent-sdk` provider reuses one long-lived
-CLI subprocess across flows, which deadlocks between flows (idle loop ↔ idle subprocess), past
-every in-process cap. Neither is fixable from inside the process.
-
-`scripts/eval/run_eval_isolated.sh` (wired up as `make validate-live-iso` /
-`make validate-simulate-iso`) is the structural fix and the actual guarantee:
-
-- **Process isolation.** Each flow runs in its own `python scripts/eval/validate_flows.py --flow … `
-  process, so it gets a fresh SDK subprocess. That removes the cross-flow deadlock (mode 2) at the
-  root: no shared subprocess to accumulate bad state.
-- **External hard timeout.** Each process is wrapped in coreutils `timeout -s TERM -k <grace> <hard>`.
-  This is a kernel-level kill that no in-process freeze can defeat (Python's default SIGTERM
-  disposition terminates even a wedged loop; `-k` escalates to SIGKILL after the grace). Defeats mode 1.
-- **Self-healing between flows.** After each flow the runner reaps any orphaned (`ppid==1`)
-  bundled-CLI subprocess (marker-scoped; never a co-running app's, which stays parented to the app),
-  so a kill that left a child behind can't leak into the next flow.
-
-A stuck flow can therefore never wedge the run: `timeout` kills it, it's recorded as `TIMEOUT`, and
-the run continues. Per-flow logs plus an `iso_<mode>_summary.txt` land under the gitignored
+The in-process watchdogs are `asyncio` timers, so a frozen event loop never fires them (a
+blocking/synchronous call, or the `claude-agent-sdk` provider's long-lived CLI subprocess
+deadlocking between flows). `scripts/eval/run_eval_isolated.sh` (`make validate-live-iso` /
+`make validate-simulate-iso`) is the structural fix: each flow runs in its own
+`validate_flows.py --flow …` process (fresh SDK subprocess, no cross-flow state), wrapped in
+coreutils `timeout -s TERM -k <grace> <hard>` (a kernel-level kill no in-process freeze can defeat),
+and the runner reaps any orphaned bundled-CLI subprocess between flows. A stuck flow is recorded as
+`TIMEOUT` and the run continues; per-flow logs + `iso_<mode>_summary.txt` land under the gitignored
 `workspace/eval-logs/`. Knobs (env): `LLM_EVAL_HARD_TIMEOUT` (external kill, default 420s),
-`LLM_EVAL_KILL_GRACE` (SIGTERM→SIGKILL window, default 15s); the runner also raises the in-process
-caps it inherits to `LLM_EVAL_CALL_TIMEOUT=120` / `LLM_EVAL_FLOW_TIMEOUT=360` so the external kill is
-the true backstop. `FLOWS="name1 name2"` re-runs a subset (e.g. confirming suspected-infra failures
-flip to PASS). In a git worktree the sibling repos are empty, so point `REPOS_DIR` at the primary
-checkout.
+`LLM_EVAL_KILL_GRACE` (SIGTERM→SIGKILL window, default 15s); the runner raises the in-process caps to
+`LLM_EVAL_CALL_TIMEOUT=120` / `LLM_EVAL_FLOW_TIMEOUT=360` so the external kill is the true backstop.
+`FLOWS="name1 name2"` re-runs a subset. In a git worktree the sibling repos are empty, so point
+`REPOS_DIR` at the primary checkout.
 
 ## Quick start
 
@@ -236,11 +213,11 @@ No harness or CI changes are needed: the tests and the CLI pick it up automatica
 ## Agent self-eval (Layers 3 & 4): `tests/eval/`
 
 A second harness scores the agent's interaction quality (Layer 3) and hunts for bugs
-(Layer 4). It mirrors the flow harness's two-tier design: a deterministic SHADOW that runs in
-plain pytest for free, plus an OPT-IN LLM layer (same `LLM_EVAL_LIVE` switch) that spends quota.
-The judgment (the grading rubric and the bug-oracle policy) lives in versioned eval
-assets (`tests/eval/rubric.md`, `tests/eval/oracle.md`), NOT in `knowledge/` (so they never
-inflate an agent call or let the agent study-to-the-test) and NOT in Python `if/elif`.
+(Layer 4) — modes, needs, and cost per layer are in the table above. The judgment (the grading
+rubric and the bug-oracle policy) lives in versioned eval assets (`tests/eval/rubric.md`,
+`tests/eval/oracle.md`), NOT in `knowledge/` (so they never inflate an agent call or let the
+agent study-to-the-test) and NOT in Python `if/elif`. Artifacts land in the gitignored
+`workspace/eval/` and are never committed.
 
 **Layer 3: LLM-judge quality scorecard.** A judge LLM scores each session transcript against
 `rubric.md` (dimensions/anchors/weights/hard-fail rules + `min_overall_threshold`, all `version: 1`).
@@ -274,12 +251,6 @@ field), never gating. Every action is logged so a finding replays through the de
                   "llm_triage": "matches the historic chat-switch class" } ],
   "no_findings_note": "0 oracle violations." }
 ```
-
-> **Cost & opt-in flags (read before running).** `make eval-shadow` is HERMETIC + ZERO quota.
-> `make eval-judge` needs `LLM_EVAL_LIVE=1` + a key. `make bughunt` needs `LLM_EVAL_LIVE=1`
-> **and** `BUGHUNT=1` (its worst-case selector-call budget, `seeds × actions_budget`, is
-> printed up front). NEVER run the live layers in gating CI. Artifacts land in the gitignored
-> `workspace/eval/` and are never committed.
 
 ## CI
 

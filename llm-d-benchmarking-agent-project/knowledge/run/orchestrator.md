@@ -20,8 +20,8 @@ run it / quickstart / watch it live locally" with no cluster-object framing → 
 When the user names the orchestrator or a K8s Job, do NOT substitute the local subprocess path.
 An orchestrated run also needs NO local repo/venv prep — the Job's container image carries the
 harness — so don't `ensure_repos`/`run_setup` for it; and never pre-empt its readiness gate by
-prepping or standing up "to make the endpoint ready": call the tool, let the gate decide, and act
-on its structured verdict (a not-ready verdict → offer the approval-gated standup, see below).
+prepping or standing up first — call the tool, let the gate decide (see "Endpoint readiness
+gate" below).
 
 ## Reading a failure (what the fault `kind` means, and what to do)
 
@@ -48,15 +48,11 @@ the fix — these are operational facts; the remediation judgment is yours:
 While an `orchestrate_benchmark_run` watches a Job, the benchmark pod's logs are followed in
 the background and each line is surfaced to the user **as it is produced** — through the same
 streamed-output channel the UI already renders for any other running command (not just dumped
-at the end). So you can narrate progress live: "the harness is warming up", "it's on load
-point 2 of 3", etc., straight from the pod's own output.
+at the end). Streaming is automatic — nothing extra to call. Narrate progress live ("the
+harness is warming up", "it's on load point 2 of 3"), but report numbers only from the
+*parsed* Benchmark Report (`locate_and_parse_report`) — never scrape numbers from these raw
+log lines; they're for visibility, not results.
 
-What this means for you:
-
-- You don't have to call anything extra — streaming is automatic for a watched run. Just keep
-  the user informed using what scrolls by, and report numbers only from the *parsed* Benchmark
-  Report (`locate_and_parse_report`) — never scrape numbers from these raw log lines; they're
-  for visibility, not results.
 - For a **sweep**, several treatments run at once, so each streamed line is prefixed with its
   treatment run-id (`[t1] …`, `[t2] …`) — tell the user which treatment a line belongs to.
 - Log streaming is **best-effort**: if a pod isn't ready yet, logs rotate, or the follow
@@ -95,9 +91,9 @@ When you get a not-ready result:
 - **Tell the user plainly** what the readiness check found (e.g. "the `cicd/kind` namespace has
   no ready inference endpoint yet" or "the service exists but no pod is serving").
 - **OFFER to stand up a stack** — the result's `standup_suggestion` names the approval-gated path
-  (`execute_llmdbenchmark subcommand="standup"`). Standing up is **mutating**, so it requires the
-  user's explicit approval. **The decision to stand up is yours and the user's, not the gate's** —
-  the readiness check is only the mechanism; never stand up unprompted, and never auto-mutate.
+  (`execute_llmdbenchmark subcommand="standup"`). Standing up is **mutating** and requires the
+  user's explicit approval — the readiness check is only the mechanism, never a license to
+  stand up unprompted.
 - A ready result means the stack is serving — proceed with the benchmark as before.
 - Only set `require_ready_endpoint=false` (or skip the check) when you KNOW the endpoint is
   reachable another way — e.g. you're benchmarking an **external** endpoint via an explicit

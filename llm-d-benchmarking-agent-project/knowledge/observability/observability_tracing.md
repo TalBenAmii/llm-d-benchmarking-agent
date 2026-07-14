@@ -1,6 +1,6 @@
 # Distributed tracing — the `tracing:` config block (CONFIG-ONLY)
 
-> Extracted from `knowledge/observability.md` §4 — read this when the user asks about OpenTelemetry
+> Extracted from `knowledge/observability.md` — read this when the user asks about OpenTelemetry
 > tracing. The entry file keeps a pointer (`read_knowledge('observability_tracing')`).
 
 This is an **advanced**, opt-in feature for users who already run an OpenTelemetry backend. Read
@@ -63,6 +63,4 @@ deep-merged scenario key the modelservice jinja renders.
 Always run the authored scenario through the **determinism gate** before any standup: pass the
 returned `spec_path` to `execute_llmdbenchmark(subcommand='plan', spec=<spec_path>,
 flags={'dry_run': True})`. A clean plan/--dry-run is the acceptance check that the `tracing:`
-block renders. Then make the boundary clear to the user: the deployed pods will export OTLP spans
-to the endpoint you configured; **they** open their Jaeger/Tempo to view them — the agent has no
-trace data to show and none appears in the Benchmark Report.
+block renders — then hand off per the viewing boundary above (it is the user's, not yours).

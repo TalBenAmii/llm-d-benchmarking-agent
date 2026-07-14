@@ -1,13 +1,10 @@
 # GPU cluster runbook: exercise the full agent on a real single GPU
 
-This runbook takes you beyond the CPU `cicd/kind` quickstart to a real GPU cluster, so the
-agent's deploy → benchmark → observe loop runs real vLLM inference and produces real
-throughput/latency numbers instead of the CPU `llm-d-inference-sim`.
-
-It is written general-first (any modest single NVIDIA GPU reachable from a local
-Kubernetes cluster) with a Windows + WSL2 + RTX 4060 (8 GB) worked example throughout
-(the example commands assume that host). The same flow works for any single-GPU box (bare-metal
-Linux, a cloud VM with one L4/A10, etc.); only the host/driver steps differ.
+Beyond the CPU `cicd/kind` quickstart: run the agent's deploy → benchmark → observe loop on a
+real GPU, with real vLLM inference and real throughput/latency numbers instead of the CPU
+`llm-d-inference-sim`. Written for any single NVIDIA GPU reachable from a local Kubernetes
+cluster (bare-metal Linux, a cloud VM with one L4/A10, …), with a Windows + WSL2 + RTX 4060
+(8 GB) worked example throughout; only the host/driver steps differ.
 
 > **Read this first: the honest ceiling on one 8 GB card.** The agent can drive a real
 > single-replica serve + benchmark on a consumer GPU. It cannot really exercise llm-d's
@@ -22,15 +19,14 @@ Linux, a cloud VM with one L4/A10, etc.); only the host/driver steps differ.
 
 The agent is cluster-agnostic by design and most of the machinery you need already exists:
 
-- It targets any cluster you bring via the kubeconfig: every CLI subcommand accepts
-  `--kubeconfig` (`app/tools/schemas/probe.py` `ProbeEnvironmentInput.kubeconfig`,
-  `app/tools/run/execute.py` `build_argv`), and `KUBECONFIG` is passed through to child processes
-  (`app/security/runner.py`). minikube writes `~/.kube/config` and sets the current context, so
-  the agent sees your GPU cluster with no extra config.
-- It is provider- and accelerator-aware out of the box: `probe_environment` detects the
-  provider (openshift / gke / doks / aks / minikube / kind) and GPU taints; `advise_accelerators`
-  reads advertised `nvidia.com/gpu`; `check_capacity` sizes the run; it authors tolerations from
-  taints, provisions the HF secret, installs metrics-server, and offers the guide client toolchain.
+- It targets any cluster you bring via the kubeconfig (every CLI subcommand accepts
+  `--kubeconfig`, and `KUBECONFIG` passes through to child processes). minikube writes
+  `~/.kube/config` and sets the current context, so the agent sees your GPU cluster with no
+  extra config.
+- It is provider- and accelerator-aware: `probe_environment` detects the provider
+  (openshift / gke / doks / aks / minikube / kind) and GPU taints; `advise_accelerators` reads
+  advertised `nvidia.com/gpu`; `check_capacity` sizes the run; it authors tolerations,
+  provisions the HF secret, installs metrics-server, and offers the guide client toolchain.
 
 What the agent does not do, and this runbook supplies:
 
@@ -157,9 +153,7 @@ Notes:
   | `Qwen/Qwen2.5-3B-Instruct` | 3B | ⚠️ risky on WSL2 | 512–1024 |
   | 7B and up | ≥7B | ❌ won't fit unquantized | use `SIMULATE=1` |
 
-  Serve fp16/bf16 to start. FP8 is a per-arch call: the GeForce 40-series (Ada) lacks the
-  datacenter-Ada FP8 path so skip it there; 50-series (Blackwell, sm_120) does have FP8, but
-  still validate fp16/bf16 first.
+  Serve fp16/bf16 to start; skip FP8 on the 40-series (Ada lacks the datacenter FP8 path) and validate fp16/bf16 first even on the 50-series (sm_120).
 
 ---
 
@@ -247,10 +241,6 @@ point the agent at one with `KUBECONFIG=…` and the same flow applies.
 
 ## Related
 
-- `knowledge/deploy_path_playbook.md`: how the agent chooses a deploy path (kind/sim vs GPU
-  guides). The GPU path is documented there as a non-default ("future") flow; this runbook is the
-  hands-on companion for making it real on a small GPU.
-- `knowledge/vllm_overrides.md`: the per-knob scenario-override guide (the judgment behind §3).
-- `knowledge/capacity.md` / `knowledge/accelerators.yaml`: GPU sizing + accelerator detection.
-- `docs/guides/INTERACTIVE_TEST_GUIDE.md`: the by-hand feature walk-through (CPU/kind oriented; this runbook
-  is its GPU counterpart).
+- `knowledge/deploy_path_playbook.md` · `knowledge/vllm_overrides.md`
+- `knowledge/capacity.md` · `knowledge/accelerators.yaml`
+- [`INTERACTIVE_TEST_GUIDE.md`](INTERACTIVE_TEST_GUIDE.md)

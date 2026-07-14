@@ -12,22 +12,19 @@ and `docs/reference/CONTEXT.md` point here, in this order (a–d).
 2. **SessionPlan + catalog gate** (b) (`session_plan.py::validate_plan`) — the plan's spec/harness/workload
    must exist in the **live catalog**; namespace must be RFC1123. Reject with a catalog hint on mismatch —
    never silently default. The approval is wired in `app/tools/setup/plan.py` + the loop.
-   **What this gate is not:** a precondition on mutation. Nothing keys off `session.approved_plan` (written
-   in `agent/loop.py`; read only as a namespace fallback in `agent/session.py`). The plan is a *second human
-   checkpoint*; what actually stops an unapproved mutation is the **per-command approval gate**
-   (`tools/command_exec.py`, `tools/run/shell.py`). "Plan first" ordering comes from the system prompt + the
-   skill-grounding gate. If you want it to be a hard precondition, it has to be written.
+   **What this gate is not:** a precondition on mutation — nothing keys off `session.approved_plan`; the
+   plan is a *second human checkpoint*. Unapproved mutations are stopped by the **per-command approval
+   gate** (`tools/command_exec.py`, `tools/run/shell.py`); "plan first" ordering = system prompt +
+   skill-grounding gate, not code. A hard precondition would have to be written.
 3. **DoE / generated-config gate** (c) (`doe.py`) — `build_doe_experiment()` is a **pure** cross-product
    (no benchmarking judgment); `validate_structure()` (in `app/tools/run/doe.py`) checks the emitted YAML
    against the repo's format.
 4. **Report gate** (d) (`report.py::load_report` + `validate_report`) — results come **only** from a
    schema-validated **Benchmark Report v0.2**, never scraped from logs.
 
-**Not a gate:** previewing a config through the CLI's own `--dry-run`/`plan` is asked for by the prompt
-and the tool descriptions, but **nothing in code enforces it** (`config_artifact.py` returns
-`"structural check only in MVP; deep validation via CLI --dry-run is deferred"`). Older docs listed it as
-gate (c); they were wrong. Treat it as an agent convention — if you want it to be a gate, it has to be
-written.
+**Not a gate:** the CLI `--dry-run`/`plan` config preview — asked for by the prompt and tool
+descriptions, but **nothing in code enforces it** (`config_artifact.py`: structural check only in MVP).
+An agent convention; making it a gate would have to be written.
 
 ## Local invariants
 - **Never fabricate numbers.** `summarize_report()` omits absent fields; it never invents latency/

@@ -8,19 +8,6 @@ anything changes your system.
 For installing/running the agent, see [`DEPLOYMENT.md`](DEPLOYMENT.md). For what's under the
 hood, see [`ARCHITECTURE.md`](../reference/ARCHITECTURE.md).
 
-## What it does
-
-You say something like *"benchmark a chat app with about 500 concurrent users"*. The agent:
-
-1. **Interviews you** briefly to pin down the use case and any quality-of-service targets.
-2. **Checks your environment**: is Docker up? Is there a cluster? Is a stack already
-   running?
-3. **Proposes a plan** (a *SessionPlan*) you approve before anything is deployed.
-4. **Prepares**: installs missing prerequisites, clones the benchmark repo, builds its
-   tooling, creates a local cluster. Each step is shown to you and approved.
-5. **Deploys, validates, and runs** the benchmark.
-6. **Explains the results** in plain language, tied back to what you asked for.
-
 ## The first run: the quickstart
 
 The supported out-of-the-box path is the quickstart: a tiny llm-d stack on a local
@@ -31,19 +18,21 @@ model download). Open the UI (`http://127.0.0.1:8000`) and type something like:
 
 The agent will walk through, roughly:
 
-1. **Probe** your environment (read-only, automatic, no prompt).
-2. **Read the real procedure** from the benchmark repo's docs (so it doesn't rely on
+1. **Interview you** briefly to pin down the use case and any quality-of-service targets.
+2. **Probe** your environment (read-only, automatic, no prompt): is Docker up? A cluster?
+   A stack already running?
+3. **Read the real procedure** from the benchmark repo's docs (so it doesn't rely on
    memory).
-3. **Propose a SessionPlan**, e.g. `spec=cicd/kind`, `harness=inference-perf`,
+4. **Propose a SessionPlan**, e.g. `spec=cicd/kind`, `harness=inference-perf`,
    `workload=sanity_random.yaml`, namespace `llmd-quickstart`, with the steps it intends to
    run. You approve it before anything happens.
-4. **Install prerequisites** if needed (Docker + the kind binary), **clone** the repo,
+5. **Install prerequisites** if needed (Docker + the kind binary), **clone** the repo,
    **build** its tooling, **create** the kind cluster. Each one prompts you to Approve.
-5. **Stand up** the stack, **smoketest** it, then **run** the benchmark (output streams
+6. **Stand up** the stack, **smoketest** it, then **run** the benchmark (output streams
    live).
-6. **Summarize** the Benchmark Report in plain words: TTFT, inter-token latency, throughput,
-   percentiles.
-7. **Offer teardown** when you're done.
+7. **Summarize** the Benchmark Report in plain words: TTFT, inter-token latency, throughput,
+   percentiles — tied back to what you asked for.
+8. **Offer teardown** when you're done.
 
 ## Approvals: what runs automatically vs what asks first
 
@@ -55,10 +44,8 @@ The agent will walk through, roughly:
   the exact command and waits for you to click Approve (or Reject). If you Reject,
   the agent acknowledges and replans.
 
-Nothing runs off-screen: the UI shows every command, and the one-click Debug view (`>_`)
-reveals the executed-command trail inline in the chat. Each command appears in place,
-between the messages, in the order it ran, with read-only/mutating badges. Toggle it off to
-hide the commands again.
+Nothing runs off-screen: the one-click Debug view (`>_`) reveals the executed-command trail
+inline in the chat — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md#debug-mode-ui).
 
 ## Reading the results
 
@@ -119,7 +106,5 @@ benchmark keeps running in the background and its result shows up when you retur
 
 ## Want to change how the agent reasons?
 
-The agent's judgment lives in editable Markdown/YAML under [`knowledge/`](../../knowledge/):
-playbooks, heuristics, and interpretation guides. Editing those changes the agent's behavior
-without touching code. The mechanism (security, validation, the tools) is fixed; the brain is
-yours to tune.
+Edit the Markdown/YAML under [`knowledge/`](../../knowledge/) — that's where all the agent's
+judgment lives; no code changes needed.

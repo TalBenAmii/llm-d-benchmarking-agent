@@ -39,16 +39,16 @@ those client tools are missing **before** a guide-based deploy:
 - `run_shell("install-deps.sh --dev")` → also install `chart-testing` (ct), the
   Helm chart-testing tool (only needed if the user will lint/test charts).
 It is **mutating** (needs root or passwordless sudo) → the user must Approve; relay any warning
-it prints. Know the THREE distinct install steps and pick the right one — do NOT conflate them:
+it prints. Know the THREE distinct install steps and pick the right one — do NOT conflate them
+(the first two are detailed under "What the signals mean" above):
 - `install_prereqs.sh` (project) → the Docker **daemon** + the **kind** binary (local cluster
   substrate). Needed for the kind/sim path AND as the host substrate for a local guide deploy.
-- `install.sh` (benchmark repo, via `run_setup`) → the **benchmark framework** venv/toolchain
-  (also pulls helm/helmfile/kustomize/yq/kubectl) — run it when you'll drive `llmdbenchmark`.
-- `install-deps.sh` (llm-d guide repo) → the GUIDE's **deployment client** toolchain
-  (git/curl/tar/yq/kubectl/helm/kustomize — NOT helmfile or helm-diff, which are installed
-  separately) — run it when the user deploys an llm-d guide
-  directly and `run_setup`/`install.sh` hasn't already provided those tools. If `install.sh`
-  already ran and the client tools are present, you do NOT also need `install-deps.sh`.
+- `install.sh` (benchmark repo, via `run_setup`) → the **benchmark framework** venv/toolchain —
+  run it when you'll drive `llmdbenchmark`.
+- `install-deps.sh` (llm-d guide repo) → the GUIDE's **deployment client** toolchain (above) —
+  run it when the user deploys an llm-d guide directly and `run_setup`/`install.sh` hasn't
+  already provided those tools. If `install.sh` already ran and the client tools are present,
+  you do NOT also need `install-deps.sh`.
 - `venv.exists == false` → run `run_setup` before any `llmdbenchmark` command.
 - `kind_clusters.clusters` empty (but `kind` is present) → no local cluster yet. For the
   quickstart, create one yourself: `run_shell("kind create cluster --name llmd-quickstart")`.

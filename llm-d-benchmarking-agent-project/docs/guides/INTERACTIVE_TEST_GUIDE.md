@@ -4,9 +4,8 @@
 > driving the agent. Companion to [`FEATURES.md`](../reference/FEATURES.md) (the inventory); this is the
 > do-it-yourself script. Check each box as you go.
 >
-> What "real LLM" changes: the agent's judgment (which tools to call, which spec/harness/
-> factors to pick) is now the live model, not a scripted transcript. Command execution is a
-> separate axis: you choose `SIMULATE=1` (mutating commands no-op, read-only run for real, no
+> A real LLM means the agent's judgment is the live model, not a scripted transcript. Command
+> execution is a separate axis: `SIMULATE=1` (mutations no-op, read-only run for real, no
 > cluster) or real (kind cluster).
 
 ---
@@ -36,25 +35,14 @@ cd llm-d-benchmarking-agent-project
 cp .env.example .env          # if you don't already have one
 ```
 
-Edit `.env` for a real LLM (pick ONE provider):
-
-```ini
-# Anthropic
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...          # your real key
-ANTHROPIC_MODEL=claude-opus-4-8
-
-SIMULATE=1                            # Track A. Set 0 for Track B.
-HOST=127.0.0.1
-PORT=8000
-```
+Configure a real LLM provider in `.env` (variables + defaults → [`DEPLOYMENT.md`](DEPLOYMENT.md#configuration-env)),
+and set `SIMULATE=1` for Track A (`0` for Track B).
 
 > The LLM model here is the agent's brain. It is separate from the model being benchmarked
 > (the quickstart benchmarks a CPU-sim engine). The key never leaves the backend.
 
-Install + launch with `./scripts/run.sh` (sets up the venv, installs, starts uvicorn reading
-`HOST`/`PORT` from `.env`); full quickstart in the [root README](../../../README.md#quick-start) /
-[`DEPLOYMENT.md`](DEPLOYMENT.md).
+Install + launch with `./scripts/run.sh`; full quickstart in the
+[root README](../../../README.md#quick-start) / [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 - [ ] **[A/B]** Server is up: open http://127.0.0.1:8000 and the chat UI loads.
 - [ ] **[A/B]** Startup log on stdout is JSON (e.g. `{"timestamp":...,"message":"startup","provider":"anthropic"}`) and includes a `retention.gc` line. *(§9 structured logging + GC)*
@@ -312,23 +300,11 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
   Treat failures as signal (a prompt/knowledge gap or a genuinely wrong choice), not a hard
   build break; a live model is nondeterministic.
 
-> What the live eval now covers: beyond the deploy/benchmark vertical (§3), the flow set in
-> `tests/flows/flows.py` includes tool-choice flows for the rest of the surfaces, each scored
-> on the tool the model picks from natural language (a `required_tools` hint, the analogue of
-> `required_subcommands` for non-`llmdbenchmark` tools):
-> - **§4 DoE/sweep**: `doe-run-sweep` (run-parameter sweep) and `doe-full-experiment` (full DoE
->   with setup factors) → `generate_doe_experiment`.
-> - **§5/§6 analysis & history**: `analyze-slo-pareto` → `analyze_results`; `compare-ab-runs` →
->   `compare_reports`; `result-history-baseline` → `result_history`; `multi-harness-compare` →
->   `compare_harness_runs`; `capacity-preflight` → `check_capacity`.
-> - **§7/§8 orchestrator & lifecycle**: `orchestrate-k8s-job` → `orchestrate_benchmark_run`;
->   `endpoint-readiness-gate` → `check_endpoint_readiness`; `observe-live-usage` →
->   `observe_run_metrics`; `cancel-stuck-run` → `cancel_run`.
->
-> These run in the SAME hermetic sandbox as §3 (no cluster/repos), so they score the model's
-> choice, not real numbers; the manual click-throughs above still own end-to-end execution.
-> Each is also replayed deterministically (a golden transcript) by `make test`, so the loop +
-> approval gating are CI-gated even though the live scoring is opt-in.
+> The live eval covers the deploy/benchmark vertical (§3) plus tool-choice flows for the other
+> surfaces (DoE/sweep, analysis, history, orchestrator, lifecycle) — the full flow inventory is
+> `tests/flows/flows.py`; the harness is [`VALIDATION.md`](../reference/VALIDATION.md). All run in
+> the same hermetic sandbox as §3 (they score the model's choice, not real numbers), and each is
+> replayed deterministically by `make test`.
 
 ---
 
@@ -348,16 +324,4 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
 | §11 Quality & CI | §11 |
 | §12 Knowledge base / tokens | §2, §3 (token line), read `knowledge/` |
 
----
-
-### Quick reference: what needs what
-
-| Capability | Real LLM | SIMULATE=1 ok | Needs cluster |
-|---|:--:|:--:|:--:|
-| Interview → plan → approval gate | ✅ | ✅ | ❌ |
-| DOE generation + sweep wiring (preview) | ✅ | ✅ | ❌ |
-| Real benchmark numbers + inline charts | ✅ | ❌ | ✅ |
-| Orchestrator Job lifecycle / log stream | ✅ | ❌ | ✅ |
-| HTTP ops / CORS / metrics | n/a | ✅ | ❌ |
-| Deploy artifacts (helm/docker) | n/a | n/a | ❌ |
-| Hermetic suite / flows | n/a | n/a | ❌ |
+What needs what (LLM / SIMULATE / cluster) → the "Two tracks" section at the top.

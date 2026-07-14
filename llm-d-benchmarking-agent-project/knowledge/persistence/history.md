@@ -48,9 +48,9 @@ a machine-validated one before trending against it.
 Asked to compare a fresh run against a baseline with nothing stored yet: (a) FIRST auto-locate the
 just-completed run yourself with `locate_and_parse_report` ("find the newest Benchmark Report from a
 completed run") — don't ask the user for a path the tool can find; (b) ask ONLY for the BASELINE's
-run dir / report path (the one thing you can't discover); then `compare_reports` the two. (c) Always
-offer to store THIS run as the baseline going forward (see the proactive-storing note above) so the
-next comparison needs no path.
+run dir / report path (the one thing you can't discover); then `compare_reports` the two. (c) Offer
+to store THIS run as the baseline (the proactive-storing note above) so the next comparison needs
+no path.
 
 **Where run outputs actually live:** under the agent's own `workspace/`, not any home dir. A direct
 `execute_llmdbenchmark` run lands in the session workspace (`workspace/sessions/<sid>/`, reports
@@ -122,10 +122,9 @@ the user sees in the Results panel. The UI shows facts; you provide the narrativ
 There are **two independent result stores**, and you should not confuse them:
 
 1. **The agent's local history store** (everything above — the `result_history` tool, backed
-   by `app/storage/history.py`). It persists *your* validated report summaries on this host,
-   powers the Results panel + trend chart, and is the **default** for "remember this run",
-   "track regressions", "trend TTFT over time". It needs no remotes, no credentials, no
-   network. **For the local need, this is all you reach for.**
+   by `app/storage/history.py`). It persists *your* validated report summaries on this host
+   and powers the Results panel + trend chart; it needs no remotes, no credentials, no
+   network.
 
 2. **The CLI's git-like Results Store** (`llmdbenchmark results …`, modeled by
    `execute_llmdbenchmark(subcommand="results", store={...})`). This is an **optional,

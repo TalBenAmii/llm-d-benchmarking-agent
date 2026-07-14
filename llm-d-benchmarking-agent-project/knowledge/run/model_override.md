@@ -35,10 +35,6 @@ meaningful if it checks the **identical** model. Before a standup/run with `mode
 
 > Call `check_capacity(spec=<spec>, overrides={'model': '<id>'})` with the **same** `<id>`.
 
-If you pass `-m` to the standup but let `check_capacity` size the spec's stock default, you've
-validated the wrong thing — a 70B override sails past a pre-flight that sized a 125M default,
-then OOMs minutes into the deploy. Keep them in lockstep:
-
 1. User asks for model `X`.
 2. `propose_session_plan` is approved.
 3. `check_capacity(spec=…, overrides={'model': 'X'})` → read the verdict
@@ -47,7 +43,7 @@ then OOMs minutes into the deploy. Keep them in lockstep:
    subcommand='standup', spec=…, models='X', …)`.
 
 If the user later changes the model mid-session, re-run `check_capacity` with the new id
-before the next standup. The override and the pre-flight override are always the same string.
+before the next standup.
 
 ## Notes
 

@@ -42,8 +42,7 @@ Concrete catalog names: the **SLO / inference-perf** leg → `chatbot_synthetic.
 (rate ladder `[2,5,8,10,12,15,20]`, `max_seconds 50`) or the higher-load
 `guide_workload-autoscaling_1.yaml` (rate `[4,8,16,24]`, 300s). (guidellm's
 `shared_prefix_synthetic` is the lighter ladder — not a high-rate sweep — so reach for
-`guide_workload-autoscaling_1.yaml` when you want heavier load.) Confirm via `list_catalog`
-before planning.
+`guide_workload-autoscaling_1.yaml` when you want heavier load.)
 
 **Don't claim a "live"/"just-checked" catalog you didn't look at.** The authoritative catalog
 arrives as an in-context "[live catalog snapshot …]" message and is re-enumerable with
@@ -153,8 +152,5 @@ first, aiperf/guidellm win the second.
 
 ## The kind/CPU-sim caveat still applies
 
-On the simulated CPU engine the absolute numbers aren't representative of GPU serving (see
-`knowledge/analysis.md`). A multi-harness session on the quickstart demonstrates the
-*methodology* (validate SLOs with inference-perf, sweep throughput with guidellm, reconcile
-them) — not real-world performance. The identical flow is what you'd run against a real GPU
-stack.
+A multi-harness session on the quickstart demonstrates the *methodology*, not real-world GPU
+performance — full caveat → `results_interpretation.md` §"Honesty about scale".

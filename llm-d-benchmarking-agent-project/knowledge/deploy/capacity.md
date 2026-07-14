@@ -95,17 +95,18 @@ result, don't spend that overhead as if it were serving capacity:
 - Reach for a concurrency figure **only** off the planner's own **"max concurrent requests"**
   sizing line (which already nets out weights + overhead), never from raw leftover memory. If that
   line is small or absent on a borderline fit, say the config is memory-bound and suggest the same
-  fixes as a hard fail (smaller/quantized model, more GPUs/TP, bigger GPU, lower `max_model_len`).
+  fixes as a hard fail (the two fix menus under "Reading the verdict" above).
 
 ## Gated-model access pre-flight — "can your token even pull the weights?"
 
 `check_capacity` pairs the "will it fit?" sizing verdict with a **gated-model access**
 pre-flight, using the benchmark repo's OWN gating check (`check_model_access` /
 `GatedStatus`). The point: a gated model whose weights your HuggingFace token can't pull
-fails the standup minutes in, with an opaque image-pull / weights error. This surfaces the
-exact verdict **up front, at the plan gate, before any mutating step** — so a non-expert
-hears "your token can't pull this model, here's the fix" instead of watching a long deploy
-die. The result carries three facts (plus a per-model `gated_access.models` breakdown):
+fails the standup minutes in, with an opaque image-pull / weights error; this pre-flight
+surfaces the exact verdict at the same timing as the sizing check ("When to call it" above) —
+so a non-expert hears "your token can't pull this model, here's the fix" instead of watching
+a long deploy die. The result carries three facts (plus a per-model `gated_access.models`
+breakdown):
 
 Never label a model "gated" (or "public") from memory or a guess — that verdict is a PROBE
 fact. Run `check_capacity` (its `check_model_access` / HF lookup) and read the `gated` field
@@ -157,8 +158,8 @@ Read the three situations and say this (the **decision is here, not in Python**)
   mean describe it in prose or defer via `suggest_next_steps`. State plainly alongside the call:
 
   - It must run **before** the standup (a gated standup can't pull weights without it).
-  - You **never see the token** — it is read backend-side and never shown, never logged,
-    never in the argv/command events. You only see kubectl's confirmation line.
+  - You **never see the token** (backend-only — the full rule at the end of this section);
+    you only see kubectl's confirmation line.
   - After it succeeds, **re-run `check_capacity`** (same model/overrides) to confirm
     `authorized: true`, and only THEN proceed to standup.
   - `name` defaults to the upstream `llm-d-hf-token`; only override it if the deployment was

@@ -28,10 +28,8 @@ Set `flags.monitoring` on the `execute_llmdbenchmark` tool:
 - omit `monitoring` → upstream scenario defaults apply (`monitoring.podmonitor.enabled: true`,
   `metricsScrapeEnabled: false`).
 
-Under the hood `--monitoring` sets `monitoring.podmonitor.enabled: true` +
-`monitoring.metricsScrapeEnabled: true`; `--no-monitoring` sets `podmonitor.enabled: false` and
-disables the GAIE Prometheus ServiceMonitor. The same effect can be reached scenario-side via
-`monitoring.podmonitor.enabled` / `monitoring.installPrometheusCrds`.
+The same effect can be reached scenario-side via `monitoring.podmonitor.enabled` /
+`monitoring.installPrometheusCrds`.
 
 The vLLM Prometheus `/metrics` endpoint is on port **8200** (modelservice) / **8000**
 (standalone); the **EPP (inference-scheduler)** endpoint is a SEPARATE scrape on port **9090**

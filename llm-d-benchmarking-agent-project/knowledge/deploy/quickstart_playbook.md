@@ -59,19 +59,14 @@ the steps/flags come from the real procedure rather than memory.
    the output streams live. (We pass `skip_smoketest:true` so standup does NOT auto-chain its
    smoketest — upstream standup auto-runs the smoketest unless `--skip-smoketest`; we run it as
    the explicit step 6 instead. Do NOT drop `skip_smoketest` — it is the real upstream override.)
-5b. **Live resource stats — OFFER the metrics-server install as its OWN step BEFORE you deploy or
-   run (don't wait to be asked, don't defer to mid-run, don't bundle it into the run turn).** kind
-   does NOT ship the in-cluster **metrics-server**, so the live CPU/mem panel during a run reads
-   `live resource stats unavailable (no metrics-server)`. `probe_environment` reports this up front
-   as `metrics_server.available`. On a fresh kind cluster where `metrics_server.available == false`,
-   make a single one-line, approval-gated offer to install it:
-   `run_shell("install_metrics_server.sh --kubelet-insecure-tls")`
-   — and surface that offer BEFORE you offer to standup/deploy or submit the `run`. STOP and wait
-   for the user's choice on the install — do NOT phrase it as optional ("I can do it after" / "for
-   future runs") and do NOT submit the deploy or run in the same turn. `--kubelet-insecure-tls` is
-   REQUIRED on kind (self-signed kubelet certs). It's a PER-CLUSTER add-on: install once and every
-   run on this cluster gets stats. SKIP if `metrics_server.available` is already true (e.g.
-   GKE/OpenShift); the full judgment + SKIP cases are in `read_knowledge('observability')`.
+5b. **Live resource stats — OFFER the metrics-server install as its OWN approval-gated step BEFORE
+   you deploy or run (don't wait to be asked, don't defer to mid-run, don't bundle it into the run
+   turn).** kind does NOT ship the in-cluster **metrics-server** (`probe_environment` reports
+   `metrics_server.available` up front). On a fresh kind cluster where it is `false`, make a single
+   one-line offer: `run_shell("install_metrics_server.sh --kubelet-insecure-tls")` — then STOP and
+   wait for the user's choice. Full install rules (don't-phrase-optional, why
+   `--kubelet-insecure-tls` is REQUIRED on kind, per-cluster, the SKIP cases) →
+   `read_knowledge('observability')`.
 6. **Smoketest** — `execute_llmdbenchmark subcommand=smoketest spec=cicd/kind
    namespace=llmd-quickstart`. Confirms the endpoint answers.
 7. **Benchmark** — `execute_llmdbenchmark subcommand=run spec=cicd/kind
@@ -91,11 +86,10 @@ the steps/flags come from the real procedure rather than memory.
 When the user gave a COMPLETE instruction up front — e.g. "create the cluster, deploy, smoketest,
 run the benchmark, then tear down" — execute the whole flow to completion. Do NOT insert an
 OPTIONAL clarification gate mid-execution and then stop (the metrics-server offer in step 5b is
-the usual culprit). The metrics-server is a non-essential observability add-on: if its install
-wasn't asked for, SKIP it silently (the run still works; the live CPU/mem panel just reads
-"unavailable") rather than pausing the flow to ask — never let an optional offer become the
-turn's final message. Approval-gated MUTATING steps (standup/run/teardown) still prompt as
-normal; what you must not do is halt on a non-mandatory question.
+the usual culprit): if a non-essential add-on's install wasn't asked for, SKIP it silently (the
+run still works without it) rather than pausing the flow to ask — never let an optional offer
+become the turn's final message. Approval-gated MUTATING steps (standup/run/teardown) still
+prompt as normal; what you must not do is halt on a non-mandatory question.
 
 **Always leave the cluster in the state the user asked for.** If the instruction included a
 teardown, the flow is NOT complete until teardown has run — never end a turn after standup/

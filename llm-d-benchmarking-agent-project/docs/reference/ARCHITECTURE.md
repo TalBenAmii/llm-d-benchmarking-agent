@@ -1,29 +1,20 @@
 # Architecture
 
-The llm-d Benchmarking Agent is a conversational agent, benchmark orchestrator, and
-results analyzer for [`llm-d-benchmark`](https://github.com/llm-d/llm-d-benchmark). A
-non-expert describes a use case in plain language; the agent interviews them, checks the
-environment, deploys an llm-d stack if needed, runs the benchmark, and explains the
-results, driving the real `llmdbenchmark` CLI on their behalf inside a strict security
-sandbox.
-
-This document is the system-design reference: the layers, the data flow, the trust
-boundaries, and the two invariants that keep the system safe and reliable.
+System-design reference for the llm-d Benchmarking Agent (what it is → the
+[root README](../../../README.md)): the layers, data flow, trust boundaries, and the
+invariants that keep the system safe and reliable.
 
 ## The two governing principles
 
-Everything below follows from two rules (see [`CLAUDE.md`](../../CLAUDE.md)):
+Everything below follows from two rules (full statement → [`CLAUDE.md`](../../CLAUDE.md)):
 
-1. **Thin code, thick agent.** Python is mechanism only: a chat UI, an agent loop, a
-   set of tools, a command policy, and schema validation. All judgment (which
-   spec/harness/workload to use, what flags to pass, how to read a result) lives in the LLM
-   plus editable Markdown/YAML under [`knowledge/`](../../knowledge/). There are no
-   `if/elif` decision branches encoding benchmarking expertise in Python.
-2. **Determinism via validation, not scripting.** The LLM is free-form, so the system is
-   constrained at its boundaries: tool-call arguments validated against schemas, a
-   `SessionPlan` cross-checked against the live catalog and human-approved, generated configs
-   structurally validated, and results parsed from the repo's Benchmark Report v0.2 schema,
-   never scraped from logs.
+1. **Thin code, thick agent.** Python is mechanism only; all judgment lives in the LLM plus
+   editable Markdown/YAML under [`knowledge/`](../../knowledge/). No `if/elif` decision
+   branches encoding benchmarking expertise in Python.
+2. **Determinism via validation, not scripting.** The free-form LLM is constrained at the
+   boundaries: schema-validated tool args, a catalog-cross-checked human-approved
+   `SessionPlan`, structurally validated generated configs, and results parsed from the
+   Benchmark Report v0.2 schema, never scraped from logs.
 
 ## High-level picture
 

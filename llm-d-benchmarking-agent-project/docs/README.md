@@ -6,16 +6,16 @@ Kubernetes-native benchmark orchestrator, and results analyzer for
 
 | Doc | For | Covers |
 |---|---|---|
-| [ARCHITECTURE.md](reference/ARCHITECTURE.md) | engineers / reviewers | System design: layers, components, the four determinism gates, request flow, trust boundaries, concurrency and resilience. |
+| [ARCHITECTURE.md](reference/ARCHITECTURE.md) | engineers / reviewers | System design: layers, components, the four determinism gates, trust boundaries. |
 | [API.md](reference/API.md) | integrators / contributors | The HTTP/WebSocket API and the agent tool surface (inputs, classification, result shapes) + the `SessionPlan`. |
 | [DEPLOYMENT.md](guides/DEPLOYMENT.md) | operators | Running locally and in-cluster (Helm), configuration, secrets, least-privilege RBAC, observability. |
-| [CLUSTER_SERVICE_DEPLOY.md](guides/CLUSTER_SERVICE_DEPLOY.md) | maintainers / operators | Deploying the agent itself as an in-cluster service: the self-contained full-bake image (bundles the `llmdbenchmark` CLI + sibling repos + client toolchain), `scripts/install/install_service.sh` (Helm), workspace persistence, and the kind test adapter. |
+| [CLUSTER_SERVICE_DEPLOY.md](guides/CLUSTER_SERVICE_DEPLOY.md) | maintainers / operators | Deploying the agent as an in-cluster service: image build/publish, `install_service.sh` (Helm), persistence, testing. |
 | [USER_GUIDE.md](guides/USER_GUIDE.md) | end users | Using the agent end-to-end with no `llm-d-benchmark` expertise. |
-| [GPU_CLUSTER_RUNBOOK.md](guides/GPU_CLUSTER_RUNBOOK.md) | end users / operators | Going beyond the CPU `cicd/kind` quickstart: stand up a real single-GPU cluster (minikube + NVIDIA, WSL2/RTX 4060 worked example), author a tiny-model scenario that fits 8 GB, and a feature-by-feature checklist of what's real vs simulated on one card. |
+| [GPU_CLUSTER_RUNBOOK.md](guides/GPU_CLUSTER_RUNBOOK.md) | end users / operators | Real single-GPU cluster (minikube + NVIDIA): setup, a tiny-model scenario, what's real vs simulated on one card. |
 | [VALIDATION.md](reference/VALIDATION.md) | contributors | The flow-validation harness: proving the agent runs the right commands. |
-| [MCP.md](reference/MCP.md) | Claude Code users | Pointer: the `llm-d-bench` MCP server split into its own repo ([llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)); the stub carries the install one-liner. |
-| [SECURITY.md](reference/SECURITY.md) | operators / reviewers | Threat model: trust boundaries, the command policy/approval model, secret scrubbing, network-exposure guidance, what requires isolation. |
-| [TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md) | operators | Symptom → what to check; debug mode; the structured logs + `corr_id`; the readiness/metrics endpoints. |
+| [MCP.md](reference/MCP.md) | Claude Code users | Pointer to the split-out `llm-d-bench` MCP server repo ([llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)). |
+| [SECURITY.md](reference/SECURITY.md) | operators / reviewers | Threat model: trust boundaries, command policy/approvals, secret scrubbing, exposure guidance. |
+| [TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md) | operators | Symptom → what to check; debug mode; structured logs; readiness/metrics endpoints. |
 | [INTERACTIVE_TEST_GUIDE.md](guides/INTERACTIVE_TEST_GUIDE.md) | contributors / testers | Follow-along runbook to drive every feature by hand with a real LLM. |
 | [BENCHMARK_FEATURE_COVERAGE.md](reference/BENCHMARK_FEATURE_COVERAGE.md) | contributors / reviewers | Benchmark-CLI feature-coverage catalog (✅/🟡/⬜): what's wired, per upstream feature. |
 | [USEFUL_REPO_DOCS.md](reference/USEFUL_REPO_DOCS.md) | contributors | Curated index of which upstream `llm-d` / `llm-d-benchmark` docs matter and why. |
@@ -28,35 +28,8 @@ config, alert rules (`alerts.rules.yaml`), and a Grafana dashboard.
 
 Project root: [`README.md`](../../README.md) (overview, at the repo root), [`CLAUDE.md`](../CLAUDE.md) (working
 rules), and [`FEATURES.md`](reference/FEATURES.md) (live, evidence-backed feature
-inventory). The agent's judgment lives in [`knowledge/`](../knowledge/).
+inventory). The agent's judgment lives in [`knowledge/`](../knowledge/); UI screenshots used by
+docs/demos live in [`images/`](images/).
 
-UI screenshots used by docs/demos live in [`images/`](images/); the informal working backlog is
-the loose `todo` file at the monorepo root (untracked, present only in the primary checkout). Design history (the original proposal + plan, and the five shipped
-feature proposals) is preserved in git history only (`docs/history/`, removed 2026-07-10).
-
-## Design in one line
-
-**Thin code, thick agent.** Python is mechanism only (UI, agent loop, tools, security
-command policy, schema validation). All judgment lives in the LLM plus editable files under
-`knowledge/`. Reliability comes from schema-validated handoffs at every boundary
-([the four determinism gates](reference/ARCHITECTURE.md#the-four-determinism-gates)), not hard-coded
-scripts.
-
-## Upstream-PR readiness
-
-This suite is the documentation deliverable on the path toward contributing the agent
-upstream as a module in `llm-d-benchmark` (proposal §5.3 / §10). What's in place for that:
-
-- **Architecture, API reference, deployment guide, and user guide** (this directory): the
-  four technical-documentation deliverables named in the proposal.
-- **Read-only-repo discipline:** the agent never modifies `llm-d` / `llm-d-benchmark`; it
-  reads their catalog, docs, and the Benchmark Report v0.2 schema live and shells out to
-  the real `llmdbenchmark` CLI. That keeps the agent a clean, additive module.
-- **Apache-2.0-compatible, additive surface:** the agent is self-contained under its own
-  project folder with a deny-by-default security model and no vendored copies of repo
-  internals; a drop-in front-end rather than a fork.
-- **CI + hermetic tests:** the flow-validation harness ([VALIDATION.md](reference/VALIDATION.md)) and
-  the full pytest suite run without an API key, Docker, kind, or a live cluster, so a
-  reviewer can verify behavior deterministically.
-- **One-command deploy:** a hardened image + Helm chart with
-  least-privilege RBAC ([DEPLOYMENT.md](guides/DEPLOYMENT.md)).
+Design ("thin code, thick agent") → the [root README](../../README.md) +
+[the four determinism gates](reference/ARCHITECTURE.md#the-four-determinism-gates).

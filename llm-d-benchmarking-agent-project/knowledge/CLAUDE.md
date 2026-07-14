@@ -29,33 +29,25 @@ knowledge/
 │                 observability_streaming observability_tracing logging
 ├─ persistence/   reproducibility history workspace_lifecycle
 ├─ routing/       usecase_to_profile.yaml⭐ welllit_path_advisor.yaml
-└─ reference/     api_trust packaging sim_integration key_docs.yaml useful_repo_docs.md
+└─ reference/     packaging sim_integration key_docs.yaml useful_repo_docs.md
 ```
 ⭐ = CORE (inlined into every prompt — the `CORE_KNOWLEDGE` tuple in `app/agent/prompt.py`).
 
 ## CORE vs on-demand — the cost rule
-- **CORE** files are inlined **verbatim into every system prompt** (the `CORE_KNOWLEDGE` tuple in
-  `app/agent/prompt.py` is the source of truth — currently `preconditions.md`,
-  `usecase_to_profile.yaml`, `conversation_style.md`). They cover the
-  phases reached BEFORE the agent would know to ask for a specific guide. NOTE: `key_docs.yaml`
-  (its content is delivered live by the `fetch_key_docs` tool), `deploy_path_playbook.md` (a
-  post-interview deploy-path-choice guide), and `quickstart_playbook.md` (our kind RUNBOOK, now
-  served by `fetch_key_docs(task="quickstart")` and enforced by the `app/tools/run/skill_gate.py`
-  skill-grounding gate) are deliberately ON-DEMAND, not CORE.
-- **On-demand** files (everything else) are auto-discovered by a RECURSIVE `*.md`/`*.yaml`/`*.yml`
-  glob (`rglob`, across the topic subfolders) and listed in a one-line **index**; the model pulls one
-  with `read_knowledge("<topic>")` when a tool's description cues it. **There is no manual index file** —
-  discovery is the glob + each file's first heading.
-- **Adding to CORE is expensive**: it inflates the always-on, prompt-cached prefix on *every* call
-  (~300–500 tok/file). Default to on-demand; only promote to CORE if the content is needed in the first
-  half of a session (interview/plan/deploy). The prefix has already been trimmed to its low-risk floor.
+- **Adding to CORE is expensive**: CORE (the ⭐ files above) is inlined verbatim into the always-on,
+  prompt-cached prefix on *every* call (~300–500 tok/file). Default to on-demand; only promote if the
+  content is needed in the first half of a session (interview/plan/deploy) — the prefix is already at
+  its low-risk floor. `key_docs.yaml` / `deploy_path_playbook.md` / `quickstart_playbook.md` are
+  deliberately ON-DEMAND (served by `fetch_key_docs` / post-interview choice / the skill-grounding gate).
+- **On-demand** files (everything else) are auto-discovered by the recursive glob and listed in a
+  one-line **index**; the model pulls one with `read_knowledge("<topic>")` when a tool's description
+  cues it. **There is no manual index file** — discovery is the glob + each file's first heading.
 
 ## Invariants / gotchas
 - **After ANY edit, check `wc -c` ≤ ~6,000** (the whole-guide `read_knowledge` clamp,
   `DEFAULT_TOOL_RESULT_BUDGET`). Adding even one bullet to an over-budget file EVICTS its own tail
-  from the preview — and `dropped_sections` only names HEADINGS past the cut, so vanished
-  mid-section bullets give the agent zero signal (a live probe regressed exactly this way,
-  2026-07-04). Over budget → split into a new file + a stub cross-cue, don't trim facts.
+  from the preview — and `dropped_sections` only names HEADINGS past the cut, so vanished mid-section
+  bullets give the agent zero signal. Over budget → split into a new file + a stub cross-cue, don't trim facts.
 - **Renaming a file breaks its `read_knowledge('<stem>')` cues** (and any test). Grep `knowledge/` for the
   old stem before renaming. Cross-file cueing convention: a file says `read_knowledge('other')` to defer.
 - **Basenames AND stems must stay globally unique across ALL subfolders.** Resolution is by

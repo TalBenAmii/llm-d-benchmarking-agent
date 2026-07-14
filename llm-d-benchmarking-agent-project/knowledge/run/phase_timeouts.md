@@ -84,8 +84,7 @@ concrete reason that *that phase* will legitimately take longer:
   `knowledge/preconditions.md`). Failing fast here is a feature.
 - **Long benchmark → `wait_timeout`.** A high-concurrency or long-duration workload can run
   longer than the default harness wait. Size `wait_timeout` to the expected run length plus
-  margin — but keep it under the run ceiling (3600); a single run that genuinely needs more than
-  an hour is a `timeout_s` policy question, not a flag.
+  margin — but keep it under the run ceiling (3600).
 - **Dataset replay with a data-access pod → `data_access_timeout`.** When replaying a real
   dataset (`flags['dataset']`, see `knowledge/dataset_replay.md`) the data-access pod must come
   up first; on a slow cluster give it more time.
@@ -103,8 +102,7 @@ deliberately, e.g. when you will poll results yourself.
 
 ## What NOT to do
 
-- **Do not set a per-phase timeout ≥ the runner ceiling** for that subcommand (see the rule
-  above) — the runner would kill the process first and you'd lose the CLI's clean error.
+- **Do not set a per-phase timeout ≥ the runner ceiling** for that subcommand (THE RULE above).
 - **Do not set a timeout key on a subcommand that doesn't accept it.** `build_argv` drops it
   silently and the command policy would refuse it anyway; just don't.
 - **Do not use these to "make a deploy reliable."** A timeout buys *patience*, not *capacity*.

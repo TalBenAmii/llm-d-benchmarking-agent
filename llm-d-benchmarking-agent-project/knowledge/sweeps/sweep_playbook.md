@@ -56,9 +56,8 @@ them via the `--experiments` flag; author a new one (`sweep_authoring`) only if 
 - **Optimized-baseline load ladder** → `experiments/optimized-baseline.yaml`
 - **Agentic / RAG session-rate sweep** → `experiments/otel-session-rate-sweep.yaml`
   (inference-perf + `otel_traces.yaml`). ⚠️ **As shipped this file does NOT actually vary the
-  rate:** its treatments override the LIST-INDEXED key `load.stages.0.session_rate`, which the
-  renderer silently DROPS (list indices never apply — `read_knowledge('sweep_validity')`). Run
-  the validity gate and use a dict-keyed alternative before trusting its comparison.
+  rate** (a list-indexed override the renderer drops) — full explanation + the dict-keyed fix →
+  `read_knowledge('sweep_validity')`.
 - **Precise prefix-cache** → `experiments/precise-prefix-cache-aware.yaml` (NOTE: the experiment
   file is `precise-prefix-cache-aware`, while the deploy spec/scenario is
   `guides/precise-prefix-cache-routing` — the two names differ).

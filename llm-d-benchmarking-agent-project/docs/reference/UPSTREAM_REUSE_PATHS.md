@@ -14,24 +14,17 @@ resolved, fail loudly (non-negotiable rule 7). Split out of `PROJECT_BRAIN_REFER
 - **Bootstrap:** `install.sh` (`--uv` fetches python3.11, builds `.venv`)
 
 ## `llm-d-skills/`: the 3rd REQUIRED read-only repo (incubation skills library)
-Canonical, upstream-maintained operational procedures, read live (never vendored; clone via
-`ensure_repos` / the policy-allowed `git clone .../llm-d-incubation/llm-d-skills`). It is the canonical
-default source for the deploy / teardown / benchmark / compare / autoscale procedures, so it is a
-REQUIRED repo alongside `llm-d` + `llm-d-benchmark`: it's in `Settings.repo_paths` (gates `/readyz`
-and is captured in provenance / reproducibility; a missing skills repo 503s the startup self-check,
-per rule 7). It's still independently versioned, so `ensure_repos`' `ref` is never applied to it.
+Canonical deploy / teardown / benchmark / compare / autoscale procedures, read live (never vendored;
+clone via `ensure_repos` / the policy-allowed `git clone .../llm-d-incubation/llm-d-skills`). REQUIRED
+alongside `llm-d` + `llm-d-benchmark`: in `Settings.repo_paths` (gates `/readyz`, captured in
+provenance/reproducibility; a missing repo 503s the startup self-check, per rule 7). Independently
+versioned, so `ensure_repos`' `ref` is never applied to it.
 - **Skills:** `skills/<name>/SKILL.md`: `deploy-llm-d`, `teardown-llm-d`, `run-llm-d-benchmark`,
   `compare-llm-d-configurations`, `configure-wva-autoscaling-llm-d` (plus each skill's `references/` /
   `docs/` / `resources/`).
-- **Wired in via:** `knowledge/key_docs.yaml` → `fetch_key_docs(task='*_skill')`. The `knowledge/`
+- **Wired in via:** `knowledge/key_docs.yaml` → `fetch_key_docs(task='*_skill')`; the `knowledge/`
   adapters (`deploy_path_playbook`, `sweep_playbook`, `teardown`, `autoscaling`, `author_spec_workload`)
-  defer to the skill for the procedure and carry only the delta: how each runs through OUR tooling
-  (the SessionPlan gate + `llmdbenchmark` CLI + BR-v0.2 parsing + our tool names stay authoritative).
-  The skill-step recaps were removed (dedup), so read the skill rather than expecting it restated here.
-- **Enforced, not just encouraged:** a mutating `llmdbenchmark` op is refused until its grounding doc
-  was fetched this session: the skill-grounding gate (`app/tools/run/skill_gate.py`), wired at the
-  command chokepoint and the plan gate. Spec-aware: the kind/CPU-sim path grounds in the `quickstart`
-  runbook (`knowledge/quickstart_playbook.md`, served on demand via a `kind: knowledge`
-  `key_docs.yaml` entry, a `knowledge/` file delivered through `fetch_key_docs` exactly like these
-  guides); every other op grounds in its `*_skill`. WVA autoscaling is description-driven (no command
-  chokepoint, so no gate). Mechanism detail + how-to-verify → `docs/reference/FEATURES.md` §8.
+  carry only the delta of running each through OUR tooling. The kind/CPU-sim `quickstart` runbook
+  (`knowledge/quickstart_playbook.md`) is served the same way via a `kind: knowledge` entry.
+- **Enforced** by the skill-grounding gate (`app/tools/run/skill_gate.py`) — mechanism + verify →
+  `docs/reference/FEATURES.md` §8.

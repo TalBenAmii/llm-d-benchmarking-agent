@@ -1,8 +1,7 @@
 # Troubleshooting
 
 A symptom-first guide to common failures: where to look, and how to use the agent's structured
-logs (Phase 11) and its readiness/metrics endpoints to diagnose them. Every endpoint, env var,
-and log key below exists in the code.
+logs and its readiness/metrics endpoints to diagnose them.
 
 ## First moves (always)
 
@@ -53,7 +52,7 @@ transcript position on reconnect/resume.
 ### A mutating command never runs
 - Mutating commands require explicit UI approval (an `approval` frame over `/ws`). If you
   approve after disconnecting, the approval is auto-rejected (a detached turn won't hang
-  holding a concurrency slot; Phase 2). Reconnect and re-drive.
+  holding a concurrency slot). Reconnect and re-drive.
 
 ### "venv not set up" / `llmdbenchmark` not found
 - The benchmark CLI lives in the benchmark repo's own `.venv` built by its `install.sh`.

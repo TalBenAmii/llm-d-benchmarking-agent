@@ -18,27 +18,7 @@ imply the benchmark can do something it cannot.
 > (Source: `llm-d-benchmark/docs/metrics_collection.md` → "Not Yet Implemented"; mirrored in
 > `llm-d-benchmark/docs/observability.md`.)
 
-So: the benchmark **cannot** stream live benchmark metrics in real time, and it **cannot** run
-user-defined/custom Prometheus queries. Those are upstream gaps, not agent limitations to
-apologize for — state them plainly and pivot to what IS available.
-
-### The substitute for "live metrics during a run"
-
-Even though the benchmark won't stream its own metrics, the agent CAN give the user a live view
-of the run, two ways:
-
-- **`observe_run_metrics` (kubectl top)** — live **CPU/memory** of the model-server / harness
-  pods **WHILE the run is in flight** (read-only, auto-runs; see observability.md §2 for how to
-  read the numbers and pre-empt an OOM/throttle). This is the closest thing to a live metric
-  feed: poll it during the run to watch resource pressure in real time. Needs the in-cluster
-  metrics-server (observability.md §2 covers the per-cluster install).
-- **Phase-21 real-time pod-log streaming** — when you drive the run via
-  `orchestrate_benchmark_run`, the benchmark pod's **log lines are forwarded live to the user as
-  `output` events** (the same transport the runner uses for streamed command output). That gives
-  a real-time, in-flight view of the harness's own progress/throughput log as it runs — without
-  waiting for the post-run report.
-
-### The answer the agent must give
+### The answer the agent must give (and the two real substitutes)
 
 When the user asks **"can you stream live benchmark metrics?"** (or "show me metrics in real
 time as it runs"):
@@ -49,6 +29,17 @@ time as it runs"):
 > substitute: *but I can watch the run live for you two ways — `observe_run_metrics` (kubectl top)
 > to track CPU/memory on the model-server and harness pods in real time, and live pod-log
 > streaming (via `orchestrate_benchmark_run`) so you see the harness's progress as it runs.*
+
+The mechanics behind those two substitutes:
+
+- **`observe_run_metrics` (kubectl top)** is read-only and auto-runs — the closest thing to a live
+  metric feed: poll it WHILE the run is in flight to watch resource pressure (how to read the
+  numbers and pre-empt an OOM/throttle → observability.md §2). Needs the in-cluster metrics-server
+  (observability.md §2 covers the per-cluster install).
+- **Phase-21 real-time pod-log streaming** — under `orchestrate_benchmark_run` the benchmark pod's
+  **log lines are forwarded live to the user as `output` events** (the same transport the runner
+  uses for streamed command output): a real-time, in-flight view of the harness's own
+  progress/throughput log, without waiting for the post-run report.
 
 Do not promise a streaming metric chart the benchmark can't produce; offer kubectl top + log
 streaming as the real, available equivalent.

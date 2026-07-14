@@ -52,28 +52,17 @@ map for humans, NOT a mirror of the runtime tool groups (`registry._TOOL_GROUPS`
 - `run/skill_gate.py` — skill-grounding gate (`skill_gate_block`/`plan_skill_gate_block`): refuses a mutating llmdbenchmark op (in `command_exec.py`, NOT `run/shell.py`) + the plan proposing it (in `setup/plan.py`) until its grounding doc was fetched (`ctx.consulted_skills`, written by `fetch_key_docs`). Spec-aware: cicd/kind → `quickstart`, else the op's `*_skill`.
 - `setup/catalog.py` — `build_catalog()`: live spec/harness/workload listing from the bench repo (+ `catalog_for_policy`); used by `context.py`/`analyze/workload_profile.py`.
 
-## Tool index (by workflow phase — mirrors the subpackages above)
-`registry.py` is the source of truth for the registered set/order.
-Most tool schemas are grouped (`registry._TOOL_GROUPS`: setup/run/analyze/advanced) and HIDDEN by
-default; only the `registry.STARTER_KIT` is shown. The model loads a group with `tool_loader.py`
-(load_tools) when a request needs it — see `app/agent/CLAUDE.md`.
-- **Probe & discover** — `setup/probe.py` (probe_environment · list_catalog · advise_accelerators) · `analyze/workload_profile.py` (inspect_workload_profile · estimate_run_duration) · `setup/discover.py` (discover_stack) · `setup/capacity.py` (check_capacity) · `check_endpoint_readiness` lives in `app/readiness/`.
-- **Knowledge & advice** — `access/knowledge_access.py` (read_knowledge · search_knowledge · read_repo_doc · fetch_key_docs) · `setup/convert_guide.py` (convert_guide_to_scenario) · `access/suggest.py` (suggest_next_steps) · `tool_loader.py` (load_tools — loads a hidden tool group on demand).
-- **Plan, config & setup** — `setup/plan.py` (propose_session_plan) · `setup/repos.py` (ensure_repos · run_setup · provision_hf_secret) · `setup/config_artifact.py` (write_and_validate_config) · `run/doe.py` (generate_doe_experiment).
-- **Run & orchestrate** — `run/execute.py` (execute_llmdbenchmark) · `run/shell.py` (run_shell — the agent's always-on ad-hoc command tool) · `run/orchestrate.py` (orchestrate_benchmark_run · orchestrate_sweep) · `run/manage_runs.py` (manage_orchestrated_runs · observe_run_metrics · cancel_run).
-- **Analyze & results** — `analyze/report_locate.py` (locate_and_parse_report) · `analyze/analyze.py` (analyze_results) · `analyze/compare.py` (compare_reports · compare_harness_runs) · `analyze/history.py` (result_history) · `analyze/aggregate_runs.py` (aggregate_runs) · `analyze/reproducibility.py` (export_run_bundle · reproduce_run).
+## Tool index
+`registry.py` is the source of truth for the registered set/order; the subpackage map above locates
+each handler (`check_endpoint_readiness` lives in `app/readiness/`). Most schemas are HIDDEN in phase
+groups until the model calls `load_tools` — mechanism → `app/agent/CLAUDE.md`.
 
 ## Gotchas
 - Schema validation errors are **returned, not raised** — surface your own enum/range errors as a dict with `"error"`, don't raise mid-handler.
 - A `timeout_s` declared in `command_policy.yaml` **overrides** any `timeout=` you pass.
 - Result dicts are not schema-checked — a typo'd key silently misleads the agent; assert key presence in tests.
-
-## Audit note (don't re-litigate)
-A 2026-06-19 verified audit found the set genuinely lean — every result-cluster tool, `run_shell` (ad-hoc)
-vs `execute_llmdbenchmark` (the CLI), and `fetch_key_docs` vs `read_repo_doc` has a distinct role pinned by a live-eval flow;
-do NOT re-propose merging them. DEFERRED (only if advanced-GPU-flag coverage is wanted): `execute_llmdbenchmark`
-flag passthroughs (wva/deep/serviceaccount/release/non_admin/envvarspod/full_infra) — each needs a command policy +
-`test_command_policy.py`/`test_command_events.py` entry, and the `-d`/`-r` flag collisions need disjoint keys.
+- Don't re-propose merging tools — a 2026-06-19 audit pinned each one's distinct role (audit note + the
+  deferred flag-passthrough list → `docs/reference/PROJECT_BRAIN_REFERENCE.md`).
 
 ## Scoped tests
 ```bash

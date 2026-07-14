@@ -3,12 +3,8 @@
 > A single, evidence-backed inventory of every feature on `main` (MVP, roadmap v1 phases 0–10,
 > v2 phases 11–18, v3 phases 19–26, token-tracking, ROADMAP_V4 phases 27–66 with all active
 > phases merged, plus todo-batch follow-ups), each with a concrete way to see or verify it.
->
-> Read this first, because "the app looks unchanged" is expected: most recent work is
-> backend / ops / trust / quality plumbing with no chat-UI surface by design (structured
-> logging, command policy governance, run lifecycle, workspace GC, CI quality
-> gates). Only a handful of commits touched the visible chat. The changes live at the HTTP/WS,
-> cluster, security, and CI surfaces, not in the chat bubbles; this file shows where.
+> Note: most features are backend/ops/trust plumbing with no chat-UI surface by design — they
+> live at the HTTP/WS, cluster, security, and CI surfaces; this file shows where.
 
 Legend for the "How to see / verify" column:
 - 🟢 verified live in this session: exercised against the running app and the output observed (see the [Evidence log](#evidence-log) at the bottom).
@@ -83,7 +79,7 @@ operability features and are the easiest to verify with `curl`.
 | **Agent "what next?" suggestion buttons**: the agent offers follow-ups by CALLING `suggest_next_steps` (it chooses how many, up to 6) instead of asking in prose; they render as clickable pills (same style as the welcome chips) under its reply, and a tap sends that option's prompt (save baseline, compare, sweep…). Replay/share-safe (rides the tool result) | `app/ui/app.js` (`renderAgentSuggestions`) | 🔵 Appear under the agent's reply after it calls `suggest_next_steps` (e.g. post-`analyze_results`). ⚪ `tests/platform/test_ui.py`, `tests/agent/test_suggest_next_steps.py`. |
 | **Copy-summary on results cards**: hover-reveal button copies a markdown summary (metrics + SLO table) to paste into a report/PR | `app/ui/app.js` (`resultsCardMarkdown`/`addCardCopy`) | 🔵 Hover a benchmark results card; click Copy. ⚪ `tests/platform/test_ui.py`. |
 | **Guided Benchmark Builder**: a "✨ Design" wizard (header + welcome CTA) where a non-expert picks use-case / scale / token-shape / SLO targets / hardware via chips and inputs, sees a live plain-language preview, and sends it as a normal message. The agent does ALL `<scenario, harness, workload>` mapping; the form only phrases the request (thin code / thick agent) | `app/ui/index.html` `#builder`, `app/ui/app.js` (`composeBrief`/`openBuilder`/`submitBuilder`) | 🔵 Click "✨ Design", choose options, Send. ⚪ `tests/platform/test_ui.py`. |
-| **Share a chat via link** (ChatGPT-style): the "🔗" header button mints a read-only public link to an *immutable snapshot* of the conversation; copy it, or delete it to revoke. Opening `/share/<token>` serves the same SPA read-only (no composer / sidebar / WebSocket) and replays the snapshot with the live transcript renderers, giving the full session picture: token totals (incl. cache + context-window at share time) as a meta line, the run-stage rail, and the agent's next-step chips (inert). The unguessable token is the only credential (the service has no Bearer auth); pending approval gates are stripped from the snapshot | `app/storage/share.py` (`ShareStore`), `app/main.py` (`POST /api/sessions/{id}/share`, `GET /api/share/{token}`, `GET /share/{token}`, `DELETE /api/share/{token}`), `app/ui/index.html` `#share-dialog`, `app/ui/app.js` (`shareChat`/`bootShareView`) | 🔵 Click 🔗 on a started chat → copy the link → open it in a private window. ⚪ `tests/platform/test_share.py`, `tests/platform/test_ui.py`. |
+| **Share a chat via link** (ChatGPT-style): the "🔗" header button mints a read-only public link to an *immutable snapshot*; delete revokes. `/share/<token>` serves the SPA read-only (no composer / sidebar / WebSocket) and replays the snapshot with the live renderers (token totals incl. cache + context-window, run-stage rail, inert next-step chips). The unguessable token is the only credential (no Bearer auth); pending approval gates are stripped | `app/storage/share.py` (`ShareStore`), `app/main.py` (`POST /api/sessions/{id}/share`, `GET /api/share/{token}`, `GET /share/{token}`, `DELETE /api/share/{token}`), `app/ui/index.html` `#share-dialog`, `app/ui/app.js` (`shareChat`/`bootShareView`) | 🔵 Click 🔗 on a started chat → copy the link → open it in a private window. ⚪ `tests/platform/test_share.py`, `tests/platform/test_ui.py`. |
 | **UI preview harness**: drive every render path with fixture data, no backend/LLM | `app/ui/preview.html` | 🔵 Open `/static/preview.html` (or serve `app/ui/` and open `preview.html`) to see all of the above without a cluster. |
 
 ---
@@ -189,8 +185,8 @@ result.
 |---|---|---|
 | **Deny-by-default command policy**, argv-only (`shell=False`), policy-as-data | `security/command_policy.yaml`, `app/security/policy.py` | ⚪ `tests/platform/test_command_policy.py`; `/readyz` reports "15 policy-allowed executables". |
 | Read-only probes auto-run; mutating commands require UI approval | `app/agent/loop.py`, `app/security/runner.py` | 🔵 Standup prompts; probes don't. |
-| **Gated-model access guardrail**: once `check_capacity` reports a model `gated:true`+`authorized:false`, any `standup`/`run`/`smoketest` of it is REFUSED at the command chokepoint (both `execute_llmdbenchmark` and the ad-hoc `run_shell`) until a later `check_capacity` clears it; the refusal nudges `provision_hf_secret`. A deterministic MECHANISM backstop to the HARD_RULE + `knowledge/capacity.md` steering (a flaky model could otherwise stand up an un-pullable model that fails opaquely minutes in). CLI matched by basename (no path bypass); `-m`/`--models`/`--model` parsed in space- and equals-form; the verdict clears on re-auth; HF token never leaves the backend | `app/tools/run/gated_access.py`, `app/tools/setup/capacity.py` (records the verdict), `command_exec.py`/`shell.py` (chokepoints), `app/agent/prompt.py` (HARD_RULE) | ⚪ `tests/tools/test_gated_guardrail.py`, `tests/orchestrator/test_capacity_gated.py`; 🟢 live flow `error-gated-model-access` (the harness materializes the real bench `config/` so the live capacity tools reach the canned bridge). |
-| **Skill-grounding gate**: a mutating `llmdbenchmark` op is REFUSED until its grounding doc was fetched THIS session (the enforcement backstop that replaced the de-inlined always-on quickstart steering; `consulted_skills` ledger written by `fetch_key_docs`). Spec-aware: the kind/CPU-sim path (`--spec cicd/kind*`) requires `fetch_key_docs(task="quickstart")`, the project runbook, loaded on demand via a `kind: knowledge` `key_docs.yaml` entry (de-inlined from CORE_KNOWLEDGE, served through `fetch_key_docs` exactly like the guides); the GPU/guide path requires the op's `*_skill` (standup→deploy_skill, run/smoketest→benchmark_skill, teardown→teardown_skill, experiment→compare_skill). Wired at the command chokepoint (`command_exec.py`) + as an early deploy gate in `propose_session_plan` (`plan.py`); `run_shell` is intentionally NOT gated. WVA autoscaling is description-driven, not gated: the agent fetches `wva_skill` when the ask is about autoscaling (no command chokepoint to gate) | `app/tools/run/skill_gate.py`, `command_exec.py`/`plan.py` (wiring), `knowledge/key_docs.yaml` (`kind: knowledge`), `app/tools/access/knowledge_access.py` (`fetch_key_docs`) | ⚪ `tests/tools/test_skill_gate.py` (unit) + the deterministic `scripts/eval/validate_flows.py` (42/42 flows pass with the gate live); the gated live-LLM check is `tests/eval/simulate/test_skill_usage_live.py` (6 scenarios × 3 runs, majority passes). |
+| **Gated-model access guardrail**: once `check_capacity` reports a model `gated:true`+`authorized:false`, any `standup`/`run`/`smoketest` of it is REFUSED at the command chokepoint (both `execute_llmdbenchmark` and the ad-hoc `run_shell`) until a later `check_capacity` clears it; the refusal nudges `provision_hf_secret`. CLI matched by basename (no path bypass); `-m`/`--models`/`--model` parsed in space- and equals-form; HF token never leaves the backend | `app/tools/run/gated_access.py`, `app/tools/setup/capacity.py` (records the verdict), `command_exec.py`/`shell.py` (chokepoints), `app/agent/prompt.py` (HARD_RULE) | ⚪ `tests/tools/test_gated_guardrail.py`, `tests/orchestrator/test_capacity_gated.py`; 🟢 live flow `error-gated-model-access`. |
+| **Skill-grounding gate** (owner: this row): a mutating `llmdbenchmark` op is REFUSED until its grounding doc was fetched THIS session (`consulted_skills` ledger written by `fetch_key_docs`). Spec-aware: the kind/CPU-sim path (`--spec cicd/kind*`) requires `fetch_key_docs(task="quickstart")` (the project runbook, a `kind: knowledge` `key_docs.yaml` entry); the GPU/guide path requires the op's `*_skill` (standup→deploy_skill, run/smoketest→benchmark_skill, teardown→teardown_skill, experiment→compare_skill). Wired at the command chokepoint (`command_exec.py`) + as an early deploy gate in `propose_session_plan` (`plan.py`); `run_shell` is intentionally NOT gated; WVA autoscaling is description-driven, not gated (no command chokepoint — the agent fetches `wva_skill` when the ask is about autoscaling) | `app/tools/run/skill_gate.py`, `command_exec.py`/`plan.py` (wiring), `knowledge/key_docs.yaml` (`kind: knowledge`), `app/tools/access/knowledge_access.py` (`fetch_key_docs`) | ⚪ `tests/tools/test_skill_gate.py` (unit) + the deterministic `scripts/eval/validate_flows.py` (42/42 flows pass with the gate live); the gated live-LLM check is `tests/eval/simulate/test_skill_usage_live.py` (6 scenarios × 3 runs, majority passes). |
 | Secrets stay backend-only; child-process env scrubbed | `app/config.py:child_env` | ⚪ Read `child_env`; browser never receives keys. |
 | **CommandPolicy governance**: per-command timeouts (P13) | `app/security/policy.py`, `security/command_policy.yaml` | ⚪ `tests/platform/test_governance.py`. |
 | Optional CORS (`CORS_ALLOW_ORIGINS`); off = no CORS headers (today's default) | `app/config.py:cors_origins_list`, `app/main.py` | ⚪ Set the env var and inspect response headers. |
@@ -248,45 +244,25 @@ inlines the core guides; `read_knowledge('<topic>')` pulls in the rest on demand
 
 **Upstream skills library (3rd REQUIRED read-only repo, `llm-d-skills`):** the agent grounds its
 deploy/teardown/benchmark/compare/autoscale procedures in the incubation skills' canonical
-`SKILL.md`s, read live (never vendored) via `key_docs.yaml` → `fetch_key_docs(task='*_skill')`.
-The skills are the canonical default for those procedures, so the repo is REQUIRED (in
-`Settings.repo_paths` → gates `/readyz`, captured in provenance/reproducibility); it stays
-independently versioned, so `ensure_repos`' `ref` is never applied to it. The `knowledge/`
-adapters (`deploy_path_playbook`, `sweep_playbook`, `teardown`, `autoscaling`,
-`author_spec_workload`) defer to the skill for the procedure and carry only the delta: how each
-runs through OUR tooling (the SessionPlan gate + `llmdbenchmark` CLI + BR-v0.2 parsing stay
-authoritative). These operation skills are ENFORCED, not merely encouraged: a mutating op is
-refused until its grounding doc was fetched this session (the skill-grounding gate, §8); the
-kind/CPU-sim `quickstart` runbook is enforced the same way and loads on demand via a
-`kind: knowledge` `key_docs.yaml` fetch (de-inlined from CORE), while WVA autoscaling stays
-description-driven (no command chokepoint → no gate). Verify:
-`fetch_key_docs(task='teardown_skill')` returns the live SKILL.md (the repo is cloned by
-`ensure_repos` / `git clone .../llm-d-incubation/llm-d-skills`); the clone command policy + read-only
-guard are pinned in `tests/platform/test_command_policy.py` (`test_git_clone_skills_allowed`) and the root
-`.claude/settings.json`. Each golden operation-flow grounds in its grounding doc first (its
-`*_skill`, or the `quickstart` runbook on the kind/CPU-sim path) and all 5 operations are
-exemplified (compare/wva added), enforced hermetically by
+`SKILL.md`s, read live via `key_docs.yaml` → `fetch_key_docs(task='*_skill')` and ENFORCED by the
+skill-grounding gate (§8). Paths + repo wiring (REQUIRED status, `repo_paths`/`readyz`, the
+`knowledge/` adapters) → `docs/reference/UPSTREAM_REUSE_PATHS.md`. Verify:
+`fetch_key_docs(task='teardown_skill')` returns the live SKILL.md; the clone command policy +
+read-only guard are pinned in `tests/platform/test_command_policy.py` (`test_git_clone_skills_allowed`)
+and the root `.claude/settings.json`; every golden operation-flow grounds in its grounding doc first
+and all 5 operations are exemplified, enforced hermetically by
 `tests/flows/test_flow_skill_grounding.py` / `test_flow_skill_correctness.py` /
 `test_corpus_skill_coverage.py` + `tests/eval/test_no_orphan_operation.py`.
 
-**Prompt-token efficiency (token-tracking merge):** fixed prompt overhead was cut ~40%
-(`~20.4K → ~12.3K`), schema `title`s are stripped (`registry.py:_strip_titles`), and
-provider-agnostic prompt caching is wired in (`app/llm/*`). Verify via the per-turn token
-line in the UI (`· Y cached`). Per-turn replay was trimmed on top of that: tighter compaction
-(`context_mgmt.py`, recent-window 8, threshold 20K) plus dropping the redundant CLI log tail
-from a successful `execute_llmdbenchmark` result (`execute.py`; the BR-v0.2 report supersedes
-it, rule #4), so the recurring per-step cache-read shrinks without touching the live working
-set. Reasoning effort/thinking are bindable via the provider-neutral `LLM_EFFORT`/`LLM_THINKING`
-aliases (`config.py`); a fixed `LLM_THINKING=<N>` budget also bounds worst-case output spend.
-Tool-defs are trimmed + phase-grouped (resident-prefix cut): the model-facing tool descriptions
-were surgically trimmed (`registry.py:_DESCRIPTIONS`, ~9.3K→7.7K tok; only detail duplicated in
-the `knowledge/` guide each points to was cut), and the tool schemas are loaded on demand by
-GROUP (`registry.py:_TOOL_GROUPS` setup/run/analyze/advanced): only the lean `STARTER_KIT` is
-resident until the model calls `load_tools(['<group>'])`, which the loop folds into
-`session.loaded_groups` and re-opens the turn so the group is callable the same step. Resident
-tool-defs on the early/planning steps drop ~17K→~5.4K tok (front-loaded; roughly break-even once
-a full deploy→run→analyze session has loaded every group). This generalizes the former
-`enable_advanced_tools` boolean into the group set. Verify: `pytest tests/tools/test_phase_tiered_tools.py`.
+**Prompt-token efficiency:** fixed prompt overhead cut ~40% (`~20.4K → ~12.3K` tok) via stripped
+schema titles (`registry.py:_strip_titles`), provider-agnostic prompt caching (`app/llm/*`),
+tighter replay compaction (`context_mgmt.py`: recent-window 8, threshold 20K), dropping the CLI
+log tail from a successful `execute_llmdbenchmark` result (`execute.py`; the BR-v0.2 report
+supersedes it), trimmed tool descriptions (`registry.py:_DESCRIPTIONS`), and on-demand tool-schema
+loading by GROUP (`registry.py:_TOOL_GROUPS` setup/run/analyze/advanced; only the lean
+`STARTER_KIT` is resident until `load_tools(['<group>'])`). Effort/thinking bindable via the
+provider-neutral `LLM_EFFORT`/`LLM_THINKING` aliases (`config.py`). Verify: the per-turn token line
+in the UI (`· Y cached`) + `pytest tests/tools/test_phase_tiered_tools.py`.
 
 ---
 

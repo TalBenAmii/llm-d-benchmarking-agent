@@ -39,10 +39,10 @@ else is refused before it runs. Out-of-range or reversed (`9-5`) specs are toler
 ## Which subcommands accept it
 
 `-s`/`--step` is valid ONLY on **standup, smoketest, run, teardown** (verified against the
-upstream interface — each of those `interface/<name>.py` declares `-s`/`--step`). It is NOT a
-flag on **plan, experiment, results** — never set `step` there. The command policy value-pins the
-step spec only on the four accepting subcommands (so a malformed spec is refused) and adds no
-step flagspec to plan/experiment/results, so the CLI would reject one as an unknown flag.
+upstream interface — each of those `interface/<name>.py` declares `-s`/`--step`); never set
+`step` on **plan, experiment, results**. The command policy value-pins the step spec only on
+the four accepting subcommands (so a malformed spec is refused), and the CLI would reject it
+as an unknown flag elsewhere.
 
 ## Per-phase step numbering — READ IT AT RUNTIME, don't hardcode
 
@@ -85,7 +85,6 @@ to be re-runnable); if in doubt about a destructive step, fall back to a clean `
 
 ## When NOT to use it
 
-- For a clean first deploy, omit `step` entirely — run the WHOLE phase.
-- Don't use it to "skip" steps you think are unnecessary on a healthy first run; the phase is
-  ordered for a reason. Use it for RE-RUNS after a specific, understood failure.
-- Don't pass it to plan/experiment/results (it isn't a flag there).
+- For a clean first deploy, omit `step` entirely — run the WHOLE phase. `-s` is for RE-RUNS
+  after a specific, understood failure, never for "skipping" steps you think are unnecessary
+  on a healthy first run; the phase is ordered for a reason.
