@@ -29,7 +29,7 @@ knowledge/
 │                 observability_streaming observability_tracing logging
 ├─ persistence/   reproducibility history workspace_lifecycle
 ├─ routing/       usecase_to_profile.yaml⭐ welllit_path_advisor.yaml
-└─ reference/     api_trust packaging sim_integration key_docs.yaml useful_repo_docs.md
+└─ reference/     packaging sim_integration key_docs.yaml useful_repo_docs.md
 ```
 ⭐ = CORE (inlined into every prompt — the `CORE_KNOWLEDGE` tuple in `app/agent/prompt.py`).
 
