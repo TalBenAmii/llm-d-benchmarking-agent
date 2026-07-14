@@ -172,6 +172,11 @@ class Session:
     # by design: a reload resets to the configured default (the picker re-seeds from /api/provider).
     model_override: str | None = None
     effort_override: str | None = None
+    # The Claude Agent SDK/CLI conversation id for this chat (SDK-native engine only; the old
+    # loop never sets it). PERSISTED so a later turn — or a restarted server — resumes the CLI's
+    # own transcript via ClaudeAgentOptions(resume=...). None until the first SDK-native turn
+    # completes; the id is stable across resumes (re-issued unchanged by the CLI).
+    sdk_session_id: str | None = None
     # Per-session "auto-approve commands" toggle (the UI button). When True, the Channel
     # auto-approves every kind=="command" approval gate (run_shell + the dedicated mutating
     # tools) WITHOUT prompting; the kind=="session_plan" gate is NEVER auto-approved (the one
@@ -287,6 +292,7 @@ class Session:
                     "last_context_tokens": self.last_context_tokens,
                     "catalog_injected": self.catalog_injected,
                     "prewarmed": self.prewarmed,
+                    "sdk_session_id": self.sdk_session_id,
                     "auto_approve": self.auto_approve,
                     "loaded_groups": sorted(self.loaded_groups),
                 },
@@ -384,6 +390,8 @@ class SessionManager:
             # Default False: a pre-feature snapshot has no catalog message, so let the next turn
             # inject one. (Once injected + persisted, a reloaded chat sees True and skips it.)
             catalog_injected=data.get("catalog_injected", False),
+            # None on pre-SDK-native snapshots — the next SDK-native turn just starts fresh.
+            sdk_session_id=data.get("sdk_session_id"),
             auto_approve=data.get("auto_approve", False),
             # Default False so older state files (no key) load — but a session that already
             # injected the env pre-probe snapshot persists True, so a resume never re-injects it.

@@ -10,6 +10,7 @@ import base64
 import contextlib
 import json
 import logging
+import os
 import signal
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from app.agent import events as ws_events
 from app.agent.cards import build_welcome, load_suggestions
 from app.agent.channel import Channel
+from app.agent.engine import SdkNativeEngine
 from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
@@ -587,7 +589,14 @@ async def ws(websocket: WebSocket) -> None:
     resumed = session is not None
     if session is None:
         session = app.state.sessions.create()
-    loop = AgentLoop(app.state.provider) if app.state.provider else None
+    # Branch-only engine switch (SDK-native refactor, Phase 1): AGENT_ENGINE=sdk-native selects
+    # the new SDK-driven engine; unset/anything else keeps the old loop unchanged. The flag (and
+    # the old loop) dies at the Phase 5 cutover — never document it as a feature.
+    loop: SdkNativeEngine | AgentLoop | None
+    if os.environ.get("AGENT_ENGINE") == "sdk-native":
+        loop = SdkNativeEngine()
+    else:
+        loop = AgentLoop(app.state.provider) if app.state.provider else None
 
     # A per-session Channel decouples the running turn from this specific socket: events go to
     # whatever socket is currently attached, and a turn parked at an approval gate stays parked

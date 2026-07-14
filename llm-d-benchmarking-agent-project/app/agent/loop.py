@@ -22,28 +22,12 @@ from app.agent.session import Session
 from app.llm.provider import LLMProvider, Usage, open_provider_turn
 from app.observability.logging import bind as log_bind
 from app.tools.context import ApprovalRejected, ToolError
+from app.tools.mcp_server import CARD_RESULT_TOOLS  # moved there (SDK-native refactor); re-exported
 from app.tools.registry import dispatch, tool_definitions
 
 log = logging.getLogger("app.agent.loop")
 
 MAX_STEPS = 24
-
-# Tools whose FULL result the UI re-renders as a rich card (report summary + clickable charts,
-# Pareto/comparison/env/capacity/etc.). Their un-clamped result is persisted to
-# ``session.card_results`` so a resumed/reloaded chat replays the card in its transcript
-# position — the LLM-facing copy in ``messages`` is budget-clamped and unusable for rendering.
-# Keep this in lock-step with the dispatch in app/ui/app.js `renderToolResultCards`.
-CARD_RESULT_TOOLS = frozenset({
-    "locate_and_parse_report", "analyze_results", "compare_reports", "compare_harness_runs",
-    "probe_environment", "check_capacity", "check_endpoint_readiness", "advise_accelerators",
-    "generate_doe_experiment", "orchestrate_benchmark_run",
-    "export_run_bundle",
-    # suggest_next_steps carries no metrics card — its result is the {label,prompt} chip list the
-    # UI draws as clickable next-step buttons. Persisted here so the buttons replay on resume/reload
-    # exactly like the report/analysis cards (the chip payload is tiny, so the messages copy would
-    # also survive the feed-back clamp — but persisting keeps it on the same replay path).
-    "suggest_next_steps",
-})
 
 EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 ApproveFn = Callable[[str, dict[str, Any]], Awaitable[bool]]

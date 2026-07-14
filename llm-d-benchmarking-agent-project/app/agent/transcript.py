@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from app.agent.cards import build_results_card
-from app.agent.loop import CARD_RESULT_TOOLS
 from app.dig import find_last_json
+from app.tools.mcp_server import CARD_RESULT_TOOLS
 from app.tools.analyze import report_locate
 
 
