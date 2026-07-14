@@ -13,6 +13,7 @@ Kubernetes-native benchmark orchestrator, and results analyzer for
 | [USER_GUIDE.md](guides/USER_GUIDE.md) | end users | Using the agent end-to-end with no `llm-d-benchmark` expertise. |
 | [GPU_CLUSTER_RUNBOOK.md](guides/GPU_CLUSTER_RUNBOOK.md) | end users / operators | Real single-GPU cluster (minikube + NVIDIA): setup, a tiny-model scenario, what's real vs simulated on one card. |
 | [VALIDATION.md](reference/VALIDATION.md) | contributors | The flow-validation harness: proving the agent runs the right commands. |
+| [SDK_NATIVE_ENGINE.md](reference/SDK_NATIVE_ENGINE.md) | engineers / reviewers | Design contract for the in-progress SDK-native loop refactor: decisions, spike verdicts, target architecture, migration phases. |
 | [MCP.md](reference/MCP.md) | Claude Code users | Pointer to the split-out `llm-d-bench` MCP server repo ([llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)). |
 | [SECURITY.md](reference/SECURITY.md) | operators / reviewers | Threat model: trust boundaries, command policy/approvals, secret scrubbing, exposure guidance. |
 | [TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md) | operators | Symptom → what to check; debug mode; structured logs; readiness/metrics endpoints. |
