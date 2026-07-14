@@ -1,0 +1,405 @@
+{
+  "baseline": "dry-run-preview",
+  "flow": "dry-run-preview",
+  "gates": "approve all",
+  "captured_by": "scripts/eval/capture_ws_baseline.py",
+  "events": [
+    {
+      "type": "ready",
+      "data": {
+        "session_id": "<SID>",
+        "resumed": false,
+        "running": false,
+        "resume": {
+          "incremental": false
+        },
+        "auto_approve": false,
+        "model_override": null,
+        "effort_override": null
+      }
+    },
+    {
+      "type": "welcome",
+      "data": {
+        "heading": "Hi! I'm the llm-d Benchmarking Assistant \u2014 here's how I can help.",
+        "bullets": [
+          "Deploy a model stack on the local quickstart (a kind cluster with a CPU-simulated engine).",
+          "Run a capacity pre-flight so a model/config is confirmed to fit before anything is stood up.",
+          "Run benchmarks against a fresh or already-running stack.",
+          "Compare configurations and run parameter sweeps to see what wins.",
+          "Read and explain Benchmark Reports in plain language, tied to your goal.",
+          "Track results and trends over time so you can spot regressions and wins.",
+          "Co-author a custom spec and workload with you, step by step, then validate it before running."
+        ],
+        "nudge": "Tell me what you'd like to benchmark, or pick one of the suggestions below to get started."
+      }
+    },
+    {
+      "type": "suggestions",
+      "data": {
+        "chips": [
+          {
+            "label": "Benchmark a small chat model",
+            "prompt": "I want to benchmark a small chat model on the local quickstart."
+          },
+          {
+            "label": "Compare two configs (sweep)",
+            "prompt": "I want to compare two configurations with a sweep."
+          },
+          {
+            "label": "Check if my cluster can fit a model",
+            "prompt": "Can my cluster fit a model I have in mind? Let's check capacity."
+          },
+          {
+            "label": "Build a custom spec & workload with me",
+            "prompt": "Help me create a custom spec and workload together, step by step."
+          },
+          {
+            "label": "What can you do?",
+            "prompt": "What can you do?"
+          }
+        ]
+      }
+    },
+    {
+      "type": "session_saved",
+      "data": {}
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "Grounding this kind deploy preview in the quickstart runbook first."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-1>",
+        "name": "fetch_key_docs",
+        "input": {
+          "task": "quickstart"
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-1>",
+        "name": "fetch_key_docs",
+        "result": {
+          "task": "quickstart",
+          "available_tasks": [
+            "agentic_serving",
+            "benchmark_skill",
+            "compare_skill",
+            "deploy_skill",
+            "flow_control",
+            "multimodal_serving",
+            "observability",
+            "optimized_baseline",
+            "pd_disaggregation",
+            "precise_prefix_cache_routing",
+            "predicted_latency_routing",
+            "quickstart",
+            "teardown_skill",
+            "tiered_prefix_cache",
+            "wide_ep_lws",
+            "workload_autoscaling",
+            "wva_skill"
+          ],
+          "docs": [
+            {
+              "path": "llm-d-benchmark/docs/quickstart.md",
+              "task": "quickstart",
+              "why": "Canonical kind quickstart: exact prereqs, the manual-vs-automated steps, the install.sh -> standup -> smoketest -> run -> teardown flow, and troubleshooting.\n",
+              "found": false,
+              "reason": "not a file: <REPOS>/llm-d-benchmark/docs/quickstart.md"
+            },
+            {
+              "path": "llm-d-benchmark/config/scenarios/cicd/kind.yaml",
+              "task": "quickstart",
+              "why": "The cicd/kind scenario itself \u2014 model (facebook/opt-125m via inference-sim), CPU-only sizing, namespace expectations, and the inference-perf/sanity_random harness.\n",
+              "found": false,
+              "reason": "not a file: <REPOS>/llm-d-benchmark/config/scenarios/cicd/kind.yaml"
+            },
+            {
+              "path": "quickstart_playbook.md",
+              "task": "quickstart",
+              "why": "Our project runbook for the kind/CPU-sim quickstart \u2014 the exact tool-call sequence (propose_session_plan -> standup -> smoketest -> run -> report -> teardown) in our tool vocabulary, with the MVP flag \u2026<truncated>",
+              "found": true,
+              "resolved": "<PROJECT>/knowledge/deploy/quickstart_playbook.md",
+              "content": "# Playbook: the quickstart (local kind, CPU-only sim)\n\nThis is the primary supported path. It stands up a tiny llm-d stack on a local **kind**\ncluster using a **simulated** inference engine (no GPU, n \u2026<truncated>",
+              "truncated": false
+            }
+          ],
+          "found_count": 1
+        }
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "Sensing the environment."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-2>",
+        "name": "probe_environment",
+        "input": {
+          "checks": "all",
+          "namespace": "llmd-quickstart"
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-2>",
+        "name": "probe_environment",
+        "result": {
+          "container_runtime": {
+            "type": null,
+            "present": false,
+            "daemon_up": false
+          },
+          "repos": {
+            "llm-d-benchmark": {
+              "present": true,
+              "is_git": true,
+              "path": "<REPOS>/llm-d-benchmark"
+            },
+            "llm-d": {
+              "present": false,
+              "is_git": false,
+              "path": "<REPOS>/llm-d"
+            },
+            "llm-d-skills": {
+              "present": false,
+              "is_git": false,
+              "path": "<REPOS>/llm-d-skills"
+            }
+          },
+          "tools": {
+            "docker": false,
+            "podman": false,
+            "kubectl": false,
+            "kind": false,
+            "helm": false,
+            "helmfile": false,
+            "jq": false,
+            "yq": false,
+            "git": false,
+            "uv": false,
+            "python3": false
+          },
+          "venv": {
+            "exists": true,
+            "path": "<REPOS>/llm-d-benchmark/.venv"
+          },
+          "kind_clusters": {
+            "available": false,
+            "clusters": []
+          },
+          "kube_context": {
+            "available": false,
+            "context": null
+          },
+          "cluster_info": {
+            "reachable": false
+          },
+          "namespaces": {
+            "available": false,
+            "namespaces": []
+          },
+          "stack": {
+            "namespace": "llmd-quickstart",
+            "checked": false
+          },
+          "prometheus_crds": {
+            "available": false,
+            "present": false
+          },
+          "metrics_server": {
+            "available": false,
+            "installed": false,
+            "ready_replicas": null
+          },
+          "grafana_dashboard": {
+            "configured": false
+          },
+          "node_capacity": {
+            "available": false,
+            "nodes": [],
+            "min_allocatable_cpu": null
+          },
+          "cluster_preconditions": {
+            "available": false,
+            "spec": null,
+            "server_version": null,
+            "image_tags": []
+          },
+          "provider_detection": {
+            "available": false,
+            "provider": "kind",
+            "providers_seen": [],
+            "gpu_taints": [],
+            "nodes": []
+          }
+        }
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "Previewing the deployment plan (read-only)."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-3>",
+        "name": "execute_llmdbenchmark",
+        "input": {
+          "subcommand": "plan",
+          "spec": "cicd/kind",
+          "namespace": "llmd-quickstart"
+        }
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "llmdbenchmark",
+          "--spec",
+          "cicd/kind",
+          "plan",
+          "-p",
+          "llmd-quickstart"
+        ],
+        "text": "llmdbenchmark --spec cicd/kind plan -p llmd-quickstart",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-3>"
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-3>",
+        "name": "execute_llmdbenchmark",
+        "result": {
+          "argv": [
+            "llmdbenchmark",
+            "--spec",
+            "cicd/kind",
+            "plan",
+            "-p",
+            "llmd-quickstart"
+          ],
+          "mode": "read_only",
+          "exit_code": 0,
+          "timed_out": false,
+          "results_dir": null,
+          "stdout_tail": ""
+        }
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "And a dry-run of standup so you can see the exact actions (still read-only)."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-4>",
+        "name": "execute_llmdbenchmark",
+        "input": {
+          "subcommand": "standup",
+          "spec": "cicd/kind",
+          "namespace": "llmd-quickstart",
+          "flags": {
+            "dry_run": true
+          }
+        }
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "llmdbenchmark",
+          "--spec",
+          "cicd/kind",
+          "standup",
+          "-p",
+          "llmd-quickstart",
+          "--dry-run"
+        ],
+        "text": "llmdbenchmark --spec cicd/kind standup -p llmd-quickstart --dry-run",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-4>"
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-4>",
+        "name": "execute_llmdbenchmark",
+        "result": {
+          "argv": [
+            "llmdbenchmark",
+            "--spec",
+            "cicd/kind",
+            "standup",
+            "-p",
+            "llmd-quickstart",
+            "--dry-run"
+          ],
+          "mode": "read_only",
+          "exit_code": 0,
+          "timed_out": false,
+          "results_dir": null,
+          "stdout_tail": ""
+        }
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "That's the full preview \u2014 nothing was changed on your cluster. Say the word and I'll run it for real."
+      }
+    },
+    {
+      "type": "done",
+      "data": {}
+    }
+  ]
+}

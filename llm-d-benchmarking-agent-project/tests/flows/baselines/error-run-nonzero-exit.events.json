@@ -1,0 +1,1000 @@
+{
+  "baseline": "error-run-nonzero-exit",
+  "flow": "error-run-nonzero-exit",
+  "gates": "approve all",
+  "captured_by": "scripts/eval/capture_ws_baseline.py",
+  "events": [
+    {
+      "type": "ready",
+      "data": {
+        "session_id": "<SID>",
+        "resumed": false,
+        "running": false,
+        "resume": {
+          "incremental": false
+        },
+        "auto_approve": false,
+        "model_override": null,
+        "effort_override": null
+      }
+    },
+    {
+      "type": "welcome",
+      "data": {
+        "heading": "Hi! I'm the llm-d Benchmarking Assistant \u2014 here's how I can help.",
+        "bullets": [
+          "Deploy a model stack on the local quickstart (a kind cluster with a CPU-simulated engine).",
+          "Run a capacity pre-flight so a model/config is confirmed to fit before anything is stood up.",
+          "Run benchmarks against a fresh or already-running stack.",
+          "Compare configurations and run parameter sweeps to see what wins.",
+          "Read and explain Benchmark Reports in plain language, tied to your goal.",
+          "Track results and trends over time so you can spot regressions and wins.",
+          "Co-author a custom spec and workload with you, step by step, then validate it before running."
+        ],
+        "nudge": "Tell me what you'd like to benchmark, or pick one of the suggestions below to get started."
+      }
+    },
+    {
+      "type": "suggestions",
+      "data": {
+        "chips": [
+          {
+            "label": "Benchmark a small chat model",
+            "prompt": "I want to benchmark a small chat model on the local quickstart."
+          },
+          {
+            "label": "Compare two configs (sweep)",
+            "prompt": "I want to compare two configurations with a sweep."
+          },
+          {
+            "label": "Check if my cluster can fit a model",
+            "prompt": "Can my cluster fit a model I have in mind? Let's check capacity."
+          },
+          {
+            "label": "Build a custom spec & workload with me",
+            "prompt": "Help me create a custom spec and workload together, step by step."
+          },
+          {
+            "label": "What can you do?",
+            "prompt": "What can you do?"
+          }
+        ]
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "docker",
+          "info"
+        ],
+        "text": "docker info",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": null
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kind",
+          "get",
+          "clusters"
+        ],
+        "text": "kind get clusters",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": null
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "config",
+          "current-context"
+        ],
+        "text": "kubectl config current-context",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": null
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "cluster-info"
+        ],
+        "text": "kubectl cluster-info",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": null
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "get",
+          "ns",
+          "-o",
+          "json"
+        ],
+        "text": "kubectl get ns -o json",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": null
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "top",
+          "nodes"
+        ],
+        "text": "kubectl top nodes",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": null
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "get",
+          "deployment",
+          "-n",
+          "kube-system",
+          "-l",
+          "k8s-app=metrics-server",
+          "-o",
+          "json"
+        ],
+        "text": "kubectl get deployment -n kube-system -l k8s-app=metrics-server -o json",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": null
+      }
+    },
+    {
+      "type": "session_saved",
+      "data": {}
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "Grounding the quickstart run first (skill-gate: cicd/kind \u2192 quickstart runbook)."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-1>",
+        "name": "fetch_key_docs",
+        "input": {
+          "task": "quickstart"
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-1>",
+        "name": "fetch_key_docs",
+        "result": {
+          "task": "quickstart",
+          "available_tasks": [
+            "agentic_serving",
+            "benchmark_skill",
+            "compare_skill",
+            "deploy_skill",
+            "flow_control",
+            "multimodal_serving",
+            "observability",
+            "optimized_baseline",
+            "pd_disaggregation",
+            "precise_prefix_cache_routing",
+            "predicted_latency_routing",
+            "quickstart",
+            "teardown_skill",
+            "tiered_prefix_cache",
+            "wide_ep_lws",
+            "workload_autoscaling",
+            "wva_skill"
+          ],
+          "docs": [
+            {
+              "path": "llm-d-benchmark/docs/quickstart.md",
+              "task": "quickstart",
+              "why": "Canonical kind quickstart: exact prereqs, the manual-vs-automated steps, the install.sh -> standup -> smoketest -> run -> teardown flow, and troubleshooting.\n",
+              "found": false,
+              "reason": "not a file: <REPOS>/llm-d-benchmark/docs/quickstart.md"
+            },
+            {
+              "path": "llm-d-benchmark/config/scenarios/cicd/kind.yaml",
+              "task": "quickstart",
+              "why": "The cicd/kind scenario itself \u2014 model (facebook/opt-125m via inference-sim), CPU-only sizing, namespace expectations, and the inference-perf/sanity_random harness.\n",
+              "found": false,
+              "reason": "not a file: <REPOS>/llm-d-benchmark/config/scenarios/cicd/kind.yaml"
+            },
+            {
+              "path": "quickstart_playbook.md",
+              "task": "quickstart",
+              "why": "Our project runbook for the kind/CPU-sim quickstart \u2014 the exact tool-call sequence (propose_session_plan -> standup -> smoketest -> run -> report -> teardown) in our tool vocabulary, with the MVP flag \u2026<truncated>",
+              "found": true,
+              "resolved": "<PROJECT>/knowledge/deploy/quickstart_playbook.md",
+              "content": "# Playbook: the quickstart (local kind, CPU-only sim)\n\nThis is the primary supported path. It stands up a tiny llm-d stack on a local **kind**\ncluster using a **simulated** inference engine (no GPU, n \u2026<truncated>",
+              "truncated": false
+            }
+          ],
+          "found_count": 1
+        }
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "Sensing the environment and the target namespace."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-2>",
+        "name": "probe_environment",
+        "input": {
+          "checks": "all",
+          "namespace": "llmd-quickstart"
+        }
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "docker",
+          "info"
+        ],
+        "text": "docker info",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kind",
+          "get",
+          "clusters"
+        ],
+        "text": "kind get clusters",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "config",
+          "current-context"
+        ],
+        "text": "kubectl config current-context",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "cluster-info"
+        ],
+        "text": "kubectl cluster-info",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "get",
+          "ns",
+          "-o",
+          "json"
+        ],
+        "text": "kubectl get ns -o json",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "get",
+          "pods",
+          "-n",
+          "llmd-quickstart",
+          "-o",
+          "json"
+        ],
+        "text": "kubectl get pods -n llmd-quickstart -o json",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "get",
+          "crd",
+          "-o",
+          "name"
+        ],
+        "text": "kubectl get crd -o name",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "top",
+          "nodes"
+        ],
+        "text": "kubectl top nodes",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "get",
+          "deployment",
+          "-n",
+          "kube-system",
+          "-l",
+          "k8s-app=metrics-server",
+          "-o",
+          "json"
+        ],
+        "text": "kubectl get deployment -n kube-system -l k8s-app=metrics-server -o json",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "get",
+          "nodes",
+          "-o",
+          "json"
+        ],
+        "text": "kubectl get nodes -o json",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "kubectl",
+          "version",
+          "--output",
+          "json"
+        ],
+        "text": "kubectl version --output json",
+        "mode": "read_only",
+        "auto_run": true,
+        "simulated": false,
+        "tool_call_id": "<tc-2>"
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-2>",
+        "name": "probe_environment",
+        "result": {
+          "container_runtime": {
+            "type": "docker",
+            "present": true,
+            "daemon_up": true
+          },
+          "repos": {
+            "llm-d-benchmark": {
+              "present": true,
+              "is_git": true,
+              "path": "<REPOS>/llm-d-benchmark"
+            },
+            "llm-d": {
+              "present": false,
+              "is_git": false,
+              "path": "<REPOS>/llm-d"
+            },
+            "llm-d-skills": {
+              "present": false,
+              "is_git": false,
+              "path": "<REPOS>/llm-d-skills"
+            }
+          },
+          "tools": {
+            "docker": true,
+            "podman": false,
+            "kubectl": true,
+            "kind": true,
+            "helm": false,
+            "helmfile": false,
+            "jq": false,
+            "yq": false,
+            "git": false,
+            "uv": false,
+            "python3": false
+          },
+          "venv": {
+            "exists": true,
+            "path": "<REPOS>/llm-d-benchmark/.venv"
+          },
+          "kind_clusters": {
+            "available": true,
+            "clusters": [],
+            "exit_code": 0
+          },
+          "kube_context": {
+            "available": true,
+            "context": null
+          },
+          "cluster_info": {
+            "reachable": true,
+            "timed_out": false
+          },
+          "namespaces": {
+            "available": true,
+            "namespaces": []
+          },
+          "stack": {
+            "namespace": "llmd-quickstart",
+            "checked": true,
+            "exists": true,
+            "pod_count": 1,
+            "ready_count": 1,
+            "detected": true,
+            "pods": [
+              {
+                "name": "llmd-quickstart-decode-0",
+                "phase": "Running",
+                "ready": true
+              }
+            ]
+          },
+          "prometheus_crds": {
+            "available": true,
+            "podmonitors_crd": false,
+            "servicemonitors_crd": false,
+            "present": false
+          },
+          "metrics_server": {
+            "available": true,
+            "installed": false,
+            "ready_replicas": null
+          },
+          "grafana_dashboard": {
+            "configured": false
+          },
+          "node_capacity": {
+            "available": true,
+            "nodes": [],
+            "min_allocatable_cpu": null
+          },
+          "cluster_preconditions": {
+            "available": false,
+            "spec": null,
+            "server_version": null,
+            "image_tags": []
+          },
+          "provider_detection": {
+            "available": true,
+            "provider": "kind",
+            "providers_seen": [],
+            "gpu_taints": [],
+            "nodes": []
+          }
+        }
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "A stack is already running \u2014 benchmarking it directly. Here's the plan."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-3>",
+        "name": "propose_session_plan",
+        "input": {
+          "use_case_summary": "Benchmark the running quickstart stack",
+          "goal_metrics": [
+            "ttft",
+            "throughput"
+          ],
+          "spec": "cicd/kind",
+          "deploy_path": "kind_sim",
+          "namespace": "llmd-quickstart",
+          "harness": "inference-perf",
+          "workload": "sanity_random.yaml",
+          "expected_steps": [
+            "run",
+            "report"
+          ]
+        }
+      }
+    },
+    {
+      "type": "approval_request",
+      "data": {
+        "request_id": "<approval-1>",
+        "kind": "session_plan",
+        "payload": {
+          "use_case_summary": "Benchmark the running quickstart stack",
+          "goal_metrics": [
+            "ttft",
+            "throughput"
+          ],
+          "slo": null,
+          "spec": "cicd/kind",
+          "deploy_path": "kind_sim",
+          "namespace": "llmd-quickstart",
+          "harness": "inference-perf",
+          "workload": "sanity_random.yaml",
+          "flags": {},
+          "expected_steps": [
+            "run",
+            "report"
+          ],
+          "est_duration_hint": null,
+          "reversible": true,
+          "notes": null
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-3>",
+        "name": "propose_session_plan",
+        "result": {
+          "approved": true,
+          "valid": true,
+          "plan": {
+            "use_case_summary": "Benchmark the running quickstart stack",
+            "goal_metrics": [
+              "ttft",
+              "throughput"
+            ],
+            "slo": null,
+            "spec": "cicd/kind",
+            "deploy_path": "kind_sim",
+            "namespace": "llmd-quickstart",
+            "harness": "inference-perf",
+            "workload": "sanity_random.yaml",
+            "flags": {},
+            "expected_steps": [
+              "run",
+              "report"
+            ],
+            "est_duration_hint": null,
+            "reversible": true,
+            "notes": null
+          }
+        }
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "Running the benchmark."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-4>",
+        "name": "execute_llmdbenchmark",
+        "input": {
+          "subcommand": "run",
+          "spec": "cicd/kind",
+          "namespace": "llmd-quickstart",
+          "harness": "inference-perf",
+          "workload": "sanity_random.yaml"
+        }
+      }
+    },
+    {
+      "type": "approval_request",
+      "data": {
+        "request_id": "<approval-2>",
+        "kind": "command",
+        "payload": {
+          "command": "llmdbenchmark --spec cicd/kind --workspace <WS>/sessions/<SID> run -p llmd-quickstart -l inference-perf -w sanity_random.yaml -r local",
+          "argv": [
+            "llmdbenchmark",
+            "--spec",
+            "cicd/kind",
+            "--workspace",
+            "<WS>/sessions/<SID>",
+            "run",
+            "-p",
+            "llmd-quickstart",
+            "-l",
+            "inference-perf",
+            "-w",
+            "sanity_random.yaml",
+            "-r",
+            "local"
+          ],
+          "mode": "mutating"
+        }
+      }
+    },
+    {
+      "type": "command",
+      "data": {
+        "argv": [
+          "llmdbenchmark",
+          "--spec",
+          "cicd/kind",
+          "--workspace",
+          "<WS>/sessions/<SID>",
+          "run",
+          "-p",
+          "llmd-quickstart",
+          "-l",
+          "inference-perf",
+          "-w",
+          "sanity_random.yaml",
+          "-r",
+          "local"
+        ],
+        "text": "llmdbenchmark --spec cicd/kind --workspace <WS>/sessions/<SID> run -p llmd-quickstart -l inference-perf -w sanity_random.yaml -r local",
+        "mode": "mutating",
+        "auto_run": false,
+        "simulated": false,
+        "tool_call_id": "<tc-4>"
+      }
+    },
+    {
+      "type": "output",
+      "data": {
+        "line": "inference-perf: connection reset by the inference endpoint mid-run; 0 of 120 requests completed; no benchmark_report_v0.2 written."
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-4>",
+        "name": "execute_llmdbenchmark",
+        "result": {
+          "argv": [
+            "llmdbenchmark",
+            "--spec",
+            "cicd/kind",
+            "--workspace",
+            "<WS>/sessions/<SID>",
+            "run",
+            "-p",
+            "llmd-quickstart",
+            "-l",
+            "inference-perf",
+            "-w",
+            "sanity_random.yaml",
+            "-r",
+            "local"
+          ],
+          "mode": "mutating",
+          "exit_code": 1,
+          "timed_out": false,
+          "results_dir": "<WS>/sessions/<SID>/results",
+          "stdout_tail": "inference-perf: connection reset by the inference endpoint mid-run; 0 of 120 requests completed; no benchmark_report_v0.2 written."
+        }
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "The run exited non-zero \u2014 let me see if a report was even produced."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-5>",
+        "name": "locate_and_parse_report",
+        "input": {}
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-5>",
+        "name": "locate_and_parse_report",
+        "result": {
+          "found": false,
+          "reason": "no benchmark_report_v0.2 file located",
+          "searched": [
+            "<WS>/sessions/<SID>"
+          ]
+        }
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "No report was written, so I'll find the right troubleshooting guidance."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-6>",
+        "name": "search_knowledge",
+        "input": {
+          "query": "benchmark run failed connection reset no report inference-perf"
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-6>",
+        "name": "search_knowledge",
+        "result": {
+          "query": "benchmark run failed connection reset no report inference-perf",
+          "terms": [
+            "benchmark",
+            "run",
+            "failed",
+            "connection",
+            "reset",
+            "report",
+            "inference",
+            "perf"
+          ],
+          "match_count": 76,
+          "results": [
+            {
+              "kind": "knowledge",
+              "topic": "key_docs",
+              "name": "key_docs.yaml",
+              "score": 58,
+              "matched_terms": [
+                "benchmark",
+                "inference",
+                "perf",
+                "report",
+                "reset",
+                "run"
+              ],
+              "snippet": "# Sibling inference-perf profiles (read via the same workload/profiles/inference-perf/ dir): - path: llm-d-benchmark/workload/profiles/inference-perf/chatbot_sharegpt.yaml.in harness: inference-perf",
+              "load_with": "read_knowledge('key_docs')"
+            },
+            {
+              "kind": "knowledge",
+              "topic": "standard_metrics",
+              "name": "standard_metrics.yaml",
+              "score": 54,
+              "matched_terms": [
+                "benchmark",
+                "failed",
+                "inference",
+                "perf",
+                "report",
+                "run"
+              ],
+              "snippet": "# latency/throughput numbers (which live at fixed paths in the Benchmark Report v0.2 # aggregate), these are *resource/serving* metrics that a harness MAY or may not emit, # and a given harness can ca \u2026<truncated>",
+              "load_with": "read_knowledge('standard_metrics')"
+            },
+            {
+              "kind": "knowledge",
+              "topic": "epp_headers",
+              "name": "epp_headers.yaml",
+              "score": 51,
+              "matched_terms": [
+                "benchmark",
+                "failed",
+                "inference",
+                "perf",
+                "report",
+                "run"
+              ],
+              "snippet": "# HERE, never in a Python if/elif. When a benchmark run reports a non-100% success_rate, or a # harness/report surfaces 429s or an x-llm-d-request-dropped-reason header, the agent loads # this guide ( \u2026<truncated>",
+              "load_with": "read_knowledge('epp_headers')"
+            },
+            {
+              "kind": "knowledge",
+              "topic": "benchmark_feature_coverage",
+              "name": "benchmark_feature_coverage.md",
+              "score": 49,
+              "matched_terms": [
+                "benchmark",
+                "inference",
+                "perf",
+                "report",
+                "run"
+              ],
+              "snippet": "surfaces inference-perf + guidellm + vllm-benchmark (and nop for plumbing); aiperf/inferencemax/eval-containers are present but less commonly surfaced \u2014 they still have real, documented knobs (e.g. ai \u2026<truncated>",
+              "load_with": "read_knowledge('benchmark_feature_coverage')"
+            },
+            {
+              "kind": "repo_doc",
+              "path": "llm-d-benchmark/docs/run.md",
+              "score": 24,
+              "matched_terms": [
+                "benchmark",
+                "run"
+              ],
+              "snippet": "`llm-d-benchmark/docs/run.md` \u2014 use case \u2192 harness + workload profile, and the resulting metrics (TTFT/TPOT/ITL/throughput).",
+              "load_with": "read_repo_doc('llm-d-benchmark/docs/run.md')"
+            }
+          ],
+          "valid_topics": [
+            "accelerators",
+            "analysis",
+            "author_spec_workload",
+            "autoscaling",
+            "benchmark_feature_coverage",
+            "capacity",
+            "cloud_results_sink",
+            "collect_only",
+            "conversation_replay",
+            "conversation_style",
+            "convert_guide",
+            "dataset_replay",
+            "deploy_path_playbook",
+            "epp_headers",
+            "gateway_class",
+            "gateway_readiness",
+            "governance",
+            "harness_debug",
+            "harness_sizing",
+            "history",
+            "infra_providers",
+            "infrastructure_preconditions",
+            "key_docs",
+            "logging",
+            "model_override",
+            "multi_harness",
+            "multi_stack",
+            "observability",
+            "observability_grafana",
+            "observability_monitoring",
+            "observability_streaming",
+            "observability_tracing",
+            "orchestrator",
+            "packaging",
+            "phase_timeouts",
+            "preconditions",
+            "quickstart_playbook",
+            "readiness_probes",
+            "reproducibility",
+            "resource_management",
+            "results_interpretation",
+            "router_features",
+            "run_lifecycle",
+            "runconfig_roundtrip",
+            "shared_prefix_workloads",
+            "sim_integration",
+            "stack_discovery",
+            "standard_metrics",
+            "step_select",
+            "sweep_authoring",
+            "sweep_goalseek",
+            "sweep_playbook",
+            "sweep_results",
+            "sweep_validity",
+            "teardown",
+            "usecase_to_profile",
+            "useful_repo_docs",
+            "vllm_overrides",
+            "welcome",
+            "welllit_path_advisor",
+            "workspace_lifecycle"
+          ]
+        }
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "The benchmark did not complete: the harness lost its connection to the inference endpoint mid-run (0/120 requests) and no Benchmark Report was written. I won't make up numbers. Likely causes: the endp \u2026<truncated>"
+      }
+    },
+    {
+      "type": "done",
+      "data": {}
+    }
+  ]
+}
