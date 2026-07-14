@@ -17,11 +17,10 @@ Under `SIMULATE=1` the split is by command **kind**, not all-or-nothing:
 Bind these honesty rules:
 
 - **Read probe output honestly — it's real.** "Docker is up, kind is missing" is now a TRUE
-  statement to make (the probe actually ran). Don't slap a "didn't actually run" caveat on a
-  read-only probe; that was the old no-op world. Still: don't claim host facts you didn't probe —
-  no zero-tool-call "Cluster reachable ✅".
-- **Never present the OUTCOME of a simulated mutation as real.** A `standup`/`run` was a no-op, so
-  anything that would RESULT from it — a deployed stack, a serving endpoint, running pods, a
+  statement to make. Don't slap a "didn't actually run" caveat on a read-only probe. Still: don't
+  claim host facts you didn't probe — no zero-tool-call "Cluster reachable ✅".
+- **Never present the OUTCOME of a simulated mutation as real.** Anything that would RESULT from
+  a no-op `standup`/`run` — a deployed stack, a serving endpoint, running pods, a
   benchmark report or its numbers — is SYNTHETIC. Never say "the stack is deployed", "the endpoint
   is serving", or present simulated results as measured. Attach
   "(simulated — nothing was actually deployed or benchmarked)" wherever such post-deploy state or

@@ -1,36 +1,22 @@
 # Cluster-service deploy runbook
 
-Everything a human has to do by hand to build, publish, install, and test the llm-d Benchmarking
-Assistant as an in-cluster Kubernetes service (as opposed to running it on a laptop). Organized by
-audience: **maintainer** (publish the image), **operator** (install the service), **tester** (verify
-locally before shipping). Every command/flag/path below is copied from the actual scripts, Makefile,
-Dockerfile, chart, and CI scaffold, not paraphrased.
-
-## Maintainer one-time checklist
-
-- [ ] Build the image: `make image` (~1 GB, multi-minute, needs network egress).
-- [ ] `docker login ghcr.io` with a PAT that has `write:packages`.
-- [ ] Publish: `make image-publish` (pushes `ghcr.io/llm-d/llm-d-benchmarking-agent:0.1.0`).
-- [ ] Make the GHCR package public (so the chart's `IfNotPresent` pull needs no imagePullSecret), or decide to keep it private and require operators to set an imagePullSecret.
-- [ ] Keep `VERSION` (Makefile) ↔ chart `appVersion` (`deploy/helm/.../Chart.yaml`) in sync.
-- [ ] Move the CI scaffold `.github/workflows/image-publish.yml` to the repo-root `.github/workflows/` and verify its `context:`/`file:` for the monorepo layout (TODO, see §2).
-- [ ] Sign off the three build decisions: (a) skopeo source, (b) GHCR public vs private, (c) repin upstream SHAs to a tag (see §2).
-
----
+How to build, publish, install, and test the llm-d Benchmarking Assistant as an in-cluster
+Kubernetes service (instead of on a laptop). By audience: **maintainer** (publish the image),
+**operator** (install the service), **tester** (verify before shipping).
 
 ## 1. Overview: two install paths
 
-There are two entirely separate installers; pick by where the agent runs.
+Two separate installers (when to pick which → [DEPLOYMENT.md](DEPLOYMENT.md)):
 
-| | `scripts/install/install_local.sh` | `scripts/install/install_service.sh` |
-|---|---|---|
-| **Runs the agent** | on your laptop/dev box (a `.venv` + `./scripts/run.sh`) | as a Pod inside a Kubernetes cluster (Helm-deployed) |
-| **What it sets up** | clones the 3 sibling repos, installs the client toolchain + `llmdbenchmark` CLI + this app's venv + `.env` + MCP server | `helm upgrade --install` of the pre-built published image into an existing cluster, with a namespace-scoped SA + least-privilege RBAC |
-| **Prereqs** | a dev box (Debian/Ubuntu); optional `--prereqs` for Docker+kind | `kubectl` + `helm` + a reachable cluster |
-| **Use when** | you're developing, or benchmarking from a workstation | you want the assistant to live in the cluster as a shared service |
+- `scripts/install/install_local.sh` — the agent on your laptop/dev box (a `.venv` +
+  `./scripts/run.sh`): clones the 3 sibling repos, installs the client toolchain +
+  `llmdbenchmark` CLI + this app's venv + `.env` + MCP server. Debian/Ubuntu; optional
+  `--prereqs` for Docker+kind.
+- `scripts/install/install_service.sh` — the agent as a Pod: `helm upgrade --install` of the
+  pre-built published image into an existing cluster, with a namespace-scoped SA +
+  least-privilege RBAC. Needs `kubectl` + `helm` + a reachable cluster.
 
-`install_local.sh` is unchanged by this work; `install_service.sh` + the container image + the Helm
-chart are the cluster-service path.
+This runbook covers the service path: `install_service.sh` + the container image + the Helm chart.
 
 **The image is a self-contained "full-bake" (~1 GB).** Beyond the FastAPI app it carries the
 `llmdbenchmark` CLI (in its own venv at `/repos/llm-d-benchmark/.venv`), all three sibling upstream
@@ -44,7 +30,7 @@ runs non-root (uid 10001) under a read-only root filesystem; only `/workspace` a
 
 ## 2. MAINTAINER: publishing the image
 
-These are the manual steps you do once per release.
+Manual steps, once per release.
 
 ### Build
 
@@ -52,11 +38,11 @@ These are the manual steps you do once per release.
 make image          # docker build -t ghcr.io/llm-d/llm-d-benchmarking-agent:0.1.0 --build-arg BENCH_REF=v0.7.0 .
 ```
 
-Know before you run it: the image is ~1 GB, the build needs network egress (it git-clones the
-three pinned upstream repos and pip-installs the CLI + planner from PyPI/GitHub; the sibling repos live
-outside the build context and can't be `COPY`ed), and it takes several minutes. Override coordinates on
-the CLI, e.g. `make image VERSION=0.2.0` or `make image BENCH_REF=v0.7.1`. Defaults come from the
-Makefile: `IMAGE=ghcr.io/llm-d/llm-d-benchmarking-agent`, `VERSION=0.1.0`, `BENCH_REF=v0.7.0`.
+The image is ~1 GB, takes several minutes, and needs network egress (it git-clones the three
+pinned upstream repos and pip-installs the CLI + planner; the sibling repos live outside the build
+context and can't be `COPY`ed). Override coordinates on the CLI, e.g. `make image VERSION=0.2.0`
+or `make image BENCH_REF=v0.7.1`. Makefile defaults: `IMAGE=ghcr.io/llm-d/llm-d-benchmarking-agent`,
+`VERSION=0.1.0`, `BENCH_REF=v0.7.0`.
 
 ### Log in to GHCR
 
@@ -124,8 +110,6 @@ pushes `${IMAGE}:<tag>` and `${IMAGE}:latest` automatically, authenticating with
 
 ## 3. OPERATOR: installing the service
 
-Steps a cluster user runs to stand up the agent.
-
 ### Prereqs
 
 - `kubectl` and `helm` on PATH (the installer preflights both).
@@ -175,9 +159,8 @@ pullPolicy to `Never`. You must then load it onto the nodes yourself, e.g.
 
 The chat provider defaults to the Claude Agent SDK, authenticated by your Claude Max/Pro
 subscription via a `CLAUDE_CODE_OAUTH_TOKEN`; no metered API key needed. The baked `claude` CLI
-reads this token from the environment headlessly (no browser, no TTY), so the subscription auth
-does work inside a Pod. (This corrects earlier guidance: an `ANTHROPIC_API_KEY` is no longer
-required; it is now the fallback.)
+reads this token from the environment headlessly (no browser, no TTY), so subscription auth
+works inside a Pod. `ANTHROPIC_API_KEY` is the fallback.
 
 Get the token on a machine already logged into your Claude plan:
 
@@ -223,12 +206,8 @@ subscription, pass an API key; the installer then selects `LLM_PROVIDER=anthropi
 **Neither?** The app still deploys (SDK, chat disabled): `/healthz` and the keyless `/readyz` serve,
 but chat stays off (`/readyz` reports the provider component not ready) until a token or key is set.
 
-> **On terms of service.** Anthropic's auth docs support running your Claude subscription headlessly
-> via `CLAUDE_CODE_OAUTH_TOKEN` for the `claude` CLI, which is exactly what this Pod does (your own
-> subscription token, in your own Pod). Their Agent-SDK guidance separately steers third-party
-> developers who expose claude.ai login to their own end-users toward API keys. Running your own
-> token in your own cluster is the intended CLI-headless use; if you plan to expose the service to
-> other users as a product, prefer the API-key fallback. Make an informed choice.
+> **On terms of service.** Running your own subscription token headlessly in your own Pod is the
+> CLI use Anthropic's auth docs support; if you expose the service to other users as a product, prefer the API-key fallback.
 
 ### Reach the UI
 
@@ -240,27 +219,22 @@ kubectl -n <ns> port-forward svc/<release>-llm-d-benchmarking-agent 8000:8000
 With the defaults the service name is `bench-agent-llm-d-benchmarking-agent` in namespace `llmd-bench`.
 Full post-install notes: `helm get notes <release> -n <ns>`.
 
-### Security model (one paragraph)
+### Security model
 
 The chart creates a namespace-scoped ServiceAccount + least-privilege Role (no ClusterRole). The Role
 grants exactly: `batch/jobs` → `create,get,list,watch,patch,delete`; `pods` → `get,list,watch`;
 `pods/log` → `get`; `configmaps` → `get,list,watch,create,patch` (the agent's own sweep-checkpoint
-ConfigMaps). It grants no access to Secrets or Roles and nothing cluster-wide, so the agent's
-commands can only affect this one namespace. Residual risk to keep in mind: because it can create
-Jobs, a Job it defines could mount any Secret that lives in this namespace. Therefore keep sensitive
-Secrets out of the agent's namespace (give it a dedicated namespace with only its own LLM/HF Secret).
+ConfigMaps). No Secrets, no Roles, nothing cluster-wide. Residual risk: a Job it creates could mount
+any Secret in this namespace — so give the agent a dedicated namespace with only its own LLM/HF Secret.
 
-Because that Job-create power means the pod's own read-only filesystem is not the only boundary,
-`install_service.sh` also enforces the **Baseline Pod Security Standard** on the namespace (it runs
-`kubectl label ns … pod-security.kubernetes.io/enforce=baseline`, mirroring `values.yaml`
-`podSecurity.enforce`). The API server then refuses any pod — including one a mistaken or crafted Job
-might define — that mounts a `hostPath`, runs privileged, or shares a host namespace, so nothing the
-agent submits can reach the node filesystem. Baseline (not Restricted) is deliberate: it does not
-force non-root, so benchmark harness images that need root still run. A raw `helm` install that
-bypasses the installer does **not** apply the label — set it yourself with the same command. Verify a
-live deployment end-to-end with `scripts/eval/validate_fs_isolation.sh -n <ns>`: it confirms the
-pod's only writable mounts are `/workspace` + `/tmp`, that the root filesystem rejects writes, and
-that the namespace refuses a `hostPath` pod.
+`install_service.sh` also enforces the **Baseline Pod Security Standard** on the namespace
+(`kubectl label ns … pod-security.kubernetes.io/enforce=baseline`, mirroring `values.yaml`
+`podSecurity.enforce`): the API server then refuses any pod that mounts a `hostPath`, runs
+privileged, or shares a host namespace, so nothing the agent submits can reach the node filesystem.
+Baseline (not Restricted) is deliberate — harness images that need root still run. A raw `helm`
+install does **not** apply the label; set it yourself with the same command. Verify a live
+deployment with `scripts/eval/validate_fs_isolation.sh -n <ns>` (writable mounts are only
+`/workspace` + `/tmp`; rootfs rejects writes; namespace refuses a `hostPath` pod).
 
 ### Enable persistence (optional)
 
@@ -297,8 +271,6 @@ Left empty (default), the `orchestrate_benchmark_run` tool refuses rather than s
 ---
 
 ## 4. TESTING: verify locally before shipping
-
-Steps you run to prove the cluster-service path works end-to-end before publishing.
 
 ### Add auth to `.env`
 
@@ -345,25 +317,9 @@ golden base image).
 
 ---
 
-## 5. Quick reference
+## 5. Quick reference: key config knobs
 
-### Key commands
-
-| Task | Command |
-|---|---|
-| Build image | `make image` |
-| Build with a version | `make image VERSION=0.2.0` |
-| Log in to GHCR | `echo $GH_PAT \| docker login ghcr.io -u <user> --password-stdin` |
-| Publish image | `make image-publish` |
-| Install service | `./scripts/install/install_service.sh --oauth-token <TOKEN>` |
-| Validate only | `./scripts/install/install_service.sh --dry-run` |
-| Local build + install | `./scripts/install/install_service.sh --build` (+ `kind load docker-image <img>`) |
-| Reach the UI | `kubectl -n <ns> port-forward svc/<release>-llm-d-benchmarking-agent 8000:8000` |
-| Post-install notes | `helm get notes <release> -n <ns>` |
-| Test (kind adapter) | `bash harnesses/cluster-service-sim/run.sh` |
-| Test (fresh WSL env) | `bash fresh-env/run-app.sh --with-runtime --detach` |
-
-### Key config knobs
+(Commands live in §2–§4 above.)
 
 | Knob | Flag / value | Default |
 |---|---|---|

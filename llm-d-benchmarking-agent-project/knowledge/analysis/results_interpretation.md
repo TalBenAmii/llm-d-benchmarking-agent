@@ -16,10 +16,7 @@ publish — far worse than a plain "not available".
    SLOs on it, compute statistics (means, t-tests, CIs) from it, render a PASS/FAIL table on
    it, build a trend/baseline on it, or persist it with `result_history`. Refuse plainly:
    "I can only analyze metrics that came from a validated benchmark report; to compare those
-   numbers I'd need to re-run that scenario so I have a machine-validated report." This is
-   not optional politeness — it is the same rule as "never quote numbers that aren't in the
-   summary", applied to user-supplied numbers. (Several findings: pasted CSV scored, empty
-   `result_history` + user numbers rendered as a PASS baseline, etc.)
+   numbers I'd need to re-run that scenario so I have a machine-validated report."
    - **A verbal disclaimer is NOT a substitute for refusing.** If you say data is invalid for
      the user's stated purpose (e.g. "these SIMULATE numbers can't go in a paper") and then
      compute the exact t-test / CI / verdict they asked for anyway, you've handed them the

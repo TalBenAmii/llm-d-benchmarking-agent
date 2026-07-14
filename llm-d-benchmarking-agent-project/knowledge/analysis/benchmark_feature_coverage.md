@@ -27,14 +27,6 @@ blank cell or a 🟡 into "unsupported"; open the per-harness guide before answe
 | I | Project meta | 2 | 0 | 2 |
 | **Total** | | **60** | **2** | **6** |
 
-**Headline gap — CLOSED (Phase 27, 2026-06-03).** Benchmark metrics collection
-(`--monitoring`) is now ✅: the consumer shipped in Phase 25 (`app/validation/report.py` +
-`knowledge/standard_metrics.yaml` parse `results.observability`) and the producer is activated —
-`build_argv` emits `--monitoring`/`--no-monitoring` subcommand-aware via `ExecuteInput.flags["monitoring"]`,
-with a read-only `_probe_prometheus_crds` CRD check feeding the knowledge-driven opt-out. The 3 standard
-`results.observability` metrics are wired into the trend store (Phase 49). Roadmap v4 Phases 27-66 are
-merged DONE (57 & 58 deferred).
-
 ## Default-on (with a knowledge-driven opt-out)
 - **`--monitoring`** — lights up `results.observability` (KV-cache hit rate, schedule delay,
   GPU util) the report parses. Default ON is the AGENT's policy (upstream `run` defaults it OFF,

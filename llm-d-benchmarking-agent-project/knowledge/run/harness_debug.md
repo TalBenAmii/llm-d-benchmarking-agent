@@ -18,10 +18,9 @@ something completely different — and **destructive** — on `teardown`:
 | `run`, `experiment` | `--debug` | start harness pods with `sleep infinity` (this feature) |
 | `teardown`        | `--deep`   | **full-namespace wipe** — removes cluster-scoped roles, deletes everything |
 
-So **never** set `debug: True` expecting a teardown to honor it as debug — it would request a
-*deep teardown*. The tool guards on the subcommand and the command policy only permits `-d` on
+The tool guards on the subcommand and the command policy only permits `-d` on
 `run`/`experiment` (teardown has no `-d`/`--debug` entry). A deep teardown is a separate,
-explicit, destructive choice — not something to back into via this flag.
+explicit, destructive choice — never something to back into via this flag.
 
 ## It still LAUNCHES a real pod — so it stays approval-gated
 
@@ -48,7 +47,6 @@ Do **not** use it:
   load), so there is nothing for `locate_and_parse_report`/`analyze_results` to read. For numbers,
   run **without** `debug`.
 - **As a way to "keep the cluster warm"** — it pins real pods; tear it down when done.
-- **On `teardown`** — see the table above; it means `--deep` there.
 
 ## Triage FIRST: "0 successful requests" (before debug mode OR a redeploy)
 
@@ -101,7 +99,7 @@ step**; **the agent never drives it**:
 ## How it fits the workflow
 
 1. A real `run`/`experiment` is failing and logs alone are not enough.
-2. Re-issue with `flags={'debug': True}` (approval-gated). Harness pods come up with
+2. Re-issue with `flags={'debug': True}`. Harness pods come up with
    `sleep infinity`; no load runs, no report is produced.
 3. Confirm Running (read-only `kubectl get pods` / readiness check), then **hand the user the
    `exec` command** and explain what to inspect. They drive the interactive session.

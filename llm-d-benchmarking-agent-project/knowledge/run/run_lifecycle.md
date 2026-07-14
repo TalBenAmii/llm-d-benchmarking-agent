@@ -51,15 +51,10 @@ read the same run state read-only over `GET /api/jobs?namespace=…`.)
   target should be one the user is clearly referring to.
 
 ## Don't leave a cluster running after a partial flow
-A created cluster / stood-up stack costs the user money and capacity. The full rule — a
-fully-specified flow that ENDS in teardown isn't done until teardown has actually run; skip optional
-mid-flow gates (e.g. an "install metrics-server?" offer) SILENTLY on such a request; if you truly
-can't finish (a step failed or a real decision is needed), say exactly where you stopped and EITHER
-tear down the partial deployment OR hand the still-running cluster back with how to remove it
-(`run_shell("kind delete cluster --name <name>")` / an approval-gated `teardown`), never abandoning
-a created cluster with no word to the user — is CORE `quickstart_playbook.md` ("Complete a
-fully-specified run+teardown…"). Lifecycle-specific: also don't treat "Before I kick off the
-benchmark:" as a stopping point when nothing actually blocks you — keep going to the run and teardown.
+A created cluster / stood-up stack costs the user money and capacity — the full rule lives
+verbatim in CORE `quickstart_playbook.md` ("Complete a fully-specified run+teardown…").
+Lifecycle-specific: don't treat "Before I kick off the benchmark:" as a stopping point when
+nothing actually blocks you — keep going to the run and teardown.
 
 ## After cancelling
 - Tell the user plainly what was stopped and that its slot is now free.

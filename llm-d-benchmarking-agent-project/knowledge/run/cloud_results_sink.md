@@ -5,19 +5,17 @@ the report parser, the analyzer, and the trend store can all find them. That is 
 choice for almost everyone, and it is what happens when you say nothing.
 
 A user with their OWN cloud bucket can instead have results uploaded to **GCS (`gs://…`)** or
-**S3 (`s3://…`)**. This is an **opt-in** convenience, not a default — never silently send a
-user's benchmark results to a cloud bucket.
+**S3 (`s3://…`)**. This is **opt-in ONLY** — the user must explicitly say so; never silently
+send a user's benchmark results to a cloud bucket, and never guess or fabricate a bucket URI
+(only emit one the user actually gave you).
 
 ## The judgment — when to opt in to a cloud sink
 
-- **Default: LOCAL.** Omit `output` (or set it to `local`). Results stay under this session.
-  Do this whenever the user hasn't asked for a bucket. Never guess a bucket URI.
-- **Opt in to `gs://`/`s3://` ONLY when the user explicitly says so** — e.g. "upload the
-  results to my GCS bucket", "put them in `s3://acme-benchmarks/…`", "I have a bucket for this".
+- Explicit opt-in looks like: "upload the results to my GCS bucket", "put them in
+  `s3://acme-benchmarks/…`", "I have a bucket for this".
   If the conversation hints at sharing/retaining results off-box but no bucket is named, **ask**:
   > "Do you have a GCS or S3 bucket you'd like results uploaded to? If not, results stay local
   > under this session."
-  Don't fabricate a bucket name; only emit a URI the user actually gave you.
 - **Scope: `run` only (for the MVP).** A cloud sink is wired for `execute_llmdbenchmark` `run`.
   `experiment` (DoE sweeps) and `results` stay LOCAL here — don't try to point those at a bucket.
   Upstream `experiment` *itself* also declares a `-r`/`--output` accepting `local`/`gs://`/`s3://`,

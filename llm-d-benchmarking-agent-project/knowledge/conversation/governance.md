@@ -10,8 +10,7 @@ loader/validator in `app/security/policy.py`.
 - **`timeout_s: <int>`** — the per-command execution deadline (seconds). The runner kills the
   process (its whole process group) at the deadline and the result is flagged `timed_out`. A
   subcommand's `timeout_s` overrides the executable's; when neither is declared, the runner's
-  sane global default applies. This is the **single** source of timeouts — there is no Python
-  per-command timeout table.
+  sane global default applies.
 
 It is **schema-validated at startup**: a non-positive / non-int `timeout_s` **rejects the
 whole command policy with a clear error**. Fail loud — never silently mis-enforce.
@@ -22,11 +21,6 @@ whole command policy with a clear error**. Fail loud — never silently mis-enfo
   host, image pull, model load) — relay that, and consider whether a smaller workload / spec
   fits. Do NOT silently retry the same heavy command in a loop. If the limit is too tight for
   a legitimate slow environment, the fix is a reviewed edit to `timeout_s` in the YAML.
-
-## Why this lives in data
-Tuning a timeout must NOT require a code change or a redeploy of logic — it is a policy
-decision, reviewable as a one-line diff to `security/command_policy.yaml`. The Python only times
-and kills; the judgment ("how long is too long") is data you can edit.
 
 ---
 

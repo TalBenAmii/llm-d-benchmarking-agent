@@ -22,14 +22,12 @@ user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, 
 4. **Determinism at the boundaries** — the four code-enforced gates: schema-validated tool args; a
    `SessionPlan` cross-checked against the live catalog and human-approved; generated configs
    structurally validated (`doe.py` + the artifact shape-check); results parsed from the Benchmark
-   Report v0.2 schema, never scraped from logs. **Two conventions that are NOT code gates:** the CLI
-   `--dry-run`/`plan` preview, and "plan before mutation" — nothing blocks a mutation on an approved
-   plan; the per-command approval gate (rule 5) is what does. Enumerated in `app/validation/CLAUDE.md`.
+   Report v0.2 schema, never scraped from logs. The gates — and the conventions that are NOT code
+   gates — are enumerated in `app/validation/CLAUDE.md` (the source of truth).
 5. **Security: the mutating→approval gate is the guardrail.** Mutations need explicit approval; read-only
    probes auto-run; subprocess env is scrubbed. The deny-by-default command policy (data in
-   `security/command_policy.yaml`; `app/security` = pure validator) governs the dedicated command tools;
-   `run_shell` is gated by the read-only/mutating classifier instead. Detail → `app/security/CLAUDE.md` +
-   the `coding-guidelines` skill.
+   `security/command_policy.yaml`) governs the dedicated command tools; `run_shell` is gated by the
+   classifier instead — detail → `app/security/CLAUDE.md` + the `coding-guidelines` skill.
 6. **Secrets stay in the backend** (`.env`, gitignored; subprocess env scrubbed; browser never sees keys).
 7. **Read repo truth at runtime; don't vendor copies** — fail loudly if a repo path can't be resolved.
 
@@ -57,7 +55,7 @@ llm-d-benchmarking-agent-project/
 │                         10 topic subfolders; resolved by basename via a recursive glob — see its CLAUDE.md)
 ├─ security/             command_policy.yaml — the deny-by-default policy (DATA, not code)
 ├─ deploy/               Helm chart + observability manifests
-├─ scripts/              root entry points (run.sh · _env.sh shared lib) + install/ (service+host bootstrap: install_local.sh · install_service.sh · install_prereqs.sh · install_metrics_server.sh · install-git-hooks.sh · setup-claude-plan.sh · kind_egress_heal.sh) + bridges/ (policy-allowed repo wrappers: aggregate_runs.py · capacity_check.py · provision_hf_secret.py) + eval/ (flow eval: validate_flows.py · run_eval_isolated.sh)
+├─ scripts/              root entry points (run.sh · _env.sh) + install/ (service+host bootstrap) + bridges/ (policy-allowed repo wrappers) + eval/ (flow eval)
 ├─ tests/           📁    pytest suite in subsystem buckets (agent/ · tools/ · orchestrator/ · platform/, shared fixtures at root; + eval/ flows/ integration/) — env & run cheat sheet lives here
 ├─ harnesses/            non-product harnesses (local-cluster mock GPU; build-excluded)
 ├─ docs/                 documentation (README index + guides/ how-to · reference/ API·ARCHITECTURE·FEATURES·CONTEXT + images/ UI stills)

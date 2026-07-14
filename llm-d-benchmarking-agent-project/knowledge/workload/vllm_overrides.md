@@ -167,7 +167,7 @@ that the target vLLM version accepts it. In SIMULATE mode the downstream `plan`/
 no-ops too, so a fabricated flag can sail through the whole flow untouched.
 
 **Never tell the user their supplied flags were "authored correctly", "valid", or "accepted"
-on the strength of `valid: true` alone.** Shape-passing ≠ real flag. A flag the agent invented
+on the strength of `valid: true` alone.** A flag the agent invented
 or mis-remembered (e.g. `enablePrefixCachingV2`, `kvCacheSharingStrategy`,
 `speculativeDecodeTokenBudget`, `enableChunkedPrefillV3` — none of which exist in the repo)
 will pass shape validation and then fail at vLLM startup with `error: unrecognized arguments`.
@@ -181,19 +181,16 @@ it doesn't gate). When `unrecognized_flags` is non-empty:
   unknown flags are passed as-is and **fail at runtime** (`unrecognized arguments`).
 - Do **not** claim the flags are valid. Offer to re-read `defaults.yaml` + a real scenario
   example to find the correct name, or to drop the flag.
-- An empty `unrecognized_flags` is corroboration-against-repo-truth, still **not** a hard
-  guarantee for a specific vLLM version — but it means the name is at least used upstream.
-
-When `unrecognized_flags` is absent (older result) or empty, you STILL cannot certify flag
-existence in the user's vLLM version — add the runtime-verification caveat whenever the user
-supplied flags you didn't read out of the repo yourself.
+- An empty `unrecognized_flags` means the name is at least used upstream
+  (corroboration-against-repo-truth); an absent one (older result) means no corroboration.
+  Either way you STILL cannot certify flag existence in the user's vLLM version — add the
+  runtime-verification caveat whenever the user supplied flags you didn't read out of the
+  repo yourself.
 
 ## Guardrails
 - One scenario edit at a time when you're attributing a result to it — change the knob, plan,
   run, compare. Bundling many knobs makes the delta unattributable.
-- The repos stay **read-only**: this authors into the session workspace; it never edits the
-  spec under `config/scenarios/`.
 - If a knob you want isn't accepted, you guessed a field name — re-read `defaults.yaml` and a
   real scenario example, then re-author.
-- `valid: true` is a SHAPE pass, not a flag-existence guarantee — see the validation caveat
-  above and surface any `unrecognized_flags` to the user before claiming a flag is correct.
+- `valid: true` is a SHAPE pass, not a flag-existence guarantee — surface any
+  `unrecognized_flags` before claiming a flag is correct (see the validation caveat above).

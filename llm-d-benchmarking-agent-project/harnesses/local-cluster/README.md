@@ -11,14 +11,11 @@ that advertises fake `nvidia.com/gpu` resources.
 ## Why this works (no app code, no fake hardware)
 
 The agent learns about GPUs only from what the cluster advertises as allocatable
-`nvidia.com/gpu`. It never runs `nvidia-smi` or otherwise verifies real silicon
-(`app/orchestrator/job.py:41` calls it "the conventional extended-resource name a GPU
-device-plugin advertises"). `scheduling.gpu_count` becomes a pod
-`resources.limits["nvidia.com/gpu"]`, so a node that claims to have GPUs is indistinguishable
-from a real one to every scheduling code path: `gpu_count`, `gpu_resource`, `gpu_type_label`
-(node affinity on `nvidia.com/gpu.product`), `node_selector`, `tolerations`, pod
-anti-affinity, and topology spread (`avoid_topology_key`) all get genuinely exercised against
-the real K8s scheduler.
+`nvidia.com/gpu`; it never runs `nvidia-smi` or otherwise verifies real silicon.
+`scheduling.gpu_count` becomes a pod `resources.limits["nvidia.com/gpu"]`, so a node that
+claims to have GPUs is indistinguishable from a real one, and every `Scheduling` field
+(GPU count/resource/type-label, node selector, tolerations, anti-affinity, topology spread)
+gets genuinely exercised against the real K8s scheduler.
 
 ## What it does and does NOT give you
 
@@ -54,9 +51,8 @@ cd harnesses/local-cluster
 ./setup.sh --gpus 8              # 8 fake GPUs per node
 kubectl get nodes -o custom-columns=NODE:.metadata.name,GPU:.status.capacity.'nvidia\.com/gpu'
 
-# ... point the agent at it (its kubeconfig context is now kind-llmd-mock) and drive a run that
-#     requests GPUs, e.g. orchestrate_sweep with scheduling.gpu_count / gpu_type_label ...
-
+# ... point the agent at it (kubeconfig context kind-llmd-mock) and drive a GPU-requesting run,
+#     e.g. orchestrate_sweep with scheduling.gpu_count / gpu_type_label ...
 ./teardown.sh                    # delete the llmd-mock cluster
 
 # kwok mode: fake-node fleet for scheduling-at-scale (applied to the CURRENT context)
@@ -67,28 +63,22 @@ kubectl get nodes -o custom-columns=NODE:.metadata.name,GPU:.status.capacity.'nv
 Requirements: `kubectl` + `kind` (kind mode) on PATH; an internet connection the first time
 (kwok mode pulls the pinned kwok release manifests). All free.
 
-> WSL2 caveat: multi-node real-kubelet kind does not come up on WSL2. The worker nodes fail
-> to join (`kubelet not healthy` / cgroup limitation; the control-plane is fine). Use
-> `./setup.sh --single-node` there: a single node still proves GPU-resource scheduling
-> end-to-end (Jobs request `nvidia.com/gpu`, schedule onto the fake-GPU node, run, complete).
-> For cross-node placement (anti-affinity / topology spread) on WSL2, use `--mode kwok`
-> (faked nodes, so no real report). Verified end-to-end on WSL2 2026-06-20: a real
-> `orchestrate_sweep` ran 3 Jobs requesting fake GPUs, all Complete under `max_parallel=2`,
-> with a checkpoint ConfigMap.
+> WSL2 caveat: multi-node real-kubelet kind does not come up on WSL2 (workers fail to join:
+> `kubelet not healthy` / cgroup limitation; the control-plane is fine). Use `--single-node`
+> there — one node still proves GPU-resource scheduling end-to-end (Jobs request
+> `nvidia.com/gpu`, schedule onto the fake-GPU node, run, complete). For cross-node placement
+> (anti-affinity / topology spread) on WSL2, use `--mode kwok` (faked nodes, so no real report).
 
 ## Product safety: how we keep this out of the shipped artifact
 
-The product is exactly what the `Dockerfile` COPYs (`app/` — which carries the static UI at `app/ui/` — `security/ knowledge/ scripts/` + two
-metadata files) plus the `deploy/` charts. This harness lives entirely outside that set and is
-guarded three ways:
-
-1. `.dockerignore` excludes `harnesses/`, so it can't even enter the build context.
-2. `tests/platform/test_product_boundary.py` asserts (a) the Dockerfile COPY set never names
-   `harnesses/`, (b) `.dockerignore` excludes it, and (c) no module under `app/` imports it. A
-   future change that wires the mock into the product fails CI loudly.
-3. No custom images, no app code: the fake-GPU mechanisms are upstream (kind node PATCH,
-   kwok). There is nothing here to maintain inside the product, and the agent drives the mock
-   cluster unchanged because it can't tell fake GPUs from real ones.
+The product is exactly what the `Dockerfile` COPYs (`app/ security/ knowledge/ scripts/` + two
+metadata files) plus the `deploy/` charts; `harnesses/` lives outside that set and
+`.dockerignore` excludes it from the build context. `tests/platform/test_product_boundary.py`
+turns the boundary into a checked invariant (the COPY set never names `harnesses/`, the exclusion
+holds, no module under `app/` imports it) — wiring a harness into the product fails CI loudly.
+The fake-GPU mechanisms are upstream (kind node PATCH, kwok): nothing to maintain inside the
+product, and the agent drives the mock cluster unchanged because it can't tell fake GPUs from
+real ones.
 
 If you need the override maps that swap upstream multi-GPU guides onto the CPU sim engine, put
 them here as fixtures and feed them to the agent at runtime via
@@ -96,7 +86,7 @@ them here as fixtures and feed them to the agent at runtime via
 
 ## Related
 
-- `docs/guides/GPU_CLUSTER_RUNBOOK.md`: the real single-GPU path (your RTX 4060): real vLLM, real
-  numbers, one replica. This harness is its mock multi-GPU counterpart.
-- `app/orchestrator/job.py`: `Scheduling` (how `gpu_count` / affinity / tolerations become a
-  manifest); `app/tools/run/orchestrate.py`: `orchestrate_sweep`.
+- `docs/guides/GPU_CLUSTER_RUNBOOK.md`: the real single-GPU path (your RTX 4060; real vLLM, real
+  numbers, one replica) — this harness is its mock multi-GPU counterpart.
+- `app/orchestrator/job.py` (`Scheduling`: how `gpu_count` / affinity / tolerations become a
+  manifest); `app/tools/run/orchestrate.py` (`orchestrate_sweep`).

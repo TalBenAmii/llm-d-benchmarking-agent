@@ -33,15 +33,12 @@ two — and choosing to generate-then-reuse at all — is judgment, not a defaul
 
 ## When to use which (your judgment)
 
-- **Generate-then-reuse (`--generate-config` → `-c`)** when you have a run whose settings are
-  already correct and you want to **capture and replay them verbatim**: re-run the exact same
-  benchmark later, hand a reproducible config to the user, or fire several identical runs
-  (e.g. against a freshly re-stood-up stack) without re-specifying every flag. It is also the
-  cleanest way to record "the run we actually did" for provenance.
-- **Author in-workspace (`write_and_validate_config`)** when you are **changing** the
-  configuration — setting finer vLLM/scheduling knobs, a kustomize deploy block, or an
-  experiment matrix — i.e. when the config is something you're *designing*, not something an
-  existing run already produced.
+- **Generate-then-reuse (`--generate-config` → `-c`)** when the settings are already correct
+  and you want to **capture and replay them verbatim** — re-run the same benchmark later, hand
+  the user a reproducible config, fire several identical runs, or record "the run we actually
+  did" for provenance.
+- **Author in-workspace (`write_and_validate_config`)** when the config is something you're
+  **designing/changing**, not something an existing run already produced.
 - **Neither (just run normally)** for a one-off run you won't repeat — don't generate a config
   you'll never replay.
 

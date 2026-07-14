@@ -5,10 +5,8 @@ direct / dev path) and **in-cluster** (a hardened Deployment via Helm; on a loca
 `kind` cluster this is the recommended POC path). Plus configuration, secrets, RBAC,
 and observability wiring.
 
-The mechanism (the `Dockerfile`, the Helm chart under
-`deploy/helm/llm-d-benchmarking-agent/`)
-is data; the operational judgment lives in [`knowledge/reference/packaging.md`](../../knowledge/reference/packaging.md).
-This guide ties them together.
+Design (thin code, thick agent) → the [root README](../../../README.md); the operational judgment
+behind this deploy lives in [`knowledge/reference/packaging.md`](../../knowledge/reference/packaging.md).
 
 ---
 
@@ -73,42 +71,22 @@ the supported POC path, exercised on a local `kind` cluster.
 
 ### Laptop (kind): `./install.sh`
 
-One command auto-installs any missing prereqs (docker/kind/kubectl/helm) via `sudo`, builds the
-image, creates a `kind` cluster, `kind load`s the image, deploys the chart via
-`scripts/install/install_service.sh`, verifies `/healthz` and `/readyz`, leaves the service running, and
-opens the UI in your browser. Run it either from scratch (the curl one-liner self-clones) or from
-a checkout / repo root (`./install.sh`):
-
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/install.sh)  # self-clones + runs
 ./install.sh                     # ...or run from a clone of the repo
-./install.sh --no-open           # deploy but don't open a browser (prints the port-forward line)
 ```
 
-If Docker was newly installed, `install.sh` stops once for you to log out/in (docker-group
-activation), then re-run. On first run it also offers to wire your Claude subscription
-interactively (no manual `.env` step). Chat auth otherwise defaults to that subscription: `install.sh` reads
-`CLAUDE_CODE_OAUTH_TOKEN` (a `claude setup-token` token) from the project `.env` or `--oauth-token`,
-falling back to `ANTHROPIC_API_KEY` / `--anthropic-key`. Keyless still serves the health endpoints
-(chat disabled). Teardown: `kind delete cluster --name bench-agent`.
+Full quickstart (what it installs, Docker-group re-run, `--no-open`, teardown) → the
+[root README](../../../README.md#quick-start).
 
 ### Real cluster (not yet tested): same deploy, minimal delta
 
-`scripts/install/install_service.sh` deploys to whatever cluster your `kubectl` context points at, so a
-real cluster is the same steps with two changes: (a) push the image to a registry the cluster
-can pull (`make image-publish`, or your own registry) instead of `kind load`; (b) point at your
-context and skip `kind create`:
-
-```bash
-cd llm-d-benchmarking-agent-project
-./scripts/install/install_service.sh \
-  --image <registry-repo> --context <your-context> \
-  --oauth-token "$CLAUDE_CODE_OAUTH_TOKEN"        # selects the default claude-agent-sdk provider
-```
-
-`--oauth-token` (or `$CLAUDE_CODE_OAUTH_TOKEN`) is the default auth; `--anthropic-key` is the
-API-key fallback. This path should work but is untested today. Full operator runbook,
-including auth and RBAC: **`docs/guides/CLUSTER_SERVICE_DEPLOY.md`**.
+`scripts/install/install_service.sh` deploys to whatever cluster your `kubectl` context points at.
+Two changes vs kind: push the image to a registry the cluster can pull (`make image-publish`)
+instead of `kind load`, and pass `--image <registry-repo> --context <your-context>`
+(plus `--oauth-token "$CLAUDE_CODE_OAUTH_TOKEN"`, or the `--anthropic-key` fallback). Untested
+today. Full operator runbook, including auth and RBAC:
+**[`CLUSTER_SERVICE_DEPLOY.md`](CLUSTER_SERVICE_DEPLOY.md)**.
 
 ### Manual / API-key fallback (build + raw Helm)
 
@@ -166,16 +144,9 @@ The tag is convenient but mutable. For reproducible rollouts pin by digest: set
 
 `orchestrate_benchmark_run` submits a benchmark as a Kubernetes Job and then watches it,
 reads pods, and streams logs, all via `kubectl` (`app/orchestrator/kube.py`). In-cluster
-those calls authenticate as the pod's ServiceAccount, so the chart creates a
-namespaced Role granting only:
-
-- `batch`/`jobs`: `create, get, list, watch, patch, delete`
-- `pods`: `get, list, watch`
-- `pods/log`: `get`
-
-and nothing else: no ClusterRole, no secrets/exec/portforward, no write to anything but the
-benchmark Jobs in its own namespace. This resolves the RBAC capability Phase 3 deferred to
-packaging, without handing the agent broad cluster power.
+those calls authenticate as the pod's ServiceAccount, so the chart creates a namespaced
+least-privilege Role (no ClusterRole, no secrets/exec/portforward) — exact rules →
+[`CLUSTER_SERVICE_DEPLOY.md`](CLUSTER_SERVICE_DEPLOY.md#security-model).
 
 Set `ORCHESTRATOR_SERVICE_ACCOUNT` (the deploy does this) so the submitted Jobs also run
 under that least-privilege SA. Unset (local dev) → the namespace default SA, fine for

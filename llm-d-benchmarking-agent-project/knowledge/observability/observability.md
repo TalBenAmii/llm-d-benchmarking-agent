@@ -4,22 +4,24 @@ This agent exposes two complementary observability surfaces. Use them to *explai
 happening*, not to make decisions silently — surface the signal to the user and reason about
 it out loud.
 
-## Operative summary (this file is long — read_knowledge may truncate the tail below; these are the load-bearing calls)
+## Operative summary + pointers to the split-out guides (this file is long — read_knowledge may truncate the tail below; these are the load-bearing calls)
 - **You CAN deploy the live-view stacks yourself** — both are approval-gated `run_shell` steps,
   not "advice only". The **Grafana** observability stack (richer: GPU/latency/throughput/history) and
-  the **metrics-server** (§2, live CPU/mem sparklines) are each installable BY the agent; never refuse
-  to stand up Grafana. The Grafana-vs-metrics-server choice + embedding a user's own Grafana →
-  read_knowledge('observability_grafana').
+  the **metrics-server** (§2, live CPU/mem sparklines) are each installable BY the agent; offer BOTH
+  as a pair before a run, and never refuse to stand up Grafana. The full Grafana-vs-metrics-server
+  choice + embedding a user's own Grafana → read_knowledge('observability_grafana').
 - **Default benchmark monitoring ON** so the report's `results.observability` block is populated
   (KV-cache/GPU/queue). Opt out (`monitoring: false`) only on a truly Prometheus-CRD-less cluster.
   Full detail (the flag mechanism, the CRD-probe decision, reading the metrics) →
   read_knowledge('observability_monitoring').
-- **Distributed tracing is CONFIG-ONLY** (§4): the agent configures the `tracing:` block so pods
-  *emit* OTLP spans, but it CANNOT show traces — the user views them in their own Jaeger/Tempo.
-  Full detail → read_knowledge('observability_tracing').
-- **Live metric streaming + custom PromQL are UPSTREAM-UNIMPLEMENTED** (§5): don't promise a live
-  metric chart; offer `observe_run_metrics` (kubectl top) + live pod-log streaming instead.
-  Full gap statement + the exact answer to give → read_knowledge('observability_streaming').
+- **Distributed tracing is CONFIG-ONLY**: the agent configures the `tracing:` block (dotted
+  `tracing.*` overrides via `write_and_validate_config`, gated with `plan`/`--dry-run` before
+  standup) so pods *emit* OTLP spans, but it CANNOT show traces — the user views them in their
+  own Jaeger/Tempo. Full detail → read_knowledge('observability_tracing').
+- **Live metric streaming + custom PromQL are UPSTREAM-UNIMPLEMENTED**: don't promise a live
+  metric chart; offer `observe_run_metrics` (kubectl top) + live pod-log streaming instead —
+  arbitrary PromQL runs in the USER'S own Prometheus/Grafana, not the benchmark CLI. Full gap
+  statement + the exact answer to give → read_knowledge('observability_streaming').
 
 ## 1. The agent's own metrics — `/metrics` (Prometheus)
 
@@ -116,26 +118,5 @@ offer the install when it is genuinely absent and the user actually wants the li
 
 ### Two live-view options to offer before a run — Grafana (richer) vs metrics-server (convenient)
 
-> The full Grafana-vs-metrics-server live-view choice (both deployable by the agent via an
-> approval-gated `run_shell`; the only user-owned piece is the `GRAFANA_DASHBOARD_URL` env var) +
-> embedding a user's own Grafana in the live panel → read_knowledge('observability_grafana').
-> Short version: offer BOTH as a pair before a run — Grafana is the richer view (GPU/latency/
-> throughput/history) and metrics-server (`install_metrics_server.sh`, §2 above) is the zero-setup
-> CPU/mem fallback. Never refuse to stand up Grafana.
-
-## 4. Distributed tracing — the `tracing:` config block (CONFIG-ONLY)
-
-> Full detail moved → read_knowledge('observability_tracing'). Short version: the benchmark
-> **CONFIGURES** the `tracing:` block so pods *emit* OTLP spans, but it CANNOT collect or show
-> traces — the user views them in their own Jaeger/Tempo. Author the dotted `tracing.*` overrides
-> via `write_and_validate_config`, then GATE with `plan`/`--dry-run` before standup.
-
-## 5. Real-time metric streaming / custom PromQL — UPSTREAM-UNIMPLEMENTED
-
-> Full detail moved → read_knowledge('observability_streaming'). Short version: the benchmark
-> itself CANNOT stream live metrics nor run user-defined Prometheus queries (both upstream
-> "Not Yet Implemented"). Be honest about the gap, then offer the real substitutes: live
-> CPU/mem via `observe_run_metrics` (§2) + live pod-log streaming via
-> `orchestrate_benchmark_run`; arbitrary PromQL runs in the USER'S own Prometheus/Grafana
-> (observability_monitoring.md), not the benchmark CLI. Grafana embedding →
-> read_knowledge('observability_grafana').
+> Full choice + embedding → read_knowledge('observability_grafana'); the operative call is in the
+> summary at the top (offer both as a pair; never refuse Grafana).

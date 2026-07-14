@@ -31,11 +31,11 @@ yours, grounded here, not in any Python branch.
 
 | `gateway_class` | What it deploys | Pick it when |
 |---|---|---|
-| `istio` | istio-base + istiod control plane, a Gateway + HTTPRoute, the `inferencepool` GAIE chart | The upstream default; most flexible / closest to a production deployment. Pick it when the user wants the standard, well-tested topology and the cluster can host the Istio control plane. |
-| `agentgateway` | agentgateway-crds + agentgateway controller, a Gateway + HTTPRoute, the `inferencepool` GAIE chart | You want agentgateway's lightweight Envoy-based data plane instead of Istio. This is the default in the **Kind MVP** scenario (`cicd/kind`) precisely because it is lean enough for a single-node cluster where EPP, model-server pods, and the gateway must all schedule together. |
+| `istio` | istio-base + istiod control plane, a Gateway + HTTPRoute, the `inferencepool` GAIE chart | The upstream default; the roomy/production-like choice ("How to choose" §2). |
+| `agentgateway` | agentgateway-crds + agentgateway controller, a Gateway + HTTPRoute, the `inferencepool` GAIE chart | You want agentgateway's lightweight Envoy-based data plane instead of Istio; the **Kind MVP** (`cicd/kind`) default ("How to choose" §2). |
 | `gke` | Uses the **GKE-managed** Gateway controller; same `inferencepool` GAIE chart (nothing installed by the tool) | Running on **GKE** — the platform already provides the Gateway controller, so don't install Istio/agentgateway. |
 | `data-science-gateway-class` | The **OpenDataHub / OpenShift AI managed** Gateway; same `inferencepool` GAIE chart | Running on **OpenShift AI / OpenDataHub** — the platform manages the Gateway. |
-| `epponly` | **No** Kubernetes Gateway, **no** HTTPRoute; the `standalone` GAIE chart — the EPP pod runs an Envoy sidecar that serves HTTP directly | You want llm-d's **standalone router topology** with no gateway/control plane at all — the leanest option. This is the default in `guides/optimized-baseline`. Pick it on a constrained cluster, or when you deliberately don't want a Gateway API control plane. |
+| `epponly` | **No** Kubernetes Gateway, **no** HTTPRoute; the `standalone` GAIE chart — the EPP pod runs an Envoy sidecar that serves HTTP directly | You want llm-d's **standalone router topology** with no gateway/control plane at all — the leanest option; the `guides/optimized-baseline` default. Pick it on a constrained cluster ("How to choose" §2–3). |
 
 ## How to choose (judgment)
 
@@ -43,16 +43,17 @@ yours, grounded here, not in any Python branch.
    `data-science-gateway-class`. These are platform-managed; installing Istio or
    agentgateway there is wrong/redundant.
 2. **Otherwise, match the cluster's headroom.**
-   - **Small / single-node / Kind cluster:** prefer `agentgateway` (lean Envoy
-     proxy, the `cicd/kind` default) or `epponly` (no Gateway at all). Avoid
-     `istio` unless the node can clearly host istiod alongside everything else.
-   - **Roomy / multi-node / production-like cluster:** `istio` is the most
-     flexible, well-trodden default.
+   - **Small / single-node / Kind cluster:** prefer `agentgateway` (lean Envoy proxy —
+     the `cicd/kind` default precisely because it is lean enough for a single-node
+     cluster where EPP, model-server pods, and the gateway must all schedule together)
+     or `epponly` (no Gateway at all). Avoid `istio` unless the node can clearly host
+     istiod alongside everything else.
+   - **Roomy / multi-node / production-like cluster:** `istio` is the most flexible,
+     well-trodden default, closest to a production deployment — pick it when the user
+     wants the standard, well-tested topology and the cluster can host the Istio
+     control plane.
 3. **Want no Gateway API control plane at all?** → `epponly` (standalone router).
-   Note this changes the routing topology and the Service the endpoint resolves
-   to (the EPP's `…-gaie-epp` Service), so the readiness checks differ — there is
-   no Gateway/HTTPRoute to be PROGRAMMED (see knowledge/gateway_readiness.md, which
-   applies to the gateway-backed classes, not `epponly`).
+   The readiness checks differ — see the `epponly` ↔ readiness guardrail below.
 4. **Just want the scenario's intent?** → omit `gateway_class` and let the spec's
    `gateway.className` stand. Only override when the user names a provider or the
    platform/headroom clearly dictates a different one than the spec picked.
@@ -71,7 +72,9 @@ yours, grounded here, not in any Python branch.
   `kubeconfig`, …) — it rides alongside, it doesn't replace them. In a multi-stack
   scenario the gateway provider is shared infra installed once per scenario; the
   override applies to that shared install.
-- **`epponly` ↔ readiness:** since `epponly` installs no Gateway/HTTPRoute, the
-  Gateway-mode readiness gate (Gateway PROGRAMMED / InferencePool
-  Accepted+ResolvedRefs / HTTPRoute) does not apply — check the EPP Service /
-  model-server readiness directly instead.
+- **`epponly` ↔ readiness:** `epponly` installs no Gateway/HTTPRoute and changes the
+  routing topology and the Service the endpoint resolves to (the EPP's `…-gaie-epp`
+  Service), so the Gateway-mode readiness gate (Gateway PROGRAMMED / InferencePool
+  Accepted+ResolvedRefs / HTTPRoute — knowledge/gateway_readiness.md, gateway-backed
+  classes only) does not apply — check the EPP Service / model-server readiness
+  directly instead.

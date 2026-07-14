@@ -66,10 +66,9 @@ themselves, and never enumerate the options as a prose list — the buttons ARE 
   can trend future runs against it"}, {label: "Compare to last run", prompt: "Compare this run
   against my last one to spot any regression"}])`
 
-Prose offers like "Want me to store this…?" / "say the word" are the OLD way — replace them with a
-`suggest_next_steps` call so the user advances with one tap. (A MUTATING action is different: it
-still goes through run_shell / execute_llmdbenchmark / propose_session_plan, which raise the Approve card. Use
-suggest_next_steps only to offer the user a CHOICE of what to do next, not to gate a mutation.)
+(A MUTATING action is different: it still goes through run_shell / execute_llmdbenchmark /
+propose_session_plan, which raise the Approve card. Use suggest_next_steps only to offer the
+user a CHOICE of what to do next, not to gate a mutation.)
 
 ## Finding the right help — search_knowledge at a problem moment (a HARD expectation)
 The system prompt lists the on-demand knowledge topics by name, and most later-phase tools
@@ -99,8 +98,8 @@ alias map (real name vs "does not exist", incl. "HMA"): `read_knowledge('router_
 Once a run finishes and you've parsed/analyzed it, the useful next move is rarely "tear down or
 run again" — it's turning a one-off number into a TRACKED result. `analyze_results` returns a
 ranked `next_steps` list (mechanism over the validated facts + your saved history) to inform your
-choices. Offer the most useful of them as BUTTONS via `suggest_next_steps` (you choose how many — see Offer cadence above)
-— never recite them as prose. The ranking is save → compare → trend → run-again, teardown LAST:
+choices. Offer the most useful of them via `suggest_next_steps` (full buttons-not-prose rule →
+"Offer cadence" above). The ranking is save → compare → trend → run-again, teardown LAST:
 - **Nothing saved yet** → offer to save this as the baseline first ("I'll save this as your
   baseline so we can trend future runs against it"). Storing the first real result is also
   what makes the Results panel / trend chart appear (see `knowledge/history.md`).

@@ -1,11 +1,4 @@
-# llm-d Benchmarking Agent
-
-A local chat-based assistant that drives the `llm-d-benchmark` CLI on a non-expert's behalf:
-it interviews the user about a use case, checks the environment, deploys an llm-d inference
-stack if needed, runs the benchmark, validates and explains the results, all behind a
-deny-by-default security sandbox and a structured approval gate. Its governing principle is
-**thin code, thick agent**: Python is mechanism only; all judgment lives in the LLM plus
-editable files under `knowledge/`.
+# llm-d Benchmarking Agent — glossary
 
 > This is the project's ubiquitous-language glossary (mattpocock CONTEXT format):
 > canonical names for domain concepts, and the wrong words to avoid. It is a
@@ -23,8 +16,7 @@ The governing rule that Python is mechanism only (UI, agent loop, tools, command
 _Avoid_: "business logic in code", "config-driven" (it's LLM-reasoned, not a config switch), "rules engine".
 
 **Determinism gate**:
-One of four **code-enforced** validation boundaries that constrain the free-form LLM so the system stays reproducible: (a) tool-arg schema validation (`registry.py::dispatch`), (b) SessionPlan approval (`session_plan.py::validate_plan` + `plan.py`), (c) generated-config structural validation (`doe.py` + the artifact shape-check in `config_artifact.py`), (d) result parsing from the validated report schema (`report.py::validate_report`). The slogan is "determinism via validation, not scripting".
-_Not a gate_: previewing a config via the CLI's own `--dry-run`/`plan` is an **agent-behaviour convention** the prompt and tool descriptions ask for — no code enforces it (`config_artifact.py` says deep `--dry-run` validation is deferred). Don't count it as the fourth gate; it's a habit, not a boundary.
+One of four **code-enforced** validation boundaries that constrain the free-form LLM so the system stays reproducible: (a) tool-arg schema validation (`registry.py::dispatch`), (b) SessionPlan approval (`session_plan.py::validate_plan` + `plan.py`), (c) generated-config structural validation (`doe.py` + the artifact shape-check in `config_artifact.py`), (d) result parsing from the validated report schema (`report.py::validate_report`). The CLI's own `--dry-run`/`plan` preview is an agent-behaviour convention, NOT a gate (see `app/validation/CLAUDE.md`).
 _Avoid_: "guardrail", "check", "assertion" (these are the named, enumerated gates, not ad-hoc checks).
 
 **knowledge/**:
@@ -32,7 +24,7 @@ The agent's editable brain: ~62 Markdown/YAML files holding all judgment, loaded
 _Avoid_: "docs", "prompts", "config" (it is the thick-agent decision layer, not documentation or a config file).
 
 **CORE knowledge**:
-The small set of `knowledge/` files inlined verbatim into every system prompt (the `CORE_KNOWLEDGE` tuple in `app/agent/prompt.py` is the source of truth; currently `preconditions.md`, `usecase_to_profile.yaml`, `conversation_style.md`). Promoting a file to CORE is expensive because it inflates the always-on prompt prefix, so guides reached only after the interview (the deploy-path playbook, the quickstart runbook, `key_docs.yaml`) are deliberately ON-DEMAND (pulled via `read_knowledge` / `fetch_key_docs`), not CORE.
+The small set of `knowledge/` files inlined verbatim into every system prompt (source of truth: the `CORE_KNOWLEDGE` tuple in `app/agent/prompt.py`; currently `preconditions.md`, `usecase_to_profile.yaml`, `conversation_style.md`). Everything else is deliberately ON-DEMAND (`read_knowledge` / `fetch_key_docs`) because CORE inflates the always-on prompt prefix.
 _Avoid_: "default knowledge", "base prompt".
 
 **catalog**:
@@ -82,7 +74,7 @@ The traffic shape a harness generates: concurrency, token-length distribution, r
 _Avoid_: "load", "test case", "scenario", "config"; "workload" and "profile" are the canonical pair.
 
 **Simulate Mode**:
-A dry-run toggle (`SIMULATE=1`) where the agent walks the whole workflow (probe → plan → standup → run → report) without deploying or benchmarking anything. The split is by command kind: READ-ONLY commands (probes, `grep`/`ls`/`cat`, `kubectl get`) run for real so the agent gathers genuine context; MUTATING actions (standup/run/teardown, installs, `kubectl apply`, …) are **still approval-gated**, then announced and no-opped to synthetic success, and the benchmark report is synthetic. (SIMULATE previews the mutation; it does not waive the guardrail — so a simulated walk exercises the same Approve/Reject cards the live path does. Unattended walks use the session's auto-approve toggle.) SIMULATE results, and any post-deploy state, must carry an unmistakable disclaimer wherever they appear.
+A dry-run toggle (`SIMULATE=1`) where the agent walks the whole workflow, split by command kind: READ-ONLY commands run for real (genuine context); MUTATING actions are **still approval-gated**, then no-opped to synthetic success, with a synthetic report — and SIMULATE results must carry an unmistakable disclaimer wherever they appear. (Unattended walks use the session's auto-approve toggle.)
 _Avoid_: "dry-run" (that's the CLI's `--dry-run` preview, a different mechanism), "mock mode", "test mode".
 
 ### Benchmark concepts

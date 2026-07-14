@@ -23,18 +23,13 @@ prefix" + "catalog injected exactly once".
   via `read_knowledge("<topic>")`. Adding a file to CORE inflates **every** call — see
   `knowledge/CLAUDE.md` for the cost rule. Don't add to CORE casually (`key_docs.yaml` is
   deliberately NOT in CORE — `fetch_key_docs` already delivers its content live).
-- **Phase-group tools loaded on demand** (`loop.py` + `registry.tool_definitions(loaded=...)`):
-  most tool schemas ride in the cached prefix on EVERY step, so only the `registry.STARTER_KIT` is
-  shown by default; the rest are in named groups (`registry._TOOL_GROUPS`: setup/run/analyze/
-  advanced) hidden until the model calls `load_tools(['<group>'])` (which folds the group(s) into the
-  persisted `session.loaded_groups`). The unlock is MODEL-DRIVEN, not a phase gate — a user can enter
-  directly at the sweep/analyze/reproduce phase with no in-session deploy, so only the model reliably
-  knows which group a request needs. `run_turn` detects the set change between steps and RE-OPENS the
-  provider turn with the expanded set (the tool list is part of the provider cache key, so a changed
-  set needs a fresh turn) so the group's tools are callable the SAME turn; re-open happens once per
-  distinct `load_tools` call (typically 2-3/session). `prompt.GROUP_CATALOG_NOTE` tells the model the
-  groups + how to load; keep it and `_TOOL_GROUPS` in sync (a bidirectional test enforces it), and
-  `LoadToolsInput`'s `Literal` group names too. Mechanism only — capability scoping, no judgment.
+- **Phase-group tools loaded on demand** (`loop.py` + `registry.tool_definitions(loaded=...)`): only
+  the `registry.STARTER_KIT` schemas ride in the cached prefix; the rest hide in named groups
+  (`registry._TOOL_GROUPS`: setup/run/analyze/advanced) until the model calls `load_tools(['<group>'])`
+  (MODEL-DRIVEN, not a phase gate; folded into the persisted `session.loaded_groups`). `run_turn`
+  re-opens the provider turn once per distinct `load_tools` call (the tool list is part of the cache
+  key) so the group is callable the SAME turn. Keep `prompt.GROUP_CATALOG_NOTE` ↔ `_TOOL_GROUPS` ↔
+  `LoadToolsInput`'s `Literal` names in sync (a bidirectional test enforces it).
 - **Compaction** (`context_mgmt.py`): old tool results are compacted to save context. Only
   mutate content strings — never break tool-call/result pairing, and keep the most recent
   messages (`_RECENT_MESSAGES_KEPT`).
