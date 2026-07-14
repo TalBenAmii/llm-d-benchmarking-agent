@@ -349,11 +349,30 @@ function setContextWindow(cw, est) {
   contextChip.title = tip;
 }
 
+// The REAL CLI-side context occupancy (SDK-native engine `context`): total/max/percentage from
+// the CLI's own /context accounting — no estimate, and the only variant that knows the model's
+// actual limit. `compacted` marks a turn whose context was auto-compacted by the CLI.
+function setContextReal(c, compacted) {
+  if (!contextChip) return;
+  if (!c || !c.total_tokens) { contextChip.hidden = true; return; }
+  contextChip.hidden = false;
+  contextChip.textContent = fmtTokens(c.total_tokens) + " ctx";
+  let tip = "Current context window: " + fmtTokens(c.total_tokens) + " tokens — real CLI count";
+  if (c.max_tokens) {
+    tip += "\nof " + fmtTokens(c.max_tokens) + " max" +
+      (c.percentage != null ? " (" + Math.round(c.percentage) + "% used)" : "");
+  }
+  if (compacted) tip += "\ncontext was auto-compacted this turn";
+  contextChip.title = tip;
+}
+
 // A `usage` event (per LLM call): refresh the running turn tally (live line) + the context meter.
 function onUsage(data) {
   turnUsage = data.turn || null;
-  // Prefer the REAL context-window meter; fall back to the char/4 estimate (pre-feature backend).
-  if (data.context_window) setContextWindow(data.context_window, data.context_est);
+  // Prefer the REAL CLI-side occupancy (SDK-native engine), then the provider context-window
+  // count, then the char/4 estimate (pre-feature backend) — each degrades to the next.
+  if (data.context && data.context.total_tokens) setContextReal(data.context, data.compacted);
+  else if (data.context_window) setContextWindow(data.context_window, data.context_est);
   else if (data.context_est) setContextEstimate(data.context_est);
   renderWorkStats();
 }

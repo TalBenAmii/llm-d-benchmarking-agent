@@ -1,12 +1,14 @@
 """SDK-native agent engine: the Claude Agent SDK/CLI runs the agentic loop.
 
-Phase 1 of the SDK-native refactor (design contract: docs/reference/SDK_NATIVE_ENGINE.md).
+Phase 1+2 of the SDK-native refactor (design contract: docs/reference/SDK_NATIVE_ENGINE.md).
 Per user turn: build ClaudeAgentOptions → connect a ClaudeSDKClient (connect-per-turn,
-``resume=session.sdk_session_id``) → send the user text → consume the stream, translating
-it to the existing WS events and mirroring into ``session.messages`` (today's shapes) →
-account usage → disconnect. Tool execution happens inside the SDK via the in-process
-``benchtools`` MCP server (app/tools/mcp_server.py); ``can_use_tool`` is a thin gatekeeper
-that allows only ``mcp__benchtools__*`` and hands each call's ``tool_use_id`` to the wrapper.
+``resume=session.sdk_session_id``; a failed resume falls back once to a fresh SDK session
+seeded from the ``session.messages`` mirror) → send the one-shot catalog/env preamble +
+user text → consume the stream, translating it to the existing WS events and mirroring into
+``session.messages`` (today's shapes) → account usage → disconnect. Tool execution happens
+inside the SDK via the in-process ``benchtools`` MCP server (app/tools/mcp_server.py);
+``can_use_tool`` is a thin gatekeeper that allows only ``mcp__benchtools__*`` and hands each
+call's ``tool_use_id`` to the wrapper.
 
 Selected at the main.py seam by the branch-only ``AGENT_ENGINE=sdk-native`` flag; the old
 ``AgentLoop`` stays the default until the Phase 5 cutover deletes it (and this flag).
@@ -15,10 +17,6 @@ Steer (spike verdict: mid-turn ``client.query()`` is silently dropped by CLI 2.1
 messages typed while the turn runs are queued app-side — :func:`steer` / the legacy
 ``ctx.steer_messages`` path — and drained as an immediate follow-up ``query()`` on the same
 connected client after the current ResultMessage, so the same app-level turn answers them.
-
-Phase 2 seams (deliberately not built here): catalog/env preamble injection, resume-fallback
-(fresh session seeded from the mirror), terminal ``suggest_next_steps`` text suppression,
-USAGE payload redesign for the context chip.
 """
 from __future__ import annotations
 
@@ -31,10 +29,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.agent import events
-from app.agent.prompt import build_system_prompt
+from app.agent.context_mgmt import clamp_tool_result_content
+from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.session import Session
-from app.llm.agent_sdk_provider import _effort_option, _thinking_options
-from app.observability.logging import bind as log_bind
+from app.llm.agent_sdk_provider import (
+    _effort_option,
+    _render_assistant_text,
+    _render_tool_results,
+    _thinking_options,
+)
 from app.tools.context import ApproveFn, EmitFn
 from app.tools.mcp_server import SERVER_NAME, TOOL_PREFIX, build_benchtools_server
 
@@ -75,6 +78,9 @@ class LiveTurn:
     client: Any = None
     # A compact_boundary SystemMessage was seen this turn (CLI auto-compacted the context).
     compacted: bool = False
+    # Any stream message arrived — distinguishes a dead-on-arrival connection (a resume id
+    # whose CLI transcript is gone → fresh-session fallback) from a turn that died mid-flight.
+    saw_activity: bool = False
     _steers: list[str] = field(default_factory=list)
     # bare tool name -> queue of tool_use ids stashed by can_use_tool, popped by the wrapper.
     _pending_ids: dict[str, deque[str]] = field(default_factory=dict)
@@ -88,7 +94,7 @@ class LiveTurn:
 
     def drain_steers(self) -> list[str]:
         """All queued steers, in arrival order: the engine-side queue plus the legacy
-        ``ctx.steer_messages`` list the WS handler still appends to. Clears both."""
+        ``ctx.steer_messages`` list the WS handler falls back to. Clears both."""
         out = self._steers + self.session.ctx.steer_messages
         self._steers = []
         self.session.ctx.steer_messages = []
@@ -121,7 +127,7 @@ LIVE_TURNS: dict[str, LiveTurn] = {}
 
 def steer(session_id: str, text: str) -> bool:
     """Queue a mid-turn user message onto the session's live turn. Returns False when no
-    turn is in flight (the caller starts a fresh turn instead)."""
+    turn is in flight (the caller falls back to ``ctx.steer_messages`` / a fresh turn)."""
     turn = LIVE_TURNS.get(session_id)
     if turn is None:
         return False
@@ -177,7 +183,8 @@ class SdkNativeEngine:
     def __init__(self, transport_factory: Callable[[], Any] | None = None):
         # Hermetic-test seam: a factory returning a Transport (tests/_sdk_fake.py
         # FakeTransport) drives the SDK's real protocol machinery with no CLI subprocess.
-        # None (production) lets the SDK spawn the ``claude`` CLI.
+        # None (production) lets the SDK spawn the ``claude`` CLI. Called once per connect,
+        # so the resume-fallback's second client gets a fresh transport.
         self._transport_factory = transport_factory
 
     async def run_turn(
@@ -189,17 +196,16 @@ class SdkNativeEngine:
         request_approval: ApproveFn,
         should_continue: ContinueFn | None = None,
     ) -> None:
-        from claude_agent_sdk import (
-            ClaudeAgentOptions,
-            ClaudeSDKClient,
-            PermissionResultAllow,
-            PermissionResultDeny,
-        )
+        from claude_agent_sdk import ClaudeSDKError
 
         ctx = session.ctx
         ctx.emit = emit
         ctx.request_approval = request_approval
-        session.messages.append({"role": "user", "content": user_text})
+        # Snapshot the pre-turn mirror length BEFORE this turn's appends: the resume-fallback
+        # replay must seed the fresh SDK session with the PRIOR transcript only (this turn's
+        # preamble + user text ride in the query itself).
+        prior_mirror = len(session.messages)
+        query_text = self._first_query(session, user_text)
         # Surface a brand-new chat in the sidebar NOW (same early-persist contract as the old
         # loop): persist once and ping the UI to refetch; the end-of-turn persist records the
         # full transcript.
@@ -209,6 +215,78 @@ class SdkNativeEngine:
 
         turn = LiveTurn(session=session, emit=emit)
         LIVE_TURNS[session.id] = turn
+        usage = _TurnUsage()
+        try:
+            try:
+                await self._drive_turn(session, turn, usage, query_text, should_continue,
+                                       resume=session.sdk_session_id)
+            except ClaudeSDKError as exc:
+                # Resume fallback (D6): a resume id whose CLI transcript was GC'd/corrupted
+                # makes the CLI die before emitting anything (surfaced as CLIConnectionError /
+                # ProcessError — both ClaudeSDKError). Retry ONCE on a fresh SDK session seeded
+                # from the mirror; the user sees a normal turn, not an error. A failure that
+                # arrived mid-stream is a real error and propagates.
+                if not session.sdk_session_id or turn.saw_activity:
+                    raise
+                log.warning("turn.resume_failed", extra={
+                    "session_id": session.id, "sdk_session_id": session.sdk_session_id,
+                    "error": str(exc)})
+                session.sdk_session_id = None
+                seeded = _mirror_replay_text(session.messages[:prior_mirror]) + query_text
+                await self._drive_turn(session, turn, usage, seeded, should_continue,
+                                       resume=None)
+        except Exception as exc:  # noqa: BLE001 — a failed turn ends cleanly, like the old loop
+            await emit(events.ERROR, {"message": f"LLM call failed: {exc}"})
+        finally:
+            if LIVE_TURNS.get(session.id) is turn:
+                del LIVE_TURNS[session.id]
+            # Steers still queued when the turn ends abnormally (an error result / an exception
+            # before their drain point) return to the legacy list so main.py's finally backstop
+            # applies the OLD semantics: follow-up turn on error, dropped on cancel.
+            if turn._steers:
+                session.ctx.steer_messages = turn._steers + session.ctx.steer_messages
+                turn._steers = []
+
+        log.info("turn.end", extra={"session_id": session.id})
+        session.persist()
+        await emit(events.DONE, {})
+
+    @staticmethod
+    def _first_query(session: Session, user_text: str) -> str:
+        """Mirror this turn's user message — preceded, once per session, by the env-preprobe
+        and live-catalog preamble blocks (same tags/content/flags as the old loop) — and
+        return the wire text for ``query()``.
+
+        The blocks are SEPARATE user messages in the mirror (today's render shapes: the
+        synthetic flag / bracket-tag skip rules keep them out of bubbles and titles) but are
+        COALESCED into one wire message: the CLI's streaming input silently drops all but the
+        first of a same-role run (see agent_sdk_provider._to_sdk_messages), so one coalesced
+        user turn is exactly what the old path delivered on the wire too."""
+        parts: list[str] = []
+        if session.env_snapshot is not None and not session.prewarmed:
+            block = ("[environment pre-probe — read-only snapshot, already gathered for "
+                     "you so you don't need to call probe_environment again this turn]\n"
+                     # Same 4k bound as the old loop — the ONE surviving clamp: a real cluster's
+                     # snapshot gets a VALID truncation envelope, never JSON sliced mid-structure.
+                     + clamp_tool_result_content(session.env_snapshot, 4000))
+            session.messages.append({"role": "user", "synthetic": True, "content": block})
+            session.prewarmed = True
+            parts.append(block)
+        if not session.catalog_injected:
+            catalog = catalog_brief_message(session.ctx)
+            session.messages.append({"role": "user", "content": catalog})
+            session.catalog_injected = True
+            parts.append(catalog)
+        session.messages.append({"role": "user", "content": user_text})
+        parts.append(user_text)
+        return "\n\n".join(parts)
+
+    def _build_options(self, session: Session, turn: LiveTurn, resume: str | None) -> Any:
+        from claude_agent_sdk import (
+            ClaudeAgentOptions,
+            PermissionResultAllow,
+            PermissionResultDeny,
+        )
 
         async def gatekeeper(tool_name: str, input_data: dict[str, Any], context: Any) -> Any:
             # Defense in depth: only our benchtools MCP tools may run — approval gates and the
@@ -221,33 +299,51 @@ class SdkNativeEngine:
             return PermissionResultDeny(
                 message=f"only {SERVER_NAME} tools are available to this agent", interrupt=False)
 
-        settings = ctx.settings
-        options = ClaudeAgentOptions(
+        settings = session.ctx.settings
+        # The per-session model/effort override (the UI picker) is read fresh on every connect:
+        # connect-per-turn makes set_model unnecessary — a picker change lands on the next turn,
+        # same semantics as the old loop's capture-once-per-turn.
+        return ClaudeAgentOptions(
             model=session.model_override or settings.agent_sdk_model,
-            system_prompt=build_system_prompt(ctx),
+            system_prompt=build_system_prompt(session.ctx),
             mcp_servers={SERVER_NAME: build_benchtools_server(turn)},
             tools=[],                    # no built-in tools (Bash/Read/... stay ours)
             allowed_tools=[],            # nothing ever skips the can_use_tool gatekeeper
             can_use_tool=gatekeeper,
             permission_mode="default",
             setting_sources=[],          # never leak ~/.claude/CLAUDE.md or project settings
-            resume=session.sdk_session_id,
+            resume=resume,
             max_turns=MAX_TURNS,
             include_partial_messages=True,
-            cwd=ctx.workspace,           # stable per-session transcript home
+            cwd=session.ctx.workspace,   # stable per-session transcript home
             env=dict(_CLI_ENV),
             cli_path=settings.claude_cli_path or None,
             **_thinking_options(settings.agent_sdk_thinking),
             **_effort_option(session.effort_override or settings.agent_sdk_effort),
         )
+
+    async def _drive_turn(
+        self,
+        session: Session,
+        turn: LiveTurn,
+        usage: _TurnUsage,
+        query_text: str,
+        should_continue: ContinueFn | None,
+        *,
+        resume: str | None,
+    ) -> None:
+        """Connect one client, send the query, and consume responses (plus any steer
+        follow-ups) to completion. Always interrupts an unfinished stream and disconnects."""
+        from claude_agent_sdk import ClaudeSDKClient
+
         transport = self._transport_factory() if self._transport_factory else None
-        client = ClaudeSDKClient(options=options, transport=transport)
-        usage = _TurnUsage()
+        client = ClaudeSDKClient(options=self._build_options(session, turn, resume),
+                                 transport=transport)
         finished = False
         try:
             await client.connect()
             turn.client = client
-            await client.query(user_text)
+            await client.query(query_text)
             while True:
                 ok = await self._consume_response(client, turn, usage, should_continue)
                 # Queued steers keep the SAME app-level turn alive: send them as an immediate
@@ -260,11 +356,7 @@ class SdkNativeEngine:
                 session.messages.append({"role": "user", "content": followup})
                 await client.query(followup)
             finished = True
-        except Exception as exc:  # noqa: BLE001 — a failed turn ends cleanly, like the old loop
-            await emit(events.ERROR, {"message": f"LLM call failed: {exc}"})
         finally:
-            if LIVE_TURNS.get(session.id) is turn:
-                del LIVE_TURNS[session.id]
             turn.client = None
             if not finished:
                 # The turn died mid-stream (error/cancel): interrupt so the CLI never leaves a
@@ -273,10 +365,6 @@ class SdkNativeEngine:
                     await client.interrupt()
             with contextlib.suppress(Exception):
                 await client.disconnect()
-
-        log.info("turn.end", extra={"session_id": session.id})
-        session.persist()
-        await emit(events.DONE, {})
 
     async def _consume_response(
         self,
@@ -305,8 +393,14 @@ class SdkNativeEngine:
         pending_results: list[dict[str, Any]] = []
         result_msg = None
         interrupted = False
+        # suggest_next_steps is TERMINAL (D5): once its chips are offered, any trailing model
+        # text is exactly the "use the buttons below" closer the buttons replace — suppress it
+        # (emit AND mirror) for the rest of this response. A steer follow-up is a fresh
+        # response, so it answers un-suppressed (steer outranks the terminal offer).
+        terminal = False
 
         async for msg in client.receive_response():
+            turn.saw_activity = True
             # Abandoned-turn guard, honored at stream-message boundaries (never mid-tool):
             # no recipient and no reason to keep running → interrupt; the stream still plays
             # out to its ResultMessage below.
@@ -321,7 +415,7 @@ class SdkNativeEngine:
                 if ev_type == "content_block_delta":
                     delta = ev.get("delta") or {}
                     # thinking_delta is deliberately dropped — reasoning never reaches the client.
-                    if delta.get("type") == "text_delta" and delta.get("text"):
+                    if delta.get("type") == "text_delta" and delta.get("text") and not terminal:
                         await emit(events.ASSISTANT_DELTA, {"text": delta["text"]})
                 elif ev_type == "message_start":
                     usage.on_message_start((ev.get("message") or {}).get("usage") or {})
@@ -329,15 +423,17 @@ class SdkNativeEngine:
                     usage.on_message_delta(ev.get("usage") or {})
             elif isinstance(msg, AssistantMessage):
                 self._flush_tool_results(session, pending_results)
-                text = "".join(b.text for b in msg.content if isinstance(b, TextBlock))
+                text = "" if terminal else "".join(
+                    b.text for b in msg.content if isinstance(b, TextBlock))
                 calls: list[dict[str, Any]] = [
                     {"id": b.id, "name": _bare_name(b.name), "input": dict(b.input)}
                     for b in msg.content if isinstance(b, ToolUseBlock)
                 ]
                 for call in calls:
                     turn.names_by_id[call["id"]] = call["name"]
-                session.messages.append(
-                    {"role": "assistant", "content": text or "", "tool_calls": calls})
+                if text or calls:
+                    session.messages.append(
+                        {"role": "assistant", "content": text, "tool_calls": calls})
                 if text:
                     await emit(events.ASSISTANT_TEXT, {"text": text})
             elif isinstance(msg, UserMessage):
@@ -350,6 +446,8 @@ class SdkNativeEngine:
                     recorded = turn.take_result(block.tool_use_id)
                     name, result = recorded if recorded is not None else (
                         turn.names_by_id.get(block.tool_use_id), block.content)
+                    if name == "suggest_next_steps":
+                        terminal = True
                     pending_results.append(
                         {"tool_call_id": block.tool_use_id, "name": name, "content": result})
             elif isinstance(msg, SystemMessage):
@@ -417,7 +515,8 @@ class SdkNativeEngine:
         if turn.compacted:
             payload["compacted"] = True
         # Real CLI-side context occupancy (replaces the old char/4 estimator). Optional
-        # enrichment: unavailable transports (the hermetic fake) and older CLIs simply omit it.
+        # enrichment: unavailable transports (the hermetic fake) and older CLIs simply omit
+        # it; the UI chip degrades to context_window.
         with contextlib.suppress(Exception):
             ctx_usage = await client.get_context_usage()
             payload["context"] = {
@@ -426,6 +525,26 @@ class SdkNativeEngine:
                 "percentage": ctx_usage.get("percentage"),
             }
         await turn.emit(events.USAGE, payload)
+
+
+def _mirror_replay_text(messages: list[dict[str, Any]]) -> str:
+    """One-time textual replay of the mirror for the resume-fallback's fresh SDK session —
+    the same faithful narration shapes the old provider replayed history with. Empty when
+    there is no prior transcript (brand-new chat)."""
+    if not messages:
+        return ""
+    lines = ["[conversation replay — this chat's prior transcript, re-supplied because the "
+             "assistant's session state was reset; continue the conversation naturally]"]
+    for m in messages:
+        role = m.get("role")
+        if role == "user":
+            lines.append("user: " + str(m.get("content") or ""))
+        elif role == "assistant":
+            lines.append("assistant: " + _render_assistant_text(
+                m.get("content") or "", m.get("tool_calls") or []))
+        elif role == "tool_results":
+            lines.append(_render_tool_results(m.get("results") or []))
+    return "\n\n".join(lines) + "\n\n"
 
 
 def _bare_name(name: str) -> str:

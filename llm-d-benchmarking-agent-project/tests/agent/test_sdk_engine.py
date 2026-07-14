@@ -9,10 +9,16 @@ from __future__ import annotations
 
 import json
 
+import claude_agent_sdk
+from claude_agent_sdk import CLIConnectionError
 from pydantic import BaseModel
 
 from app.agent.engine import MAX_TURNS, SdkNativeEngine, steer
 from app.agent.session import Session
+from app.config import Settings
+from app.security.policy import CommandPolicy
+from app.security.runner import CommandRunner
+from app.tools.context import ToolContext
 from app.tools.registry import REGISTRY, ToolSpec
 from tests._helpers import _capture_ctx
 from tests._sdk_fake import FakeTransport, assistant, result, stream_event, text, tool_use
@@ -37,9 +43,12 @@ async def _decline(kind, payload):
     return False
 
 
-def _make_session(tmp_path) -> Session:
+def _make_session(tmp_path, *, catalog_injected: bool = True) -> Session:
+    """A session on a captured ToolContext. Defaults to an ESTABLISHED session (the one-shot
+    catalog preamble already injected) so each test exercises only its own concern; the
+    preamble test passes ``catalog_injected=False`` to see the first-turn injection."""
     ctx, _runner = _capture_ctx(tmp_path)
-    return Session(id="sdk-t", ctx=ctx)
+    return Session(id="sdk-t", ctx=ctx, catalog_injected=catalog_injected)
 
 
 def _engine(script):
@@ -75,8 +84,9 @@ async def test_bridge_golden_mapping(tmp_path):
         stream_event({"type": "content_block_delta",
                       "delta": {"type": "thinking_delta", "thinking": "SECRET-REASONING"}}),
         stream_event({"type": "message_delta", "usage": {"output_tokens": 5}}),
-        assistant(text("Hello"), tool_use("tu_1", BT + "suggest_next_steps", chips)),
-        assistant(text("done")),
+        assistant(text("Hello")),
+        # terminal step: the suggest chips end the turn (any trailing text would be suppressed)
+        assistant(tool_use("tu_1", BT + "suggest_next_steps", chips)),
         result(usage={"input_tokens": 7, "output_tokens": 5,
                       "cache_read_input_tokens": 3, "cache_creation_input_tokens": 1}),
     ]]
@@ -90,7 +100,6 @@ async def test_bridge_golden_mapping(tmp_path):
         "assistant_delta", "assistant_delta",
         "assistant_text",
         "tool_call", "tool_result",
-        "assistant_text",
         "usage",
         "done",
     ]
@@ -98,7 +107,7 @@ async def test_bridge_golden_mapping(tmp_path):
     for t, p in seen:
         by_type.setdefault(t, []).append(p)
     assert [p["text"] for p in by_type["assistant_delta"]] == ["Hel", "lo"]
-    assert [p["text"] for p in by_type["assistant_text"]] == ["Hello", "done"]
+    assert [p["text"] for p in by_type["assistant_text"]] == ["Hello"]
     # thinking never leaks into any client-facing payload
     assert "SECRET-REASONING" not in json.dumps([p for _, p in seen])
     tc = by_type["tool_call"][0]
@@ -247,13 +256,18 @@ async def test_steer_delivered_as_follow_up_query(tmp_path, monkeypatch):
     assert steer(session.id, "too late") is False
 
 
-async def test_mirror_matches_todays_message_shapes(tmp_path):
+async def test_mirror_matches_todays_message_shapes(tmp_path, monkeypatch):
     """session.messages stays a render mirror in exactly the old loop's shapes: user /
     assistant(+tool_calls) / one tool_results block per step."""
+
+    async def echo_probe(ctx):
+        return {"ok": True}
+
+    monkeypatch.setitem(
+        REGISTRY, "echo_probe", ToolSpec("echo_probe", "test probe", _EmptyInput, echo_probe))
     session = _make_session(tmp_path)
-    chips = {"suggestions": [{"label": "Next", "prompt": "go next"}]}
     script = [[
-        assistant(text("Working on it"), tool_use("tu_1", BT + "suggest_next_steps", chips)),
+        assistant(text("Working on it"), tool_use("tu_1", BT + "echo_probe", {})),
         assistant(text("all set")),
         result(),
     ]]
@@ -265,11 +279,215 @@ async def test_mirror_matches_todays_message_shapes(tmp_path):
     assert session.messages[0] == {"role": "user", "content": "hi"}
     step = session.messages[1]
     assert step["role"] == "assistant" and step["content"] == "Working on it"
-    assert step["tool_calls"] == [
-        {"id": "tu_1", "name": "suggest_next_steps", "input": chips}]
+    assert step["tool_calls"] == [{"id": "tu_1", "name": "echo_probe", "input": {}}]
     results_msg = session.messages[2]
     assert results_msg["role"] == "tool_results"
     row = results_msg["results"][0]
-    assert row["tool_call_id"] == "tu_1" and row["name"] == "suggest_next_steps"
-    assert row["content"]["suggestions"] == chips["suggestions"]
+    assert row["tool_call_id"] == "tu_1" and row["name"] == "echo_probe"
+    assert row["content"] == {"ok": True}
     assert session.messages[3] == {"role": "assistant", "content": "all set", "tool_calls": []}
+
+
+async def test_preamble_injected_once_then_never_again(tmp_path):
+    """First turn of a session carries the env-preprobe + live-catalog blocks (mirrored as
+    separate messages, coalesced on the wire); later turns carry just the user text."""
+    session = _make_session(tmp_path, catalog_injected=False)
+    session.env_snapshot = {"kube_context": "kind-x"}
+
+    engine1, fakes1 = _engine([[assistant(text("hello")), result()]])
+    seen1, emit1 = _collector()
+    await engine1.run_turn(session, "hi", emit=emit1, request_approval=_approve)
+
+    wire = fakes1[0].user_messages[0]["message"]["content"]
+    assert wire.startswith("[environment pre-probe — read-only snapshot")
+    assert "kind-x" in wire
+    assert "[live catalog snapshot" in wire
+    assert wire.endswith("hi")
+    env_msg, catalog_msg, user_msg = session.messages[0:3]
+    assert env_msg["synthetic"] is True and env_msg["content"].startswith("[environment pre-probe")
+    assert catalog_msg["content"].startswith("[live catalog snapshot")
+    assert user_msg == {"role": "user", "content": "hi"}
+    assert session.prewarmed is True and session.catalog_injected is True
+
+    engine2, fakes2 = _engine([[assistant(text("again!")), result()]])
+    seen2, emit2 = _collector()
+    await engine2.run_turn(session, "again", emit=emit2, request_approval=_approve)
+    assert fakes2[0].user_messages[0]["message"]["content"] == "again"
+
+
+class _DeadTransport(FakeTransport):
+    """Connect fails the way a GC'd/corrupt --resume transcript kills the CLI at startup."""
+
+    async def connect(self):
+        raise CLIConnectionError("Failed to start Claude Code: exited with code 1")
+
+
+async def test_resume_failure_falls_back_to_fresh_seeded_session(tmp_path):
+    session = _make_session(tmp_path)
+    session.sdk_session_id = "stale-id"
+    session.messages = [
+        {"role": "user", "content": "earlier question"},
+        {"role": "assistant", "content": "earlier answer", "tool_calls": []},
+    ]
+    transports: list[FakeTransport] = []
+
+    def factory():
+        fake = (_DeadTransport if not transports else FakeTransport)(
+            [[assistant(text("recovered")), result()]])
+        transports.append(fake)
+        return fake
+
+    engine = SdkNativeEngine(transport_factory=factory)
+    seen, emit = _collector()
+    await engine.run_turn(session, "what now?", emit=emit, request_approval=_approve)
+
+    # nothing scary surfaced: a normal turn, no error event
+    assert not any(t == "error" for t, _ in seen)
+    assert [p["text"] for t, p in seen if t == "assistant_text"] == ["recovered"]
+    # the fresh session was seeded ONCE from the prior mirror, then asked the real question
+    assert len(transports) == 2
+    wire = transports[1].user_messages[0]["message"]["content"]
+    assert wire.startswith("[conversation replay")
+    assert "earlier question" in wire and "earlier answer" in wire
+    assert wire.endswith("what now?")
+    # the id was re-minted from the fresh session's ResultMessage
+    assert session.sdk_session_id == "default"
+
+
+async def test_steer_then_decline_keeps_order(tmp_path):
+    """Type-instead-of-approve: the steer is queued BEFORE the gate is declined, so the model
+    sees the rejected result first, then answers the steer as a follow-up on the same turn."""
+    session = _make_session(tmp_path)
+
+    async def steer_then_decline(kind, payload):
+        assert steer(session.id, "use /tmp/other instead") is True
+        return False
+
+    script = [
+        [
+            assistant(tool_use("tu_1", BT + "run_shell", {"command": "rm -rf /tmp/x"})),
+            assistant(text("acknowledged")),
+            result(),
+        ],
+        [assistant(text("switching to /tmp/other")), result()],
+    ]
+    engine, fakes = _engine(script)
+    seen, emit = _collector()
+    await engine.run_turn(session, "clean /tmp/x", emit=emit, request_approval=steer_then_decline)
+
+    types = [t for t, _ in seen]
+    tr_idx = types.index("tool_result")
+    assert seen[tr_idx][1]["result"]["rejected"] is True
+    steered_idx = next(i for i, (t, p) in enumerate(seen)
+                       if t == "assistant_text" and p["text"] == "switching to /tmp/other")
+    assert tr_idx < steered_idx
+    assert [m["message"]["content"] for m in fakes[0].user_messages] == [
+        "clean /tmp/x", "use /tmp/other instead"]
+    assert types.count("done") == 1
+
+
+async def test_terminal_suggest_suppresses_trailing_text(tmp_path):
+    """After the suggest_next_steps chips are offered, trailing model text (deltas + final)
+    is suppressed — the buttons ARE the end of the turn, matching the old loop."""
+    session = _make_session(tmp_path)
+    chips = {"suggestions": [{"label": "Compare", "prompt": "compare runs"}]}
+    script = [[
+        assistant(tool_use("tu_1", BT + "suggest_next_steps", chips)),
+        stream_event(_delta("Use the")),
+        assistant(text("Use the buttons below to choose your next step.")),
+        result(),
+    ]]
+    engine, _fakes = _engine(script)
+    seen, emit = _collector()
+    await engine.run_turn(session, "done?", emit=emit, request_approval=_approve)
+
+    types = [t for t, _ in seen]
+    assert "assistant_delta" not in types and "assistant_text" not in types
+    assert "tool_result" in types  # the chips themselves still flowed
+    assert session.card_results[0]["tool_call_id"] == "tu_1"
+    # the suppressed closer never reaches the mirror either
+    assert [m for m in session.messages if m.get("role") == "assistant"
+            and "buttons" in (m.get("content") or "")] == []
+
+
+async def test_usage_payload_carries_compacted_marker(tmp_path):
+    session = _make_session(tmp_path)
+    script = [[
+        {"type": "system", "subtype": "compact_boundary", "session_id": "default"},
+        assistant(text("ok")),
+        result(usage={"input_tokens": 2, "output_tokens": 1}),
+    ]]
+    engine, _fakes = _engine(script)
+    seen, emit = _collector()
+    await engine.run_turn(session, "hi", emit=emit, request_approval=_approve)
+
+    usage = next(p for t, p in seen if t == "usage")
+    assert usage["compacted"] is True
+    assert set(usage) >= {"turn", "session", "context_window"}
+    # get_context_usage is unavailable over the fake transport → gracefully omitted
+    assert "context" not in usage
+
+
+async def test_options_carry_session_overrides(tmp_path, monkeypatch):
+    """The per-session model/effort picker and the resume id reach ClaudeAgentOptions on
+    connect (connect-per-turn: no set_model needed), alongside the fixed option decisions."""
+    session = _make_session(tmp_path)
+    session.model_override = "claude-test-9"
+    session.effort_override = "low"
+    session.sdk_session_id = "resume-me"
+    captured = []
+    real_client = claude_agent_sdk.ClaudeSDKClient
+
+    def spy(*, options, transport=None):
+        captured.append(options)
+        return real_client(options=options, transport=transport)
+
+    monkeypatch.setattr(claude_agent_sdk, "ClaudeSDKClient", spy)
+    engine, _fakes = _engine([[assistant(text("ok")), result(session_id="resume-me")]])
+    seen, emit = _collector()
+    await engine.run_turn(session, "hi", emit=emit, request_approval=_approve)
+
+    opts = captured[0]
+    assert opts.model == "claude-test-9"
+    assert opts.effort == "low"
+    assert opts.resume == "resume-me"
+    assert opts.max_turns == MAX_TURNS
+    assert opts.tools == [] and opts.allowed_tools == []
+    assert opts.setting_sources == [] and opts.permission_mode == "default"
+    assert opts.include_partial_messages is True
+    assert opts.cwd == session.ctx.workspace
+    assert opts.env["ANTHROPIC_API_KEY"] == "" and opts.env["ANTHROPIC_AUTH_TOKEN"] == ""
+    assert opts.env["MCP_TOOL_TIMEOUT"] == "86400000"
+    assert set(opts.mcp_servers) == {"benchtools"}
+
+
+async def test_simulate_mutating_command_is_a_noop(tmp_path):
+    """SIMULATE end-to-end under the new engine: an approved mutating run_shell is ANNOUNCED
+    (command event, simulated badge) but never executed — the same synthetic no-op result the
+    old loop produced (the mechanism lives in shell.py, untouched)."""
+    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos",
+                        workspace_dir=tmp_path / "ws", simulate=True)
+    ctx = ToolContext(
+        settings=settings,
+        policy=CommandPolicy.from_file(settings.command_policy_path),
+        runner=CommandRunner(settings.repo_paths),  # real runner: the SIMULATE no-op branch
+        workspace=tmp_path / "ws",
+    )
+    session = Session(id="sim-t", ctx=ctx, catalog_injected=True)
+    script = [[
+        assistant(tool_use("tu_1", BT + "run_shell", {"command": "rm -rf /tmp/scratch"})),
+        assistant(text("previewed")),
+        result(),
+    ]]
+    engine, _fakes = _engine(script)
+    seen, emit = _collector()
+    await engine.run_turn(session, "clean up", emit=emit, request_approval=_approve)
+
+    cmd = next(p for t, p in seen if t == "command")
+    assert cmd["argv"] == ["bash", "-lc", "rm -rf /tmp/scratch"]
+    assert cmd["mode"] == "mutating" and cmd["auto_run"] is False
+    assert cmd["simulated"] is True and cmd["tool_call_id"] == "tu_1"
+    tr = next(p for t, p in seen if t == "tool_result")
+    assert tr["result"]["mode"] == "mutating" and tr["result"]["auto_run"] is False
+    assert tr["result"]["exit_code"] == 0 and tr["result"]["timed_out"] is False
+    assert "error" not in tr["result"] and "rejected" not in tr["result"]

@@ -22,6 +22,7 @@ from app.agent import events as ws_events
 from app.agent.cards import build_welcome, load_suggestions
 from app.agent.channel import Channel
 from app.agent.engine import SdkNativeEngine
+from app.agent.engine import steer as engine_steer
 from app.agent.lifecycle import RunRegistry
 from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
@@ -598,6 +599,17 @@ async def ws(websocket: WebSocket) -> None:
     else:
         loop = AgentLoop(app.state.provider) if app.state.provider else None
 
+    def _queue_steer(text: str) -> None:
+        """Queue a mid-turn user message for the running turn. SDK-native engine: onto the
+        LiveTurn's steer queue (delivered as a follow-up query after the current ResultMessage —
+        mid-turn query() is silently dropped by the CLI). Falls back to the legacy
+        ``ctx.steer_messages`` list when no live turn is registered (a race with turn start/end;
+        the engine drains that list too, and the finally backstop catches a turn that just
+        ended). Old engine: the unchanged ``ctx.steer_messages`` path."""
+        if isinstance(loop, SdkNativeEngine) and engine_steer(session.id, text):
+            return
+        session.ctx.steer_messages.append(text)
+
     # A per-session Channel decouples the running turn from this specific socket: events go to
     # whatever socket is currently attached, and a turn parked at an approval gate stays parked
     # (rather than auto-rejecting) when the socket drops — re-surfacing when the chat reopens.
@@ -905,7 +917,7 @@ async def ws(websocket: WebSocket) -> None:
                         # the same turn continues and the model responds to the steer — possibly
                         # re-proposing a fresh card), then reject the gate(s) to unpark the turn.
                         # Capture the steer text ONCE even if several gates are open.
-                        session.ctx.steer_messages.append(msg.text)
+                        _queue_steer(msg.text)
                         for rid in list(channel.pending):
                             channel.resolve(rid, False)
                         continue
@@ -923,7 +935,7 @@ async def ws(websocket: WebSocket) -> None:
                     # the current step and adapts, instead of it being dropped with "please wait".
                     # No echo frame: the UI already rendered the user's bubble optimistically, exactly
                     # as for a normal send (parity with the start-of-turn path below).
-                    session.ctx.steer_messages.append(msg.text)
+                    _queue_steer(msg.text)
                     continue
                 # Mint a fresh correlation id at the WS boundary (one per connection/turn) and
                 # bind it before creating the turn task: asyncio.create_task snapshots the
