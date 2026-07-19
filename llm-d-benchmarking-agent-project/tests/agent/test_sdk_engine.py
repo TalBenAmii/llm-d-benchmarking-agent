@@ -600,3 +600,127 @@ async def test_simulate_mutating_command_is_a_noop(tmp_path):
     assert tr["result"]["mode"] == "mutating" and tr["result"]["auto_run"] is False
     assert tr["result"]["exit_code"] == 0 and tr["result"]["timed_out"] is False
     assert "error" not in tr["result"] and "rejected" not in tr["result"]
+
+
+# ---- behaviors ported from the old loop's test_loop.py / test_streaming_turn.py -------------
+
+async def test_full_turn_with_gating(tmp_path):
+    """End-to-end turn wiring: a read-only tool auto-runs, a SessionPlan is proposed and
+    approved through the approval channel (adopting its namespace as the chat's folder), and a
+    mutating command is GATED — when approval is declined it is rejected and never runs."""
+    session = _make_session(tmp_path)
+    plan_input = {
+        "use_case_summary": "tiny chat benchmark on laptop",
+        "spec": "cicd/kind", "namespace": "llmd-quickstart",
+        "harness": "inference-perf", "workload": "sanity_random.yaml",
+        "expected_steps": ["standup", "run"],
+    }
+    standup_input = {
+        "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+        "flags": {"skip_smoketest": True},
+    }
+    script = [[
+        assistant(text("Checking the catalog."),
+                  tool_use("c1", BT + "list_catalog", {"kinds": ["harnesses"]})),
+        assistant(text("Here's my plan."),
+                  tool_use("c2", BT + "propose_session_plan", plan_input)),
+        assistant(text("Standing up the stack."),
+                  tool_use("c3", BT + "execute_llmdbenchmark", standup_input)),
+        assistant(text("Understood — it was rejected.")),
+        result(),
+    ]]
+    engine, _fakes = _engine(script)
+    seen, emit = _collector()
+    approval_calls: list[str] = []
+
+    async def request_approval(kind, payload):
+        # Approve the plan; reject the mutating command (so nothing actually runs).
+        approval_calls.append(kind)
+        return kind == "session_plan"
+
+    await engine.run_turn(session, "benchmark a tiny chat model",
+                          emit=emit, request_approval=request_approval)
+
+    assert [t for t, _ in seen][-1] == "done"
+    # list_catalog ran (auto-run, no gate) and returned harnesses.
+    cat = [p for (t, p) in seen if t == "tool_result" and p["name"] == "list_catalog"]
+    assert cat and "inference-perf" in cat[0]["result"]["harnesses"]
+    # the plan was approved and captured on the session; its namespace became the chat's folder.
+    assert session.approved_plan is not None
+    assert session.approved_plan["spec"] == "cicd/kind"
+    assert session.namespace == "llmd-quickstart"
+    # the standup command was GATED and rejected — never executed.
+    standup = [p for (t, p) in seen if t == "tool_result" and p["name"] == "execute_llmdbenchmark"]
+    assert standup and standup[0]["result"].get("rejected") is True
+    # an approval was requested for both the plan and the command.
+    assert "session_plan" in approval_calls and "command" in approval_calls
+
+
+async def test_invalid_plan_is_reported_not_executed(tmp_path):
+    session = _make_session(tmp_path)
+    script = [[
+        assistant(text("Plan."), tool_use("c1", BT + "propose_session_plan", {
+            "use_case_summary": "x", "spec": "guides/does-not-exist", "namespace": "ns",
+            "harness": "nope", "workload": "sanity_random.yaml",
+        })),
+        assistant(text("Let me fix that.")),
+        result(),
+    ]]
+    engine, _fakes = _engine(script)
+    seen, emit = _collector()
+
+    async def no_gate(kind, payload):
+        raise AssertionError("approval should not be requested for an invalid plan")
+
+    await engine.run_turn(session, "go", emit=emit, request_approval=no_gate)
+
+    plan = [p for (t, p) in seen if t == "tool_result" and p["name"] == "propose_session_plan"]
+    assert plan and plan[0]["result"]["valid"] is False
+    assert session.approved_plan is None
+
+
+async def test_schema_validation_error_stays_serializable(tmp_path):
+    """A Pydantic schema failure through a custom validator (SLOTargets' ``raise ValueError``)
+    must come back as a CLEAN, JSON-serializable tool error the model can self-correct from —
+    Pydantic embeds the raised ValueError OBJECT in the error ctx, so an unsanitized ``details``
+    would break every JSON serialization of the result (the wrapper's model feedback, the
+    mirror, persist). The turn must end cleanly with pairing intact."""
+    session = _make_session(tmp_path)
+    script = [[
+        assistant(text("Plan with QoS targets."), tool_use("c1", BT + "propose_session_plan", {
+            "use_case_summary": "x", "spec": "cicd/kind", "namespace": "ns",
+            "harness": "inference-perf", "workload": "sanity_random.yaml",
+            # an empty slo trips SLOTargets._at_least_one -> raise ValueError -> non-serializable ctx
+            "slo": {},
+        })),
+        assistant(text("Let me fix the targets.")),
+        result(),
+    ]]
+    engine, _fakes = _engine(script)
+    seen, emit = _collector()
+
+    async def no_gate(kind, payload):
+        raise AssertionError("approval must not be requested for a schema-invalid plan")
+
+    await engine.run_turn(session, "plan it", emit=emit, request_approval=no_gate)
+
+    assert [t for t, _ in seen][-1] == "done"
+    assert not any(t == "error" for (t, _) in seen)
+    plan = [p for (t, p) in seen if t == "tool_result" and p["name"] == "propose_session_plan"]
+    assert plan and plan[0]["result"].get("error") == "invalid arguments"
+    json.dumps(plan[0]["result"])  # the whole result must serialize (incl. details)
+    # The model got its follow-up step (the turn continued past the bad call).
+    assert any(m.get("role") == "assistant" and m.get("content") == "Let me fix the targets."
+               for m in session.messages)
+    # Tool-call/result pairing intact in the mirror: c1's result block exists.
+    results_blocks = [m for m in session.messages if m.get("role") == "tool_results"]
+    assert any(r.get("tool_call_id") == "c1"
+               for block in results_blocks for r in block.get("results", []))
+    json.dumps(session.messages)  # the persisted transcript is replay-safe
+
+
+def test_assistant_delta_is_unbuffered_non_turn_event():
+    # Deltas are high-frequency + transient: they must never enter the per-turn replay ring,
+    # or they'd evict the real turn events a mid-turn reconnect needs.
+    from app.agent import events
+    assert events.ASSISTANT_DELTA in events.NON_TURN_EVENTS

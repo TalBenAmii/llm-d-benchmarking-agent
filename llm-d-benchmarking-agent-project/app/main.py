@@ -954,7 +954,7 @@ async def ws(websocket: WebSocket) -> None:
                 # to the still-warm session (the `ready` frame re-echoes it); only a server restart /
                 # eviction drops it back to the default.
                 settings = get_settings()
-                switchable = (settings.llm_provider or "anthropic").lower() in AGENT_SDK_PROVIDERS
+                switchable = (settings.llm_provider or "claude-agent-sdk").lower() in AGENT_SDK_PROVIDERS
                 info = (valid_selection(msg.model, msg.effort, settings.agent_sdk_model)
                         if switchable else None)
                 if info is None:

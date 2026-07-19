@@ -7,20 +7,6 @@ from app.agent import cards as welcome
 from app.agent import events
 from app.agent.cards import build_results_card, build_welcome, parse_welcome
 
-
-class FakeProvider:
-    """A scripted provider: returns each prepared AssistantTurn in order (no API key)."""
-
-    def __init__(self, turns):
-        self._turns = turns
-        self.i = 0
-
-    async def chat(self, *, system, messages, tools, cache_key=None):
-        turn = self._turns[self.i]
-        self.i += 1
-        return turn
-
-
 # ---- deterministic welcome -------------------------------------------------
 
 def test_welcome_loads_from_knowledge_file(tool_ctx):
@@ -169,21 +155,22 @@ def test_results_card_is_deterministic():
         build_results_card("analyze_results", r)
 
 
-# ---- loop wiring: the results card rides the turn --------------------------
+# ---- engine wiring: the results card rides the turn --------------------------
 
-async def test_loop_does_not_emit_results_card_for_report_tool(tmp_path):
+async def test_engine_does_not_emit_results_card_for_report_tool(tmp_path):
     """The single-run report's structured view is the frontend report-summary card (rendered
-    from the `tool_result`), so the loop must NOT also emit a `results_card` after
+    from the `tool_result`), so the engine must NOT also emit a `results_card` after
     locate_and_parse_report — doing so produced a duplicate, chart-less table card. The
     tool_result itself still rides the turn. Hermetic: simulate mode so the report tool
     synthesizes a labelled summary with no cluster/report on disk."""
-    from app.agent.loop import AgentLoop
+    from app.agent.engine import SdkNativeEngine
     from app.agent.session import Session
     from app.config import Settings
-    from app.llm.provider import AssistantTurn, ToolCall
     from app.security.policy import CommandPolicy
     from app.security.runner import SimRunner
     from app.tools.context import ToolContext
+    from app.tools.mcp_server import TOOL_PREFIX
+    from tests._sdk_fake import FakeTransport, assistant, result, text, tool_use
     from tests.flows.catalog_snapshot import frozen_catalog
 
     settings = Settings(_env_file=None, simulate=True,
@@ -194,13 +181,14 @@ async def test_loop_does_not_emit_results_card_for_report_tool(tmp_path):
     frozen = frozen_catalog()
     ctx._catalog = frozen
     ctx.catalog = lambda *, refresh=False: frozen  # type: ignore[method-assign]
-    session = Session(id="sim", ctx=ctx)
+    session = Session(id="sim", ctx=ctx, catalog_injected=True)
 
-    turns = [
-        AssistantTurn(text="Reading the report.",
-                      tool_calls=[ToolCall("c1", "locate_and_parse_report", {})]),
-        AssistantTurn(text="Here is what it means…", tool_calls=[]),
-    ]
+    script = [[
+        assistant(text("Reading the report."),
+                  tool_use("c1", TOOL_PREFIX + "locate_and_parse_report", {})),
+        assistant(text("Here is what it means…")),
+        result(),
+    ]]
 
     emitted: list[tuple[str, dict]] = []
 
@@ -210,8 +198,9 @@ async def test_loop_does_not_emit_results_card_for_report_tool(tmp_path):
     async def request_approval(kind, payload):
         return True
 
-    loop = AgentLoop(FakeProvider(turns))
-    await loop.run_turn(session, "how did the run do?", emit=emit, request_approval=request_approval)
+    engine = SdkNativeEngine(transport_factory=lambda: FakeTransport(script))
+    await engine.run_turn(session, "how did the run do?", emit=emit,
+                          request_approval=request_approval)
 
     types = [t for t, _ in emitted]
     # The report tool's result rides the turn (the frontend renders its rich card from it)...

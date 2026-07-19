@@ -4,17 +4,22 @@ The agent stops asking "want me to…?" in prose and instead CALLS suggest_next_
 {label, prompt} options; the UI draws them as the same floating pills as the welcome chips and
 clicking one sends its prompt. These tests pin the mechanism: the tool is registered, validated
 (1-6 well-formed items), returns the chip payload, and is on the card-replay path so the buttons
-survive a resume/reload (and never spawn a spurious results_card).
+survive a resume/reload (and never spawn a spurious results_card). The end-to-end half drives
+the real engine over the FakeTransport.
 """
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.agent.cards import build_results_card
-from app.agent.loop import CARD_RESULT_TOOLS
-from app.tools.registry import dispatch, tool_definitions
+from app.agent.engine import SdkNativeEngine, steer
+from app.agent.session import Session
+from app.tools.mcp_server import CARD_RESULT_TOOLS, TOOL_PREFIX
+from app.tools.registry import REGISTRY, ToolSpec, dispatch, tool_definitions
 from app.tools.schemas import SuggestNextStepsInput
+from tests._helpers import _capture_ctx
+from tests._sdk_fake import FakeTransport, assistant, result, text, tool_use
 
 _OK = {"label": "Save as baseline", "prompt": "Save this run as my baseline so we can trend it"}
 _OK2 = {"label": "Compare to last run", "prompt": "Compare this run against my previous one"}
@@ -80,54 +85,35 @@ def test_on_card_replay_path_but_yields_no_results_card():
     assert build_results_card("suggest_next_steps", {"suggestions": [_OK], "count": 1}) is None
 
 
-# ---- end-to-end through the agent loop (scripted fake provider) --------------
+# ---- end-to-end through the engine (scripted FakeTransport) ------------------
 
-async def test_loop_emits_buttons_and_persists_them_for_replay(tmp_path):
-    """When the model CALLS suggest_next_steps, the loop streams a tool_result carrying the chip
-    payload (the live UI render) AND records it to session.card_results (so it replays on reload),
-    while emitting NO results_card (it carries no metrics)."""
-    from pathlib import Path
-
-    from app.agent.loop import AgentLoop
-    from app.agent.session import Session
-    from app.config import get_settings
-    from app.llm.provider import AssistantTurn, ToolCall
-    from app.security.policy import CommandPolicy
-    from app.security.runner import CommandRunner
-    from app.tools.context import ToolContext
-
-    project_root = Path(__file__).resolve().parents[2]
-
-    class FakeProvider:
-        def __init__(self, turns):
-            self._turns, self.i = turns, 0
-
-        async def chat(self, *, system, messages, tools, cache_key=None):
-            turn = self._turns[self.i]
-            self.i += 1
-            return turn
-
-    s = get_settings()
-    al = CommandPolicy.from_file(project_root / "security" / "command_policy.yaml")
-    ctx = ToolContext(settings=s, policy=al, runner=CommandRunner(s.repo_paths),
-                      workspace=tmp_path / "ws")
-    session = Session(id="t", ctx=ctx)
-
-    turns = [
-        AssistantTurn(text="Here's where you can go next:", tool_calls=[
-            ToolCall("c1", "suggest_next_steps", {"suggestions": [_OK, _OK2]})]),
-        AssistantTurn(text="", tool_calls=[]),  # nothing more to do → turn ends
-    ]
+def _run_pieces(tmp_path):
+    ctx, _runner = _capture_ctx(tmp_path)
+    session = Session(id="chips", ctx=ctx, catalog_injected=True)
     events: list[tuple[str, dict]] = []
 
     async def emit(t, p):
         events.append((t, p))
 
-    async def request_approval(kind, payload):  # never called — this tool is not gated
+    async def no_gate(kind, payload):  # never called — this tool is not gated
         raise AssertionError("suggest_next_steps must NOT raise an approval gate")
 
-    await AgentLoop(FakeProvider(turns)).run_turn(
-        session, "summarize my run", emit=emit, request_approval=request_approval)
+    return session, events, emit, no_gate
+
+
+async def test_engine_emits_buttons_and_persists_them_for_replay(tmp_path):
+    """When the model CALLS suggest_next_steps, the engine streams a tool_result carrying the
+    chip payload (the live UI render) AND records it to session.card_results (so it replays on
+    reload), while emitting NO results_card (it carries no metrics)."""
+    session, events, emit, no_gate = _run_pieces(tmp_path)
+    script = [[
+        assistant(text("Here's where you can go next:"),
+                  tool_use("c1", TOOL_PREFIX + "suggest_next_steps",
+                           {"suggestions": [_OK, _OK2]})),
+        result(),
+    ]]
+    engine = SdkNativeEngine(transport_factory=lambda: FakeTransport(script))
+    await engine.run_turn(session, "summarize my run", emit=emit, request_approval=no_gate)
 
     # The chips were streamed to the UI on the tool_result (the live render path).
     tr = [p for (t, p) in events if t == "tool_result" and p["name"] == "suggest_next_steps"]
@@ -139,65 +125,22 @@ async def test_loop_emits_buttons_and_persists_them_for_replay(tmp_path):
     assert persisted and persisted[0]["result"]["suggestions"] == [_OK, _OK2]
 
 
-def _loop_harness(tmp_path):
-    """Build the (FakeProvider-driving) pieces shared by the terminal-behavior tests."""
-    from pathlib import Path
-
-    from app.agent.session import Session
-    from app.config import get_settings
-    from app.security.policy import CommandPolicy
-    from app.security.runner import CommandRunner
-    from app.tools.context import ToolContext
-
-    project_root = Path(__file__).resolve().parents[2]
-    s = get_settings()
-    al = CommandPolicy.from_file(project_root / "security" / "command_policy.yaml")
-    ctx = ToolContext(settings=s, policy=al, runner=CommandRunner(s.repo_paths),
-                      workspace=tmp_path / "ws")
-    return Session(id="t", ctx=ctx), ctx
-
-
 async def test_suggest_next_steps_is_terminal_no_trailing_closer(tmp_path):
-    """suggest_next_steps ENDS the turn: the loop must NOT make another LLM call after it, so the
-    model never gets a step to append a redundant "use the buttons below" closer. Regression for
-    session bceaecb766eb, where the agent narrated the buttons twice (a lead-in AND a closer)."""
-    from app.agent.loop import AgentLoop
-    from app.llm.provider import AssistantTurn, ToolCall
-
-    session, _ctx = _loop_harness(tmp_path)
-
-    # Turn 2 is a closer the loop must NEVER reach — if it does, this text would be emitted.
+    """suggest_next_steps ENDS the turn: any trailing model text is exactly the redundant "use
+    the buttons below" closer the buttons replace, so the engine suppresses it (regression for
+    session bceaecb766eb, where the agent narrated the buttons twice)."""
+    session, events, emit, no_gate = _run_pieces(tmp_path)
     _CLOSER = "Use the buttons below to choose your next step."
-    turns = [
-        AssistantTurn(text="", tool_calls=[
-            ToolCall("c1", "suggest_next_steps", {"suggestions": [_OK, _OK2]})]),
-        AssistantTurn(text=_CLOSER, tool_calls=[]),
-    ]
+    script = [[
+        assistant(tool_use("c1", TOOL_PREFIX + "suggest_next_steps",
+                           {"suggestions": [_OK, _OK2]})),
+        assistant(text(_CLOSER)),
+        result(),
+    ]]
+    engine = SdkNativeEngine(transport_factory=lambda: FakeTransport(script))
+    await engine.run_turn(session, "summarize my run", emit=emit, request_approval=no_gate)
 
-    class FakeProvider:
-        def __init__(self, turns):
-            self._turns, self.i = turns, 0
-
-        async def chat(self, *, system, messages, tools, cache_key=None):
-            turn = self._turns[self.i]
-            self.i += 1
-            return turn
-
-    provider = FakeProvider(turns)
-    events: list[tuple[str, dict]] = []
-
-    async def emit(t, p):
-        events.append((t, p))
-
-    async def request_approval(kind, payload):
-        raise AssertionError("suggest_next_steps must NOT raise an approval gate")
-
-    await AgentLoop(provider).run_turn(
-        session, "summarize my run", emit=emit, request_approval=request_approval)
-
-    # The loop stopped right after the tool: exactly ONE LLM call, the second turn untouched.
-    assert provider.i == 1
-    # The closer was never produced — no assistant_text carries it.
+    # The closer was never surfaced — no assistant_text carries it.
     assert not any(t == "assistant_text" and _CLOSER in (p.get("text") or "")
                    for (t, p) in events)
     # The buttons were still shown.
@@ -205,46 +148,42 @@ async def test_suggest_next_steps_is_terminal_no_trailing_closer(tmp_path):
     assert tr and tr[0]["result"]["suggestions"] == [_OK, _OK2]
 
 
-async def test_waiting_steer_outranks_the_terminal_offer(tmp_path):
+class _EmptyInput(BaseModel):
+    pass
+
+
+async def test_waiting_steer_outranks_the_terminal_offer(tmp_path, monkeypatch):
     """A mid-turn user STEER outranks the terminal-offer stop: if the user typed something while
-    the turn ran, the loop keeps going to answer it instead of parking on the buttons."""
-    from app.agent.loop import AgentLoop
-    from app.llm.provider import AssistantTurn, ToolCall
+    the turn ran, the follow-up response answers it un-suppressed instead of the turn parking on
+    the buttons."""
+    session, events, emit, no_gate = _run_pieces(tmp_path)
 
-    session, ctx = _loop_harness(tmp_path)
+    async def steer_probe(ctx):
+        # Simulates the WS handler queueing a steer while this turn is mid-tool.
+        assert steer(session.id, "actually, compare to my last run instead") is True
+        return {"ok": True}
 
-    turns = [
-        AssistantTurn(text="", tool_calls=[
-            ToolCall("c1", "suggest_next_steps", {"suggestions": [_OK, _OK2]})]),
-        AssistantTurn(text="Sure — comparing now.", tool_calls=[]),
+    monkeypatch.setitem(
+        REGISTRY, "steer_probe",
+        ToolSpec("steer_probe", "queues a steer", _EmptyInput, steer_probe))
+    script = [
+        [
+            assistant(tool_use("s1", TOOL_PREFIX + "steer_probe", {})),
+            assistant(tool_use("c1", TOOL_PREFIX + "suggest_next_steps",
+                               {"suggestions": [_OK, _OK2]})),
+            assistant(text("Use the buttons below.")),   # suppressed: chips are terminal
+            result(),
+        ],
+        [assistant(text("Sure — comparing now.")), result()],
     ]
+    engine = SdkNativeEngine(transport_factory=lambda: FakeTransport(script))
+    await engine.run_turn(session, "summarize my run", emit=emit, request_approval=no_gate)
 
-    class FakeProviderWithSteer:
-        def __init__(self, turns, ctx):
-            self._turns, self.i, self._ctx = turns, 0, ctx
-
-        async def chat(self, *, system, messages, tools, cache_key=None):
-            # Simulate the user typing mid-turn: the WS handler would drop it into steer_messages.
-            if self.i == 0:
-                self._ctx.steer_messages = ["actually, compare to my last run instead"]
-            turn = self._turns[self.i]
-            self.i += 1
-            return turn
-
-    provider = FakeProviderWithSteer(turns, ctx)
-    events: list[tuple[str, dict]] = []
-
-    async def emit(t, p):
-        events.append((t, p))
-
-    async def request_approval(kind, payload):
-        raise AssertionError("suggest_next_steps must NOT raise an approval gate")
-
-    await AgentLoop(provider).run_turn(
-        session, "summarize my run", emit=emit, request_approval=request_approval)
-
-    # The loop did NOT stop on the offer — it ran a second step to answer the steer.
-    assert provider.i == 2
+    # The steered follow-up was answered UN-suppressed, after the chips.
     assert any(t == "assistant_text" and "comparing now" in (p.get("text") or "")
                for (t, p) in events)
-    assert not ctx.steer_messages  # the steer was drained
+    # The closer inside the chips response stayed suppressed.
+    assert not any(t == "assistant_text" and "buttons below" in (p.get("text") or "")
+                   for (t, p) in events)
+    # One app-level turn: a single done event.
+    assert [t for t, _ in events].count("done") == 1

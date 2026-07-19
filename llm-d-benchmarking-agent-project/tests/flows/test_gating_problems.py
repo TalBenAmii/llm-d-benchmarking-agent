@@ -19,7 +19,7 @@ async def test_denied_command_reaching_runner_is_flagged(tmp_path):
         CapturedCommand(argv=["kubectl", "delete", "ns", "x"], mode="denied", approved=False, cwd=None)
     ]
     assert any("denied command reached the runner" in p for p in gating_problems(run))
-    ok, notes = score_flow(run, _flow(), group_scoring=False)
+    ok, notes = score_flow(run, _flow())
     assert not ok
     assert any("denied command reached the runner" in n for n in notes)
 
@@ -31,7 +31,7 @@ async def test_readonly_command_through_approval_gate_is_flagged(tmp_path):
         CapturedCommand(argv=["llmdbenchmark", "results"], mode=READ_ONLY, approved=True, cwd=None)
     ]
     assert any("read-only command went through the approval gate" in p for p in gating_problems(run))
-    ok, _notes = score_flow(run, _flow(), group_scoring=False)
+    ok, _notes = score_flow(run, _flow())
     assert not ok
 
 

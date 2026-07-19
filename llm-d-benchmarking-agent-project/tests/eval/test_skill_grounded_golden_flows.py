@@ -28,7 +28,12 @@ _OP_TOOL = {
 
 
 def _op_call(op):
-    return _tc(op, subcommand="run") if op == "execute_llmdbenchmark" else _tc(op)
+    # Schema-VALID args — the SDK's MCP layer rejects invalid input before dispatch (no
+    # tool_call event), and these flows score grounding order + tool choice, not arg validity.
+    if op == "execute_llmdbenchmark":
+        return _tc(op, subcommand="run")
+    return _tc(op, use_case_summary="scripted", spec="cicd/kind", namespace="llmd-quickstart",
+               harness="inference-perf", workload="sanity_random.yaml", expected_steps=["standup"])
 
 
 def _grounded_flow(key, op):
@@ -50,7 +55,7 @@ async def test_skill_grounded_flow_passes_both_scorers(key, tmp_path):
     flow = _grounded_flow(key, op)
     run = await run_flow(flow, tmp_path=tmp_path, simulate=True)
     assert run.errors == [], run.errors
-    passed, notes = score_flow(run, flow, group_scoring=False)
+    passed, notes = score_flow(run, flow)
     assert passed, notes
     scenario = _BY_KEY[key]
     assert _skill_index(run.tool_calls, scenario) == 0

@@ -12,8 +12,8 @@ human-readable front-end over the same harness the CI tests use.
     LLM_EVAL_LIVE=1 python scripts/eval/validate_flows.py --simulate    # the SIMULATE set (deploy walks)
 
 Both --live and --simulate spend LLM quota; each scores the real model's tool/command choices
-(including the load_tools phase-group picks) via score_flow, with the per-call watchdog bounding
-each LLM call (LLM_EVAL_CALL_TIMEOUT, default 90s) so one hung call can't stall the whole run.
+via score_flow, with the engine's stream watchdog bounding stalls (LLM_EVAL_CALL_TIMEOUT,
+default 90s) so one hung call can't stall the whole run.
 
 Exit code is non-zero if any flow fails, so this doubles as a pre-commit / CI check.
 """
@@ -32,7 +32,6 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 from tests.flows.flows import ALL_FLOWS, FLOWS_BY_NAME  # noqa: E402
 from tests.flows.harness import (  # noqa: E402
-    _abandon_after_kill,
     diff_significant,
     gating_problems,
     run_flow,
@@ -41,23 +40,23 @@ from tests.flows.harness import (  # noqa: E402
 
 GREEN, RED, DIM, BOLD, RESET = "\033[32m", "\033[31m", "\033[2m", "\033[1m", "\033[0m"
 
-# Per-flow hard cap (seconds) — a backstop ABOVE the harness's per-call watchdog. The per-call
-# watchdog force-kills a single wedged LLM call (~90s); this bounds a whole flow that is slow for
-# another reason (e.g. many sub-deadline steps looping). On expiry we force-kill any wedged SDK
-# subprocess (so the await unblocks) and score the flow a timeout failure rather than hang the run.
+# Per-flow hard cap (seconds) — a backstop ABOVE the engine's stream watchdog. The watchdog
+# interrupts a single stalled call (~90s in the live eval); this bounds a whole flow that is
+# slow for another reason (e.g. many sub-deadline steps looping). On expiry the flow scores a
+# timeout failure rather than hanging the run; the engine's disconnect terminates the CLI.
 PER_FLOW_TIMEOUT_S = float(os.getenv("LLM_EVAL_FLOW_TIMEOUT", "300"))
 
 
 async def _bounded(coro):
-    """Await ``coro`` under the per-flow hard cap. On breach: force-kill the wedged SDK subprocess
-    (and its workers), settle the task under a BOUNDED grace, and raise TimeoutError. NOTE: the
-    drain MUST be bounded — an unbounded ``await task`` here re-hung forever whenever the kill
-    missed, defeating this very backstop (asyncio cancellation alone can't unwedge a stalled CLI)."""
+    """Await ``coro`` under the per-flow hard cap. On breach: cancel, settle under a BOUNDED
+    grace (never an unbounded await — a wedged call may ignore cancellation), and raise
+    TimeoutError so the flow scores a failure instead of hanging the run."""
     task = asyncio.ensure_future(coro)
     done, _pending = await asyncio.wait({task}, timeout=PER_FLOW_TIMEOUT_S)
     if task in done:
         return task.result()
-    await _abandon_after_kill(task)
+    task.cancel()
+    await asyncio.wait({task}, timeout=10)
     raise TimeoutError(f"flow exceeded the {PER_FLOW_TIMEOUT_S:g}s per-flow cap")
 
 
@@ -70,7 +69,7 @@ async def _run_deterministic(flow):
         run = await run_flow(flow, tmp_path=Path(td))
     problems: list[str] = []
     if not run.ended_done:
-        problems.append("loop did not finish cleanly")
+        problems.append("turn did not finish cleanly")
     problems += run.errors
     problems += gating_problems(run)
     if flow.expect_no_significant:
@@ -85,12 +84,8 @@ async def _run_deterministic(flow):
 
 
 async def _run_live(flow, *, simulate: bool):
-    from app.config import get_settings
-    from app.llm.provider import get_provider
-
-    provider = get_provider(get_settings())
     with tempfile.TemporaryDirectory() as td:
-        run = await run_flow(flow, tmp_path=Path(td), provider=provider, simulate=simulate)
+        run = await run_flow(flow, tmp_path=Path(td), live=True, simulate=simulate)
     passed, notes = score_flow(run, flow)
     return passed, notes, run
 
@@ -123,9 +118,9 @@ async def main_async(args) -> int:
             passed, problems, run = await _bounded(
                 _run_live(flow, simulate=args.simulate) if live_run else _run_deterministic(flow))
         except TimeoutError as exc:
-            # The per-flow cap fired (and force-killed the wedged subprocess). Score it a failure
-            # and keep going — never let one stuck flow hang the whole run.
-            passed, problems, run = False, [f"{exc} — force-killed the wedged CLI subprocess"], None
+            # The per-flow cap fired. Score it a failure and keep going — never let one stuck
+            # flow hang the whole run.
+            passed, problems, run = False, [str(exc)], None
         results.append((flow, passed))
         tag = _c(" PASS ", GREEN) if passed else _c(" FAIL ", RED)
         print(f"[{tag}] {_c(flow.name, BOLD)} — {flow.title}")
@@ -134,8 +129,8 @@ async def main_async(args) -> int:
                 print(f"        {_c('$', DIM)} {' '.join(c.argv)}  {_c('[' + c.mode + ']', DIM)}")
             if not run.significant:
                 print(f"        {_c('(no deploy/benchmark commands run)', DIM)}")
-        # In a live run, surface score_flow's notes (incl. the load_tools group-loading picks +
-        # any "loaded an unneeded group" NOTE) even on PASS — that diagnostic IS the signal here.
+        # In a live run, surface score_flow's notes even on PASS — that diagnostic IS the
+        # signal here.
         if live_run and passed:
             for p in problems:
                 for line in p.splitlines():

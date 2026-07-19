@@ -6,7 +6,7 @@ deterministic flow-eval cannot (the flow-eval asserts the *right commands*; the 
 *interaction quality*). It writes a reviewable scorecard artifact under the gitignored
 ``workspace/eval/`` and asserts the rubric gate passes.
 
-COST: one judge call per scored flow (plus the real agent loop running each flow). Gated by the
+COST: one judge call per scored flow (plus the real engine running each flow). Gated by the
 SAME ``LLM_EVAL_LIVE=1`` switch ``tests/eval/live/test_flows_live.py`` uses — it NEVER runs in plain
 ``pytest`` or gating CI. Run it with::
 
@@ -26,7 +26,6 @@ import os
 import pytest
 
 from app.config import get_settings
-from app.llm.provider import get_provider
 from tests._auth import has_auth
 from tests.eval.judge import judge_session, load_rubric
 from tests.eval.scorecard import build_scorecard, write_scorecard
@@ -43,7 +42,7 @@ _JUDGE_FLOWS = [f for f in ALL_FLOWS if f.live_eval and _MODE in f.live_modes]
 pytestmark = [
     pytest.mark.skipif(
         not _LIVE,
-        reason="LLM-judge eval is opt-in — set LLM_EVAL_LIVE=1 (and configure an API key in .env)",
+        reason="LLM-judge eval is opt-in — set LLM_EVAL_LIVE=1 (and log in to the `claude` CLI)",
     ),
     # A judge call per flow over the real agent loop runs well past the 60s hermetic per-test
     # backstop; pin a generous ceiling (matches the --timeout=600 invocation + the Makefile target).
@@ -53,18 +52,17 @@ pytestmark = [
 
 async def test_judge_scores_pass_the_gate(tmp_path) -> None:
     if not has_auth():
-        pytest.skip("no LLM provider configured — set an API key in .env, or log in to the "
-                    "`claude` CLI for LLM_PROVIDER=claude-agent-sdk")
+        pytest.skip("unsupported LLM_PROVIDER — the eval runs on the Claude Agent SDK "
+                    "(log in to the `claude` CLI)")
 
     settings = get_settings()
-    provider = get_provider(settings)
     rubric = load_rubric()
-    judge_model = getattr(settings, "anthropic_model", None) or settings.llm_provider
+    judge_model = settings.agent_sdk_model or settings.llm_provider
 
     results = []
     for flow in _JUDGE_FLOWS:
-        run = await run_flow(flow, tmp_path=tmp_path / flow.name, provider=provider, simulate=_SIMULATE)
-        results.append(await judge_session(provider, rubric, run, flow))
+        run = await run_flow(flow, tmp_path=tmp_path / flow.name, live=True, simulate=_SIMULATE)
+        results.append(await judge_session(rubric, run, flow))
 
     scorecard = build_scorecard(results, rubric, judge_model=judge_model, mode=_MODE)
     # Write the reviewable artifact under the gitignored workspace/eval/ (resolved real workspace).

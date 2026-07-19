@@ -441,7 +441,7 @@ def _make_repos(tmp_path: Path) -> Path:
 
 def test_self_check_good_config_passes(tmp_path):
     _make_repos(tmp_path)
-    s = _settings(tmp_path, llm_provider="anthropic", anthropic_api_key="sk-test")
+    s = _settings(tmp_path, llm_provider="claude-agent-sdk")
 
     res = self_check(s)
 
@@ -458,23 +458,25 @@ def test_self_check_good_config_passes(tmp_path):
     assert all(c["ok"] for c in js["checks"])
 
 
-def test_self_check_missing_provider_key_fails(tmp_path):
+def test_self_check_unsupported_provider_fails_with_reason(tmp_path):
+    """Any non-SDK provider (incl. the retired 'anthropic' key route) fails readiness with a
+    clear 'unsupported' reason naming the supported aliases — never a crash."""
     _make_repos(tmp_path)
-    s = _settings(tmp_path, llm_provider="anthropic", anthropic_api_key=None)
+    s = _settings(tmp_path, llm_provider="anthropic")
 
     res = self_check(s)
 
     assert res.ok is False
     failing = {c.name for c in res.failures}
     assert "provider_coherent" in failing
-    # Structured reason names the missing key.
     reason = next(c.detail for c in res.checks if c.name == "provider_coherent")
-    assert "ANTHROPIC_API_KEY" in reason
+    assert "unsupported LLM_PROVIDER" in reason
+    assert "claude-agent-sdk" in reason
 
 
 def test_self_check_unknown_provider_fails(tmp_path):
     _make_repos(tmp_path)
-    s = _settings(tmp_path, llm_provider="bogus", anthropic_api_key="sk-test")
+    s = _settings(tmp_path, llm_provider="bogus")
     res = self_check(s)
     assert res.ok is False
     assert "provider_coherent" in {c.name for c in res.failures}
@@ -482,7 +484,7 @@ def test_self_check_unknown_provider_fails(tmp_path):
 
 def test_self_check_missing_repos_fails(tmp_path):
     # repos_dir points at a non-existent tree -> repos_resolvable fails.
-    s = _settings(tmp_path, llm_provider="anthropic", anthropic_api_key="sk-test")
+    s = _settings(tmp_path, llm_provider="claude-agent-sdk")
     res = self_check(s)
     assert res.ok is False
     failing = {c.name for c in res.failures}
@@ -500,8 +502,7 @@ def test_self_check_workspace_unwritable_fails(tmp_path):
         _env_file=None,
         repos_dir=tmp_path / "repos",
         workspace_dir=blocker / "ws",
-        llm_provider="anthropic",
-        anthropic_api_key="sk-test",
+        llm_provider="claude-agent-sdk",
     )
     res = self_check(s)
     assert res.ok is False
@@ -513,12 +514,12 @@ def test_self_check_workspace_unwritable_fails(tmp_path):
 # ---------------------------------------------------------------------------
 def test_readiness_reflects_self_check(tmp_path):
     _make_repos(tmp_path)
-    good = _settings(tmp_path, llm_provider="anthropic", anthropic_api_key="sk-test")
+    good = _settings(tmp_path, llm_provider="claude-agent-sdk")
     contrib = readiness(good)
     assert contrib["ready"] is True
     assert contrib["self_check"]["ok"] is True
 
-    bad = _settings(tmp_path, llm_provider="anthropic", anthropic_api_key=None)
+    bad = _settings(tmp_path, llm_provider="anthropic")
     contrib_bad = readiness(bad)
     assert contrib_bad["ready"] is False
     assert "provider_coherent" in contrib_bad["self_check"]["failures"]
@@ -528,8 +529,7 @@ def test_readiness_skipped_when_self_check_disabled(tmp_path):
     # Even with a broken config, a disabled self-check reports ready (operator opted out).
     s = _settings(
         tmp_path,
-        llm_provider="anthropic",
-        anthropic_api_key=None,
+        llm_provider="anthropic",   # unsupported on purpose — the broken config
         startup_self_check=False,
     )
     contrib = readiness(s)

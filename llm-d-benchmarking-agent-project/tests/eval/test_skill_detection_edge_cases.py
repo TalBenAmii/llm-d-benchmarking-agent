@@ -1,7 +1,7 @@
 """Edge-case guards for the skill-usage detection helpers (_skill_index /
 _operation_index / _run_passes) that both the live and scripted skill evals rely on.
 
-Pure/synthetic tool-call lists — no AgentLoop, no LLM, instant.
+Pure/synthetic tool-call lists — no engine, no LLM, instant.
 """
 from __future__ import annotations
 

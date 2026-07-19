@@ -31,7 +31,6 @@ def test_read_knowledge_returns_playbook_grounded_in_skill(tool_ctx, topic, skil
 def test_read_knowledge_stem_and_basename_both_resolve(tool_ctx):
     """A topic resolves by bare stem and by explicit .md basename to the same content."""
     by_stem = knowledge_access.read_knowledge(tool_ctx, name="deploy_path_playbook")
-    tool_ctx.fetched_docs.clear()  # read_knowledge dedups per context; reset between reads
     by_name = knowledge_access.read_knowledge(tool_ctx, name="deploy_path_playbook.md")
     assert "error" not in by_stem and "error" not in by_name
     assert by_stem["content"] == by_name["content"]

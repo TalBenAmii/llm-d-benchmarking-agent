@@ -25,11 +25,22 @@ def test_tool_definitions_complete():
         "result_history", "export_run_bundle", "reproduce_run", "cancel_run",
         "manage_orchestrated_runs",
         "suggest_next_steps",
-        "load_tools",
     }
     assert names == expected
     for d in defs:
         assert d["description"] and d["input_schema"]["type"] == "object"
+
+
+def test_every_registered_tool_is_exposed_with_a_valid_schema():
+    """No grouping/lazy-loading: tool_definitions() exposes EVERY registered ToolSpec, each with
+    a name, a description, and an input model whose JSON Schema renders as an object."""
+    defs = {d["name"]: d for d in tool_definitions()}
+    assert set(defs) == set(REGISTRY)
+    for name, spec in REGISTRY.items():
+        assert spec.name == name and spec.description
+        schema = spec.input_model.model_json_schema()
+        assert schema.get("type") == "object"
+        assert defs[name]["input_schema"]["type"] == "object"
 
 
 def test_tool_definitions_have_no_title_keys():

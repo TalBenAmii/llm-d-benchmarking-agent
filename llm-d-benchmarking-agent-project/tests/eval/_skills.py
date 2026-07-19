@@ -17,12 +17,6 @@ SKILL_TASKS = {
 
 
 def skills_populated(ctx) -> bool:
-    """True when the read-only llm-d-skills repo is materialized (not a bare worktree).
-
-    Probes fetch_key_docs, then resets ctx.fetched_docs so the probe doesn't poison
-    the caller's dedup set.
-    """
+    """True when the read-only llm-d-skills repo is materialized (not a bare worktree)."""
     res = knowledge_access.fetch_key_docs(ctx, task="deploy_skill")
-    populated = res.get("found_count", 0) > 0
-    ctx.fetched_docs.clear()
-    return populated
+    return res.get("found_count", 0) > 0

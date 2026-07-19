@@ -1,18 +1,15 @@
 """(A) LLM-judge quality eval — MECHANISM only.
 
-Turns a :class:`~tests.flows.harness.FlowRun` (the real agent loop's captured output) into a
+Turns a :class:`~tests.flows.harness.FlowRun` (the real engine's captured output) into a
 compact, deterministic transcript; embeds the versioned ``rubric.md`` verbatim into a judge
-prompt; and asks the configured provider to score the session. The rubric (the JUDGMENT) is a
-versioned asset, NOT runtime ``knowledge/`` — it never touches the byte-stable cached prefix
-and never reaches the agent under test.
+prompt; and asks the model (one bare SDK call — ``tests.eval._llm.llm_text``) to score the
+session. The rubric (the JUDGMENT) is a versioned asset, NOT runtime ``knowledge/`` — it never
+touches the byte-stable cached prefix and never reaches the agent under test.
 
 Quota: only :func:`judge_session` spends quota, and only when called from the OPT-IN
-``test_judge_live.py`` (gated by ``LLM_EVAL_LIVE=1``). Everything else here is pure.
-
-Provider call: we reuse the existing ``get_provider(...).chat(...)`` signature unchanged (no
-``temperature``/JSON-mode kwarg threaded through the providers) so the agent's prompt-cache
-byte-stability is untouched — the JSON-only, low-variance contract is carried entirely in the
-prompt. See ``docs/reference/VALIDATION.md``.
+``test_judge_live.py`` (gated by ``LLM_EVAL_LIVE=1``). Everything else here is pure. The
+JSON-only, low-variance contract is carried entirely in the prompt (no temperature knob).
+See ``docs/reference/VALIDATION.md``.
 """
 from __future__ import annotations
 
@@ -132,10 +129,10 @@ def transcript_digest(transcript: dict[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(blob).hexdigest()
 
 
-def build_judge_messages(rubric: Rubric, transcript: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
-    """Build the (system, messages) pair for one judge call. The system prompt = the grader role
-    + the rubric body verbatim; the user message = the serialized transcript. Pure — no provider
-    call here."""
+def build_judge_messages(rubric: Rubric, transcript: dict[str, Any]) -> tuple[str, str]:
+    """Build the (system, user) prompt pair for one judge call. The system prompt = the grader
+    role + the rubric body verbatim; the user message = the serialized transcript. Pure — no
+    model call here."""
     system = (
         "You are a strict QA grader for an AI assistant that drives the llm-d-benchmark CLI for "
         "non-experts. Grade the single agent session transcript below ONLY against the rubric "
@@ -150,7 +147,7 @@ def build_judge_messages(rubric: Rubric, transcript: dict[str, Any]) -> tuple[st
         + json.dumps(transcript, indent=2, ensure_ascii=False)
         + "\n```"
     )
-    return system, [{"role": "user", "content": user}]
+    return system, user
 
 
 @dataclass
@@ -201,15 +198,15 @@ def parse_judge_output(raw: str, rubric: Rubric, *, flow: str, digest: str) -> S
     )
 
 
-async def judge_session(provider, rubric: Rubric, run, flow) -> ScoreResult:
-    """Judge ONE session end-to-end: serialize → prompt → ONE provider call → parse.
+async def judge_session(rubric: Rubric, run, flow) -> ScoreResult:
+    """Judge ONE session end-to-end: serialize → prompt → ONE model call → parse.
 
-    SPENDS QUOTA. Only called from the opt-in ``test_judge_live.py``. The provider is whatever
-    ``get_provider(get_settings())`` returns — same abstraction the agent uses. We pass NO tools
-    (this is a pure scoring call) and a per-session ``cache_key`` so a provider that caches by
-    key keeps the big rubric system prefix warm across sessions."""
+    SPENDS QUOTA. Only called from the opt-in ``test_judge_live.py``. The call is a bare
+    no-tools SDK text call (``tests.eval._llm.llm_text``) — a pure scoring call."""
+    from tests.eval._llm import llm_text
+
     transcript = transcript_for_judge(run, flow)
     digest = transcript_digest(transcript)
-    system, messages = build_judge_messages(rubric, transcript)
-    turn = await provider.chat(system=system, messages=messages, tools=[], cache_key=f"judge:{flow.name}")
-    return parse_judge_output(turn.text or "", rubric, flow=flow.name, digest=digest)
+    system, user = build_judge_messages(rubric, transcript)
+    raw = await llm_text(system, user)
+    return parse_judge_output(raw or "", rubric, flow=flow.name, digest=digest)

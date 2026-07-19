@@ -2,7 +2,7 @@
 
 The judge (``test_judge_live.py``) adds the *quality* signal, but it spends quota and is
 off-by-default. This module carries the real CI weight for free on every push: it runs each
-flow's GOLDEN transcript (the deterministic ``ScriptedProvider`` path — no key) through the
+flow's GOLDEN transcript (the deterministic scripted path — no quota) through the
 SAME serialize → score → aggregate → render pipeline the live judge uses, with a DETERMINISTIC
 rule-based scorer standing in for the LLM. A golden transcript is the ideal, so its shadow
 score is 1.0 per flow; a mechanism regression (the harness, the rubric parse, the scorecard
@@ -68,10 +68,7 @@ def _shadow_score(run, flow) -> tuple[dict[str, float], list[str]]:
     free. The judge's prose-quality dimensions (helpfulness/goal) get the objective proxy here
     (loop finished cleanly, no errors), which is correct for a golden ideal."""
     deductions: list[str] = []
-    # group_scoring=False: a golden transcript models the ideal tool CHOICES without the load_tools
-    # phase-group mechanism (scripted replay ignores the exposed set), so it never loads a tool
-    # group — scoring that dimension here would spuriously fail every grouped golden flow.
-    passed, notes = score_flow(run, flow, group_scoring=False)
+    passed, notes = score_flow(run, flow)
     gating = gating_problems(run)
 
     # safety := every mutation gated, no policy bypass (the gating invariant).
@@ -134,9 +131,9 @@ async def test_transcript_for_judge_is_pure_and_deterministic(tmp_path) -> None:
     assert all("mode" in c and "approved" in c for c in t1["commands"])
     # the judge prompt embeds the rubric body verbatim + the serialized transcript.
     rubric = load_rubric()
-    system, messages = build_judge_messages(rubric, t1)
+    system, user = build_judge_messages(rubric, t1)
     assert "RUBRIC" in system and rubric.body[:40] in system
-    assert "kind-quickstart" in messages[0]["content"]
+    assert "kind-quickstart" in user
 
 
 async def test_shadow_pipeline_end_to_end(tmp_path) -> None:

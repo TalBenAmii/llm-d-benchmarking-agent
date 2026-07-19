@@ -18,12 +18,13 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from app.agent.engine import LIVE_TURNS
 from app.agent.session import SessionManager
 from app.config import Settings, get_settings
-from app.llm.provider import AssistantTurn, ToolCall
 from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner, RunResult
 from app.tools.context import ToolContext
+from tests._scripted import AssistantTurn, ScriptedTransports, ToolCall, sdk_script
 from tests.flows.catalog_snapshot import frozen_catalog
 
 RO = ["kind", "get", "clusters"]
@@ -153,17 +154,6 @@ class _ThreadGatedRunner(CommandRunner):
                          cwd=None, output="standup ok")
 
 
-class _FakeProvider:
-    def __init__(self, turns):
-        self._turns = turns
-        self.i = 0
-
-    async def chat(self, *, system, messages, tools, cache_key=None):
-        turn = self._turns[min(self.i, len(self._turns) - 1)]
-        self.i += 1
-        return turn
-
-
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
 def test_inflight_run_survives_disconnect(tmp_path):
     """An approved standup is mid-execution when the socket drops; the turn must keep running
@@ -171,16 +161,16 @@ def test_inflight_run_survives_disconnect(tmp_path):
     from app.main import app
 
     started, gate = threading.Event(), threading.Event()
-    turns = [
-        AssistantTurn(text="Standing up.", tool_calls=[ToolCall("c1", "execute_llmdbenchmark", {
-            "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "flags": {"skip_smoketest": True},
-        })]),
-        AssistantTurn(text="Done.", tool_calls=[]),
-    ]
 
     with TestClient(app) as client:
-        app.state.provider = _FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        st.add_turns(
+            AssistantTurn(text="Standing up.", tool_calls=[ToolCall("c1", "execute_llmdbenchmark", {
+                "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "flags": {"skip_smoketest": True},
+            })]),
+            AssistantTurn(text="Done."),
+        )
         app.state.sessions._runner = _ThreadGatedRunner(get_settings().repo_paths, started, gate)
 
         with client.websocket_connect("/ws") as ws:
@@ -236,16 +226,16 @@ def test_post_disconnect_approval_stays_pending_and_reemits_on_reconnect(tmp_pat
     from app.main import app
 
     started, gate = threading.Event(), threading.Event()
-    turns = [
-        AssistantTurn(text="standup", tool_calls=[ToolCall("c1", "execute_llmdbenchmark", {
-            "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "flags": {"skip_smoketest": True}})]),
-        AssistantTurn(text="teardown", tool_calls=[ToolCall("c2", "execute_llmdbenchmark", {
-            "subcommand": "teardown", "spec": "cicd/kind", "namespace": "llmd-quickstart"})]),
-        AssistantTurn(text="done", tool_calls=[]),
-    ]
     with TestClient(app) as client:
-        app.state.provider = _FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        st.add_turns(
+            AssistantTurn(text="standup", tool_calls=[ToolCall("c1", "execute_llmdbenchmark", {
+                "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "flags": {"skip_smoketest": True}})]),
+            AssistantTurn(text="teardown", tool_calls=[ToolCall("c2", "execute_llmdbenchmark", {
+                "subcommand": "teardown", "spec": "cicd/kind", "namespace": "llmd-quickstart"})]),
+            AssistantTurn(text="done"),
+        )
         app.state.sessions._runner = _ThreadGatedRunner(get_settings().repo_paths, started, gate)
         with client.websocket_connect("/ws") as ws:
             ready = ws.receive_json()
@@ -328,14 +318,20 @@ def test_second_message_to_running_session_is_queued_as_steer(tmp_path):
     from app.main import app
 
     started, gate = threading.Event(), threading.Event()
-    turns = [
-        AssistantTurn(text="standup", tool_calls=[ToolCall("c1", "execute_llmdbenchmark", {
-            "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "flags": {"skip_smoketest": True}})]),
-        AssistantTurn(text="done", tool_calls=[]),
-    ]
     with TestClient(app) as client:
-        app.state.provider = _FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        # One transport script: the standup turn, then the wire turn the queued steer's
+        # follow-up query consumes (the engine keeps the SAME app-level turn alive).
+        st.add_script(sdk_script([
+            AssistantTurn(text="standup", tool_calls=[ToolCall("c1", "execute_llmdbenchmark", {
+                "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "flags": {"skip_smoketest": True}})]),
+            AssistantTurn(text="done"),
+        ]) + sdk_script([AssistantTurn(text="switching to the other thing")]))
+        # Count engine connects: a second concurrent turn on the session would pop a 2nd one.
+        factory_calls = []
+        inner = app.state.sdk_transport_factory
+        app.state.sdk_transport_factory = lambda: (factory_calls.append(1) or inner)()
         app.state.sessions._runner = _ThreadGatedRunner(get_settings().repo_paths, started, gate)
         with client.websocket_connect("/ws") as ws1:
             ready = ws1.receive_json()
@@ -347,7 +343,6 @@ def test_second_message_to_running_session_is_queued_as_steer(tmp_path):
                     ws1.send_json({"type": "approval", "request_id": ev["data"]["request_id"], "approved": True})
                     break
             assert started.wait(timeout=5)  # ws1's turn is now blocked mid-standup
-            i_before = app.state.provider.i
 
             with client.websocket_connect(f"/ws?session={sid}") as ws2:
                 r2 = ws2.receive_json()
@@ -355,13 +350,13 @@ def test_second_message_to_running_session_is_queued_as_steer(tmp_path):
                 ws2.send_json({"type": "user_message", "text": "do something else"})
                 # The send is QUEUED as a steer, not rejected and not a new turn. The turn is parked
                 # in the gated runner so we can't block-read a reply on ws2 — check server state.
-                s = app.state.sessions.get(sid)
                 for _ in range(100):
-                    if "do something else" in s.ctx.steer_messages:
+                    live = LIVE_TURNS.get(sid)
+                    if live is not None and "do something else" in live._steers:
                         break
                     time.sleep(0.02)
-                assert "do something else" in s.ctx.steer_messages, "the message was not queued as a steer"
-                assert app.state.provider.i == i_before, "a second concurrent turn was started on one session"
+                assert "do something else" in LIVE_TURNS[sid]._steers, "the message was not queued as a steer"
+                assert len(factory_calls) == 1, "a second concurrent turn was started on one session"
 
                 gate.set()  # release the standup so the SAME turn drains the steer + finishes
                 seen = []

@@ -23,7 +23,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
-from app.llm.provider import get_provider
 from tests._auth import has_auth
 from tests.eval.bug_report import build_bug_report, severity_ge, write_bug_report
 from tests.eval.explorer import max_selector_calls, run_bughunt
@@ -39,7 +38,7 @@ pytestmark = [
     pytest.mark.skipif(
         not (_LIVE and _BUGHUNT),
         reason="exploratory bug-hunter is opt-in — set LLM_EVAL_LIVE=1 AND BUGHUNT=1 "
-               "(and configure an API key in .env)",
+               "(and log in to the `claude` CLI)",
     ),
     pytest.mark.timeout(600),
 ]
@@ -47,12 +46,11 @@ pytestmark = [
 
 async def test_bughunt_no_high_severity_findings(tmp_path, capsys) -> None:
     if not has_auth():
-        pytest.skip("no LLM provider configured — set an API key in .env, or log in to the "
-                    "`claude` CLI for LLM_PROVIDER=claude-agent-sdk")
+        pytest.skip("unsupported LLM_PROVIDER — the eval runs on the Claude Agent SDK "
+                    "(log in to the `claude` CLI)")
 
     settings = get_settings()
-    provider = get_provider(settings)
-    explorer_model = getattr(settings, "anthropic_model", None) or settings.llm_provider
+    explorer_model = settings.agent_sdk_model or settings.llm_provider
 
     # Print the worst-case quota up front so the cost is never a surprise (acceptance criterion).
     worst = max_selector_calls(_SEEDS, _BUDGET, has_provider=True)
@@ -63,7 +61,7 @@ async def test_bughunt_no_high_severity_findings(tmp_path, capsys) -> None:
 
     findings, total = await run_bughunt(
         app, lambda: TestClient(app), tmp_path,
-        seeds=_SEEDS, actions_budget=_BUDGET, provider=provider,
+        seeds=_SEEDS, actions_budget=_BUDGET, use_llm=True,
     )
 
     report = build_bug_report(
