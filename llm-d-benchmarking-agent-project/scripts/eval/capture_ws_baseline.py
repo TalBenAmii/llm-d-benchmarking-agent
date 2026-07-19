@@ -39,12 +39,14 @@ from unittest.mock import patch
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_PROJECT_ROOT))
 
+from tests._sdk_fake import FakeTransport, result  # noqa: E402
 from tests.flows.catalog_snapshot import frozen_catalog  # noqa: E402
 from tests.flows.flows import FLOWS_BY_NAME  # noqa: E402
 from tests.flows.harness import (  # noqa: E402
     CaptureRunner,
     ScriptedProvider,
     _materialize_repo_state,
+    _sdk_script,
 )
 
 # What each baseline is: the flow whose ScriptedProvider transcript drives the app, plus how
@@ -150,8 +152,14 @@ def _wait_for_background(app, timeout_s: float = 30.0) -> None:
     raise RuntimeError("the env pre-probe did not finish in time")
 
 
-def capture_flow(flow, *, decline: bool = False) -> list[dict[str, Any]]:
-    """Run one flow through the real app over in-process WS and return its NORMALIZED stream."""
+def capture_flow(flow, *, decline: bool = False, engine: str = "loop") -> list[dict[str, Any]]:
+    """Run one flow through the real app over in-process WS and return its NORMALIZED stream.
+
+    ``engine="sdk-native"`` drives the SAME transcript through the SDK-native engine instead:
+    the caller (main) has set ``AGENT_ENGINE=sdk-native`` for the /ws handler's engine switch,
+    and we install a FakeTransport factory on the app's hermetic seam. The script gets one
+    spare empty turn so a typed steer's post-result follow-up query (the decline baseline)
+    finds a clean empty reply — the wire equivalent of the old loop's exhausted provider."""
     # Imported here (not module top) so main()'s env pinning happens before app.main's
     # import-time get_settings(); also keeps the guard test's import of this module light.
     from fastapi.testclient import TestClient
@@ -193,6 +201,11 @@ def capture_flow(flow, *, decline: bool = False) -> list[dict[str, Any]]:
             app.state.sessions = SessionManager(settings, policy, runner)
             app.state.provider = ScriptedProvider(flow.turns)
             app.state.provider_error = None
+            if engine == "sdk-native":
+                script = _sdk_script(flow.turns) + [[result()]]
+                app.state.sdk_transport_factory = lambda: FakeTransport(script)
+            else:
+                app.state.sdk_transport_factory = None
             with client.websocket_connect("/ws") as ws:
                 ready = ws.receive_json()
                 frames.append(ready)
@@ -249,6 +262,9 @@ def main() -> int:
     parser.add_argument("--out", type=Path,
                         default=_PROJECT_ROOT / "tests" / "flows" / "baselines",
                         help="output directory (default: tests/flows/baselines)")
+    parser.add_argument("--engine", choices=("loop", "sdk-native"), default="loop",
+                        help="which engine drives the turn; sdk-native writes "
+                             "<name>.sdk-native.events.json for the wire-parity guard")
     args = parser.parse_args()
 
     # Pin the app's import-time/lifespan environment BEFORE app.main is imported (inside
@@ -261,22 +277,29 @@ def main() -> int:
         "SIMULATE": "0",
         "WORKSPACE_DIR": scratch,
     })
+    # The /ws handler's engine switch reads this per connection (branch-only flag).
+    if args.engine == "sdk-native":
+        os.environ["AGENT_ENGINE"] = "sdk-native"
+    else:
+        os.environ.pop("AGENT_ENGINE", None)
 
     names = args.only or sorted(BASELINES)
+    suffix = ".sdk-native" if args.engine == "sdk-native" else ""
     args.out.mkdir(parents=True, exist_ok=True)
     for name in names:
         spec = BASELINES[name]
         flow = FLOWS_BY_NAME[spec["flow"]]
         decline = bool(spec.get("decline"))
-        events = capture_flow(flow, decline=decline)
+        events = capture_flow(flow, decline=decline, engine=args.engine)
         doc = {
             "baseline": name,
             "flow": flow.name,
+            "engine": args.engine,
             "gates": "decline first via typed steer, then decline" if decline else "approve all",
             "captured_by": "scripts/eval/capture_ws_baseline.py",
             "events": events,
         }
-        path = args.out / f"{name}.events.json"
+        path = args.out / f"{name}{suffix}.events.json"
         path.write_text(json.dumps(doc, indent=2) + "\n")
         n_gates = sum(1 for e in events if e["type"] == "approval_request")
         print(f"  {name}: {len(events)} events, {n_gates} gate(s), "

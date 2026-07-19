@@ -461,6 +461,71 @@ async def test_options_carry_session_overrides(tmp_path, monkeypatch):
     assert set(opts.mcp_servers) == {"benchtools"}
 
 
+async def test_restart_resumes_with_persisted_sdk_session_id(tmp_path, monkeypatch):
+    """App "restart" mid-session (resume battery 3b): a fresh SessionManager over the same
+    workspace rebuilds the session from state.json, and the next turn's connect carries
+    ``resume=<the persisted sdk_session_id>`` — asserted on the ClaudeAgentOptions."""
+    from app.agent.session import SessionManager
+
+    settings = Settings(_env_file=None, repos_dir=tmp_path / "repos",
+                        workspace_dir=tmp_path / "ws")
+    policy = CommandPolicy.from_file(settings.command_policy_path)
+    runner = CommandRunner(settings.repo_paths)
+    session = SessionManager(settings, policy, runner).create()
+    session.catalog_injected = True  # keep the wire minimal (no preamble)
+
+    engine1, _f1 = _engine([[assistant(text("first")), result(session_id="sdk-abc")]])
+    seen1, emit1 = _collector()
+    await engine1.run_turn(session, "hi", emit=emit1, request_approval=_approve)
+    assert session.sdk_session_id == "sdk-abc"  # minted + persisted by the end-of-turn persist
+
+    reloaded = SessionManager(settings, policy, runner).get_or_load(session.id)  # the restart
+    assert reloaded is not None and reloaded is not session
+    assert reloaded.sdk_session_id == "sdk-abc" and reloaded.catalog_injected is True
+    captured = []
+    real_client = claude_agent_sdk.ClaudeSDKClient
+
+    def spy(*, options, transport=None):
+        captured.append(options)
+        return real_client(options=options, transport=transport)
+
+    monkeypatch.setattr(claude_agent_sdk, "ClaudeSDKClient", spy)
+    engine2, _f2 = _engine([[assistant(text("resumed")), result(session_id="sdk-abc")]])
+    seen2, emit2 = _collector()
+    await engine2.run_turn(reloaded, "and now?", emit=emit2, request_approval=_approve)
+
+    assert captured[0].resume == "sdk-abc"
+    assert not any(t == "error" for t, _ in seen2)
+    assert [p["text"] for t, p in seen2 if t == "assistant_text"] == ["resumed"]
+
+
+async def test_steer_requeued_to_legacy_list_when_turn_errors(tmp_path, monkeypatch):
+    """Resume battery 3d: a steer still queued when the turn ends ABNORMALLY (an error
+    ResultMessage — its drain point never came) returns to ``ctx.steer_messages``, so
+    main.py's finally backstop applies the old semantics (follow-up turn on error)."""
+
+    async def steer_probe(ctx):
+        assert steer(session.id, "pivot to B") is True
+        return {"ok": True}
+
+    monkeypatch.setitem(
+        REGISTRY, "steer_probe",
+        ToolSpec("steer_probe", "queues a steer", _EmptyInput, steer_probe))
+    session = _make_session(tmp_path)
+    script = [[
+        assistant(tool_use("tu_1", BT + "steer_probe", {})),
+        result(subtype="error_during_execution", is_error=True),
+    ]]
+    engine, _fakes = _engine(script)
+    seen, emit = _collector()
+
+    await engine.run_turn(session, "do A", emit=emit, request_approval=_approve)
+
+    assert any(t == "error" for t, _ in seen)
+    assert session.ctx.steer_messages == ["pivot to B"]
+    assert [t for t, _ in seen][-1] == "done"
+
+
 async def test_watchdog_interrupts_dead_stream(tmp_path):
     """A stream that goes silent mid-turn with NO tool running is a wedged CLI: the watchdog
     interrupts it and surfaces a clean error instead of hanging the turn forever."""

@@ -1,0 +1,287 @@
+{
+  "baseline": "doe-run-sweep",
+  "flow": "doe-run-sweep",
+  "engine": "sdk-native",
+  "gates": "approve all",
+  "captured_by": "scripts/eval/capture_ws_baseline.py",
+  "events": [
+    {
+      "type": "ready",
+      "data": {
+        "session_id": "<SID>",
+        "resumed": false,
+        "running": false,
+        "resume": {
+          "incremental": false
+        },
+        "auto_approve": false,
+        "model_override": null,
+        "effort_override": null
+      }
+    },
+    {
+      "type": "welcome",
+      "data": {
+        "heading": "Hi! I'm the llm-d Benchmarking Assistant \u2014 here's how I can help.",
+        "bullets": [
+          "Deploy a model stack on the local quickstart (a kind cluster with a CPU-simulated engine).",
+          "Run a capacity pre-flight so a model/config is confirmed to fit before anything is stood up.",
+          "Run benchmarks against a fresh or already-running stack.",
+          "Compare configurations and run parameter sweeps to see what wins.",
+          "Read and explain Benchmark Reports in plain language, tied to your goal.",
+          "Track results and trends over time so you can spot regressions and wins.",
+          "Co-author a custom spec and workload with you, step by step, then validate it before running."
+        ],
+        "nudge": "Tell me what you'd like to benchmark, or pick one of the suggestions below to get started."
+      }
+    },
+    {
+      "type": "suggestions",
+      "data": {
+        "chips": [
+          {
+            "label": "Benchmark a small chat model",
+            "prompt": "I want to benchmark a small chat model on the local quickstart."
+          },
+          {
+            "label": "Compare two configs (sweep)",
+            "prompt": "I want to compare two configurations with a sweep."
+          },
+          {
+            "label": "Check if my cluster can fit a model",
+            "prompt": "Can my cluster fit a model I have in mind? Let's check capacity."
+          },
+          {
+            "label": "Build a custom spec & workload with me",
+            "prompt": "Help me create a custom spec and workload together, step by step."
+          },
+          {
+            "label": "What can you do?",
+            "prompt": "What can you do?"
+          }
+        ]
+      }
+    },
+    {
+      "type": "session_saved",
+      "data": {}
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "Sensing the environment first."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-1>",
+        "name": "probe_environment",
+        "input": {
+          "checks": "all",
+          "namespace": "llmd-quickstart"
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-1>",
+        "name": "probe_environment",
+        "result": {
+          "container_runtime": {
+            "type": null,
+            "present": false,
+            "daemon_up": false
+          },
+          "repos": {
+            "llm-d-benchmark": {
+              "present": true,
+              "is_git": true,
+              "path": "<REPOS>/llm-d-benchmark"
+            },
+            "llm-d": {
+              "present": false,
+              "is_git": false,
+              "path": "<REPOS>/llm-d"
+            },
+            "llm-d-skills": {
+              "present": false,
+              "is_git": false,
+              "path": "<REPOS>/llm-d-skills"
+            }
+          },
+          "tools": {
+            "docker": false,
+            "podman": false,
+            "kubectl": false,
+            "kind": false,
+            "helm": false,
+            "helmfile": false,
+            "jq": false,
+            "yq": false,
+            "git": false,
+            "uv": false,
+            "python3": false
+          },
+          "venv": {
+            "exists": true,
+            "path": "<REPOS>/llm-d-benchmark/.venv"
+          },
+          "kind_clusters": {
+            "available": false,
+            "clusters": []
+          },
+          "kube_context": {
+            "available": false,
+            "context": null
+          },
+          "cluster_info": {
+            "reachable": false
+          },
+          "namespaces": {
+            "available": false,
+            "namespaces": []
+          },
+          "stack": {
+            "namespace": "llmd-quickstart",
+            "checked": false
+          },
+          "prometheus_crds": {
+            "available": false,
+            "present": false
+          },
+          "metrics_server": {
+            "available": false,
+            "installed": false,
+            "ready_replicas": null
+          },
+          "grafana_dashboard": {
+            "configured": false
+          },
+          "node_capacity": {
+            "available": false,
+            "nodes": [],
+            "min_allocatable_cpu": null
+          },
+          "cluster_preconditions": {
+            "available": false,
+            "spec": null,
+            "server_version": null,
+            "image_tags": []
+          },
+          "provider_detection": {
+            "available": false,
+            "provider": "kind",
+            "providers_seen": [],
+            "gpu_taints": [],
+            "nodes": []
+          }
+        }
+      }
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "Grounding the sweep design in the playbook."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-2>",
+        "name": "read_knowledge",
+        "input": {
+          "name": "sweep_playbook"
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-2>",
+        "name": "read_knowledge",
+        "result": {
+          "name": "sweep_playbook.md",
+          "topic": "sweep_playbook",
+          "content": "# Sweeps & A/B comparison playbook (entry)\n\nUse this when the user wants to compare configurations \u2014 \"how does latency change as\nconcurrency grows?\", \"is config A faster than B?\", \"find the best batch \u2026<truncated>"
+        }
+      }
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "Designing a 3-treatment run-parameter sweep (one stack, three loads)."
+      }
+    },
+    {
+      "type": "tool_call",
+      "data": {
+        "id": "<tc-3>",
+        "name": "generate_doe_experiment",
+        "input": {
+          "name": "concurrency_sweep",
+          "run_factors": [
+            {
+              "name": "conc",
+              "key": "load.max_concurrency",
+              "levels": [
+                8,
+                16,
+                32
+              ]
+            }
+          ],
+          "harness": "inference-perf"
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "data": {
+        "id": "<tc-3>",
+        "name": "generate_doe_experiment",
+        "result": {
+          "generated": true,
+          "path": "<WS>/sessions/<SID>/concurrency_sweep.yaml",
+          "experiment_name": "concurrency_sweep",
+          "setup_treatments": [],
+          "run_treatments": [
+            {
+              "name": "conc8",
+              "load.max_concurrency": 8
+            },
+            {
+              "name": "conc16",
+              "load.max_concurrency": 16
+            },
+            {
+              "name": "conc32",
+              "load.max_concurrency": 32
+            }
+          ],
+          "n_setup_treatments": 0,
+          "n_run_treatments": 3,
+          "total_matrix": 3,
+          "valid": true,
+          "validated_against_examples": [],
+          "note": "Pass this path as flags.experiments to execute_llmdbenchmark (subcommand='experiment' for a full DoE, or 'run' for a run-parameter sweep against an already-stood-up stack). Always preview with flags.d \u2026<truncated>"
+        }
+      }
+    },
+    {
+      "type": "assistant_text",
+      "data": {
+        "text": "That's a 3-treatment sweep over max-concurrency against the existing stack. Approve and I'll preview it with `run --dry-run`, run the three loads, then compare_reports across the treatments for the be \u2026<truncated>"
+      }
+    },
+    {
+      "type": "usage",
+      "data": {}
+    },
+    {
+      "type": "done",
+      "data": {}
+    }
+  ]
+}
