@@ -543,6 +543,7 @@ async def run_flow(
     simulate: bool = False,
     call_timeout: float | None = None,
     engine: str = "loop",
+    live: bool = False,
 ) -> FlowRun:
     """Run one flow through the real agent loop in a hermetic sandbox.
 
@@ -553,8 +554,13 @@ async def run_flow(
     ``engine`` selects who drives the turn: ``"loop"`` (default — the old AgentLoop,
     byte-for-byte unchanged) or ``"sdk-native"`` (the SdkNativeEngine replaying the SAME
     golden transcript through the SDK's real protocol machinery over a hermetic
-    FakeTransport — see :func:`_sdk_script`). The sdk-native path is scripted-only: the
-    live eval (a real ``provider``) stays on the old engine until the Phase 5 cutover.
+    FakeTransport — see :func:`_sdk_script`).
+
+    ``live=True`` (sdk-native only, opt-in live eval) drops the FakeTransport: the engine
+    spawns the REAL logged-in CLI and a real model drives the flow inside the same sandbox
+    (CaptureRunner — nothing can mutate). Model/effort ride in via the AGENT_SDK_* env vars
+    (the hermetic Settings ignores .env but still reads real env). The old engine goes live
+    via ``provider`` exactly as before.
 
     ``call_timeout`` bounds EACH live LLM call (seconds) via the per-call watchdog so one hung
     call fails the flow fast instead of stalling to the test backstop — see
@@ -574,16 +580,20 @@ async def run_flow(
     if engine not in ("loop", "sdk-native"):
         raise ValueError(f"unknown engine {engine!r} (expected 'loop' or 'sdk-native')")
     if engine == "sdk-native" and provider is not None:
-        raise ValueError("engine='sdk-native' replays flow.turns over FakeTransport; "
-                         "a real provider (the live eval) stays on the old engine")
+        raise ValueError("engine='sdk-native' takes no provider; its live path is live=True")
+    if live and engine != "sdk-native":
+        raise ValueError("live=True is the sdk-native live path; the old engine goes live "
+                         "via a real `provider`")
+    # A real model drives the flow (either engine) — the sandbox needs live-eval fidelity.
+    is_live = provider is not None or live
     repos_dir = tmp_path / "repos"
     _materialize_repo_state(repos_dir, flow.repo_state)
-    # LIVE-eval fidelity (real provider only): a "present" repo state must carry the REAL config tree
+    # LIVE-eval fidelity (real model only): a "present" repo state must carry the REAL config tree
     # so capacity tools reach the canned bridge instead of erroring on a missing defaults.yaml — what
     # the gated/capacity flows already document ("in LIVE eval the REAL repo is present"). The
-    # scripted golden path (provider is None) is left byte-for-byte unchanged, and an "absent" repo
+    # scripted golden path is left byte-for-byte unchanged, and an "absent" repo
     # state (testing the clone) is never pre-populated.
-    if provider is not None and flow.repo_state != "absent":
+    if is_live and flow.repo_state != "absent":
         _materialize_real_bench_config(repos_dir)
 
     settings = Settings(
@@ -598,7 +608,7 @@ async def run_flow(
     # LIVE eval on the absent flow (kind-quickstart): the agent clones + installs mid-run, so the
     # fake clone/install must leave the config tree + venv behind (a real one does) or the read-only
     # pre-flight tools contradict the just-completed setup — see CaptureRunner._maybe_hydrate_bench_repo.
-    hydrate_bench = provider is not None and flow.repo_state == "absent"
+    hydrate_bench = is_live and flow.repo_state == "absent"
     runner = CaptureRunner(settings.repo_paths, canned=flow.canned, hydrate_bench=hydrate_bench)
     workspace = settings.resolved_workspace_dir / "sessions" / "flow"
     ctx = ToolContext(settings=settings, policy=policy, runner=runner, workspace=workspace)
@@ -646,8 +656,11 @@ async def run_flow(
     # Patch the environment-sensing layer so probe behaviour is identical on every host.
     with patch("app.tools.setup.probe.shutil.which", side_effect=fake_which):
         if engine == "sdk-native":
-            script = _sdk_script(flow.turns)
-            sdk_engine = SdkNativeEngine(transport_factory=lambda: FakeTransport(script))
+            if live:
+                sdk_engine = SdkNativeEngine()  # no factory → the real logged-in CLI
+            else:
+                script = _sdk_script(flow.turns)
+                sdk_engine = SdkNativeEngine(transport_factory=lambda: FakeTransport(script))
             await sdk_engine.run_turn(
                 session, flow.mock_user_input, emit=emit, request_approval=request_approval)
         else:
