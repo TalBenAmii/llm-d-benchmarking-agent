@@ -21,7 +21,6 @@ from itertools import count
 from typing import Any
 
 import anyio
-
 from claude_agent_sdk._internal.transport import Transport
 
 FAKE_MODEL = "fake-model"

@@ -61,8 +61,8 @@ async def _run_live_turns(tmp_path, prompts: list[str]) -> list[dict]:
     for prompt in prompts:
         events: list[tuple[str, dict]] = []
 
-        async def emit(t, p):
-            events.append((t, p))
+        async def emit(t, p, _events=events):
+            _events.append((t, p))
 
         await engine.run_turn(session, prompt, emit=emit, request_approval=decline)
         errors = [p for t, p in events if t == "error"]

@@ -21,7 +21,7 @@ _ALL_FIELDS = _BADGE_FIELDS | {"switchable", "effort", "models"}
 def test_alias_set_pinned():
     # Deliberately spelled out (not derived): an alias vanishing from the supported set should
     # fail HERE, loudly, forcing a conscious update of the badge expectations.
-    assert AGENT_SDK_PROVIDERS == {"claude-agent-sdk", "agent-sdk", "claude-max"}
+    assert {"claude-agent-sdk", "agent-sdk", "claude-max"} == AGENT_SDK_PROVIDERS
 
 
 def test_provider_view_supported_aliases_carry_the_full_view():
