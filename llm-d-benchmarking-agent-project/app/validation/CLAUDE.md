@@ -8,10 +8,12 @@ constrained at the boundaries; the gates here are the boundaries.
 and `docs/reference/CONTEXT.md` point here, in this order (a–d).
 
 1. **Tool-arg schema gate** (a) — every tool input is a Pydantic model validated at `dispatch()` (see
-   `app/tools/`). Schemas are the contract; args are never scraped from prior text.
+   `app/tools/`). The SDK executes tools through the in-process MCP wrapper (`app/tools/mcp_server.py`),
+   but every call still funnels through `dispatch()` — the schema chokepoint is unchanged. Schemas are
+   the contract; args are never scraped from prior text.
 2. **SessionPlan + catalog gate** (b) (`session_plan.py::validate_plan`) — the plan's spec/harness/workload
    must exist in the **live catalog**; namespace must be RFC1123. Reject with a catalog hint on mismatch —
-   never silently default. The approval is wired in `app/tools/setup/plan.py` + the loop.
+   never silently default. The approval is wired in `app/tools/setup/plan.py` + the engine's gate bridge.
    **What this gate is not:** a precondition on mutation — nothing keys off `session.approved_plan`; the
    plan is a *second human checkpoint*. Unapproved mutations are stopped by the **per-command approval
    gate** (`tools/command_exec.py`, `tools/run/shell.py`); "plan first" ordering = system prompt +

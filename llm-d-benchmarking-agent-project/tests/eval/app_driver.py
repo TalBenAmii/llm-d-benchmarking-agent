@@ -9,10 +9,10 @@ SAME machinery and selects actions with an LLM (or the seeded RNG fallback). Bec
 is byte-identical, the fuzzer's behavior is unchanged after the move.
 
 What lives here:
-  * :class:`FuzzProvider` — a scripted LLM whose per-turn script is read-only OR mutating
-    (forces real approval gates under the real loop), primed by the driver.
+  * :class:`SdkFuzzScripts` — a scripted-turn primer whose per-turn script is read-only OR
+    mutating (forces real approval gates under the real engine), primed by the driver.
   * :func:`install_isolated_state` — repoints the live app at an isolated, ``SIMULATE=1``,
-    empty session store + the fuzz provider (no network / cluster / live LLM).
+    empty session store + the scripted transport factory (no network / cluster / live LLM).
   * the INVARIANT BATTERY (:func:`check_no_synthetic_in_history`, :func:`check_session_invariants`,
     :func:`check_isolation`) — these ARE the deterministic bug ORACLE the bug-hunter uses; a hit
     is a real finding with no false positives.
@@ -35,11 +35,9 @@ from fastapi.testclient import TestClient
 
 from app.agent.session import NO_NAMESPACE, SessionManager
 from app.config import Settings, get_settings
-from app.llm.provider import AssistantTurn, ToolCall
 from app.security.policy import CommandPolicy
 from app.security.runner import SimRunner
-from app.tools.mcp_server import TOOL_PREFIX
-from tests._sdk_fake import FakeTransport, assistant, result, text, tool_use
+from tests._scripted import AssistantTurn, ScriptedTransports, ToolCall
 
 # Background frames the env pre-probe / resource poller can stream onto a connection; they're
 # benign noise when we're hunting for a specific protocol frame (mirrors test_ws.py).
@@ -50,13 +48,13 @@ _DRAIN_CAP = 200
 
 
 # --------------------------------------------------------------------------------------------
-# Scripted provider whose turns are seeded read-only OR mutating (forces approval gates).
+# Scripted turns, seeded read-only OR mutating (forces approval gates).
 # --------------------------------------------------------------------------------------------
 
 # The shared per-turn scripts, valid against the REAL registry + policy: a plan (gated), then a
-# mutating standup (a SimRunner no-op that still drives the gate machinery). FuzzProvider replays
-# them as AssistantTurns for the old loop; SdkFuzzScripts renders the SAME steps as FakeTransport
-# wire messages for the SDK-native engine — one source of truth for the fuzz behavior.
+# mutating standup (a SimRunner no-op that still drives the gate machinery). SdkFuzzScripts
+# renders them as FakeTransport wire turns for the engine — one source of truth for the fuzz
+# behavior.
 _PLAN_INPUT = {
     "use_case_summary": "tiny chat", "spec": "cicd/kind",
     "namespace": "llmd-quickstart", "harness": "inference-perf",
@@ -68,104 +66,49 @@ _STANDUP_INPUT = {
 }
 
 
-class FuzzProvider:
-    """A scripted LLM. Each ``chat`` call returns the next turn for that session.
+class SdkFuzzScripts(ScriptedTransports):
+    """The fuzzer's scripted-turn primer over the shared :class:`ScriptedTransports` FIFO.
 
-    Per session we cycle a deterministic 2-step "mutating" script (a session plan, then a
-    mutating standup, then a closing text) OR a 1-step read-only script (just text). Which
-    kind a given ``user_message`` gets is decided by the *driver* (seeded), which primes the
-    script via :meth:`prime`. ``cache_key`` is the session id, so concurrent chats don't share
-    a cursor.
-    """
-
-    @staticmethod
-    def _mutating_script(tag: str) -> list[AssistantTurn]:
-        return [
-            AssistantTurn(text="Here is the plan.", tool_calls=[
-                ToolCall(f"plan-{tag}", "propose_session_plan", _PLAN_INPUT)]),
-            AssistantTurn(text="Standing up.", tool_calls=[
-                ToolCall(f"standup-{tag}", "execute_llmdbenchmark", _STANDUP_INPUT)]),
-            AssistantTurn(text="All set.", tool_calls=[]),
-        ]
-
-    @staticmethod
-    def _readonly_script(tag: str) -> list[AssistantTurn]:
-        return [AssistantTurn(text=f"Read-only reply {tag}.", tool_calls=[])]
+    :meth:`prime` enqueues the NEXT user turn's script (FIFO — the driver is strictly
+    sequential: one connection, prime-then-send); ``next_transport`` (inherited) is installed
+    as ``app.state.sdk_transport_factory``, so the engine's connect-per-turn pops exactly one
+    script per user turn. An unprimed turn gets a clean empty reply. The generous response
+    timeout exists because a parked approval gate holds its tools/call control request open
+    for as long as the fuzzer leaves the card unanswered (it may switch chats first)."""
 
     def __init__(self) -> None:
-        # cache_key (session id) -> queue of remaining AssistantTurns for the in-flight turn.
-        self._queues: dict[str, list[AssistantTurn]] = {}
+        super().__init__(response_timeout=300.0)
         self._counter = 0
 
     def prime(self, session_id: str, *, mutating: bool) -> None:
         """Queue the script for the NEXT user turn of ``session_id``."""
         self._counter += 1
         tag = str(self._counter)
-        self._queues[session_id] = (
-            self._mutating_script(tag) if mutating else self._readonly_script(tag)
-        )
-
-    async def chat(self, *, system, messages, tools, cache_key=None) -> AssistantTurn:
-        q = self._queues.get(cache_key or "")
-        if not q:
-            # Script exhausted (or an unprimed background turn) → end the turn cleanly.
-            return AssistantTurn(text="", tool_calls=[])
-        return q.pop(0)
-
-
-class SdkFuzzScripts:
-    """FuzzProvider's twin for the SDK-native engine (``AGENT_ENGINE=sdk-native``): the same
-    deterministic per-turn scripts, rendered as FakeTransport wire scripts.
-
-    :meth:`prime` enqueues the NEXT user turn's script (FIFO — the driver is strictly
-    sequential: one connection, prime-then-send); :meth:`next_transport` is installed as
-    ``app.state.sdk_transport_factory``, so the engine's connect-per-turn pops exactly one
-    script per user turn. An unprimed turn gets an empty reply, mirroring FuzzProvider's
-    exhausted behavior. Duck-typed to FuzzProvider's ``prime`` so :class:`Player` drives both
-    engines unchanged."""
-
-    def __init__(self) -> None:
-        self._scripts: list[list[list[dict[str, Any]]]] = []
-        self._counter = 0
-
-    def prime(self, session_id: str, *, mutating: bool) -> None:
-        self._counter += 1
-        tag = str(self._counter)
-        self._scripts.append([[
-            assistant(text("Here is the plan."),
-                      tool_use(f"plan-{tag}", TOOL_PREFIX + "propose_session_plan", _PLAN_INPUT)),
-            assistant(text("Standing up."),
-                      tool_use(f"standup-{tag}", TOOL_PREFIX + "execute_llmdbenchmark",
-                               _STANDUP_INPUT)),
-            assistant(text("All set.")),
-            result(),
-        ]] if mutating else [[assistant(text(f"Read-only reply {tag}.")), result()]])
-
-    def next_transport(self) -> FakeTransport:
-        script = self._scripts.pop(0) if self._scripts else [[result()]]
-        # Spare empty turns: a stray follow-up query (e.g. a raced steer) gets a clean empty
-        # reply instead of tripping the fake's script-exhausted assertion. A generous response
-        # timeout because a parked approval gate holds its tools/call control request open for
-        # as long as the fuzzer leaves the card unanswered (it may switch chats first).
-        return FakeTransport(script + [[result()], [result()]], response_timeout=300.0)
+        if mutating:
+            self.add_turns(
+                AssistantTurn(text="Here is the plan.", tool_calls=[
+                    ToolCall(f"plan-{tag}", "propose_session_plan", _PLAN_INPUT)]),
+                AssistantTurn(text="Standing up.", tool_calls=[
+                    ToolCall(f"standup-{tag}", "execute_llmdbenchmark", _STANDUP_INPUT)]),
+                AssistantTurn(text="All set."),
+            )
+        else:
+            self.add_turns(AssistantTurn(text=f"Read-only reply {tag}."))
 
 
 # --------------------------------------------------------------------------------------------
-# Test app wiring: real `app`, but an isolated tmp workspace + SimRunner + FuzzProvider.
+# Test app wiring: real `app`, but an isolated tmp workspace + SimRunner + scripted turns.
 # --------------------------------------------------------------------------------------------
 
-def install_isolated_state(app, tmp_path, *, engine: str = "loop") -> FuzzProvider | SdkFuzzScripts:
-    """Repoint the live app at an isolated, simulate-mode, empty session store + fuzz provider.
+def install_isolated_state(app, tmp_path) -> SdkFuzzScripts:
+    """Repoint the live app at an isolated, simulate-mode, empty session store + scripted turns.
 
     The ``/ws`` handler and the ``/api/*`` routes read ``app.state.{sessions,runner,channels,
-    running,provider}`` — swapping these (after TestClient startup) gives each fuzz run a clean,
+    running}`` — swapping these (after TestClient startup) gives each fuzz run a clean,
     hermetic backend without reimporting the module. SimRunner makes every mutating command a
-    no-op, so nothing here can touch a real cluster.
-
-    ``engine="sdk-native"`` additionally installs an :class:`SdkFuzzScripts` transport factory
-    on ``app.state.sdk_transport_factory`` (the /ws handler's hermetic seam) and returns the
-    primer instead of the provider — the caller must also set ``AGENT_ENGINE=sdk-native`` in
-    the environment (the handler's engine switch reads it per connection).
+    no-op, so nothing here can touch a real cluster. The returned :class:`SdkFuzzScripts`
+    primer feeds the engine via ``app.state.sdk_transport_factory`` (the /ws handler's
+    hermetic seam).
     """
     settings = Settings(
         _env_file=None,
@@ -182,15 +125,7 @@ def install_isolated_state(app, tmp_path, *, engine: str = "loop") -> FuzzProvid
     app.state.channels = {}
     app.state.running = {}
     app.state.sessions = SessionManager(settings, policy, runner)
-    provider = FuzzProvider()
-    app.state.provider = provider
-    app.state.provider_error = None
-    if engine == "sdk-native":
-        primer = SdkFuzzScripts()
-        app.state.sdk_transport_factory = primer.next_transport
-        return primer
-    app.state.sdk_transport_factory = None  # clear any factory a prior sdk-native run left
-    return provider
+    return SdkFuzzScripts().install(app)
 
 
 def read_protocol(ws, *, until: set[str] | None = None) -> list[dict[str, Any]]:
@@ -342,7 +277,7 @@ class Player:
     single connection between sessions, plus brief reconnects.
     """
 
-    def __init__(self, app, client: TestClient, provider: FuzzProvider | SdkFuzzScripts,
+    def __init__(self, app, client: TestClient, provider: SdkFuzzScripts,
                  rng: random.Random):
         self.app = app
         self.client = client
@@ -496,7 +431,7 @@ class Player:
         self._ws.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
         # Pump the WHOLE turn to `done`: a mutating turn parks at the plan gate, which `_pump`
         # answers (seeded approve/reject); on approve the standup (a SimRunner no-op) runs to
-        # done, on reject the loop feeds the refusal back and the closing turn ends — either way
+        # done, on reject the engine feeds the refusal back and the closing turn ends — either way
         # we reach `done`, with no parked gate left dangling.
         self._pump(until={"done"})
 

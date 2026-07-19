@@ -32,7 +32,7 @@ version-controlled, so a clone starts with NO merge gate — run the installer t
 ## Where the tests live (bucket → app subsystem)
 The unit suite is grouped into four subpackages; a file's bucket = the **dominant `app.*` import**
 (ties / no `app.*` import → `platform/`). `git grep` the symbol to find "which test covers X".
-- `tests/agent/` — `app/agent` + `app/llm`: loop, events, sessions, context mgmt, WS, providers, prompt.
+- `tests/agent/` — `app/agent` + `app/llm`: the SDK-native engine, events, sessions, WS, model catalog, prompt stability.
 - `tests/tools/` — `app/tools`: registry + schemas, the setup/run/analyze/access handlers, command exec.
 - `tests/orchestrator/` — `app/orchestrator` + `app/capacity` + `app/readiness`: jobs, capacity pre-flight, readiness probes, infra preconditions.
 - `tests/platform/` — everything else: config/dig/web/main, security + command policy, storage, packaging/sharing, observability, validation gates, knowledge-file checks, product boundary, UI/HTTP e2e.
@@ -49,17 +49,14 @@ The unit suite is grouped into four subpackages; a file's bucket = the **dominan
   `make validate-live` spend Max-plan quota → only on explicit user request. Plain `pytest` is safe and hermetic.
   Two modes (both gated on explicit request): `LLM_EVAL_LIVE=1 pytest tests/eval/live/test_flows_live.py` (live set)
   and `LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1 pytest …` (simulate set) — error/safety flows are honest only live,
-  multi-step DEPLOY walks only in simulate. ⚠️ In a worktree the gitignored `.env` is absent → the provider raises
-  → every live test SKIPS silently; `cp <primary>/.env <worktree>/.env` first.
+  multi-step DEPLOY walks only in simulate. Live turns run on the logged-in `claude` CLI (keyless);
+  a worktree's missing `.env` only matters if it carried a non-default `LLM_PROVIDER`/`AGENT_SDK_*`.
   - **Non-pytest path** (use this when `pytest` is hook-blocked by hand): `scripts/eval/validate_flows.py
     --live` / `--simulate` drives the SAME harness/scoring without pytest. Still spends quota; still needs the worktree `.env`.
   - **Any REAL run → the ISOLATED runner**: `make validate-live-iso` / `make validate-simulate-iso` — one
     process per flow under an EXTERNAL kernel-level `timeout` (the in-process watchdogs are DEFEATABLE);
     mechanics + rationale → `docs/reference/VALIDATION.md` §"Isolated eval runner". `FLOWS="a b"` runs a
     subset; logs → `workspace/eval-logs/`; ⚠️ worktree: copy `.env` + set `REPOS_DIR=<primary>` (empty siblings).
-  - **`load_tools` group scoring** (`score_flow`): the live eval verifies the model loaded the
-    RIGHT tool group(s) for the grouped tools a flow requires; an EXTRA group is a NOTE (not a
-    failure), never loading a needed one IS a failure. Hermetic guards in `tests/flows/test_eval_harness.py`.
   - **Skill-usage eval** (`tests/eval/simulate/test_skill_usage_live.py`, same gate): asserts the agent grounds
     each op in the RIGHT doc BEFORE acting, matching the spec-aware `skill_gate` (kind/CPU-sim →
     `quickstart`, NOT deploy_skill); scenarios/knobs → `docs/reference/VALIDATION.md`. ⚠️ worktree needs `REPOS_DIR=<primary>`.

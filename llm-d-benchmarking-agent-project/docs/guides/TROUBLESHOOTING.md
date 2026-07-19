@@ -32,12 +32,11 @@ transcript position on reconnect/resume.
 ## Symptom → what to check
 
 ### The agent connects but never responds / no LLM output
-- No API key. A real session needs `ANTHROPIC_API_KEY` in
-  `.env` (or a Claude subscription for the default `claude-agent-sdk` provider). `GET /readyz`
-  reports `provider_coherent: false` when the configured provider has no key. Tests run a fake
-  provider, so green tests do not imply a configured key.
-- Wrong provider/model. `LLM_PROVIDER` must be `claude-agent-sdk` or `anthropic`; an unknown
-  value fails the self-check with `unknown LLM_PROVIDER`.
+- Not logged in. The agent runs on the Claude Agent SDK — auth is the logged-in `claude` CLI
+  (or a `claude setup-token` token), no API key. Run `./scripts/install/setup-claude-plan.sh`.
+  Tests script the engine hermetically, so green tests do not imply a working login.
+- Wrong provider. `LLM_PROVIDER` must be a `claude-agent-sdk` alias; anything else fails the
+  `GET /readyz` self-check with `unsupported LLM_PROVIDER` and errors each turn cleanly.
 - Check the logs for `turn.start` without a matching `turn.end` on the same `corr_id`. That
   localizes a hang to the LLM call vs a tool.
 

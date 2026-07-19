@@ -27,14 +27,14 @@ Everything below follows from two rules (full statement → [`CLAUDE.md`](../../
    ┌──────────────────────────────────────────────────────────────────────┐
    │ FastAPI backend (app/main.py)  ── the security + secrets boundary      │
    │                                                                        │
-   │   SessionManager ──► Session ──► AgentLoop (app/agent/loop.py)         │
+   │   SessionManager ──► Session ──► SdkNativeEngine (app/agent/engine.py) │
    │                                      │                                 │
    │                       build_system_prompt = ROLE + HARD_RULES +        │
    │                       knowledge/*.md|*.yaml + LIVE catalog snapshot     │
    │                                      │                                 │
    │                                      ▼                                 │
-   │                            LLM provider (Anthropic | OpenAI-compatible)│
-   │                                      │ emits schema-validated tool calls│
+   │                 Claude Agent SDK / CLI (runs the model→tool loop)      │
+   │                                      │ tool calls via in-process MCP    │
    │                                      ▼                                 │
    │            tool registry (app/tools/registry.py)                       │
    │              dispatch: validate args (gate a) ─► handler                │
@@ -70,18 +70,19 @@ text, structured events, and Approve/Reject decisions. Responsibilities:
   the agent; `/healthz`, `/metrics`, `/api/sessions`, `/api/history*` are control/observe
   endpoints.
 - **Lifespan wiring**: loads `Settings`, the `CommandPolicy`, the `CommandRunner`, the
-  cross-session concurrency `Semaphore`, the `SessionManager`, and the LLM provider (built
-  tolerantly so a missing key doesn't crash the server).
+  cross-session concurrency `Semaphore`, and the `SessionManager`; an unsupported
+  `LLM_PROVIDER` is flagged at startup and surfaces as a clean per-turn error (never a crash).
 - **Connection handling**: resume a saved chat via `/ws?session=<id>`; replay history and
   the command trail; keep an approved in-flight turn alive after a socket drop (background
   benchmark runs survive navigating away); reject a second connection's concurrent turn.
 
-### Agent loop: `app/agent/`
-- `loop.py`: the control loop. Assemble the system prompt, call the LLM, validate and
-  dispatch each tool call through the gate, stream results back, feed tool results to the
-  model, and repeat until the model stops calling tools (bounded by `MAX_STEPS`). One tool
-  can never crash the loop; rejections and errors are returned to the model so it can
-  replan.
+### Agent engine: `app/agent/`
+- `engine.py`: `SdkNativeEngine`. The Claude Agent SDK/CLI runs the model→tool→model loop
+  natively (bounded by `MAX_TURNS`); the engine assembles the system prompt + options,
+  bridges the SDK stream onto the app's WS events, gates every tool call (approvals), and
+  persists the transcript mirror. Tools execute through the in-process MCP wrapper
+  (`app/tools/mcp_server.py`) → `registry.dispatch()`, so one tool can never crash the
+  turn; rejections and errors are returned to the model so it can replan.
 - `prompt.py`: `build_system_prompt()` = a fixed `ROLE` + `HARD_RULES` + every file
   under `knowledge/` + a live catalog snapshot read from the repo on disk. This is where
   the "thick agent" lives: changing the agent's behavior means editing `knowledge/`, not code.
@@ -190,9 +191,11 @@ the namespace with the Baseline Pod Security Standard, so a mistaken/crafted Job
 ## Request flow (one user turn)
 
 1. The browser sends `user_message` over `/ws`.
-2. `AgentLoop.run_turn` builds the system prompt (role + hard rules + knowledge + live
-   catalog) and calls the LLM with the tool definitions.
-3. The LLM streams `assistant_text` and emits `tool_call`s.
+2. `SdkNativeEngine.run_turn` builds the system prompt (role + hard rules + knowledge +
+   live catalog) and opens/resumes the CLI conversation with every tool exposed as an
+   in-process MCP tool.
+3. The model streams `assistant_text` and emits tool calls; the SDK dispatches each into
+   the MCP wrapper.
 4. For each tool call, `dispatch` validates the arguments (gate a) and runs the handler.
 5. A handler that runs a command goes through `ToolContext.run_command`, then
    `policy.validate`. Read-only commands auto-run and emit a `command` event; mutating
@@ -201,7 +204,8 @@ the namespace with the Baseline Pod Security Standard, so a mistaken/crafted Job
    what truly ran).
 6. Output streams back as `output` lines; the tool returns a structured result
    (`tool_result`), which is fed back into the model.
-7. The loop repeats until the model stops calling tools, then emits `done`.
+7. The model↔tool loop repeats inside the SDK until the model stops calling tools, then
+   the engine emits `done`.
 
 ## Trust & data-flow boundaries
 

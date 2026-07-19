@@ -1,20 +1,17 @@
-"""Shared LLM-provider auth check for the opt-in live evals (``tests/eval`` + ``tests/flows``).
+"""Shared LLM auth check for the opt-in live evals (``tests/eval`` + ``tests/flows``).
 
-The same provider-agnostic guard was copy-pasted across the three live-eval modules; it lives here
-once. The key-based provider (anthropic) raises ``ProviderError`` without its key, while the keyless
-one (``claude-agent-sdk`` — auth via the logged-in ``claude`` CLI) constructs successfully, so this
-gates on "can the configured provider be built", not on a specific key being set.
+The engine runs on the Claude Agent SDK (auth via the logged-in ``claude`` CLI — keyless), so
+"can this box go live" reduces to: is the configured provider one the SDK-native engine
+supports? The SDK ships its own bundled CLI, so construction itself can't fail; a missing
+login surfaces as the live turn erroring (which the live tests score as a failure).
 """
 from __future__ import annotations
 
 from app.config import get_settings
-from app.llm.provider import ProviderError, get_provider
+from app.llm.model_catalog import AGENT_SDK_PROVIDERS
 
 
 def has_auth() -> bool:
-    """True when the configured provider can be built — i.e. auth is in place."""
-    try:
-        get_provider(get_settings())
-        return True
-    except ProviderError:
-        return False
+    """True when the configured provider is one the SDK-native engine can drive live."""
+    provider = (get_settings().llm_provider or "claude-agent-sdk").lower()
+    return provider in AGENT_SDK_PROVIDERS

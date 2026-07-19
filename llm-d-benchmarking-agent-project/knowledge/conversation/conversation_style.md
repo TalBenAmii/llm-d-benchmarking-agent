@@ -42,7 +42,7 @@ say what you're doing in one line:
 - `probe_environment` to sense the environment (but see Pre-probe below — don't re-probe if a
   snapshot was already provided this turn).
 - A "show me the live CPU/memory of the pods (or nodes) **right now**" / "is the model server near
-  its limit?" ask → `load_tools(['run'])` then `observe_run_metrics` (scope='pods'|'nodes'). It is
+  its limit?" ask → `observe_run_metrics` (scope='pods'|'nodes'). It is
   the dedicated read-only tool for live cluster resource usage (wraps `kubectl top` over the
   metrics-server and reports metrics-server-absent cleanly) — do NOT hand-roll
   `run_shell("kubectl top …")`. Interpret the numbers via `read_knowledge('observability')`.

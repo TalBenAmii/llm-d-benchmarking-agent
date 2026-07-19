@@ -16,11 +16,11 @@ referenced. It is not a roadmap.
  ┌──────────┐   WS/HTTP    ┌──────────────────────────────────────────────┐
  │ Browser  │ ───────────▶ │ FastAPI backend (app/main.py)                 │
  │  (UI)    │ ◀─────────── │  — CORS (Phase 12)                            │
- └──────────┘   events      │  — agent loop (app/agent/loop.py)            │
+ └──────────┘   events      │  — agent engine (app/agent/engine.py)        │
    UNTRUSTED               │     ▲ tool calls                              │
    (never holds secrets)   │     │                                         │
                            │  ┌──┴───────────┐   prompts/responses         │
-                           │  │ LLM provider │ ◀───────────────────────▶  (external API)
+                           │  │ SDK/CLI (LLM)│ ◀───────────────────────▶  (external API)
                            │  └──────────────┘   UNTRUSTED OUTPUT          │
                            │     │ proposes argv                           │
                            │  ┌──▼──────────────────────────────────────┐ │
@@ -139,8 +139,8 @@ acceptable:
 - **Isolate the target cluster.** Point the agent at a throwaway/dev cluster (the `cicd/kind`
   quickstart path) for experimentation; do not aim it at production from an untrusted prompt
   source.
-- **Treat the LLM provider as a third party.** Conversation content (including any pasted logs)
-  is sent to the configured provider. Don't paste real secrets into the chat.
+- **Treat the LLM service as a third party.** Conversation content (including any pasted logs)
+  is sent to Anthropic via the Claude CLI. Don't paste real secrets into the chat.
 - **Keep `.env`, `secret.env`, and `KUBECONFIG` off shared volumes** and out of version control
   (they are gitignored).
 

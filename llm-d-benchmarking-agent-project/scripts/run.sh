@@ -69,28 +69,22 @@ fi
 HOST="$(read_env HOST)"; HOST="${HOST:-127.0.0.1}"
 PORT="${PORT_OVERRIDE:-$(read_env PORT)}"; PORT="${PORT:-8000}"
 
-# Credential note per provider route — warn, never block: the UI must serve either way.
-# Lower-cased to match the app's own dispatch (get_provider lower-cases LLM_PROVIDER too).
-PROVIDER="$(read_env LLM_PROVIDER | tr '[:upper:]' '[:lower:]')"; PROVIDER="${PROVIDER:-anthropic}"
+# Credential note — warn, never block: the UI must serve either way.
+# Lower-cased to match the app's own dispatch (main.py lower-cases LLM_PROVIDER too).
+PROVIDER="$(read_env LLM_PROVIDER | tr '[:upper:]' '[:lower:]')"; PROVIDER="${PROVIDER:-claude-agent-sdk}"
 case "$PROVIDER" in
   claude-agent-sdk|agent-sdk|claude-max)
-    # Plan route: the credential is the `claude` CLI's login, so a logged-out day-2 start
-    # would otherwise surface only as an error at the first chat message.
+    # The credential is the `claude` CLI's login, so a logged-out day-2 start would
+    # otherwise surface only as an error at the first chat message.
     if ! command -v claude >/dev/null 2>&1; then
       log "Note: LLM_PROVIDER=$PROVIDER but the 'claude' CLI is not on PATH — the UI loads, chat won't. Run ./scripts/install/setup-claude-plan.sh"
     elif ! claude auth status --json 2>/dev/null | grep -qE '"loggedIn":[[:space:]]*true'; then
       log "Note: the 'claude' CLI is not logged in — the UI loads, chat won't. Run ./scripts/install/setup-claude-plan.sh (or 'claude auth login')."
     fi ;;
   *)
-    # Same explicit alias list as get_provider (app/llm/provider.py) — no open globs, so a
-    # typo'd provider gets the anthropic-default note rather than misleading openai advice.
-    case "$PROVIDER" in
-      openai|openai-compatible|vllm) KEY="$(read_env OPENAI_API_KEY)" ;;
-      *)                             KEY="$(read_env ANTHROPIC_API_KEY)" ;;
-    esac
-    if [[ -z "$KEY" ]]; then
-      log "Note: no ${PROVIDER^^} API key in .env — the UI loads, but a live session needs one."
-    fi ;;
+    # Anything else fails app readiness with a clear per-turn error (the SDK-native engine
+    # supports only the Claude Agent SDK) — say so at startup too.
+    log "Note: LLM_PROVIDER=$PROVIDER is unsupported — the UI loads, chat won't. Set LLM_PROVIDER=claude-agent-sdk (./scripts/install/setup-claude-plan.sh)." ;;
 esac
 
 URL="http://${HOST}:${PORT}"

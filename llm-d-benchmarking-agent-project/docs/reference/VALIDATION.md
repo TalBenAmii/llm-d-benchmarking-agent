@@ -28,16 +28,15 @@ flow fixtures); layers 3 and 4 are the agent self-eval harness (`tests/eval/`).
 > **Live-eval mechanics (layer 2).** Two modes: `LLM_EVAL_LIVE=1` (the live set: tool-choice /
 > error-recovery / safety) and `LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1` (the simulate set: multi-step
 > deploy walks); both also runnable WITHOUT pytest via `python scripts/eval/validate_flows.py --live` /
-> `--simulate` (same harness + scoring). Two safeguards: a per-call watchdog (`LLM_EVAL_CALL_TIMEOUT`,
-> default 90s) that force-kills a wedged SDK subprocess tree and fails fast, backed by a per-FLOW cap
-> (`LLM_EVAL_FLOW_TIMEOUT`, default 300s); and a `score_flow` check that the model loaded the right
-> `load_tools` group(s) (an extra group is a NOTE, a missing one fails). Both guarded hermetically in
+> `--simulate` (same harness + scoring). Safeguard: the engine's own stream watchdog
+> (fed from `LLM_EVAL_CALL_TIMEOUT`, default 90s) interrupts a stalled live call and fails the flow
+> fast, backed by a per-FLOW cap (`LLM_EVAL_FLOW_TIMEOUT`, default 300s). Guarded hermetically in
 > `tests/flows/test_eval_harness.py` (ZERO quota).
 
 ### Isolated eval runner
 
 The in-process watchdogs are `asyncio` timers, so a frozen event loop never fires them (a
-blocking/synchronous call, or the `claude-agent-sdk` provider's long-lived CLI subprocess
+blocking/synchronous call, or the engine's CLI subprocess
 deadlocking between flows). `scripts/eval/run_eval_isolated.sh` (`make validate-live-iso` /
 `make validate-simulate-iso`) is the structural fix: each flow runs in its own
 `validate_flows.py --flow …` process (fresh SDK subprocess, no cross-flow state), wrapped in

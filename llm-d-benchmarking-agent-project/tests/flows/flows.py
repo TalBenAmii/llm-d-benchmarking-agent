@@ -20,8 +20,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.llm.provider import AssistantTurn, ToolCall
 from app.security.policy import MUTATING, READ_ONLY
+from tests._scripted import AssistantTurn, ToolCall
 
 from .harness import CannedResult, CannedValue, ExpectedCommand
 

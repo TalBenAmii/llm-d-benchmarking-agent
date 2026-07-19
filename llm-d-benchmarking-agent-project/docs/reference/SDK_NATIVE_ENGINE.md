@@ -1,8 +1,10 @@
-# SDK-native engine — design (approved 2026-07-14)
+# SDK-native engine — design (approved 2026-07-14) — **IMPLEMENTED 2026-07-19**
 
 Replace the app's own agent loop and hand-rolled context management with the Claude Agent SDK
-running the loop natively, the way Claude Code does. This doc is the implementation contract for
-the refactor; it was written after Phase 0 (research + spikes) and before Phase 1 (code).
+running the loop natively, the way Claude Code does. This doc was the implementation contract for
+the refactor (written after Phase 0, before Phase 1); the cutover is now complete — the engine is
+`app/agent/engine.py`, the old loop/provider layer is deleted, and the "Implementation findings"
+section at the bottom records what Phases 3–5 measured.
 
 ## Why
 
@@ -104,3 +106,30 @@ restart battery) · compaction dropping injected catalog/env context (durable fa
 state.json, not the conversation) · cost regression from unclamped results (baseline-gated) ·
 Transport ABC drift (version pin + canary test) · subprocess leaks (connect-per-turn + finally-
 disconnect + leak canary).
+
+
+## Implementation findings (Phases 3–5, 2026-07-16 → 2026-07-19)
+
+- **Event-order parity needed one engine-side fix**: the SDK dispatches a tool while its
+  introducing assistant message still sits in the consumer queue, so `tool_call` could precede
+  the text bubble. Fixed in-engine (`LiveTurn.wait_mirrored`): tool execution waits until the
+  consumer mirrored+emitted the introducing message — the WS transcript keeps the old order.
+- **Wire parity (Phase 4)**: all 6 baseline flows are byte-identical to the old-engine pins
+  after dropping `usage` events — the ONE adjudicated diff (old: usage per LLM call; new: one
+  per SDK response). Both baseline sets stay committed (`tests/flows/baselines/`), with a guard
+  test diffing them modulo usage.
+- **Cost gate (Phase 4-live, sonnet-5/effort high): PASSED at 0.344** weighted per-token cost
+  ratio new/old (gate was ≤1.2). The old engine paid cache WRITES per session; the CLI prefix is
+  a shared cache READ. Raw context ~2× larger but ~10× cheaper per token; turn-2 steady state
+  ~34% cheaper. The PostToolUse-clamp fallback was never needed.
+- **Resume battery**: CLI `resume=` survives server restarts; a dead/unknown session id falls
+  back to a fresh SDK session seeded from the `session.messages` mirror (plain-text narration —
+  the CLI rejects synthetic tool_use/tool_result blocks).
+- **Stream watchdog** (`agent_stream_watchdog_s`, 900s default): no-progress stall → interrupt +
+  clean ERROR; tool execution is exempt so parked approval gates can wait indefinitely. The live
+  eval reuses it as its per-flow fail-fast (`LLM_EVAL_CALL_TIMEOUT`).
+- **Deleted at cutover** (Phase 5): `loop.py`, `context_mgmt.py`, `provider.py`,
+  `agent_sdk_provider.py`, `anthropic_provider.py`, `tool_loader.py`, lazy tool groups +
+  `load_tools`, doc dedup, budget clamps (except the 4k env-preamble clamp, now in `engine.py`),
+  the char/4 context estimator, and the `AGENT_ENGINE` flag. Tests script the engine through
+  `tests/_scripted.py` (AssistantTurn scripts → FakeTransport) instead of a fake provider.

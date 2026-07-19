@@ -9,7 +9,7 @@
 #   4. verifies end-to-end with ONE tiny test call on your plan (a few tokens)
 #
 # No API key is involved — the app authenticates through the CLI's own login, exactly like
-# the claude-agent-sdk provider does at runtime. Runs standalone or as install_local.sh's last
+# the engine does at runtime. Runs standalone or as install_local.sh's last
 # step (skip there with --no-llm-setup). Without a usable terminal (CI / scripted installs)
 # it skips cleanly and changes nothing.
 #
@@ -48,15 +48,13 @@ ask() {  # $1 prompt, $2 default → echoes the answer (or default if blank)
 ensure_env
 
 # ── Consent first — context-aware default ──────────────────────────────────
-# A fresh .env (example default + no key) defaults to Yes; a deliberately configured provider
-# (a key actually set, or already on the plan) is shown so a re-run can't silently clobber it.
-# Lower-cased to match the app's own dispatch (get_provider lower-cases LLM_PROVIDER too).
-CUR_PROVIDER="$(read_env LLM_PROVIDER | tr '[:upper:]' '[:lower:]')"; CUR_PROVIDER="${CUR_PROVIDER:-anthropic}"
+# A fresh .env defaults to Yes; an already-wired plan route is shown so a re-run just
+# re-verifies. Lower-cased to match the app's own dispatch (main.py lower-cases LLM_PROVIDER too).
+CUR_PROVIDER="$(read_env LLM_PROVIDER | tr '[:upper:]' '[:lower:]')"; CUR_PROVIDER="${CUR_PROVIDER:-claude-agent-sdk}"
 CUR_KEY=""
 case "$CUR_PROVIDER" in
-  openai|openai-compatible|vllm) CUR_KEY="$(read_env OPENAI_API_KEY)" ;;
   claude-agent-sdk|agent-sdk|claude-max) ;;   # already the plan route — re-running just re-verifies
-  *) CUR_KEY="$(read_env ANTHROPIC_API_KEY)" ;;
+  *) CUR_KEY="$(read_env ANTHROPIC_API_KEY)" ;;   # stale pre-cutover config — offer the switch
 esac
 WIRE=1
 if [[ -n "$CUR_KEY" ]]; then
@@ -134,7 +132,7 @@ set_env_var AGENT_SDK_EFFORT high
 log "Wrote .env: LLM_PROVIDER=claude-agent-sdk · AGENT_SDK_MODEL=$MODEL · AGENT_SDK_EFFORT=high"
 
 # ── Verify end-to-end: one tiny inference on the plan ──────────────────────
-# Mirrors the runtime provider: any stray API key is blanked so the call runs on the
+# Mirrors the runtime engine: any stray API key is blanked so the call runs on the
 # subscription, and it runs from an empty dir so no project context pads the test prompt.
 # `timeout` guards a hung CLI but is optional — stock macOS ships without coreutils, and a
 # missing guard must not turn a working plan into a reported failure.
