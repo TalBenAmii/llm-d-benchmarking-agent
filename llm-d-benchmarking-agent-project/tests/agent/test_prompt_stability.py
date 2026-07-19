@@ -18,7 +18,6 @@ from app.security.runner import CommandRunner
 from tests._helpers import COMMAND_POLICY_PATH, _capture_ctx
 from tests._sdk_fake import FakeTransport, assistant, result, text
 
-
 # ---- cache-prefix stability: the live catalog is OUT of the cached system prefix -----------
 
 def test_system_prompt_has_no_live_catalog_body(tool_ctx):
