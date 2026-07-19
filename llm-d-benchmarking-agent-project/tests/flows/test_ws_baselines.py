@@ -25,12 +25,20 @@ _CAPTURE_SCRIPT = (
 _ENGINE_SUFFIXES = ("", ".sdk-native")
 
 
-def _declared_baselines() -> dict:
-    """The capture script's BASELINES spec — the single source of truth for what must exist."""
+def _load_capture_module():
     spec = importlib.util.spec_from_file_location("capture_ws_baseline", _CAPTURE_SCRIPT)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.BASELINES
+    return mod
+
+
+# Loaded ONCE at module scope: the BASELINES spec is the single source of truth for what must
+# exist, and the live-recapture test reuses the module's own capture_flow/normalization.
+_CAPTURE = _load_capture_module()
+
+
+def _declared_baselines() -> dict:
+    return _CAPTURE.BASELINES
 
 
 def test_ws_baselines_exist_parse_and_end_done():
@@ -84,3 +92,24 @@ def test_sdk_native_wire_stream_matches_old_engine_modulo_usage_cadence():
             f"{name}: sdk-native wire stream diverged from the pinned old-engine baseline "
             "(compare the two .events.json files; adjudicate before normalizing anything)"
         )
+
+
+def test_live_recapture_matches_committed_sdk_native_pin():
+    """The engine's CURRENT wire stream still matches its committed pin — captured live, here,
+    over the hermetic path (FakeTransport + in-process WS, zero quota). After cutover the
+    frozen-vs-frozen parity test above can't catch an engine regression on its own; this one
+    can, for a representative flow. One flow keeps the test fast; a full recapture stays the
+    documented manual act (scripts/eval/capture_ws_baseline.py — see baselines/README.md).
+
+    dry-run-preview is the chosen pin: read-only (no approval gates, no skill-gate surface, so
+    pytest's autouse grounding fixture cannot perturb it) and the fastest of the six."""
+    from tests.flows.flows import FLOWS_BY_NAME as flows
+
+    captured = _CAPTURE.capture_flow(flows["dry-run-preview"])
+    committed = json.loads(
+        (_BASELINE_DIR / "dry-run-preview.sdk-native.events.json").read_text())["events"]
+    assert captured == committed, (
+        "the engine's live-captured dry-run-preview stream diverged from its committed "
+        ".sdk-native pin — if the change is intended, recapture with "
+        "scripts/eval/capture_ws_baseline.py and adjudicate the diff"
+    )

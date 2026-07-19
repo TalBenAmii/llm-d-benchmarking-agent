@@ -10,10 +10,9 @@
 # For local/kind or air-gapped use, --build builds the image here (docker build) and defaults its
 # pullPolicy to Never — load it onto the nodes yourself (e.g. `kind load docker-image`).
 #
-# LLM auth defaults to the Claude Agent SDK on a Claude subscription (Max/Pro): pass the token from
-# `claude setup-token` via --oauth-token / $CLAUDE_CODE_OAUTH_TOKEN. Fallback: --anthropic-key /
-# $ANTHROPIC_API_KEY selects the metered Anthropic API. Neither given → deploys with the SDK default
-# and no auth secret; live chat stays disabled until a token/key is set.
+# LLM auth is the Claude Agent SDK on a Claude subscription (Max/Pro): pass the token from
+# `claude setup-token` via --oauth-token / $CLAUDE_CODE_OAUTH_TOKEN. No token → deploys with the
+# SDK default and no auth secret; live chat stays disabled until the token is set.
 #
 # Usage:
 #   ./scripts/install/install_service.sh [flags]
@@ -25,9 +24,7 @@
 #       --image-pull-policy P  Always|IfNotPresent|Never (default: IfNotPresent)
 #       --build                docker-build the image locally and use it (air-gapped/dev; pullPolicy→Never)
 #       --oauth-token TOKEN    Claude subscription token from `claude setup-token`
-#                              (default: $CLAUDE_CODE_OAUTH_TOKEN); selects the claude-agent-sdk path
-#       --anthropic-key KEY    Anthropic API key fallback (default: $ANTHROPIC_API_KEY); used only
-#                              when no --oauth-token is given
+#                              (default: $CLAUDE_CODE_OAUTH_TOKEN) — the chat auth
 #       --orchestrator-image IMG  image for in-cluster orchestrated benchmark Jobs (config.orchestratorImage)
 #       --kubeconfig PATH      kubeconfig file (default: $KUBECONFIG / ~/.kube/config)
 #       --context NAME         kube-context to use (default: current-context)
@@ -61,7 +58,6 @@ IMAGE_PULL_POLICY="${IMAGE_PULL_POLICY:-IfNotPresent}"
 PULL_POLICY_SET=0
 BUILD="${BUILD:-0}"
 OAUTH_TOKEN="${OAUTH_TOKEN:-${CLAUDE_CODE_OAUTH_TOKEN:-}}"
-ANTHROPIC_KEY="${ANTHROPIC_KEY:-${ANTHROPIC_API_KEY:-}}"
 ORCHESTRATOR_IMAGE="${ORCHESTRATOR_IMAGE:-}"
 KUBECONFIG_PATH="${KUBECONFIG_PATH:-}"
 KUBE_CONTEXT="${KUBE_CONTEXT:-}"
@@ -79,7 +75,6 @@ parse_args() {
       --image-pull-policy)  IMAGE_PULL_POLICY="${2:?--image-pull-policy needs a value}"; PULL_POLICY_SET=1; shift 2 ;;
       --build)              BUILD=1; shift ;;
       --oauth-token)        OAUTH_TOKEN="${2:?--oauth-token needs a value}"; shift 2 ;;
-      --anthropic-key)      ANTHROPIC_KEY="${2:?--anthropic-key needs a value}"; shift 2 ;;
       --orchestrator-image) ORCHESTRATOR_IMAGE="${2:?--orchestrator-image needs a value}"; shift 2 ;;
       --kubeconfig)         KUBECONFIG_PATH="${2:?--kubeconfig needs a value}"; shift 2 ;;
       --context)            KUBE_CONTEXT="${2:?--context needs a value}"; shift 2 ;;
@@ -143,19 +138,16 @@ deploy_agent() {
     --set "image.pullPolicy=$IMAGE_PULL_POLICY"
     --wait --timeout "$TIMEOUT"
   )
-  # Provider selection: the OAuth token (Claude subscription via `claude setup-token`) is the primary
-  # path; an Anthropic API key is the metered fallback; prefer the token when both are set. Neither →
-  # the chart's claude-agent-sdk default with no auth secret. --set-string so a token/key's special
-  # chars are never parsed as YAML/type coercion.
-  # Under --dry-run helm renders the Secret's stringData in cleartext to stdout; mask the secret VALUE
-  # with a placeholder so a real token/key can't leak to a shared/CI terminal. Provider selection and
-  # arg structure stay identical, so the rendered manifest is still validated.
-  local oauth_val="$OAUTH_TOKEN" key_val="$ANTHROPIC_KEY"
-  if [[ "$DRY_RUN" == 1 ]]; then oauth_val="REDACTED-DRY-RUN"; key_val="REDACTED-DRY-RUN"; fi
+  # Chat auth: the OAuth token (Claude subscription via `claude setup-token`) is the only path —
+  # the SDK-native engine has no API-key fallback. No token → the chart's claude-agent-sdk default
+  # with no auth secret. --set-string so a token's special chars are never parsed as YAML/type
+  # coercion. Under --dry-run helm renders the Secret's stringData in cleartext to stdout; mask the
+  # secret VALUE with a placeholder so a real token can't leak to a shared/CI terminal. Arg
+  # structure stays identical, so the rendered manifest is still validated.
+  local oauth_val="$OAUTH_TOKEN"
+  if [[ "$DRY_RUN" == 1 ]]; then oauth_val="REDACTED-DRY-RUN"; fi
   if [[ -n "$OAUTH_TOKEN" ]]; then
     helm_args+=(--set-string "config.llmProvider=claude-agent-sdk" --set-string "secret.claudeCodeOauthToken=$oauth_val")
-  elif [[ -n "$ANTHROPIC_KEY" ]]; then
-    helm_args+=(--set-string "config.llmProvider=anthropic" --set-string "secret.anthropicApiKey=$key_val")
   fi
   [[ -n "$ORCHESTRATOR_IMAGE" ]] && helm_args+=(--set "config.orchestratorImage=$ORCHESTRATOR_IMAGE")
   [[ "$DRY_RUN" == 1 ]]          && helm_args+=(--dry-run)
@@ -171,9 +163,8 @@ print_success() {
   log "Reach the chat UI:"
   log "  kubectl -n $NAMESPACE port-forward svc/$fullname 8000:8000"
   log "  # then browse http://localhost:8000"
-  log "Live chat auth: the default provider is the Claude Agent SDK on a Claude subscription — get a"
-  log "  token via 'claude setup-token' and set secret.claudeCodeOauthToken (or re-run with --oauth-token)."
-  log "  API-key fallback: --anthropic-key / secret.anthropicApiKey (config.llmProvider=anthropic)."
+  log "Live chat auth: the Claude Agent SDK on a Claude subscription — get a token via"
+  log "  'claude setup-token' and set secret.claudeCodeOauthToken (or re-run with --oauth-token)."
   log "Full post-install notes:  helm get notes $RELEASE -n $NAMESPACE"
 }
 
@@ -186,10 +177,8 @@ main() {
   build_ctx_args
   preflight
   [[ "$BUILD" == 1 ]] && build_image
-  if [[ -n "$OAUTH_TOKEN" && -n "$ANTHROPIC_KEY" ]]; then
-    warn "Both an OAuth token and an Anthropic API key given — using the OAuth token (claude-agent-sdk); --anthropic-key / ANTHROPIC_API_KEY is ignored."
-  elif [[ -z "$OAUTH_TOKEN" && -z "$ANTHROPIC_KEY" ]]; then
-    warn "No OAuth token (--oauth-token / CLAUDE_CODE_OAUTH_TOKEN) or Anthropic API key (--anthropic-key / ANTHROPIC_API_KEY) — deploying with the claude-agent-sdk default and NO auth secret; live chat stays disabled until secret.claudeCodeOauthToken (or an API key) is set. /healthz and a keyless-green /readyz still serve."
+  if [[ -z "$OAUTH_TOKEN" ]]; then
+    warn "No OAuth token (--oauth-token / CLAUDE_CODE_OAUTH_TOKEN) — deploying with NO auth secret; live chat stays disabled until secret.claudeCodeOauthToken is set. /healthz and a keyless-green /readyz still serve."
   fi
   step "Deploying '$RELEASE' to '$NAMESPACE' (image $IMAGE:$TAG, pullPolicy $IMAGE_PULL_POLICY, timeout $TIMEOUT)"
   deploy_agent

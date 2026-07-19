@@ -726,7 +726,7 @@ async def ws(websocket: WebSocket) -> None:
                 session.ctx.steer_messages = []
                 if channel.ws is None and not channel.pending:
                     app.state.channels.pop(session.id, None)
-            elif leftover and loop is not None and channel.ws is not None:
+            elif leftover and channel.ws is not None:
                 followup = "\n\n".join(leftover)
                 session.ctx.steer_messages = []
                 with log_bind(corr_id=new_corr_id(), session_id=session.id):

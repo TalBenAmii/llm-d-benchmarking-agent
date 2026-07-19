@@ -99,7 +99,7 @@ async def _execute_locked(turn: LiveTurn, name: str, args: dict[str, Any]) -> di
         ctx = session.ctx
         # The tool_use id stashed by the engine's can_use_tool gatekeeper just before the SDK
         # dispatched this call — ties events/approvals/durations back to the model's tool call.
-        tc_id = turn.take_tool_use_id(name)
+        tc_id = turn.take_tool_use_id(name, args)
         # Hold until the engine's consumer has emitted the assistant message that carries this
         # tool_use, so the WS transcript keeps the old loop's order (text bubble, then tool
         # row). The CLI always flushes that message before dispatching the tool, so the wait

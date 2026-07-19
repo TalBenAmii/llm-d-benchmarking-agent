@@ -159,8 +159,22 @@ async def test_live_smoke_declined_gate_wraps_up_cleanly(tmp_path):
     assert gates, "no approval gate was raised"
     called = [p["name"] for t, p in events if t == "tool_call"]
     assert "probe_environment" in called, f"no read-only round-trip (called: {called})"
-    mutating = [c["argv"] for c in runner.calls
-                if c["argv"][:1] == ["llmdbenchmark"] or "standup" in " ".join(c["argv"])]
+    # Classify each captured command with the SAME labels production/the harness use (policy
+    # over the frozen catalog; run_shell via the classifier) instead of an argv substring, so
+    # ANY mutating command — not just an llmdbenchmark standup — fails this guard.
+    from app.security.policy import MUTATING
+    from app.tools.run.shell import classify_shell_command
+    from app.tools.setup.catalog import catalog_for_policy
+
+    cat = catalog_for_policy(ctx.catalog())
+
+    def _mode(argv: list[str]) -> str:
+        if argv[:2] == ["bash", "-lc"] and len(argv) >= 3:
+            return classify_shell_command(argv[2])
+        d = ctx.policy.validate(argv, catalog=cat)
+        return d.mode if d.allowed else "denied"
+
+    mutating = [c["argv"] for c in runner.calls if _mode(c["argv"]) == MUTATING]
     assert not mutating, f"a declined gate must stop the mutation, but ran: {mutating}"
     print(f"\n--- declined-gate smoke: gates={gates} tools={called} "
           f"commands={[c['argv'][:3] for c in runner.calls]} ---")

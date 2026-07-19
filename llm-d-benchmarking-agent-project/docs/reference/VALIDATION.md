@@ -22,8 +22,11 @@ flow fixtures); layers 3 and 4 are the agent self-eval harness (`tests/eval/`).
 > off by default. They share the SAME `LLM_EVAL_LIVE=1` switch the live flow-eval uses (the
 > bug-hunter ALSO requires `BUGHUNT=1`), so they never run in plain pytest or gating CI. The
 > always-safe hermetic entry is `make eval-shadow`. The quota-spending entries are
-> `make eval-judge` and `make bughunt` (each `--timeout=600`). Verify off-by-default:
-> with no key and no flag, `pytest tests/eval/` runs only the shadow tests and SKIPS the live ones.
+> `make eval-judge` and `make bughunt` (each `--timeout=600`). One more independent gate:
+> `SDK_ENGINE_LIVE=1` enables the engine's own live battery
+> (`tests/eval/live/test_sdk_engine_live.py`: cache-health + refusal/gate smokes) — also
+> quota-spending, also opt-in only. Verify off-by-default: with no login and no flag,
+> `pytest tests/eval/` runs only the shadow tests and SKIPS the live ones.
 
 > **Live-eval mechanics (layer 2).** Two modes: `LLM_EVAL_LIVE=1` (the live set: tool-choice /
 > error-recovery / safety) and `LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1` (the simulate set: multi-step

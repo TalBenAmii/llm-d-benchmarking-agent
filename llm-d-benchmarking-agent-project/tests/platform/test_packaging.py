@@ -219,12 +219,13 @@ def test_helm_values_pin_image_and_default_safely():
     assert "tag" in vals["image"] and "digest" in vals["image"]
     # The orchestrator image defaults to empty so the tool refuses an unrunnable Job by default.
     assert vals["config"]["orchestratorImage"] == ""
-    # The cluster-service default provider is the Claude Agent SDK (subscription / OAuth-token auth);
-    # the API-key path is the fallback. Pin it so flipping this default can't happen silently again.
+    # The cluster-service provider is the Claude Agent SDK (subscription / OAuth-token auth) —
+    # the ONLY supported provider; the API-key fallback was removed at the SDK-native cutover.
+    # Pin it so flipping this can't happen silently again.
     assert vals["config"]["llmProvider"] == "claude-agent-sdk"
-    # No secret material is baked into the chart defaults (the OAuth token and the API key).
+    assert "anthropicApiKey" not in vals["secret"]  # the retired fallback must not resurface
+    # No secret material is baked into the chart defaults.
     assert vals["secret"]["claudeCodeOauthToken"] == ""
-    assert vals["secret"]["anthropicApiKey"] == ""
     # Non-root hardening defaults.
     assert vals["podSecurityContext"]["runAsNonRoot"] is True
     assert vals["securityContext"]["readOnlyRootFilesystem"] is True
@@ -254,19 +255,17 @@ def test_pod_is_scrape_annotated_for_metrics():
 # ===========================================================================
 
 def test_install_service_wires_provider_selection():
-    # The service installer's provider selection must stay in lockstep with the chart: an OAuth
-    # token → claude-agent-sdk + secret.claudeCodeOauthToken; an API key → anthropic +
-    # secret.anthropicApiKey. This doubles as a cross-file consistency check that the installer,
-    # the chart values, and the deployment env wiring agree on the provider + Secret key names.
+    # The service installer's chat auth must stay in lockstep with the chart: the OAuth token →
+    # claude-agent-sdk + secret.claudeCodeOauthToken. This doubles as a cross-file consistency
+    # check that the installer, the chart values, and the deployment env wiring agree on the
+    # provider + Secret key names — and that the retired anthropic API-key fallback (removed at
+    # the SDK-native cutover: it would deploy a chat-dead service) never resurfaces.
     text = (PROJECT_ROOT / "scripts" / "install" / "install_service.sh").read_text()
-    # Primary path: the Claude subscription OAuth token selects the SDK provider.
     assert "--oauth-token" in text
     assert "config.llmProvider=claude-agent-sdk" in text
     assert "secret.claudeCodeOauthToken=" in text
-    # Fallback path (KEPT): an Anthropic API key selects the metered API provider.
-    assert "--anthropic-key" in text
-    assert "config.llmProvider=anthropic" in text
-    assert "secret.anthropicApiKey=" in text
+    assert "--anthropic-key" not in text
+    assert "secret.anthropicApiKey" not in text
 
 
 def test_install_service_labels_namespace_with_pod_security():

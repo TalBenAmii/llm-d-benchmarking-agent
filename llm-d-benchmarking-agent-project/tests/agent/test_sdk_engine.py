@@ -354,6 +354,39 @@ async def test_resume_failure_falls_back_to_fresh_seeded_session(tmp_path):
     assert session.sdk_session_id == "default"
 
 
+async def test_orphaned_first_turn_context_is_replayed_on_the_next_turn(tmp_path):
+    """A FIRST turn that dies before anything reaches the CLI (missing/logged-out CLI —
+    CLIConnectionError with no resume id to fall back from) must not orphan what
+    ``_first_query`` already committed: the one-shot preamble flags are flipped and the user
+    text + preambles sit in the mirror, so the NEXT turn (resume=None, non-empty mirror) must
+    seed the fresh SDK session with that stranded context instead of silently dropping it."""
+    session = _make_session(tmp_path, catalog_injected=False)
+    session.env_snapshot = {"kube_context": "kind-x"}
+
+    engine1 = SdkNativeEngine(transport_factory=lambda: _DeadTransport([]))
+    seen1, emit1 = _collector()
+    await engine1.run_turn(session, "first question", emit=emit1, request_approval=_approve)
+
+    # Turn 1 died cleanly (error event, no crash) with the orphan state in place.
+    assert any(t == "error" for t, _ in seen1)
+    assert session.sdk_session_id is None
+    assert session.prewarmed is True and session.catalog_injected is True
+
+    engine2, fakes2 = _engine([[assistant(text("recovered")), result()]])
+    seen2, emit2 = _collector()
+    await engine2.run_turn(session, "second question", emit=emit2, request_approval=_approve)
+
+    assert not any(t == "error" for t, _ in seen2)
+    wire = fakes2[0].user_messages[0]["message"]["content"]
+    # The replayed seed carries the stranded first-turn context...
+    assert wire.startswith("[conversation replay")
+    assert "first question" in wire
+    assert "[environment pre-probe" in wire and "kind-x" in wire
+    assert "[live catalog snapshot" in wire
+    # ...and still ends with this turn's real question.
+    assert wire.endswith("second question")
+
+
 async def test_steer_then_decline_keeps_order(tmp_path):
     """Type-instead-of-approve: the steer is queued BEFORE the gate is declined, so the model
     sees the rejected result first, then answers the steer as a follow-up on the same turn."""

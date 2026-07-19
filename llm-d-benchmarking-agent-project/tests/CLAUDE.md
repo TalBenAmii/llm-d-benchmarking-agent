@@ -65,7 +65,9 @@ The unit suite is grouped into four subpackages; a file's bucket = the **dominan
     (deterministic flows rely on it); under the eval scripts a MUTATING flow must fetch its grounding doc or it's refused.
 - **Self-eval (`tests/eval/live/`)**: the LLM judge (`test_judge_live.py`) + bug-hunter
   (`test_bughunt_live.py`) share the SAME `LLM_EVAL_LIVE` switch (bughunt also needs `BUGHUNT=1`)
-  and SPEND quota → never auto-run them. `make eval-shadow` is the always-safe hermetic entry
+  and SPEND quota → never auto-run them. The engine's own live battery
+  (`test_sdk_engine_live.py`: cache-health + gated-refusal/declined-gate/one-turn smokes) is gated
+  on its own `SDK_ENGINE_LIVE=1` switch — same rule: spends quota, explicit request only. `make eval-shadow` is the always-safe hermetic entry
   (the deterministic shadow/oracle tests run in plain `pytest` for free).
 - **Never `git add -A` at the monorepo root** — it grabs `.claude/worktrees/*` gitlinks. Add specific paths.
 

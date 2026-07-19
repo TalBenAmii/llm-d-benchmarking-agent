@@ -91,8 +91,10 @@ class LiveTurn:
     # hours — so the stream watchdog must not count that silence as a wedged CLI.
     tool_depth: int = 0
     _steers: list[str] = field(default_factory=list)
-    # bare tool name -> queue of tool_use ids stashed by can_use_tool, popped by the wrapper.
-    _pending_ids: dict[str, deque[str]] = field(default_factory=dict)
+    # bare tool name -> queue of (tool_use id, args) stashed by can_use_tool, popped by the
+    # wrapper when the SDK dispatches the call.
+    _pending_ids: dict[str, deque[tuple[str, dict[str, Any] | None]]] = field(
+        default_factory=dict)
     # tool_use_id -> (name, full result) recorded by the wrapper for the messages mirror.
     _results: dict[str, tuple[str, Any]] = field(default_factory=dict)
     # tool_use_id -> bare name, from the assistant mirror — names denied/unknown tool rows.
@@ -112,15 +114,30 @@ class LiveTurn:
         self.session.ctx.steer_messages = []
         return out
 
-    def stash_tool_use(self, name: str, tool_use_id: str | None) -> None:
-        self._pending_ids.setdefault(name, deque()).append(tool_use_id or "")
+    def stash_tool_use(self, name: str, tool_use_id: str | None,
+                       args: dict[str, Any] | None = None) -> None:
+        self._pending_ids.setdefault(name, deque()).append((tool_use_id or "", args))
 
-    def take_tool_use_id(self, name: str) -> str:
+    def take_tool_use_id(self, name: str, args: dict[str, Any] | None = None) -> str:
+        """The tool_use id for this dispatch of ``name``.
+
+        ORDERING ASSUMPTION: per name this is a FIFO — the SDK dispatches allowed calls in the
+        order can_use_tool approved them, so same-named calls pop in stash order. An allowed-
+        but-never-executed call (retracted by the model / stream death between allow and
+        dispatch) can shift the ids by one; damage is bounded to one turn's event correlation.
+        Defensive bit: with more than one id pending for the name, prefer the entry whose
+        stashed args match this dispatch's args, so an id shift can't cross-label calls that
+        differ in payload."""
         pending = self._pending_ids.get(name)
         if not pending:
             raise RuntimeError(
                 f"no pending tool_use id for {name!r} — can_use_tool never saw this call")
-        return pending.popleft()
+        if len(pending) > 1 and args is not None:
+            for i, (tid, stashed) in enumerate(pending):
+                if stashed == args:
+                    del pending[i]
+                    return tid
+        return pending.popleft()[0]
 
     def note_mirrored(self) -> None:
         self._mirror_advanced.set()
@@ -140,10 +157,6 @@ class LiveTurn:
 
     def take_result(self, tool_use_id: str) -> tuple[str, Any] | None:
         return self._results.pop(tool_use_id, None)
-
-    async def interrupt(self) -> None:
-        if self.client is not None:
-            await self.client.interrupt()
 
 
 # session_id -> the in-flight turn, so the WS handler can steer/interrupt it.
@@ -252,8 +265,18 @@ class SdkNativeEngine:
         usage = _TurnUsage()
         try:
             try:
+                # Fresh SDK session with prior transcript in the mirror ⇒ seed it with the
+                # textual replay. This is how an ORPHANED FIRST TURN recovers: _first_query
+                # flips the one-shot preamble flags and mirrors the user text before anything
+                # reaches the CLI, so if turn 1 dies with no sdk_session_id (missing/logged-out
+                # CLI, a pre-Result error, Stop mid-first-turn), the next turn would otherwise
+                # resume nothing and the flags would block re-injection forever — the replay
+                # carries that stranded context (preambles + user text) into the new session.
+                resume = session.sdk_session_id
+                if resume is None and prior_mirror:
+                    query_text = _mirror_replay_text(session.messages[:prior_mirror]) + query_text
                 await self._drive_turn(session, turn, usage, query_text, should_continue,
-                                       resume=session.sdk_session_id)
+                                       resume=resume)
             except ClaudeSDKError as exc:
                 # Resume fallback (D6): a resume id whose CLI transcript was GC'd/corrupted
                 # makes the CLI die before emitting anything (surfaced as CLIConnectionError /
@@ -330,7 +353,8 @@ class SdkNativeEngine:
             # allow hands the call's tool_use_id to the wrapper (verified present, spike V3).
             if tool_name.startswith(TOOL_PREFIX):
                 turn.stash_tool_use(
-                    tool_name[len(TOOL_PREFIX):], getattr(context, "tool_use_id", None))
+                    tool_name[len(TOOL_PREFIX):], getattr(context, "tool_use_id", None),
+                    dict(input_data) if isinstance(input_data, dict) else None)
                 return PermissionResultAllow()
             return PermissionResultDeny(
                 message=f"only {SERVER_NAME} tools are available to this agent", interrupt=False)
@@ -495,6 +519,13 @@ class SdkNativeEngine:
             elif isinstance(msg, SystemMessage):
                 if msg.subtype == "compact_boundary":
                     turn.compacted = True
+                elif msg.subtype == "init":
+                    # Capture the CLI conversation id as soon as the stream OPENS (not only from
+                    # the ResultMessage): a first turn cancelled/errored mid-stream can then
+                    # still resume its CLI transcript instead of orphaning it.
+                    sid = (msg.data or {}).get("session_id")
+                    if sid:
+                        session.sdk_session_id = sid
             elif isinstance(msg, ResultMessage):
                 result_msg = msg
 
@@ -531,31 +562,37 @@ class SdkNativeEngine:
         poll = min(self._watchdog_poll_s, watchdog) if watchdog > 0 else None
         silent = 0.0
         nudged = False
-        while True:
-            done, _pending = await asyncio.wait({task}, timeout=poll)
-            if task in done:
-                try:
-                    return task.result()
-                except StopAsyncIteration:
-                    return _STREAM_END
-            assert poll is not None  # timeout fired ⇒ the watchdog is enabled
-            if turn.tool_depth:
-                silent = 0.0
-                continue
-            silent += poll
-            if not nudged and silent >= watchdog:
-                nudged = True
-                log.warning("turn.stream_stalled", extra={
-                    "session_id": turn.session.id, "watchdog_s": watchdog})
-                with contextlib.suppress(Exception):
-                    await asyncio.wait_for(client.interrupt(), timeout=2 * poll)
-            elif nudged and silent >= watchdog + 2 * poll:
+        try:
+            while True:
+                done, _pending = await asyncio.wait({task}, timeout=poll)
+                if task in done:
+                    try:
+                        return task.result()
+                    except StopAsyncIteration:
+                        return _STREAM_END
+                assert poll is not None  # timeout fired ⇒ the watchdog is enabled
+                if turn.tool_depth:
+                    silent = 0.0
+                    continue
+                silent += poll
+                if not nudged and silent >= watchdog:
+                    nudged = True
+                    log.warning("turn.stream_stalled", extra={
+                        "session_id": turn.session.id, "watchdog_s": watchdog})
+                    with contextlib.suppress(Exception):
+                        await asyncio.wait_for(client.interrupt(), timeout=2 * poll)
+                elif nudged and silent >= watchdog + 2 * poll:
+                    raise StreamStalledError(
+                        f"agent stream stalled: no output for {watchdog:g}s with no tool "
+                        "running; interrupted the wedged turn")
+        finally:
+            # asyncio.wait never cancels its awaitables: on ANY non-return exit (the stall
+            # raise above, or an outer cancellation landing in the await) the anext task
+            # would leak and keep the stream iterator locked. Reap it here.
+            if not task.done():
                 task.cancel()
                 with contextlib.suppress(BaseException):
                     await task
-                raise StreamStalledError(
-                    f"agent stream stalled: no output for {watchdog:g}s with no tool running; "
-                    "interrupted the wedged turn")
 
     @staticmethod
     def _flush_tool_results(session: Session, pending: list[dict[str, Any]]) -> None:
@@ -638,8 +675,8 @@ def _bare_name(name: str) -> str:
 # context_mgmt module at the Phase 5 cutover.
 
 _TRUNC_NOTE = (
-    "tool result exceeded the feed-back budget and was truncated; the 'preview' field holds "
-    "its leading portion. Re-run with a narrower query or request specific fields for the rest."
+    "environment pre-probe snapshot truncated to fit the preamble budget; the 'preview' field "
+    "holds its leading portion. Call probe_environment yourself if you need a detail past the cut."
 )
 
 # A short scalar top-level field is kept verbatim in the envelope (it carries the error/status

@@ -124,8 +124,7 @@ pushes `${IMAGE}:<tag>` and `${IMAGE}:latest` automatically, authenticating with
 ```
 
 On success it prints the port-forward command to reach the UI. `<TOKEN>` is a Claude subscription
-token from `claude setup-token`, the primary auth path (see "Provide auth for chat" below). The
-`--anthropic-key` API-key path is the documented fallback.
+token from `claude setup-token` — the chat auth (see "Provide auth for chat" below).
 
 ### Common flags
 
@@ -136,8 +135,7 @@ token from `claude setup-token`, the primary auth path (see "Provide auth for ch
     --tag TAG               image tag / VERSION       (default: 0.1.0)
     --image-pull-policy P   Always|IfNotPresent|Never (default: IfNotPresent)
     --build                 docker-build the image locally + use it (air-gapped/dev; pullPolicy→Never)
-    --oauth-token TOKEN     Claude subscription token (default: $CLAUDE_CODE_OAUTH_TOKEN) → claude-agent-sdk  [PRIMARY]
-    --anthropic-key KEY     Anthropic API key         (default: $ANTHROPIC_API_KEY) → anthropic  [FALLBACK]
+    --oauth-token TOKEN     Claude subscription token (default: $CLAUDE_CODE_OAUTH_TOKEN) — the chat auth
     --orchestrator-image IMG   image for in-cluster orchestrated benchmark Jobs (config.orchestratorImage)
     --kubeconfig PATH       kubeconfig file           (default: $KUBECONFIG / ~/.kube/config)
     --context NAME          kube-context              (default: current-context)
@@ -157,10 +155,9 @@ pullPolicy to `Never`. You must then load it onto the nodes yourself, e.g.
 
 ### Provide auth for chat (required for a usable service)
 
-The chat provider defaults to the Claude Agent SDK, authenticated by your Claude Max/Pro
-subscription via a `CLAUDE_CODE_OAUTH_TOKEN`; no metered API key needed. The baked `claude` CLI
-reads this token from the environment headlessly (no browser, no TTY), so subscription auth
-works inside a Pod. `ANTHROPIC_API_KEY` is the fallback.
+The chat runs on the Claude Agent SDK, authenticated by your Claude Max/Pro subscription via a
+`CLAUDE_CODE_OAUTH_TOKEN`; no metered API key. The baked `claude` CLI reads this token from the
+environment headlessly (no browser, no TTY), so subscription auth works inside a Pod.
 
 Get the token on a machine already logged into your Claude plan:
 
@@ -184,30 +181,21 @@ reference it:
 ```bash
 kubectl -n <ns> create secret generic bench-agent-llm \
   --from-literal=CLAUDE_CODE_OAUTH_TOKEN=<TOKEN> \
-  --from-literal=ANTHROPIC_API_KEY= \
   --from-literal=HF_TOKEN=
 helm upgrade --install bench-agent deploy/helm/llm-d-benchmarking-agent \
   -n <ns> --create-namespace \
   --set secret.create=false --set secret.existingSecret=bench-agent-llm
 ```
 
-(`secret.existingSecret` must carry the keys `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` /
-`HF_TOKEN`.)
+(`secret.existingSecret` must carry the keys `CLAUDE_CODE_OAUTH_TOKEN` / `HF_TOKEN`.)
 
-**Fallback: a metered Anthropic API key.** To bill per-token against the API instead of a
-subscription, pass an API key; the installer then selects `LLM_PROVIDER=anthropic` +
-`secret.anthropicApiKey`:
-
-```bash
-./scripts/install/install_service.sh --anthropic-key sk-ant-...
-# or: export ANTHROPIC_API_KEY=sk-ant-...  &&  ./scripts/install/install_service.sh
-```
-
-**Neither?** The app still deploys (SDK, chat disabled): `/healthz` and the keyless `/readyz` serve,
-but chat stays off (`/readyz` reports the provider component not ready) until a token or key is set.
+**No token?** The app still deploys (chat disabled): `/healthz` and the keyless `/readyz` serve,
+but chat stays off until the token is set. There is no API-key fallback — the SDK-native engine
+runs only on the Claude Agent SDK, and any other `LLM_PROVIDER` fails the readiness self-check.
 
 > **On terms of service.** Running your own subscription token headlessly in your own Pod is the
-> CLI use Anthropic's auth docs support; if you expose the service to other users as a product, prefer the API-key fallback.
+> CLI use Anthropic's auth docs support; this deployment is single-user (your own token, your own
+> cluster) — don't expose it to other users as a product.
 
 ### Reach the UI
 
@@ -278,9 +266,7 @@ The live-chat assertion needs real auth: the OAuth token (primary) or an API key
 adapter reads either from the project `.env`:
 
 ```bash
-echo 'CLAUDE_CODE_OAUTH_TOKEN=...' >> .env   # PRIMARY (from `claude setup-token`); project .env (gitignored)
-# or the fallback:
-echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
+echo 'CLAUDE_CODE_OAUTH_TOKEN=...' >> .env   # from `claude setup-token`; project .env (gitignored)
 ```
 
 ### Run the kind adapter
@@ -293,7 +279,7 @@ bash harnesses/cluster-service-sim/run.sh
 > the image, spins up a kind cluster, deploys via the real `install_service.sh` + chart, and asserts
 > `/healthz` + `/readyz` + `/api/provider`, plus the RBAC least-privilege boundary (an in-Pod
 > `kubectl delete ns kube-system` must be refused `Forbidden`) and, only when an OAuth token or an
-> Anthropic key is present, one live-chat round-trip over `/ws`. Useful flags: `--keep` (leave the
+> token is present, one live-chat round-trip over `/ws`. Useful flags: `--keep` (leave the
 > cluster up to inspect it), `--no-build` (reuse an already-built image and skip the ~1 GB rebuild).
 
 ### Run on a fresh environment (WSL)
@@ -325,9 +311,8 @@ golden base image).
 |---|---|---|
 | Image repo/tag | `--image` / `--tag`, or `image.repository` / `image.tag` | `ghcr.io/llm-d/llm-d-benchmarking-agent` / `0.1.0` |
 | Pin by digest | `image.digest` (wins over tag) | `""` |
-| Chat auth: OAuth token (PRIMARY) | `--oauth-token` / `$CLAUDE_CODE_OAUTH_TOKEN`, or `secret.claudeCodeOauthToken` → claude-agent-sdk | empty |
-| Chat auth: Anthropic key (FALLBACK) | `--anthropic-key` / `$ANTHROPIC_API_KEY`, or `secret.anthropicApiKey` → anthropic | empty |
-| No token & no key | chat disabled; `/healthz` + keyless `/readyz` still serve | — |
+| Chat auth: OAuth token | `--oauth-token` / `$CLAUDE_CODE_OAUTH_TOKEN`, or `secret.claudeCodeOauthToken` | empty |
+| No token | chat disabled; `/healthz` + keyless `/readyz` still serve | — |
 | Existing Secret | `secret.create=false` + `secret.existingSecret=<name>` | `create=true` |
 | Namespace / release | `--namespace` / `--release` | `llmd-bench` / `bench-agent` |
 | Persistence | `workspace.persistence.enabled=true` (+ `storageClass`/`size`/`accessMode`) | `false` (ephemeral) |

@@ -26,9 +26,10 @@ Server -> client:
                     session:{input,output,cache_read,total},
                     context_window:{tokens,input,cache_read,cache_write},
                     context?:{total_tokens,max_tokens,percentage}, compacted?:true}
-                                           — REAL token usage from the SDK's per-turn result. ONE
-                                            event per user turn (running totals across steer
-                                            follow-ups): turn.* for the in-progress turn,
+                                           — REAL token usage from the SDK's result. Emitted once
+                                            per SDK RESPONSE — a plain turn gets one, a steered
+                                            turn gets one per follow-up query, each carrying
+                                            RUNNING totals: turn.* for the in-progress turn,
                                             session.* the running session totals. context_window
                                             is the REAL current context-window occupancy: tokens =
                                             total_input of the LAST call — the Claude-Code
@@ -71,10 +72,13 @@ Server -> client:
 Client -> server (validated against app.agent.ws_schemas; a malformed frame is rejected with
 an error event of kind "protocol_error" and the connection is kept alive):
   user_message     {text}                   — a chat turn. Sent while a turn is ALREADY running it
-                                            STEERS (Claude-Code style): the server queues it onto
-                                            ctx.steer_messages and the running loop picks it up at
-                                            its next step instead of starting a concurrent turn (and,
-                                            if an approval gate is open, declines the gate too).
+                                            STEERS (Claude-Code style): the server queues it on the
+                                            engine's live turn (engine.steer; ctx.steer_messages is
+                                            the between-turns fallback) and the engine delivers it
+                                            as a follow-up query() after the current SDK response's
+                                            ResultMessage — same app-level turn, never a concurrent
+                                            one (and, if an approval gate is open, declines the
+                                            gate too).
   approval         {request_id, approved}
   ping             {}                      — keep-alive; answered with a `pong` event
 

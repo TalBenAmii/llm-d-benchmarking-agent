@@ -39,6 +39,13 @@ def test_parked_gate_survives_reconnect_with_after_seq(tmp_path):
         player = Player(app, client, primer, _FixedRandom())
         try:
             player.act_reconnect_midturn()
+            # The battery specifies the INCREMENTAL (after_seq) reconnect; assert the handler
+            # actually took that path, so a threshold tweak in act_reconnect_midturn's seeded
+            # choice can't silently flip this test onto the full-rebuild path.
+            assert player.last_ready is not None
+            assert player.last_ready["data"]["resumed"] is True
+            assert player.last_ready["data"].get("resume", {}).get("incremental") is True, (
+                "reconnect did not use the after_seq (incremental) path")
             player.check_all()
         finally:
             player.finish()

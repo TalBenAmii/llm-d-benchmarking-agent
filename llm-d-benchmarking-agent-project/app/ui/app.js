@@ -1254,7 +1254,7 @@ function addNote(text) { addBubble("assistant", text); }
 
 // ---- live streaming assistant bubble -------------------------------------
 // The agent streams its reply token-by-token via `assistant_delta` events (see app/agent/events.py
-// + app/llm/agent_sdk_provider.py). We render those into ONE live bubble as they arrive; the step's
+// + app/agent/engine.py). We render those into ONE live bubble as they arrive; the step's
 // final `assistant_text` then finalizes it (authoritative re-render). `streamBubble` is the live
 // <div.bubble> or null between steps; `streamText` accumulates the raw markdown so each delta
 // re-renders the whole block (markdown isn't append-safe — a half-open `**` or table needs the

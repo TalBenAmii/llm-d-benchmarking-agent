@@ -286,6 +286,9 @@ class Player:
         self.session_ids: list[str] = []          # all chats we've created (may be deleted)
         self.namespaces: set[str] = set()          # namespaces we've created chats under
         self.trace: list[str] = []                 # the action log (printed on failure)
+        # The most recent `ready` frame _open drained — lets a deterministic caller assert
+        # WHICH resume path (incremental after_seq vs full rebuild) a reconnect actually took.
+        self.last_ready: dict[str, Any] | None = None
         # The currently-attached ws context manager + its session id, or (None, None).
         self._ws = None
         self._cur_sid: str | None = None
@@ -314,6 +317,7 @@ class Player:
         self._ws, self._ws_cm = ws, cm
         ready = read_protocol(ws, until={"ready"})[-1]
         assert ready["type"] == "ready", f"first frame was not ready: {ready}"
+        self.last_ready = ready
         self._cur_sid = ready["data"]["session_id"]
         if sid is None:
             self.session_ids.append(self._cur_sid)

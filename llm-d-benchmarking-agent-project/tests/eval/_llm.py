@@ -24,6 +24,8 @@ async def llm_text(system: str, user_text: str) -> str:
         system_prompt=system,
         setting_sources=[],
         max_turns=1,
+        tools=[],            # NO tools — the SDK default would leave CLI built-ins live
+        allowed_tools=[],    # and nothing may sidestep that (host access from an eval)
         model=settings.agent_sdk_model or None,
         env=dict(_CLI_ENV),
         cli_path=settings.claude_cli_path or None,

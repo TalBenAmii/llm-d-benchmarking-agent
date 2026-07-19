@@ -12,7 +12,7 @@ so the CLI's prompt cache keeps hitting. The cached prefix = `ROLE` + `HARD_RULE
 
 **Anything that varies per turn must NOT go in the prefix.** The live catalog snapshot and the
 environment pre-probe are injected as **synthetic user messages** once per session (`engine.py`
-`_compose_first_message` + `catalog_brief_message` in `prompt.py`), precisely so they don't
+`_first_query` + `catalog_brief_message` in `prompt.py`), precisely so they don't
 mutate the cached prefix. `tests/agent/test_prompt_stability.py` enforces byte-stability +
 "catalog body never in the prefix" + "catalog injected exactly once".
 
