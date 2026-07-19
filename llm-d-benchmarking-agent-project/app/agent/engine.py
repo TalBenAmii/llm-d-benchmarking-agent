@@ -1,7 +1,7 @@
-"""SDK-native agent engine: the Claude Agent SDK/CLI runs the agentic loop.
+"""THE agent engine: the Claude Agent SDK/CLI runs the agentic loop natively.
 
-Phase 1+2 of the SDK-native refactor (design contract: docs/reference/SDK_NATIVE_ENGINE.md).
-Per user turn: build ClaudeAgentOptions → connect a ClaudeSDKClient (connect-per-turn,
+Design contract: docs/reference/SDK_NATIVE_ENGINE.md. Per user turn: build
+ClaudeAgentOptions → connect a ClaudeSDKClient (connect-per-turn,
 ``resume=session.sdk_session_id``; a failed resume falls back once to a fresh SDK session
 seeded from the ``session.messages`` mirror) → send the one-shot catalog/env preamble +
 user text → consume the stream, translating it to the existing WS events and mirroring into
@@ -9,9 +9,6 @@ user text → consume the stream, translating it to the existing WS events and m
 inside the SDK via the in-process ``benchtools`` MCP server (app/tools/mcp_server.py);
 ``can_use_tool`` is a thin gatekeeper that allows only ``mcp__benchtools__*`` and hands each
 call's ``tool_use_id`` to the wrapper.
-
-Selected at the main.py seam by the branch-only ``AGENT_ENGINE=sdk-native`` flag; the old
-``AgentLoop`` stays the default until the Phase 5 cutover deletes it (and this flag).
 
 Steer (spike verdict: mid-turn ``client.query()`` is silently dropped by CLI 2.1.209): user
 messages typed while the turn runs are queued app-side — :func:`steer` / the legacy
@@ -22,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 from collections import deque
 from collections.abc import Callable
@@ -29,14 +27,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.agent import events
-from app.agent.context_mgmt import clamp_tool_result_content
 from app.agent.prompt import build_system_prompt, catalog_brief_message
 from app.agent.session import Session
-from app.llm.agent_sdk_provider import (
-    _effort_option,
-    _render_assistant_text,
-    _render_tool_results,
-    _thinking_options,
+from app.llm.sdk_options import (
+    effort_option,
+    render_assistant_text,
+    render_tool_results,
+    thinking_options,
 )
 from app.tools.context import ApproveFn, EmitFn
 from app.tools.mcp_server import SERVER_NAME, TOOL_PREFIX, build_benchtools_server
@@ -205,8 +202,8 @@ class _TurnUsage:
 
 
 class SdkNativeEngine:
-    """Drop-in replacement for ``AgentLoop`` at the main.py seam: same ``run_turn``
-    signature, but the SDK/CLI drives model→tool→model natively."""
+    """THE agent engine at the main.py seam: the SDK/CLI drives model→tool→model natively,
+    while this class bridges its stream onto the app's WS event contract."""
 
     def __init__(
         self,
@@ -299,8 +296,8 @@ class SdkNativeEngine:
         The blocks are SEPARATE user messages in the mirror (today's render shapes: the
         synthetic flag / bracket-tag skip rules keep them out of bubbles and titles) but are
         COALESCED into one wire message: the CLI's streaming input silently drops all but the
-        first of a same-role run (see agent_sdk_provider._to_sdk_messages), so one coalesced
-        user turn is exactly what the old path delivered on the wire too."""
+        first of a same-role run, so one coalesced user turn is exactly what reaches the
+        model."""
         parts: list[str] = []
         if session.env_snapshot is not None and not session.prewarmed:
             block = ("[environment pre-probe — read-only snapshot, already gathered for "
@@ -357,8 +354,8 @@ class SdkNativeEngine:
             cwd=session.ctx.workspace,   # stable per-session transcript home
             env=dict(_CLI_ENV),
             cli_path=settings.claude_cli_path or None,
-            **_thinking_options(settings.agent_sdk_thinking),
-            **_effort_option(session.effort_override or settings.agent_sdk_effort),
+            **thinking_options(settings.agent_sdk_thinking),
+            **effort_option(session.effort_override or settings.agent_sdk_effort),
         )
 
     async def _drive_turn(
@@ -623,12 +620,78 @@ def _mirror_replay_text(messages: list[dict[str, Any]]) -> str:
         if role == "user":
             lines.append("user: " + str(m.get("content") or ""))
         elif role == "assistant":
-            lines.append("assistant: " + _render_assistant_text(
+            lines.append("assistant: " + render_assistant_text(
                 m.get("content") or "", m.get("tool_calls") or []))
         elif role == "tool_results":
-            lines.append(_render_tool_results(m.get("results") or []))
+            lines.append(render_tool_results(m.get("results") or []))
     return "\n\n".join(lines) + "\n\n"
 
 
 def _bare_name(name: str) -> str:
     return name[len(TOOL_PREFIX):] if name.startswith(TOOL_PREFIX) else name
+
+
+# ---- env-preamble clamp (the ONE surviving clamp) -------------------------------------------
+# Everything else enters the model context whole (user decision D2: CLI auto-compaction is the
+# bound), but the env pre-probe snapshot keeps its 4k bound: a real cluster's snapshot gets a
+# VALID truncation envelope, never JSON sliced mid-structure. Relocated from the deleted
+# context_mgmt module at the Phase 5 cutover.
+
+_TRUNC_NOTE = (
+    "tool result exceeded the feed-back budget and was truncated; the 'preview' field holds "
+    "its leading portion. Re-run with a narrower query or request specific fields for the rest."
+)
+
+# A short scalar top-level field is kept verbatim in the envelope (it carries the error/status
+# signal); anything longer is treated as bulk payload and appears only (clipped) in the preview.
+_SIGNAL_STR_MAX = 500
+
+
+def _is_signal_scalar(value: Any) -> bool:
+    """True for small scalars worth preserving intact (bools, numbers, short strings, None)."""
+    if value is None or isinstance(value, (bool, int, float)):
+        return True
+    return isinstance(value, str) and len(value) <= _SIGNAL_STR_MAX
+
+
+def clamp_tool_result_content(result: Any, budget: int) -> str:
+    """Serialize ``result`` to JSON of at most ``budget`` chars that is always valid JSON.
+
+    Fast path: when the full serialization fits, it is returned unchanged (byte-identical to
+    ``json.dumps(result)``). Otherwise a valid JSON truncation envelope is returned, sized to
+    the budget, preserving small top-level signal fields and a clipped preview of the payload.
+    """
+    full = json.dumps(result)
+    if len(full) <= budget:
+        return full
+
+    envelope: dict[str, Any] = {"_truncated": True, "_original_chars": len(full)}
+    # Preserve small top-level signal fields so error / rejected markers survive intact.
+    if isinstance(result, dict):
+        for key, value in result.items():
+            if isinstance(key, str) and key not in envelope and _is_signal_scalar(value):
+                envelope[key] = value
+    envelope["_note"] = _TRUNC_NOTE
+
+    # Budget left for the preview after the envelope's own JSON overhead (keys, braces, the
+    # "preview" key and its quoting). Reserve it by measuring the envelope with an empty preview.
+    skeleton = dict(envelope)
+    skeleton["preview"] = ""
+    remaining = budget - len(json.dumps(skeleton))
+    if remaining <= 0:
+        # Even the signal-only envelope overflows the budget; fall back to the minimal one.
+        minimal = {"_truncated": True, "_original_chars": len(full), "_note": _TRUNC_NOTE}
+        return json.dumps(minimal)
+
+    # JSON-escaping can expand the preview (a " becomes \", a newline becomes \n), so clip the
+    # raw source first, then shrink until the *encoded* envelope fits the budget.
+    preview = full[:remaining]
+    while preview:
+        envelope["preview"] = preview
+        encoded = json.dumps(envelope)
+        if len(encoded) <= budget:
+            return encoded
+        preview = preview[: -max(1, len(encoded) - budget)]
+
+    envelope["preview"] = ""
+    return json.dumps(envelope)

@@ -54,7 +54,6 @@ from app.tools.schemas.provenance import (
     EstimateRunDurationInput,
     ExportRunBundleInput,
     InspectWorkloadProfileInput,
-    LoadToolsInput,
     NextStepSuggestion,
     ObserveRunMetricsInput,
     ProvisionHfSecretInput,
@@ -99,7 +98,6 @@ __all__ = [
     "RunShellInput",
     "SearchKnowledgeInput",
     "SuggestNextStepsInput",
-    "LoadToolsInput",
     "SweepTreatment",
     "WriteConfigInput",
 ]

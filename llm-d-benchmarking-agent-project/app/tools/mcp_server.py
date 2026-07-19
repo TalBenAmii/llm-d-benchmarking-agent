@@ -1,7 +1,7 @@
 """In-process MCP server exposing the tool registry to the SDK-native engine.
 
-One SDK MCP tool wrapper per registered ToolSpec. The wrapper is the new home of
-everything the old agent loop (``app/agent/loop.py``) did per tool call: emit
+One SDK MCP tool wrapper per registered ToolSpec. The wrapper owns everything the
+app does per tool call: emit
 ``tool_call`` → ``registry.dispatch()`` (the schema gate stays intact) under the
 verbatim ApprovalRejected/ToolError ladder → record the wall-clock duration →
 name-keyed side effects (approved plan → namespace) → emit ``tool_result`` with
@@ -130,13 +130,6 @@ async def _execute_locked(turn: LiveTurn, name: str, args: dict[str, Any]) -> di
                 if plan and not session.namespace:
                     session.namespace = plan.get("namespace")
 
-            # Kept for state parity while both engines coexist on the branch: the persisted
-            # ``loaded_groups`` set still gates the OLD loop's exposed tool schemas, so a chat
-            # that ran a turn here must not lose groups if the flag flips back. Dies at Phase 5
-            # with the lazy-group machinery.
-            if name == "load_tools" and isinstance(result, dict):
-                session.loaded_groups.update(result.get("loaded") or [])
-
             log.info("tool.call.result", extra={
                 "tool_call_id": tc_id,
                 "ok": not (isinstance(result, dict)
@@ -161,7 +154,8 @@ async def _execute_locked(turn: LiveTurn, name: str, args: dict[str, Any]) -> di
 
 
 async def _invoke(ctx: Any, name: str, raw_input: dict[str, Any]) -> dict[str, Any]:
-    # The exact except-ladder the old loop used (loop.py:_invoke) — behavior copied verbatim.
+    # The canonical except-ladder around dispatch: known failures become clean result dicts
+    # the model can self-correct on; only truly unexpected exceptions propagate.
     try:
         return await dispatch(ctx, name, raw_input)
     except ApprovalRejected as exc:

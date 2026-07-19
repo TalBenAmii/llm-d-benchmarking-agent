@@ -307,49 +307,23 @@ function fmtTokens(n) {
   return (n / 1000000).toFixed(1) + "M";
 }
 
-// The estimated current context-window chip (debugging token usage): shows the ~size of the
-// assembled context just sent to the model + a hover breakdown of what dominates it (system vs
-// replayed history vs the last tool result). All values are char/4 ESTIMATES (not a tokenizer).
-function setContextEstimate(est) {
-  if (!contextChip) return;
-  if (!est || !est.total_tokens_est) { contextChip.hidden = true; return; }
-  contextChip.hidden = false;
-  contextChip.textContent = "~" + fmtTokens(est.total_tokens_est) + " ctx";
-  contextChip.title =
-    "Estimated current context window (≈ chars/4): " +
-    "system ~" + fmtTokens(est.system_tokens_est) + " · " +
-    "history ~" + fmtTokens(est.history_tokens_est) + " · " +
-    "last tool result ~" + fmtTokens(est.last_tool_result_tokens_est) + " (estimate)";
-}
-
 // The REAL current context-window meter — the number Claude Code shows as "context used".
-// `cw.tokens` is the provider's total_input (fresh + cache_read + cache_write) for the most
-// recent call. Renders "N ctx" — the raw count, no model limit/percentage: the active model
-// can change (and may be a remote API), so a fixed denominator would be unreliable. The optional
-// char/4 `est` (when present) enriches the hover breakdown; falls back to the estimate chip when
-// there's no real number yet (pre-feature backend).
-function setContextWindow(cw, est) {
+// `cw.tokens` is the SDK's total_input (fresh + cache_read + cache_write) for the most recent
+// call. Renders "N ctx" — the raw count, no model limit/percentage: the active model can
+// change per-chat, so a fixed denominator would be unreliable.
+function setContextWindow(cw) {
   if (!contextChip) return;
-  if (!cw || !cw.tokens) {                          // no real number — use the estimate if we have one
-    if (est) setContextEstimate(est); else contextChip.hidden = true;
-    return;
-  }
+  if (!cw || !cw.tokens) { contextChip.hidden = true; return; }
   contextChip.hidden = false;
   contextChip.textContent = fmtTokens(cw.tokens) + " ctx";
-  let tip =
-    "Current context window: " + fmtTokens(cw.tokens) + " tokens — real provider count\n" +
+  contextChip.title =
+    "Current context window: " + fmtTokens(cw.tokens) + " tokens — real count\n" +
     "fresh input " + fmtTokens(cw.input || 0) +
     " · cache read " + fmtTokens(cw.cache_read || 0) +
     " · cache write " + fmtTokens(cw.cache_write || 0);
-  if (est && est.total_tokens_est) {
-    tip += "\nbreakdown (est ≈ chars/4): system ~" + fmtTokens(est.system_tokens_est) +
-      " · history ~" + fmtTokens(est.history_tokens_est) +
-      " · last tool result ~" + fmtTokens(est.last_tool_result_tokens_est);
-  }
-  contextChip.title = tip;
 }
 
-// The REAL CLI-side context occupancy (SDK-native engine `context`): total/max/percentage from
+// The REAL CLI-side context occupancy (`context`): total/max/percentage from
 // the CLI's own /context accounting — no estimate, and the only variant that knows the model's
 // actual limit. `compacted` marks a turn whose context was auto-compacted by the CLI.
 function setContextReal(c, compacted) {
@@ -369,11 +343,9 @@ function setContextReal(c, compacted) {
 // A `usage` event (per LLM call): refresh the running turn tally (live line) + the context meter.
 function onUsage(data) {
   turnUsage = data.turn || null;
-  // Prefer the REAL CLI-side occupancy (SDK-native engine), then the provider context-window
-  // count, then the char/4 estimate (pre-feature backend) — each degrades to the next.
+  // Prefer the REAL CLI-side occupancy (knows the model limit), else the context-window count.
   if (data.context && data.context.total_tokens) setContextReal(data.context, data.compacted);
-  else if (data.context_window) setContextWindow(data.context_window, data.context_est);
-  else if (data.context_est) setContextEstimate(data.context_est);
+  else if (data.context_window) setContextWindow(data.context_window);
   renderWorkStats();
 }
 
@@ -518,7 +490,7 @@ function handle(msg) {
       // Incremental: keep the cached pane and let the missed-tail replay patch it in place.
       if (!inc) clearActivePane();
       // Restore the last-known context-window meter (persisted) so it's right before the next turn.
-      setContextWindow(data.context_window, null);
+      setContextWindow(data.context_window);
       // Seed the auto-approve toggle from the server (per-chat, persisted) so it reflects THIS chat
       // on connect/reload/switch. Unconditional (outside the !inc rebuild branch) — a chat switch
       // that resumes incrementally must still re-point the button at the active chat's state.

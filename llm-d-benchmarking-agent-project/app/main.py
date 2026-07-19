@@ -10,7 +10,6 @@ import base64
 import contextlib
 import json
 import logging
-import os
 import signal
 from pathlib import Path
 from typing import Any
@@ -24,7 +23,6 @@ from app.agent.channel import Channel
 from app.agent.engine import SdkNativeEngine
 from app.agent.engine import steer as engine_steer
 from app.agent.lifecycle import RunRegistry
-from app.agent.loop import AgentLoop
 from app.agent.session import SessionManager
 from app.agent.transcript import history_items as _history_items
 from app.agent.ws_schemas import (
@@ -39,8 +37,7 @@ from app.agent.ws_schemas import (
     parse_inbound,
 )
 from app.config import get_settings
-from app.llm.model_catalog import valid_selection
-from app.llm.provider import AGENT_SDK_PROVIDERS, get_provider
+from app.llm.model_catalog import AGENT_SDK_PROVIDERS, valid_selection
 from app.observability import metrics as instrument
 from app.observability.logging import bind as log_bind
 from app.observability.logging import new_corr_id, setup_logging
@@ -110,13 +107,10 @@ async def lifespan(app: FastAPI):
         settings, app.state.policy, app.state.runner,
         run_semaphore=app.state.run_semaphore, runs=app.state.runs,
     )
-    # Build the provider tolerantly: a missing key shouldn't crash the server.
-    try:
-        app.state.provider = get_provider(settings)
-        app.state.provider_error = None
-    except Exception as exc:  # noqa: BLE001
-        app.state.provider = None
-        app.state.provider_error = str(exc)
+    # SDK-native engine: no provider object to build. An unsupported LLM_PROVIDER is a clear
+    # readiness failure (/readyz provider_coherent) + a per-turn error, never a crash.
+    app.state.provider_supported = (
+        (settings.llm_provider or "claude-agent-sdk").lower() in AGENT_SDK_PROVIDERS)
     # Workspace lifecycle (Phase 18): run the startup configuration self-check (structured
     # pass/fail folded into /readyz) and a one-shot retention GC over scratch. Both honor their
     # toggles + the DATA caps; GC never prunes a session that is currently live/running.
@@ -180,14 +174,6 @@ async def graceful_shutdown(app: FastAPI) -> dict[str, Any]:
         # misbehaving probe can't abort the rest of teardown — the provider close below must run.
         with contextlib.suppress(Exception):
             await asyncio.gather(*pending, return_exceptions=True)
-    # Disconnect any prewarmed spare LLM connection (the Agent SDK provider keeps one warm
-    # subprocess for the next turn) so SIGTERM leaves nothing connected. Best-effort + duck-typed:
-    # only the Agent SDK provider implements aclose(); other providers have nothing to close.
-    provider = getattr(app.state, "provider", None)
-    closer = getattr(provider, "aclose", None)
-    if closer is not None:
-        with contextlib.suppress(Exception):
-            await closer()
     return summary
 
 
@@ -254,9 +240,7 @@ async def provider_info() -> JSONResponse:
     actually built at startup, so the UI can show "LLM not configured" instead of leaving
     the failure to surface at the first chat message. No secrets, no account identity.
     ``getattr``: same no-lifespan defense as graceful_shutdown (a bare read would 500)."""
-    return JSONResponse(
-        provider_view(get_settings(), getattr(app.state, "provider_error", None))
-    )
+    return JSONResponse(provider_view(get_settings()))
 
 
 def _teardown_session_runtime(sid: str) -> None:
@@ -590,26 +574,18 @@ async def ws(websocket: WebSocket) -> None:
     resumed = session is not None
     if session is None:
         session = app.state.sessions.create()
-    # Branch-only engine switch (SDK-native refactor, Phase 1): AGENT_ENGINE=sdk-native selects
-    # the new SDK-driven engine; unset/anything else keeps the old loop unchanged. The flag (and
-    # the old loop) dies at the Phase 5 cutover — never document it as a feature.
-    loop: SdkNativeEngine | AgentLoop | None
-    if os.environ.get("AGENT_ENGINE") == "sdk-native":
-        # Hermetic-test seam (the engine's own transport_factory, surfaced app-wide): tests
-        # install a FakeTransport factory on app.state; unset (production) → the real CLI.
-        loop = SdkNativeEngine(
-            transport_factory=getattr(app.state, "sdk_transport_factory", None))
-    else:
-        loop = AgentLoop(app.state.provider) if app.state.provider else None
+    # Hermetic-test seam (the engine's own transport_factory, surfaced app-wide): tests
+    # install a FakeTransport factory on app.state; unset (production) → the real CLI.
+    loop = SdkNativeEngine(
+        transport_factory=getattr(app.state, "sdk_transport_factory", None))
 
     def _queue_steer(text: str) -> None:
-        """Queue a mid-turn user message for the running turn. SDK-native engine: onto the
-        LiveTurn's steer queue (delivered as a follow-up query after the current ResultMessage —
-        mid-turn query() is silently dropped by the CLI). Falls back to the legacy
-        ``ctx.steer_messages`` list when no live turn is registered (a race with turn start/end;
-        the engine drains that list too, and the finally backstop catches a turn that just
-        ended). Old engine: the unchanged ``ctx.steer_messages`` path."""
-        if isinstance(loop, SdkNativeEngine) and engine_steer(session.id, text):
+        """Queue a mid-turn user message for the running turn: onto the LiveTurn's steer queue
+        (delivered as a follow-up query after the current ResultMessage — mid-turn query() is
+        silently dropped by the CLI). Falls back to the legacy ``ctx.steer_messages`` list when
+        no live turn is registered (a race with turn start/end; the engine drains that list
+        too, and the finally backstop catches a turn that just ended)."""
+        if engine_steer(session.id, text):
             return
         session.ctx.steer_messages.append(text)
 
@@ -668,7 +644,7 @@ async def ws(websocket: WebSocket) -> None:
         # this turn has not yet surfaced its first approval gate (state 2 — let it reach the gate and
         # park). Once that first gate is open the in-tool park stops further stepping on its own; the
         # guard is still honored at step boundaries (never mid-tool), so a turn that keeps probing
-        # without ever proposing a gate is bounded by MAX_STEPS.
+        # without ever proposing a gate is bounded by the engine's MAX_TURNS.
         approved = {"value": False}
         gate_surfaced = {"value": False}
         # Set when this turn ends because the user CANCELLED it (clicked Stop). The steer backstop
@@ -690,11 +666,14 @@ async def ws(websocket: WebSocket) -> None:
             return channel.ws is not None or approved["value"] or not gate_surfaced["value"]
 
         try:
-            if loop is None:
-                # No LLM, but still record the turn so the chat persists / resumes.
+            if not getattr(app.state, "provider_supported", True):
+                # Unsupported LLM_PROVIDER (readiness already failed): record the turn so the
+                # chat persists, surface a clear error, never crash.
                 session.messages.append({"role": "user", "content": text})
                 session.persist()
-                await channel.emit("error", {"message": f"LLM provider not configured: {app.state.provider_error}"})
+                await channel.emit("error", {"message": (
+                    "unsupported LLM_PROVIDER: the SDK-native engine runs on the Claude "
+                    "Agent SDK (set LLM_PROVIDER=claude-agent-sdk)")})
                 await channel.emit("done", {})
                 return
             await loop.run_turn(
@@ -764,7 +743,7 @@ async def ws(websocket: WebSocket) -> None:
 
         Runs the same read-only probe the agent would otherwise call on its first turn, BEFORE
         the user even sends a message, so the first turn starts environment-aware without an
-        extra LLM round-trip (loop.py injects the snapshot as a synthetic message). Wiring the
+        extra LLM round-trip (engine.py injects the snapshot as a synthetic message). Wiring the
         probe's auto-run `command` events through the channel keeps them in the executed-command
         trail. Best-effort: any failure is swallowed (the agent just probes itself next turn)."""
         try:
@@ -809,7 +788,7 @@ async def ws(websocket: WebSocket) -> None:
             "total": session.session_total,
         },
         # Last-known context-window occupancy (persisted), so the "context used" meter is right on
-        # connect/reload before the next turn refreshes it. No limit: see loop.py (model can change).
+        # connect/reload before the next turn refreshes it. No limit: the model can change per-chat.
         "context_window": {
             "tokens": session.last_context_tokens,
         },
@@ -932,9 +911,9 @@ async def ws(websocket: WebSocket) -> None:
                 if turn_running:
                     # STEER (Claude-Code style): the user typed while a turn is mid-flight and NO
                     # approval gate is open (the gate case is handled above). Don't reject and don't
-                    # start a concurrent turn on the same chat — queue the text so the running loop
-                    # injects it as a real user turn at its NEXT step boundary (loop.py drains
-                    # ctx.steer_messages). The agent thus receives the message as soon as it finishes
+                    # start a concurrent turn on the same chat — queue the text so the running turn
+                    # injects it as a real user message (engine.steer(), with ctx.steer_messages as
+                    # the between-turns fallback). The agent thus receives it as soon as it finishes
                     # the current step and adapts, instead of it being dropped with "please wait".
                     # No echo frame: the UI already rendered the user's bubble optimistically, exactly
                     # as for a normal send (parity with the start-of-turn path below).

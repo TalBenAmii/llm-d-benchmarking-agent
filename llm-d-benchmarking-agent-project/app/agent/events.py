@@ -25,23 +25,19 @@ Server -> client:
   usage            {turn:{input,output,cache_read,cache_write,calls,total},
                     session:{input,output,cache_read,total},
                     context_window:{tokens,input,cache_read,cache_write},
-                    context_est:{total_chars,total_tokens_est,system_*,history_*,
-                                 last_tool_result_*}}
-                                           — REAL token usage from the provider API. A PER-TURN
-                                            event emitted on every LLM call (the live UI line
-                                            ticks up): turn.* are the RUNNING totals for the
-                                            in-progress turn, session.* the running session totals.
-                                            context_window is the REAL current context-window
-                                            occupancy: tokens = total_input of THIS call (NOT the
-                                            per-turn sum) — the Claude-Code "context used" count.
-                                            No model limit/percentage: the active model can change
-                                            (and may be a remote API), so no fixed denominator.
-                                            context_est is a cheap (char/4) ESTIMATE of the CURRENT
-                                            assembled-context window size + a breakdown (system vs
-                                            replayed history vs the last tool result) so the user
-                                            can see context GROWTH and what dominates it — NOT a
-                                            tokenizer count (see app/agent/context_mgmt.py
-                                            estimate_context_size).
+                    context?:{total_tokens,max_tokens,percentage}, compacted?:true}
+                                           — REAL token usage from the SDK's per-turn result. ONE
+                                            event per user turn (running totals across steer
+                                            follow-ups): turn.* for the in-progress turn,
+                                            session.* the running session totals. context_window
+                                            is the REAL current context-window occupancy: tokens =
+                                            total_input of the LAST call — the Claude-Code
+                                            "context used" count. `context` is the CLI's own
+                                            occupancy report (get_context_usage) incl. the model
+                                            limit + percentage; optional — older CLIs and the
+                                            hermetic fake omit it and the UI chip degrades to
+                                            context_window. `compacted` flags a turn the CLI
+                                            auto-compacted (see app/agent/engine.py).
   welcome          {heading, bullets:[str], nudge}
                                            — DETERMINISTIC start-of-chat greeting, emitted by the
                                             backend (NOT the LLM, no token cost) on a brand-new

@@ -32,7 +32,7 @@ from typing import Any
 
 from app.config import Settings
 from app.dig import scrub_strings
-from app.llm.provider import AGENT_SDK_PROVIDERS
+from app.llm.model_catalog import AGENT_SDK_PROVIDERS
 
 
 # ---------------------------------------------------------------------------
@@ -402,42 +402,24 @@ def _check_workspace_writable(settings: Settings) -> CheckOutcome:
     return CheckOutcome("workspace_writable", True, f"writable at {root}", {"path": str(root)})
 
 
-# How to determine which secret a configured provider needs. DATA, keyed by the normalized
-# provider name — NOT decision logic; the self-check below just looks the requirement up.
-_PROVIDER_KEY_ATTR: dict[str, str] = {
-    "anthropic": "anthropic_api_key",
-}
-
-# Keyless providers: they authenticate via the local ``claude`` CLI subscription login, not an
-# API key in config. Coherent as long as the name is known; a missing CLI login surfaces as a
-# clear error on the first chat (we stay hermetic here and do not probe the CLI). The alias
-# set itself lives with the dispatcher (app.llm.provider) so the two can't drift.
-_KEYLESS_PROVIDERS: frozenset[str] = AGENT_SDK_PROVIDERS
-
-
 def _check_provider_coherent(settings: Settings) -> CheckOutcome:
-    """The LLM provider name must be known AND its required key present. Surfaces the most
-    common misconfiguration (provider set, key forgotten) at startup rather than on first chat.
-    The check OBSERVES config only — it never contacts the provider (hermetic)."""
-    provider = (settings.llm_provider or "anthropic").lower()
-    if provider in _KEYLESS_PROVIDERS:
+    """The SDK-native engine runs ONLY on the Claude Agent SDK (keyless — the logged-in
+    ``claude`` CLI subscription). Any other LLM_PROVIDER is a clear readiness failure, not a
+    crash; a missing CLI login surfaces on the first chat (this check stays hermetic and never
+    probes the CLI). The alias set lives in app.llm.model_catalog so the badge/picker and this
+    check can't drift."""
+    provider = (settings.llm_provider or "claude-agent-sdk").lower()
+    if provider in AGENT_SDK_PROVIDERS:
         return CheckOutcome(
             "provider_coherent", True,
             f"provider {provider!r} uses the Claude subscription via the claude CLI login (no API key)",
-            {"provider": provider, "key_attr": None, "has_key": True},
+            {"provider": provider},
         )
-    key_attr = _PROVIDER_KEY_ATTR.get(provider)
-    if key_attr is None:
-        return CheckOutcome(
-            "provider_coherent", False, f"unknown LLM_PROVIDER {settings.llm_provider!r}",
-            {"provider": provider, "known": sorted(_PROVIDER_KEY_ATTR)},
-        )
-    has_key = bool(getattr(settings, key_attr, None))
     return CheckOutcome(
-        "provider_coherent", has_key,
-        f"provider {provider!r} configured with {key_attr}" if has_key
-        else f"provider {provider!r} requires {key_attr.upper()} but it is unset",
-        {"provider": provider, "key_attr": key_attr, "has_key": has_key},
+        "provider_coherent", False,
+        f"unsupported LLM_PROVIDER {settings.llm_provider!r} — the SDK-native engine supports "
+        f"only {sorted(AGENT_SDK_PROVIDERS)}",
+        {"provider": provider, "supported": sorted(AGENT_SDK_PROVIDERS)},
     )
 
 
