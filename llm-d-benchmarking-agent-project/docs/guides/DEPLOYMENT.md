@@ -37,7 +37,7 @@ and starts the server (reads `HOST`/`PORT` from `.env`; defaults to `127.0.0.1:8
 Or manually (uv is required; it builds `.venv` from the committed `uv.lock`, the source of truth):
 
 ```bash
-cp .env.example .env          # add ANTHROPIC_API_KEY (or OpenAI-compatible creds)
+cp .env.example .env          # defaults to the Claude plan route; run scripts/install/setup-claude-plan.sh to wire the CLI login
 uv sync                       # runtime deps from uv.lock  (uv sync --extra dev  for the test/lint toolchain)
 uv run uvicorn app.main:app --reload
 # open http://127.0.0.1:8000
@@ -47,9 +47,8 @@ uv run uvicorn app.main:app --reload
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_PROVIDER` | `claude-agent-sdk` | `claude-agent-sdk` (default: your Claude Pro/Max plan via the local `claude` CLI login or a `claude setup-token` token, no API key; `scripts/install/setup-claude-plan.sh` wires it interactively) or `anthropic`. |
+| `LLM_PROVIDER` | `claude-agent-sdk` | Must be a `claude-agent-sdk` alias: your Claude Pro/Max plan via the local `claude` CLI login or a `claude setup-token` token, no API key (`scripts/install/setup-claude-plan.sh` wires it interactively). Anything else fails readiness. |
 | `AGENT_SDK_MODEL` / `AGENT_SDK_EFFORT` | `claude-sonnet-5` / `high` | Model + reasoning effort for the `claude-agent-sdk` route. |
-| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | — / `claude-opus-4-8` | Anthropic creds + model. |
 | `REPOS_DIR` | parent of the project | Where the `llm-d` / `llm-d-benchmark` repos are (or will be cloned). |
 | `WORKSPACE_DIR` | `./workspace` | Runtime scratch (sessions, configs, logs, history). |
 | `HF_TOKEN` | — | Only for gated models on real (non-sim) deploys; backend-only, never echoed. |

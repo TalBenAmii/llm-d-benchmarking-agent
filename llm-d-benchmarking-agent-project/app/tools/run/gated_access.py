@@ -15,7 +15,7 @@ This is MECHANISM enforcing a stated SAFETY boundary, not domain judgment (cf. t
 produced — it never decides *what* to benchmark. It is the same shape as the existing
 mutating→approval guardrail.
 
-State (``ctx.gated_access``) is per-session and RUNTIME-ONLY (like ``ctx.fetched_docs`` /
+State (``ctx.gated_access``) is per-session and RUNTIME-ONLY (like ``ctx.consulted_skills`` /
 ``ctx.env_snapshot``): it lives for the session process. A resumed chat re-establishes it on its
 next ``check_capacity`` — which the mandatory pre-flight requires before any standup anyway.
 ``provision_hf_secret`` is never blocked (it is not an llmdbenchmark deploy, and it is the fix).

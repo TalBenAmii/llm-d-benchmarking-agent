@@ -64,8 +64,6 @@ spec:
               value: {{ .Values.config.agentSdkEffort | quote }}
             - name: AGENT_SDK_THINKING
               value: {{ .Values.config.agentSdkThinking | quote }}
-            - name: ANTHROPIC_MODEL
-              value: {{ .Values.config.anthropicModel | quote }}
             - name: MAX_CONCURRENT_RUNS
               value: {{ .Values.config.maxConcurrentRuns | quote }}
             - name: ORCHESTRATOR_IMAGE
@@ -79,12 +77,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "agent.secretName" . }}
                   key: CLAUDE_CODE_OAUTH_TOKEN
-                  optional: true
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "agent.secretName" . }}
-                  key: ANTHROPIC_API_KEY
                   optional: true
             - name: HF_TOKEN
               valueFrom:

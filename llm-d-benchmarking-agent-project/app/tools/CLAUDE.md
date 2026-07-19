@@ -8,7 +8,7 @@ the authoritative list. Judgment about *what to do with* results lives in `knowl
 
 ## Layout (navigational subpackages)
 Handler modules sit in four **navigational** subpackages keyed by primary workflow phase — this is a
-map for humans, NOT a mirror of the runtime tool groups (`registry._TOOL_GROUPS`). Each subpackage's
+map for humans (all tools are always exposed to the model — no runtime grouping). Each subpackage's
 `__init__.py` is **empty** (no re-exports); import handlers by their full path
 (`from app.tools.setup.probe import ...`). Cross-subpackage imports (e.g. `setup/capacity`→`run/gated_access`,
 `setup/plan`→`run/skill_gate`, `analyze/workload_profile`→`setup/catalog`) are legal absolute imports.
@@ -16,7 +16,7 @@ map for humans, NOT a mirror of the runtime tool groups (`registry._TOOL_GROUPS`
 - `run/` — execute · orchestrate · manage_runs · doe · shell · gated_access · skill_gate
 - `analyze/` — analyze · compare · aggregate_runs · report_locate · workload_profile · history · reproducibility
 - `access/` — knowledge_access · suggest
-- **top-level (flat)** — `registry.py` · `context.py` · `command_exec.py` · `tool_loader.py` · `schemas/`
+- **top-level (flat)** — `registry.py` · `context.py` · `command_exec.py` · `mcp_server.py` · `schemas/`
 
 ## How to add a tool (the pattern to copy)
 1. **Handler** — `app/tools/<phase>/<name>.py` (`<phase>` = setup/run/analyze/access): `async def my_tool(ctx: ToolContext, *, arg: str) -> dict[str, Any]`.
@@ -27,14 +27,15 @@ map for humans, NOT a mirror of the runtime tool groups (`registry._TOOL_GROUPS`
 3. **Register** — in `registry.py::build_registry()` add a `ToolSpec(name, _DESCRIPTIONS[name],
    InputModel, handler)` and a `_DESCRIPTIONS[name]` entry. `dispatch()` (`registry.py`) validates
    `raw_input` against the model and **returns** `{"error": ...}` on a `ValidationError` (the agent
-   self-corrects) — it does **not** raise.
+   self-corrects) — it does **not** raise. The SDK-native engine exposes every registered tool as an
+   in-process MCP tool (`mcp_server.py`) automatically — no extra wiring.
 
 ## Local invariants
 - **Read-only vs mutating is decided by the executor, not the tool.** Call `ctx.run_readonly(argv)`
   for probes (auto-runs) and `ctx.run_command(argv)` for mutations (routes through approval; rejection
   raises `ApprovalRejected`). A handler that calls neither just auto-runs (pure Python, e.g. analyze).
 - **Raise `ToolError` for any non-retryable failure** (bad input, missing repo, command policy denial) — the
-  loop turns it into a clean `{"error": ...}`. Never raise *other* exceptions (they break the session).
+  MCP wrapper turns it into a clean `{"error": ...}`. Never raise *other* exceptions (they break the session).
 - **A command policy denial is defense, not a bug** — widen capability in `security/command_policy.yaml` (data),
   don't work around it. (The command-policy-vs-`run_shell` scope split → `app/security/CLAUDE.md`.)
 - **Write only to `ctx.workspace`** (per-session). Never write into the READ-ONLY repos or `/tmp`.
@@ -43,7 +44,8 @@ map for humans, NOT a mirror of the runtime tool groups (`registry._TOOL_GROUPS`
 - **After cloning repos, call `ctx.catalog(refresh=True)`** or later tools see the stale (empty) catalog.
 
 ## Infra files (not tools)
-- `registry.py` — `build_registry()` (name→`ToolSpec`) + `dispatch()` (validate → handler). Authoritative.
+- `registry.py` — `build_registry()` (name→`ToolSpec`) + `dispatch()` (validate → handler) + `tool_definitions()` (all specs, always exposed). Authoritative.
+- `mcp_server.py` — the per-turn in-process MCP server the engine hands the SDK: one wrapper per ToolSpec (emit tool_call → dispatch → durations/cards/side-effects → emit tool_result). Results are NEVER clamped here.
 - `context.py` — `ToolContext` DI container + thin `run_command`/`run_readonly` delegators; `ToolError`/`ApprovalRejected`.
 - `command_exec.py` — `CommandExecutor`: validate → approval → run → record. Tools don't touch it directly.
 - `schemas/` — package of Pydantic input models, one module per tool family (`execute.py`, `orchestrate.py`, `probe.py`, `analysis.py`, `config.py`, `command.py`, `provenance.py`, `doe.py`, `docs.py`).
@@ -54,8 +56,8 @@ map for humans, NOT a mirror of the runtime tool groups (`registry._TOOL_GROUPS`
 
 ## Tool index
 `registry.py` is the source of truth for the registered set/order; the subpackage map above locates
-each handler (`check_endpoint_readiness` lives in `app/readiness/`). Most schemas are HIDDEN in phase
-groups until the model calls `load_tools` — mechanism → `app/agent/CLAUDE.md`.
+each handler (`check_endpoint_readiness` lives in `app/readiness/`). Every registered tool is
+always exposed to the model.
 
 ## Gotchas
 - Schema validation errors are **returned, not raised** — surface your own enum/range errors as a dict with `"error"`, don't raise mid-handler.

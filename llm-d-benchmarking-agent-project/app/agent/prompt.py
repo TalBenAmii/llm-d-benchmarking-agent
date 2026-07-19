@@ -314,8 +314,8 @@ CORE_KNOWLEDGE = (
 
 
 # Pointer (BYTE-STABLE) that replaces the inlined live catalog in the cached system prefix.
-# The actual catalog snapshot is injected ONCE per turn as a synthetic user message (see
-# app/agent/loop.py + catalog_brief_message) so it never mutates the cached prefix and never
+# The actual catalog snapshot is injected ONCE per session as a synthetic user message (see
+# app/agent/engine.py + catalog_brief_message) so it never mutates the cached prefix and never
 # breaks the provider cache hit. The names are still authoritative via that message + the
 # list_catalog tool — this text only tells the model where to find them.
 CATALOG_POINTER = """\
@@ -326,47 +326,17 @@ provided to you as a "[live catalog snapshot …]" message at the start of the c
 appear there — never invent a spec/harness/workload name."""
 
 
-# BYTE-STABLE. Tells the model that most tools are grouped + hidden by default and how to load a
-# group (call load_tools). This keeps the fat grouped schemas out of the default tool list WITHOUT
-# the model mistaking the lean list for "I can't do that". The unlock is model-driven (not a phase
-# gate) so it works from ANY entry point — an already-running stack, a pile of prior results, or a
-# reproduce request — with no in-session deploy. Keep the group→tool names here in sync with
-# registry.py::_TOOL_GROUPS (a test enforces it).
-GROUP_CATALOG_NOTE = """\
-# Loadable tool groups (load on demand with load_tools)
-To keep your tool list lean, only starter tools are shown by default; the rest are grouped and
-hidden. The MOMENT the user's request needs a grouped tool — whether their stack is already up,
-they have prior results to analyze, or they want to reproduce a run — call
-load_tools(groups=['<group>', ...]) FIRST. The group's tools then appear in your list (this same
-turn) and you call the one you need. Load more than one group at once when the task spans them.
-Never tell the user you cannot do something; just load the group and do it. The groups are:
-- setup (deploy & pre-flight): check_capacity, advise_accelerators, ensure_repos, run_setup,
-  write_and_validate_config, provision_hf_secret, check_endpoint_readiness, discover_stack
-- run (execute & monitor a benchmark): execute_llmdbenchmark (local subprocess),
-  orchestrate_benchmark_run (same run as a K8s Job via the orchestrator — THE route when the
-  user asks for an orchestrated / Kubernetes-Job run; never swap in the local path for that ask),
-  observe_run_metrics (live pod/node CPU-mem via kubectl top), cancel_run, manage_orchestrated_runs
-- analyze (results): locate_and_parse_report, analyze_results, compare_reports, result_history
-- advanced (power features): orchestrate_sweep, generate_doe_experiment,
-  export_run_bundle, reproduce_run, aggregate_runs, compare_harness_runs,
-  convert_guide_to_scenario"""
-
-
 def build_system_prompt(ctx: ToolContext) -> str:
     # INVARIANT: this prompt is the BYTE-STABLE static prefix only (role + rules + inlined
     # CORE knowledge + on-demand index + the catalog POINTER). It carries NO per-turn dynamic
-    # content, so the large prefix is reliably cache-hit by every provider (Anthropic ephemeral
-    # breakpoints, OpenAI implicit prefix caching) across every turn of a session. The LIVE
-    # catalog snapshot is injected as a synthetic conversation message instead (see
-    # catalog_brief_message + app/agent/loop.py) so it never invalidates this cached prefix.
-    # SIMULATE_NOTE is config-stable (constant for the whole process), so keeping it here does
-    # not perturb caching. Do not append per-turn dynamic text here.
+    # content, so the large prefix is reliably prompt-cached by the CLI across every turn of a
+    # session. The LIVE catalog snapshot is injected as a synthetic conversation message instead
+    # (see catalog_brief_message + app/agent/engine.py) so it never invalidates this cached
+    # prefix. SIMULATE_NOTE is config-stable (constant for the whole process), so keeping it
+    # here does not perturb caching. Do not append per-turn dynamic text here.
     parts = [ROLE, HARD_RULES]
     parts.extend(_knowledge_sections(ctx))
     parts.append(CATALOG_POINTER)
-    # Byte-stable: present every turn (the TOOL LIST changes when the model loads a group; this note
-    # explaining how to do that does not), so it never perturbs prefix caching.
-    parts.append(GROUP_CATALOG_NOTE)
     # Config-stable (constant for the whole process), so it does not perturb prefix caching.
     if ctx.settings.simulate:
         parts.append(SIMULATE_NOTE)

@@ -13,7 +13,7 @@ The signal is mechanism-agnostic: a call counts if it is ``fetch_key_docs(task=<
 in ``run.tool_calls`` regardless of read outcome), so scoring is unaffected by whether the file
 read itself succeeds.
 
-NON-GATING: skipped unless ``LLM_EVAL_LIVE=1`` and a provider is configured. Because a live model
+NON-GATING: skipped unless ``LLM_EVAL_LIVE=1`` (and the ``claude`` CLI is logged in). Because a live model
 is nondeterministic, each scenario runs ``SKILL_EVAL_RUNS`` times (default 3) and passes on a
 majority. Run it with::
 
@@ -34,8 +34,6 @@ from dataclasses import dataclass
 
 import pytest
 
-from app.config import get_settings
-from app.llm.provider import get_provider
 from tests._auth import has_auth
 from tests.flows.flows import Flow
 from tests.flows.harness import run_flow
@@ -145,12 +143,10 @@ def _run_passes(tool_calls: list[dict], scenario: SkillScenario) -> bool:
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=[s.key for s in SCENARIOS])
 async def test_agent_pulls_skill_into_context(scenario, tmp_path):
     if not has_auth():
-        pytest.skip("no LLM provider configured — set an API key in .env, or log in to the "
-                    "`claude` CLI for LLM_PROVIDER=claude-agent-sdk")
+        pytest.skip("unsupported LLM_PROVIDER — the eval runs on the Claude Agent SDK "
+                    "(log in to the `claude` CLI)")
 
-    provider = get_provider(get_settings())
-    # turns=[] is a placeholder: with a real provider the harness ignores the golden transcript
-    # (ScriptedProvider is only used when provider is None).
+    # turns=[] is a placeholder: in live mode the harness ignores the golden transcript.
     flow = Flow(
         name=f"skill-{scenario.key}",
         title=f"skill usage — {scenario.key}",
@@ -165,7 +161,7 @@ async def test_agent_pulls_skill_into_context(scenario, tmp_path):
     passes = 0
     diagnostics: list[str] = []
     for i in range(RUNS):
-        run = await run_flow(flow, tmp_path=tmp_path / f"run{i}", provider=provider, simulate=True)
+        run = await run_flow(flow, tmp_path=tmp_path / f"run{i}", live=True, simulate=True)
         in_context = _skill_index(run.tool_calls, scenario) is not None
         if _run_passes(run.tool_calls, scenario):
             passes += 1

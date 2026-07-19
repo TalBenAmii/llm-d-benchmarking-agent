@@ -1,12 +1,12 @@
 """Opt-in LIVE eval — does the *real* LLM drive the right commands from natural language?
 
 This is the complement to the deterministic golden-transcript tests: instead of replaying
-a scripted ideal, it points the configured model at each flow's ``mock_user_input`` and
-scores the commands the model actually chooses. It runs in the SAME hermetic sandbox
-(CaptureRunner — nothing is really executed), so it needs only an API key, no Docker / kind
-/ repos, and it never touches your cluster.
+a scripted ideal, it points the real model (the logged-in ``claude`` CLI) at each flow's
+``mock_user_input`` and scores the commands the model actually chooses. It runs in the SAME
+hermetic sandbox (CaptureRunner — nothing is really executed), so it needs only the CLI
+login, no Docker / kind / repos, and it never touches your cluster.
 
-NON-GATING: skipped unless ``LLM_EVAL_LIVE=1`` and a key is configured. Run it with::
+NON-GATING: skipped unless ``LLM_EVAL_LIVE=1``. Run it with::
 
     LLM_EVAL_LIVE=1 .venv/bin/python -m pytest tests/eval/live/test_flows_live.py -v
     # or: make validate-live
@@ -28,8 +28,6 @@ import os
 
 import pytest
 
-from app.config import get_settings
-from app.llm.provider import get_provider
 from tests._auth import has_auth
 from tests.flows.flows import ALL_FLOWS
 from tests.flows.harness import run_flow, score_flow
@@ -50,7 +48,7 @@ _LIVE_FLOWS = [f for f in ALL_FLOWS if f.live_eval and _MODE in f.live_modes]
 pytestmark = [
     pytest.mark.skipif(
         not _LIVE,
-        reason="live LLM eval is opt-in — set LLM_EVAL_LIVE=1 (and configure an API key in .env)",
+        reason="live LLM eval is opt-in — set LLM_EVAL_LIVE=1 (and log in to the `claude` CLI)",
     ),
     # A multi-turn REAL-LLM session legitimately runs longer than the 60s hermetic per-test backstop
     # in pyproject.toml (that cap targets fast unit tests / the approval-gate deadlock). Pin a generous
@@ -64,11 +62,10 @@ pytestmark = [
 @pytest.mark.parametrize("flow", _LIVE_FLOWS, ids=[f.name for f in _LIVE_FLOWS])
 async def test_live_flow_drives_the_right_commands(flow, tmp_path):
     if not has_auth():
-        pytest.skip("no LLM provider configured — set an API key in .env, or log in to the "
-                    "`claude` CLI for LLM_PROVIDER=claude-agent-sdk")
+        pytest.skip("unsupported LLM_PROVIDER — the eval runs on the Claude Agent SDK "
+                    "(log in to the `claude` CLI)")
 
-    provider = get_provider(get_settings())
-    run = await run_flow(flow, tmp_path=tmp_path, provider=provider, simulate=_SIMULATE)
+    run = await run_flow(flow, tmp_path=tmp_path, live=True, simulate=_SIMULATE)
     passed, notes = score_flow(run, flow)
 
     mode = "SIMULATE" if _SIMULATE else "live"

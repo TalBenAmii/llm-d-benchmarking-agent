@@ -1,4 +1,4 @@
-"""Chat-UI model + reasoning-effort picker (agent-SDK provider only) — hermetic, no CLI/network.
+"""Chat-UI model + reasoning-effort picker — hermetic, no CLI/network.
 
 Covers the backend half of the feature:
   * ``SetModelIn`` validates the ``set_model`` frame SHAPE (valid frames parse; extras/bad shape
@@ -6,22 +6,20 @@ Covers the backend half of the feature:
   * the pure catalog builder (``served_models``/``valid_selection``/``model_views``) — the served
     list always includes the configured default, preserves catalog order, synthesizes an unknown
     default, and the allowlist/effort validation the /ws handler applies before storing a selection;
-  * the per-turn override reaching the agent-SDK provider — ``open_provider_turn`` carries the
-    override into the turn's effective model/reasoning, ``chat()`` builds ``ClaudeAgentOptions`` with
-    the overridden model + effort, and the prewarm fingerprint changes when model/effort differ (so
-    a switched turn never adopts a spare built for the old model).
+  * the /ws handler: validate against runtime truth, store per-session (ephemeral), reject cleanly.
+
+The override REACHING the engine (ClaudeAgentOptions model/effort on connect) is pinned by
+``tests/agent/test_sdk_engine.py::test_options_carry_session_overrides``.
 """
 from __future__ import annotations
 
-import claude_agent_sdk as sdk
 import pytest
 from fastapi.testclient import TestClient
 
 from app.agent.ws_schemas import SetModelIn, ValidationError, parse_inbound
 from app.config import Settings
-from app.llm.agent_sdk_provider import _EFFORT_LEVELS, AgentSdkProvider
 from app.llm.model_catalog import CATALOG, model_views, served_models, valid_selection
-from app.llm.provider import open_provider_turn
+from app.llm.sdk_options import EFFORT_LEVELS
 
 # ---------------------------------------------------------------------------
 # (b) SetModelIn — frame SHAPE validation
@@ -93,10 +91,10 @@ def test_model_views_wire_shape():
 
 
 def test_catalog_efforts_are_subset_of_master_effort_levels():
-    # Per-model efforts are subsets of the provider's master _EFFORT_LEVELS — reuse the single
+    # Per-model efforts are subsets of the SDK options' master EFFORT_LEVELS — reuse the single
     # source of truth so the two can't drift (Sonnet 4.6 lacks xhigh; Haiku has none).
     for m in CATALOG:
-        assert set(m.efforts) <= _EFFORT_LEVELS, m.id
+        assert set(m.efforts) <= EFFORT_LEVELS, m.id
 
 
 def test_valid_selection_enforces_allowlist_and_effort():
@@ -118,76 +116,6 @@ def test_valid_selection_enforces_allowlist_and_effort():
 
 
 # ---------------------------------------------------------------------------
-# (d) the override reaches the agent-SDK provider
-# ---------------------------------------------------------------------------
-
-
-def _settings() -> Settings:
-    return Settings(llm_provider="claude-agent-sdk", agent_sdk_model="claude-haiku-4-5")
-
-
-def _tools():
-    return [{"name": "probe_environment", "description": "d", "input_schema": {"type": "object"}}]
-
-
-def _capturing_query(box):
-    async def _q(*, prompt, options, transport=None):
-        box["options"] = options
-        yield sdk.AssistantMessage(content=[sdk.TextBlock(text="ok")], model=options.model)
-        yield sdk.ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
-                                num_turns=1, session_id="s",
-                                usage={"input_tokens": 1, "output_tokens": 1,
-                                       "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0})
-    return _q
-
-
-def test_open_provider_turn_carries_override_into_effective_model_and_reasoning():
-    p = AgentSdkProvider(_settings())
-    turn = open_provider_turn(p, system="sys", tools=_tools(),
-                              model="claude-opus-4-8", effort="xhigh")
-    # The turn resolved the override ONCE (held for the whole turn); effort replaces the effort
-    # portion of the reasoning opts while extended-thinking (a process setting) carries over.
-    assert turn._eff_model == "claude-opus-4-8"
-    assert turn._eff_reasoning["effort"] == "xhigh"
-    assert turn._eff_reasoning["thinking"] == {"type": "adaptive"}
-    # No override → the configured defaults, unchanged behavior.
-    plain = open_provider_turn(p, system="sys", tools=_tools())
-    assert plain._eff_model == "claude-haiku-4-5"
-    assert plain._eff_reasoning["effort"] == "high"
-
-
-async def test_chat_builds_options_with_overridden_model_and_effort(monkeypatch):
-    box: dict = {}
-    monkeypatch.setattr(sdk, "query", _capturing_query(box))
-    p = AgentSdkProvider(_settings())
-    await p.chat(system="sys", messages=[{"role": "user", "content": "hi"}], tools=_tools(),
-                 model="claude-opus-4-8", effort="xhigh")
-    assert box["options"].model == "claude-opus-4-8"
-    assert box["options"].effort == "xhigh"
-
-
-async def test_chat_without_override_uses_configured_defaults(monkeypatch):
-    box: dict = {}
-    monkeypatch.setattr(sdk, "query", _capturing_query(box))
-    s = _settings()
-    await AgentSdkProvider(s).chat(
-        system="sys", messages=[{"role": "user", "content": "hi"}], tools=_tools())
-    assert box["options"].model == s.agent_sdk_model
-    assert box["options"].effort == s.agent_sdk_effort   # "high"
-
-
-def test_prewarm_fingerprint_differs_on_model_and_effort():
-    tools = _tools()
-    r_high = {"thinking": {"type": "adaptive"}, "effort": "high"}
-    r_xhigh = {"thinking": {"type": "adaptive"}, "effort": "xhigh"}
-    fp = AgentSdkProvider._fingerprint
-    base = fp("sys", tools, "claude-haiku-4-5", r_high)
-    assert fp("sys", tools, "claude-haiku-4-5", r_high) == base      # deterministic
-    assert fp("sys", tools, "claude-opus-4-8", r_high) != base       # different model
-    assert fp("sys", tools, "claude-haiku-4-5", r_xhigh) != base     # different effort
-
-
-# ---------------------------------------------------------------------------
 # the /ws handler: validate against runtime truth, store per-session, reject cleanly
 # ---------------------------------------------------------------------------
 
@@ -204,15 +132,12 @@ def test_ws_set_model_validates_stores_and_rejects(monkeypatch):
     import app.main as main_mod
 
     with TestClient(main_mod.app) as client:
-        # Provider None disables the brand-new-chat pre-probe (no subprocess noise); set_model does
-        # not touch the provider. Then make the handler see a switchable agent-SDK settings so the
-        # served catalog is non-empty regardless of the ambient .env.
-        main_mod.app.state.provider = None
         with client.websocket_connect("/ws") as ws:
             sid = _drain_for(ws, "ready")["data"]["session_id"]
             monkeypatch.setattr(
                 main_mod, "get_settings",
-                lambda: Settings(llm_provider="claude-agent-sdk", agent_sdk_model="claude-haiku-4-5"))
+                lambda: Settings(llm_provider="claude-agent-sdk",
+                                 agent_sdk_model="claude-haiku-4-5"))
 
             # A valid switch stores the selection on the session (ephemeral, applied next turn).
             ws.send_json({"type": "set_model", "model": "claude-opus-4-8", "effort": "xhigh"})
@@ -247,10 +172,10 @@ def test_ws_ready_echoes_session_model_override(monkeypatch):
     import app.main as main_mod
 
     with TestClient(main_mod.app) as client:
-        main_mod.app.state.provider = None
         monkeypatch.setattr(
             main_mod, "get_settings",
-            lambda: Settings(llm_provider="claude-agent-sdk", agent_sdk_model="claude-haiku-4-5"))
+            lambda: Settings(llm_provider="claude-agent-sdk",
+                             agent_sdk_model="claude-haiku-4-5"))
         with client.websocket_connect("/ws") as ws:
             ready = _drain_for(ws, "ready")
             sid = ready["data"]["session_id"]

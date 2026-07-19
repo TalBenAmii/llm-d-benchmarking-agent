@@ -5,7 +5,7 @@ Two layers, both hermetic:
   1. Pure-function tests over SYNTHETIC fixtures: invariant→category mapping, severity map, the
      finding dedup, the report assembly + gate logic (only deterministic ``severity >= high``
      gates; advisory LLM findings never do).
-  2. An end-to-end DETERMINISTIC bug-hunt: ``run_bughunt`` with NO provider (the seeded-RNG
+  2. An end-to-end DETERMINISTIC bug-hunt: ``run_bughunt`` without ``use_llm`` (the seeded-RNG
      fallback selector) drives the REAL app over a couple of seeds and asserts ZERO oracle
      violations — the always-on guard that the invariant oracle + the driver wiring still hold.
      This is the bug-hunter's "0 findings" baseline, run for free on every push.
@@ -201,7 +201,7 @@ def test_max_selector_calls_bound() -> None:
 
 @pytest.mark.skipif(not _BENCH_PRESENT, reason="bench repo not present")
 async def test_deterministic_bughunt_finds_nothing(tmp_path) -> None:
-    """End-to-end DETERMINISTIC hunt (NO provider → seeded-RNG fallback selector) over the REAL
+    """End-to-end DETERMINISTIC hunt (no ``use_llm`` → seeded-RNG fallback selector) over the REAL
     app: a couple of seeds, a small budget, and assert ZERO oracle violations. This is the
     bug-hunter's always-on baseline — it proves the oracle + driver wiring hold on every push,
     with no quota (the fuzzer already proved these seeds healthy; this drives the SAME machinery
@@ -210,7 +210,7 @@ async def test_deterministic_bughunt_finds_nothing(tmp_path) -> None:
 
     findings, total = await run_bughunt(
         app, lambda: TestClient(app), tmp_path,
-        seeds=[1, 7, 42, 99], actions_budget=12, provider=None,  # provider=None → deterministic fallback
+        seeds=[1, 7, 42, 99], actions_budget=12,  # no use_llm → deterministic fallback
     )
     assert total == 48  # 4 seeds * 12 actions, all played
     report = build_bug_report(

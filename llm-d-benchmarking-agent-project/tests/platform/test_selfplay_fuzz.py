@@ -4,7 +4,8 @@ GOAL (todo item): "Make the agent interact with and view the application and ran
 'play with it' to find bugs." This is a deterministic, *seedable* randomized harness that
 drives the real FastAPI app (``app.main:app``) exactly like a user would — over the real
 ``/ws`` WebSocket and the real ``/api/sessions`` + ``/api/namespaces`` HTTP routes — under
-``SIMULATE=1`` with a scripted :class:`FuzzProvider` (no network, no cluster, no live LLM).
+``SIMULATE=1`` with scripted turns over the hermetic FakeTransport (no network, no cluster,
+no live LLM).
 
 It is a PROPERTY test, not an example test: rather than asserting one scripted outcome, it
 generates a random sequence of *valid-but-arbitrary* user operations (new chat, send a
@@ -14,29 +15,28 @@ namespaces, ping, send a malformed frame) and after EVERY action re-checks a set
 INVARIANTS. A bug in connection-resume / approval-persistence / state-isolation surfaces as a
 failing seed with a printed action trace, reproducible by re-running that exact seed.
 
-The reusable mechanism — the :class:`FuzzProvider`, the isolated-state installer, the
-:class:`Player` action vocabulary, and the invariant battery — was **factored out** into
+The reusable mechanism — the :class:`SdkFuzzScripts` primer, the isolated-state installer,
+the :class:`Player` action vocabulary, and the invariant battery — lives in
 ``tests/eval/app_driver.py`` (so the LLM-driven exploratory bug-hunter can drive the SAME
 real app). This module imports that mechanism and selects each action with a *seeded RNG*
-(the deterministic path). Behavior is byte-identical to before the factor-out: identical seed
-→ identical action sequence → identical assertions.
+(the deterministic path): identical seed → identical action sequence → identical assertions.
 
 Why these substitutions (and only these):
   * ``SimRunner`` (``SIMULATE=1``) → every *mutating command* becomes a synthetic no-op, so a
-    standup/run never touches a cluster, yet the agent loop still runs end-to-end. The upfront
+    standup/run never touches a cluster, yet the engine still runs end-to-end. The upfront
     ``propose_session_plan`` approval gate is STILL gated (it is not a command), which is what
     gives us approve/reject/cancel paths to fuzz.
   * a tmp-dir-backed ``SessionManager`` so each fuzz run starts from an empty, isolated session
     store on disk — the "two sessions never share state" + "reload-from-disk matches history"
     invariants are then crisp and independent of any leftover chats.
-  * ``FuzzProvider`` — a scripted LLM that, per turn, deterministically (seeded) plays EITHER a
-    read-only turn or a turn that calls ``propose_session_plan`` then a mutating
+  * ``SdkFuzzScripts`` — scripted turns that, per user turn, deterministically (seeded) play
+    EITHER a read-only turn or a turn that calls ``propose_session_plan`` then a mutating
     ``execute_llmdbenchmark`` standup (a real registry tool, valid against the real policy),
-    so approval gates actually fire under the real loop.
+    so approval gates actually fire under the real engine.
 
 Everything else is the REAL app: the real ``/ws`` handler, the real ``Channel`` (resume
 buffer + pending-approval restore), the real ``SessionManager`` persistence, the real
-inbound-frame validation, the real agent loop + tool dispatch + policy.
+inbound-frame validation, the real engine + tool dispatch + policy.
 """
 from __future__ import annotations
 
@@ -49,11 +49,10 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 
 # The reusable real-app driver (factored out of this module — see tests/eval/app_driver.py).
-# Imported under the names this module historically used so its references are unchanged.
 from tests.eval.app_driver import Player as _Player
 from tests.eval.app_driver import install_isolated_state as _install_isolated_state
 
-# The bench repo must be present (the agent loop reads the live catalog for plan validation).
+# The bench repo must be present (the engine reads the live catalog for plan validation).
 # In a worktree this is satisfied via REPOS_DIR (see tests/CLAUDE.md); skip cleanly otherwise.
 pytestmark = pytest.mark.skipif(
     not get_settings().bench_repo.is_dir(), reason="bench repo not present"
@@ -81,8 +80,8 @@ def test_selfplay_fuzz(seed: int, tmp_path) -> None:
 
     rng = random.Random(seed)
     with TestClient(app) as client:
-        provider = _install_isolated_state(app, tmp_path)
-        player = _Player(app, client, provider, rng)
+        primer = _install_isolated_state(app, tmp_path)
+        player = _Player(app, client, primer, rng)
         try:
             for _ in range(_ACTIONS_PER_RUN):
                 player.step()
@@ -101,8 +100,8 @@ def test_selfplay_fuzz_soak(tmp_path) -> None:
     for seed in range(20):
         rng = random.Random(seed)
         with TestClient(app) as client:
-            provider = _install_isolated_state(app, tmp_path / f"s{seed}")
-            player = _Player(app, client, provider, rng)
+            primer = _install_isolated_state(app, tmp_path / f"s{seed}")
+            player = _Player(app, client, primer, rng)
             try:
                 for _ in range(40):
                     player.step()

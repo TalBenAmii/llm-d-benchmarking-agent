@@ -25,23 +25,20 @@ Server -> client:
   usage            {turn:{input,output,cache_read,cache_write,calls,total},
                     session:{input,output,cache_read,total},
                     context_window:{tokens,input,cache_read,cache_write},
-                    context_est:{total_chars,total_tokens_est,system_*,history_*,
-                                 last_tool_result_*}}
-                                           — REAL token usage from the provider API. A PER-TURN
-                                            event emitted on every LLM call (the live UI line
-                                            ticks up): turn.* are the RUNNING totals for the
-                                            in-progress turn, session.* the running session totals.
-                                            context_window is the REAL current context-window
-                                            occupancy: tokens = total_input of THIS call (NOT the
-                                            per-turn sum) — the Claude-Code "context used" count.
-                                            No model limit/percentage: the active model can change
-                                            (and may be a remote API), so no fixed denominator.
-                                            context_est is a cheap (char/4) ESTIMATE of the CURRENT
-                                            assembled-context window size + a breakdown (system vs
-                                            replayed history vs the last tool result) so the user
-                                            can see context GROWTH and what dominates it — NOT a
-                                            tokenizer count (see app/agent/context_mgmt.py
-                                            estimate_context_size).
+                    context?:{total_tokens,max_tokens,percentage}, compacted?:true}
+                                           — REAL token usage from the SDK's result. Emitted once
+                                            per SDK RESPONSE — a plain turn gets one, a steered
+                                            turn gets one per follow-up query, each carrying
+                                            RUNNING totals: turn.* for the in-progress turn,
+                                            session.* the running session totals. context_window
+                                            is the REAL current context-window occupancy: tokens =
+                                            total_input of the LAST call — the Claude-Code
+                                            "context used" count. `context` is the CLI's own
+                                            occupancy report (get_context_usage) incl. the model
+                                            limit + percentage; optional — older CLIs and the
+                                            hermetic fake omit it and the UI chip degrades to
+                                            context_window. `compacted` flags a turn the CLI
+                                            auto-compacted (see app/agent/engine.py).
   welcome          {heading, bullets:[str], nudge}
                                            — DETERMINISTIC start-of-chat greeting, emitted by the
                                             backend (NOT the LLM, no token cost) on a brand-new
@@ -75,10 +72,13 @@ Server -> client:
 Client -> server (validated against app.agent.ws_schemas; a malformed frame is rejected with
 an error event of kind "protocol_error" and the connection is kept alive):
   user_message     {text}                   — a chat turn. Sent while a turn is ALREADY running it
-                                            STEERS (Claude-Code style): the server queues it onto
-                                            ctx.steer_messages and the running loop picks it up at
-                                            its next step instead of starting a concurrent turn (and,
-                                            if an approval gate is open, declines the gate too).
+                                            STEERS (Claude-Code style): the server queues it on the
+                                            engine's live turn (engine.steer; ctx.steer_messages is
+                                            the between-turns fallback) and the engine delivers it
+                                            as a follow-up query() after the current SDK response's
+                                            ResultMessage — same app-level turn, never a concurrent
+                                            one (and, if an approval gate is open, declines the
+                                            gate too).
   approval         {request_id, approved}
   ping             {}                      — keep-alive; answered with a `pong` event
 

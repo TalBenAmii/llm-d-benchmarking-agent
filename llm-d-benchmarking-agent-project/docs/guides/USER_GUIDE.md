@@ -98,7 +98,7 @@ benchmark keeps running in the background and its result shows up when you retur
 
 | Symptom | Likely cause / fix |
 |---|---|
-| "LLM provider not configured" | No API key in `.env`. Add `ANTHROPIC_API_KEY` (or OpenAI-compatible creds) and restart. |
+| "unsupported LLM_PROVIDER" / chat never responds | The agent runs on the Claude Agent SDK: set `LLM_PROVIDER=claude-agent-sdk` and log the `claude` CLI in (`./scripts/install/setup-claude-plan.sh`), then restart. No API key needed. |
 | `install_prereqs.sh` can't install Docker | It needs root or passwordless sudo; on WSL the Docker daemon may not auto-start. The agent relays the exact message: start Docker yourself and re-probe. |
 | Standup fails with OOM / won't load | Ask for a capacity pre-flight first ("will this fit?"); use a lighter model/spec. |
 | "command denied by command policy" | The agent tried something outside the deny-by-default policy. That's the safety net working; widening it is a reviewed config change (see [`API.md`](../reference/API.md)). |

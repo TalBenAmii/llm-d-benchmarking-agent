@@ -1,8 +1,8 @@
 """Behavioural guards for read_repo_doc — the alt path the skill-usage eval accepts.
 
 The agent can ground in a skill by reading its SKILL.md directly; read_repo_doc must
-return real bodies, dedup exact repeats, and confine reads to real files under the
-read-only repos. Sibling-dependent reads use the skills_ctx skip-guard.
+return real bodies and confine reads to real files under the read-only repos.
+Sibling-dependent reads use the skills_ctx skip-guard.
 """
 from __future__ import annotations
 
@@ -21,14 +21,14 @@ def test_reads_each_skill_md_body(skills_ctx, task):
     assert res["path"].endswith("SKILL.md")
 
 
-def test_exact_repeat_is_deduped(skills_ctx):
-    """Reading the same skill doc twice on one context dedups the body the second time."""
+def test_exact_repeat_still_carries_the_body(skills_ctx):
+    """A repeat read returns the full body — the per-session doc dedup was removed at the
+    SDK-native cutover (the CLI's own context management is the bound now)."""
     path = "llm-d-skills/skills/deploy-llm-d/SKILL.md"
     first = knowledge_access.read_repo_doc(skills_ctx, path=path)
     assert first["content"].strip()
     second = knowledge_access.read_repo_doc(skills_ctx, path=path)
-    assert second.get("already_provided") is True
-    assert "content" not in second
+    assert second["content"] == first["content"]
 
 
 def test_directory_path_is_rejected(tool_ctx):

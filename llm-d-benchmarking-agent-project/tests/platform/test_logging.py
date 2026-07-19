@@ -3,7 +3,7 @@
 Pins the contract the acceptance criteria require:
 (a) the JSON formatter renders one valid JSON object per line with the STANDARD keys;
 (b) a corr_id bound at the (simulated) WS boundary propagates — within ONE turn — to log
-    records emitted by the agent loop, a tool, AND the command runner;
+    records emitted by the engine, a tool, AND the command runner;
 (c) the LOG_FORMAT=text path works.
 
 No network / cluster / GPU: the one real command is `git rev-parse --is-inside-work-tree`
@@ -18,9 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from app.agent.loop import AgentLoop
+from app.agent.engine import SdkNativeEngine
 from app.config import get_settings
-from app.llm.provider import AssistantTurn, ToolCall
 from app.observability.logging import (
     ContextFilter,
     JsonFormatter,
@@ -30,6 +29,7 @@ from app.observability.logging import (
 )
 from app.observability.logging import bind as log_bind
 from tests._helpers import _session
+from tests._sdk_fake import FakeTransport, assistant, result, text, tool_use
 
 # --------------------------------------------------------------------------- helpers
 
@@ -59,17 +59,6 @@ def _attach(handler: logging.Handler):
     root.addHandler(handler)
     root.setLevel(logging.DEBUG)
     return root, prev_level
-
-
-class _FakeProvider:
-    def __init__(self, turns):
-        self._turns = turns
-        self.i = 0
-
-    async def chat(self, *, system, messages, tools, cache_key=None):
-        turn = self._turns[self.i]
-        self.i += 1
-        return turn
 
 
 # --------------------------------------------------------------------------- (a) formatter
@@ -143,20 +132,21 @@ def test_json_formatter_renders_exception_and_stays_valid_json():
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
-async def test_corr_id_propagates_loop_tool_and_runner_within_one_turn(tmp_path):
+async def test_corr_id_propagates_engine_tool_and_runner_within_one_turn(tmp_path):
     """The acceptance test: ONE corr_id bound at the WS boundary appears on records from the
-    agent loop, a tool dispatch, AND the command runner — all within a single turn."""
+    engine, a tool dispatch, AND the command runner — all within a single turn."""
     handler = _CapturingHandler(JsonFormatter())
     root, prev = _attach(handler)
 
     # A turn that runs a read-only command (git status) so the runner actually executes and
     # logs. read_only → auto-runs, no approval. The project worktree is a git repo, so the
     # command exits 0 regardless of where pytest is launched.
-    turns = [
-        AssistantTurn(text="Checking.", tool_calls=[ToolCall(
-            "tc1", "run_shell", {"command": "git status -s"})]),
-        AssistantTurn(text="Done.", tool_calls=[]),
-    ]
+    script = [[
+        assistant(text("Checking."),
+                  tool_use("tc1", "mcp__benchtools__run_shell", {"command": "git status -s"})),
+        assistant(text("Done.")),
+        result(),
+    ]]
 
     async def emit(_t, _p):
         return None
@@ -165,15 +155,16 @@ async def test_corr_id_propagates_loop_tool_and_runner_within_one_turn(tmp_path)
         raise AssertionError("no approval expected for a read-only command")
 
     session = _session(tmp_path, sid="sess-xyz")
-    loop = AgentLoop(_FakeProvider(turns))
+    session.catalog_injected = True  # keep the wire minimal (no preamble)
+    engine = SdkNativeEngine(transport_factory=lambda: FakeTransport(script))
 
     the_corr = new_corr_id()
     try:
         # Bind exactly as main.py does at the WS boundary, then run the turn under it.
         with log_bind(corr_id=the_corr, session_id=session.id):
             assert get_corr_id() == the_corr
-            await loop.run_turn(session, "is this a git repo?",
-                                emit=emit, request_approval=request_approval)
+            await engine.run_turn(session, "is this a git repo?",
+                                  emit=emit, request_approval=request_approval)
     finally:
         root.removeHandler(handler)
         root.setLevel(prev)
@@ -188,13 +179,15 @@ async def test_corr_id_propagates_loop_tool_and_runner_within_one_turn(tmp_path)
         if o.get("corr_id") == the_corr:
             by_logger.setdefault(o["logger"], []).append(o)
 
-    # The loop emitted turn + tool lifecycle records under the corr_id.
-    loop_recs = by_logger.get("app.agent.loop", [])
-    loop_msgs = {r["message"] for r in loop_recs}
-    assert {"turn.start", "tool.call.start", "tool.call.result", "turn.end"} <= loop_msgs
+    # The engine emitted the turn lifecycle records under the corr_id...
+    engine_msgs = {r["message"] for r in by_logger.get("app.agent.engine", [])}
+    assert {"turn.start", "turn.end"} <= engine_msgs
+    # ...and the MCP tool wrapper the per-call lifecycle records.
+    wrapper_msgs = {r["message"] for r in by_logger.get("app.tools.mcp_server", [])}
+    assert {"tool.call.start", "tool.call.result"} <= wrapper_msgs
 
     # The tool layer emitted the command-exec record (mode + exe + duration + exit code),
-    # and it carries the tool name bound by the loop for the dispatch.
+    # and it carries the tool name bound by the wrapper for the dispatch.
     ctx_recs = [r for r in by_logger.get("app.tools.context", []) if r["message"] == "command.exec"]
     assert ctx_recs, "no command.exec record under the corr_id"
     cmd = ctx_recs[0]
@@ -202,7 +195,7 @@ async def test_corr_id_propagates_loop_tool_and_runner_within_one_turn(tmp_path)
     assert cmd["mode"] == "read_only"
     assert cmd["exit_code"] == 0
     assert "duration_s" in cmd
-    assert cmd["tool"] == "run_shell"  # the loop bound the tool name for this dispatch
+    assert cmd["tool"] == "run_shell"  # the wrapper bound the tool name for this dispatch
 
     # The command RUNNER emitted its own record, under the SAME corr_id (propagated purely
     # via contextvars — nothing was threaded through).
@@ -213,8 +206,9 @@ async def test_corr_id_propagates_loop_tool_and_runner_within_one_turn(tmp_path)
     # OS-level binary is bash (the tool layer logs exe="bash" to match) — assert by basename.
     assert Path(runner_recs[0]["exe"]).name == "bash"
 
-    # ALL THREE layers share one and the same corr_id (the crux of the acceptance criterion).
-    assert {"app.agent.loop", "app.tools.context", "app.security.runner"} <= set(by_logger)
+    # ALL FOUR layers share one and the same corr_id (the crux of the acceptance criterion).
+    assert {"app.agent.engine", "app.tools.mcp_server", "app.tools.context",
+            "app.security.runner"} <= set(by_logger)
     # session_id propagated too.
     assert all(r.get("session_id") == session.id for recs in by_logger.values() for r in recs)
 

@@ -26,8 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from app.agent.ws_schemas import ValidationError
 from app.config import Settings
 from app.dig import scrub_strings
-from app.llm.model_catalog import model_views
-from app.llm.provider import AGENT_SDK_PROVIDERS
+from app.llm.model_catalog import AGENT_SDK_PROVIDERS, model_views
 from app.storage.provenance import BundleStore
 
 # ── inbound-frame validation-error formatting (WS protocol ``error`` event) ─────────────────
@@ -47,37 +46,24 @@ def first_validation_message(exc: ValidationError) -> str:
 # ── response-shaping for the HTTP routes ────────────────────────────────────────────────────
 
 
-def provider_view(settings: Settings, provider_error: str | None) -> dict[str, Any]:
-    """The active LLM provider + model as the header badge shows them (GET /api/provider), plus the
-    switchable-model picker's data source.
+def provider_view(settings: Settings) -> dict[str, Any]:
+    """The active LLM provider + model as the header badge shows them (GET /api/provider), plus
+    the switchable-model picker's data source.
 
-    Shares ``get_provider``'s alias constants (config dispatch, not judgment) but stays
-    settings-based so it still answers when the provider FAILED to build — exactly the state
-    the badge must surface (``configured: False`` → "LLM not configured"). An unknown provider
-    name (which makes ``get_provider`` raise) gets ``model: None`` rather than a model it never
-    resolved to. Deliberately minimal: never a key, account identity, or the error text (which
-    can name env vars).
-
-    Model switching (agent-SDK provider ONLY): ``switchable`` is True iff the active provider is the
-    agent-SDK (Anthropic) path; then ``effort`` carries the configured reasoning effort and
-    ``models`` carries the served catalog the picker offers (curated set + the configured default,
-    each with its supported efforts). For any other provider ``switchable`` is False, ``effort`` is
-    null, and ``models`` is empty — the picker never appears."""
-    provider = (settings.llm_provider or "anthropic").lower()
-    switchable = provider in AGENT_SDK_PROVIDERS
-    if switchable:
-        model = settings.agent_sdk_model
-    elif provider == "anthropic":
-        model = settings.anthropic_model
-    else:
-        model = None
+    SDK-native engine: the only supported provider family is the Claude Agent SDK (the logged-in
+    ``claude`` CLI subscription — keyless). ``configured`` is False for any other LLM_PROVIDER
+    (the badge shows "LLM not configured"; /readyz carries the structured reason). Deliberately
+    minimal: never a key, account identity, or error text. ``switchable``/``effort``/``models``
+    feed the model picker (curated catalog + the configured default)."""
+    provider = (settings.llm_provider or "claude-agent-sdk").lower()
+    supported = provider in AGENT_SDK_PROVIDERS
     return {
         "provider": provider,
-        "model": model,
-        "configured": provider_error is None,
-        "switchable": switchable,
-        "effort": settings.agent_sdk_effort if switchable else None,
-        "models": model_views(settings.agent_sdk_model) if switchable else [],
+        "model": settings.agent_sdk_model if supported else None,
+        "configured": supported,
+        "switchable": supported,
+        "effort": settings.agent_sdk_effort if supported else None,
+        "models": model_views(settings.agent_sdk_model) if supported else [],
     }
 
 

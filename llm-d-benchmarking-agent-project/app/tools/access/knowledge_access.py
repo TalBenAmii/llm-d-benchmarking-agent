@@ -11,49 +11,14 @@ re-exports these names for backwards compatibility; new code should import them 
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from app.agent.context_mgmt import DEFAULT_TOOL_RESULT_BUDGET
 from app.paths import is_within
 from app.tools.context import ToolContext, ToolError
-
-# --- per-session doc de-duplication (context budget) ----------------------------------------
-# A repeated fetch of the SAME doc within a session re-injects its full text into the replayed
-# transcript on every subsequent turn — pure waste, since the content is identical. The first
-# fetch returns full content AND records the doc's identity on ``ctx.fetched_docs``; an EXACT
-# repeat is short-circuited to a tiny back-reference so the agent knows the content was already
-# provided and where to find it. Only EXACT repeats are short-circuited; a different doc (or the
-# first fetch in a resumed process) always returns full content. Mechanism only — no judgment.
-
-# A back-reference is itself bounded; do not bother de-duplicating trivially small docs (the
-# saving would be smaller than the reference, and tiny docs are cheap to re-send verbatim).
-_DEDUP_OVER_CHARS = 600
-
-
-def _doc_seen(ctx: ToolContext, key: str) -> bool:
-    """True if ``key`` was already fetched this session (and recorded). First call records it
-    and returns False; later calls return True. ``ctx.fetched_docs`` is the session-scoped set."""
-    if key in ctx.fetched_docs:
-        return True
-    ctx.fetched_docs.add(key)
-    return False
-
-
-def _already_provided(kind: str, identity: str, *, reload_hint: str) -> dict[str, Any]:
-    """The tiny back-reference returned for an EXACT repeat fetch — it clearly tells the agent the
-    content was already provided earlier this session, so it is never surprised by the omission."""
-    return {
-        "already_provided": True,
-        kind: identity,
-        "note": (f"already provided the {kind} '{identity}' earlier this session — its full "
-                 "content is in the conversation above; not re-sending it to save context. "
-                 f"{reload_hint}"),
-    }
 
 
 def _read_repo_doc_raw(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) -> dict[str, Any]:
@@ -96,24 +61,8 @@ def _read_repo_doc_raw(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) 
 
 def read_repo_doc(ctx: ToolContext, *, path: str, max_bytes: int = 40_000) -> dict[str, Any]:
     """Read a file from inside one of the three read-only repos (incl. the llm-d-skills
-    procedure library). Path traversal is blocked.
-
-    Per-session de-dup: the FIRST read of a given resolved doc returns its full content; an EXACT
-    repeat within the session returns a tiny back-reference instead of re-injecting identical text
-    (the agent is told the content is already in the conversation above)."""
-    doc = _read_repo_doc_raw(ctx, path=path, max_bytes=max_bytes)
-    # Key on the RESOLVED path so different spellings of the same file de-dup together. Only
-    # de-dup non-trivial docs that aren't already truncated mid-content (a truncated read may be
-    # re-fetched with a larger max_bytes for the rest).
-    resolved = doc["path"]
-    dedup_eligible = len(doc["content"]) >= _DEDUP_OVER_CHARS and not doc["truncated"]
-    if dedup_eligible and _doc_seen(ctx, f"repo_doc:{resolved}"):
-        return _already_provided(
-            "doc", resolved,
-            reload_hint="Pass a larger max_bytes or a more specific path only if you need a "
-                        "different portion.",
-        )
-    return doc
+    procedure library). Path traversal is blocked."""
+    return _read_repo_doc_raw(ctx, path=path, max_bytes=max_bytes)
 
 
 def fetch_key_docs(
@@ -150,27 +99,13 @@ def fetch_key_docs(
         item: dict[str, Any] = {"path": rel, "task": entry.get("task"), "why": entry.get("why")}
         is_knowledge = entry.get("kind") == "knowledge"
         try:
-            # Use the UNDEDUPED core so this tool controls dedup per-doc itself (the dedup wrapper
-            # would return a content-less back-reference that breaks the item shape below). A
-            # `kind: knowledge` entry (e.g. our quickstart runbook) reads from knowledge/ instead of
-            # the read-only repos — same {path, content, truncated} shape, so the logic is shared.
+            # A `kind: knowledge` entry (e.g. our quickstart runbook) reads from knowledge/
+            # instead of the read-only repos — same {path, content, truncated} shape, so the
+            # logic is shared.
             doc = (_read_knowledge_doc(ctx, rel, max_bytes=max_bytes_each) if is_knowledge
                    else _read_repo_doc_raw(ctx, path=rel, max_bytes=max_bytes_each))
-            resolved = doc["path"]
-            # De-dup key: knowledge:<basename> matches read_knowledge's key (cross-tool de-dup);
-            # repo_doc:<resolved> matches read_repo_doc's.
-            dedup_key = (f"knowledge:{Path(resolved).name}" if is_knowledge
-                         else f"repo_doc:{resolved}")
-            dedup_eligible = len(doc["content"]) >= _DEDUP_OVER_CHARS and not doc["truncated"]
-            if dedup_eligible and _doc_seen(ctx, dedup_key):
-                # Already sent this doc's full text earlier this session — keep the metadata but
-                # omit the body so the same doc isn't re-injected every later turn.
-                item.update(found=True, resolved=resolved, already_provided=True,
-                            note="already provided earlier this session — see the previous fetch "
-                                 "of this doc above; body omitted to save context.")
-            else:
-                item.update(found=True, resolved=resolved, content=doc["content"],
-                            truncated=doc["truncated"])
+            item.update(found=True, resolved=doc["path"], content=doc["content"],
+                        truncated=doc["truncated"])
         except ToolError as exc:
             item.update(found=False, reason=str(exc))
         fetched.append(item)
@@ -230,16 +165,10 @@ def _read_knowledge_doc(ctx: ToolContext, path: str, *, max_bytes: int) -> dict[
     return {"path": str(match), "content": data[:max_bytes], "truncated": len(data.encode()) > max_bytes}
 
 
-# --- markdown section addressing (truncation UX) -------------------------------------------
-# A large knowledge guide overflows the loop's per-tool-result feed-back budget and is clamped
-# (app/agent/context_mgmt.py) to a leading PREVIEW before the MODEL sees it — so the LATER
-# sections silently vanish and the model never learns they exist. Two mechanisms fix that, both
-# pure: (1) when a guide won't fit the budget, read_knowledge annotates its result with the
-# headings that fall PAST the clamp's cut (a short signal string the clamp preserves intact) plus
-# a note, so the model knows what it is missing; (2) a `section` arg returns just one named section
-# verbatim, so the model can re-fetch a dropped section. Crucially the FULL content stays in the
-# returned dict — only the model-facing clamped COPY is bounded — so the UI/persistence and callers
-# still get the whole guide. No judgment here — WHICH section to read is the model's call.
+# --- markdown section addressing --------------------------------------------------------------
+# A `section` arg on read_knowledge returns just one named markdown section verbatim, so the
+# model can pull a specific part of a large guide instead of the whole thing. Pure mechanism —
+# WHICH section to read is the model's call.
 # CommonMark allows an ATX heading up to 3 leading spaces of indentation; keep that latitude so an
 # indented '### Sub' (as under capacity.md's provisioning block) is still seen as a heading.
 _ATX_HEADING_RE = re.compile(r"^ {0,3}(#{1,6})[ \t]+(\S.*?)[ \t]*#*[ \t]*$")
@@ -247,21 +176,13 @@ _ATX_HEADING_RE = re.compile(r"^ {0,3}(#{1,6})[ \t]+(\S.*?)[ \t]*#*[ \t]*$")
 # Heading-lookalike lines INSIDE a fence (e.g. a shell '# comment') are NOT headings, so the
 # outline walk must track fences and skip their contents.
 _FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
-# Headings past this raw-content offset are reported as dropped. The clamp's preview shows roughly
-# the leading ``budget`` chars of the SERIALIZED result minus its envelope overhead; this reserve
-# is deliberately generous so the cut estimate is conservative (better to flag a borderline section
-# as dropped than to let one vanish unmentioned).
-_DROPPED_CUT_RESERVE = 1500
-# Keep the dropped-heading list a short signal scalar so the loop's clamp preserves it verbatim
-# (a longer string would be treated as bulk payload and clipped away exactly when it is needed).
-_DROPPED_LIST_MAX_CHARS = 450
 
 
 def _markdown_headings(text: str) -> list[tuple[int, int, str]]:
     """(level, char-offset, heading-text) for every ATX markdown heading in ``text``, in order.
-    Pure mechanism — the outline used to address a section and to name the dropped ones. Fenced
-    code blocks are tracked so a heading-lookalike line inside a ``` / ~~~ fence (a shell comment,
-    a commented-out '# heading') is not mis-parsed as a real heading."""
+    Pure mechanism — the outline used to address a section. Fenced code blocks are tracked so a
+    heading-lookalike line inside a ``` / ~~~ fence (a shell comment, a commented-out
+    '# heading') is not mis-parsed as a real heading."""
     out: list[tuple[int, int, str]] = []
     offset = 0
     fence: str | None = None  # the fence char (` or ~) while inside a code block, else None
@@ -299,47 +220,6 @@ def _extract_section(text: str, wanted: str) -> tuple[str, str] | None:
     return None
 
 
-def _join_dropped(headings: list[str]) -> str:
-    """Join dropped-heading names into ONE short signal string (capped so the loop's clamp keeps
-    it intact). If too many to fit, keep the first that fit and count the remainder."""
-    out: list[str] = []
-    used = 0
-    for i, h in enumerate(headings):
-        add = (3 if out else 0) + len(h)  # ' · ' separator + heading
-        if used + add > _DROPPED_LIST_MAX_CHARS and out:
-            return " · ".join(out) + f" · …(+{len(headings) - i} more)"
-        out.append(h)
-        used += add
-    return " · ".join(out)
-
-
-def _annotate_budget_overflow(
-    result: dict[str, Any], content: str, budget: int, *, unit: str = "section",
-) -> None:
-    """The serialized result exceeds the feed-back budget, so the loop's clamp will show the model
-    only a leading preview. Annotate the result IN PLACE — WITHOUT touching ``content`` (callers/UI
-    still get the whole thing) — with the headings that fall past the clamp's cut plus a re-fetch
-    note, both short signal strings the clamp preserves. ``unit`` names what the model can re-fetch:
-    'section' on a whole-guide read; 'sub-section' on a large section read (whose ### sub-headings
-    are what fell past the cut, re-fetchable the same way). Pure formatting."""
-    cut = max(0, budget - _DROPPED_CUT_RESERVE)
-    dropped = [htext for _lvl, off, htext in _markdown_headings(content) if off >= cut]
-    topic = result["topic"]
-    if dropped:
-        result["dropped_sections"] = _join_dropped(dropped)
-        result["note"] = (
-            f"guide '{topic}' exceeds the tool-result feed-back budget, so only a leading preview "
-            f"reaches you; the {unit}s in 'dropped_sections' fall past the cut — re-fetch any ONE "
-            f"with read_knowledge(name='{topic}', section='<heading>')."
-        )
-    else:
-        result["note"] = (
-            f"guide '{topic}' exceeds the tool-result feed-back budget, so only a leading preview "
-            f"reaches you; fetch a specific {unit} with "
-            f"read_knowledge(name='{topic}', section='<heading>')."
-        )
-
-
 def read_knowledge(
     ctx: ToolContext, *, name: str, section: str | None = None,
 ) -> dict[str, Any]:
@@ -347,13 +227,7 @@ def read_knowledge(
     'capacity.md'), or — with ``section`` — just that one named markdown section of it. The
     system prompt inlines the core guides and indexes the rest; call this to load an on-demand
     guide BEFORE interpreting that kind of result. Read-only, auto-runs. Strictly validated: no
-    path traversal, no absolute paths, no '..'.
-
-    The FULL guide text is always returned, but a large one is clamped to a leading preview before
-    the MODEL sees it; when that happens the result also lists the ``dropped_sections`` (the
-    headings past the cut) so nothing vanishes silently — re-fetch any one by passing
-    ``section='<heading>'`` (which returns just that section — itself annotated with its dropped
-    ``### sub-sections`` in the rare case that one section alone still overflows the budget)."""
+    path traversal, no absolute paths, no '..'."""
     files = _knowledge_files(ctx)
     valid = [f.name for f in files]
     requested = (name or "").strip()
@@ -369,11 +243,8 @@ def read_knowledge(
 
     content = match.read_text()
 
-    # A targeted section fetch returns just that one section verbatim — the escape hatch for a
-    # section the whole-guide read dropped. Not de-duped: it is a different, narrower payload than
-    # the whole guide, and re-fetching a section is cheap. It is usually small, but a large section
-    # can itself overflow the budget, so it gets the SAME clamp-surviving annotation (naming its
-    # ### sub-sections past the cut) as the whole-guide path.
+    # A targeted section fetch returns just that one section verbatim — the cheap way to pull a
+    # specific part of a large guide.
     if section is not None and section.strip():
         found = _extract_section(content, section)
         if found is None:
@@ -383,29 +254,9 @@ def read_knowledge(
                 "available_sections": [h for _lvl, _off, h in _markdown_headings(content)],
             }
         heading, body = found
-        sec_result: dict[str, Any] = {
-            "name": match.name, "topic": match.stem, "section": heading, "content": body,
-        }
-        if len(json.dumps(sec_result)) > DEFAULT_TOOL_RESULT_BUDGET:
-            _annotate_budget_overflow(sec_result, body, DEFAULT_TOOL_RESULT_BUDGET,
-                                      unit="sub-section")
-        return sec_result
+        return {"name": match.name, "topic": match.stem, "section": heading, "content": body}
 
-    # Per-session de-dup: a guide already loaded this session is in the conversation above, so an
-    # EXACT repeat returns a back-reference rather than re-injecting the full guide every turn.
-    if len(content) >= _DEDUP_OVER_CHARS and _doc_seen(ctx, f"knowledge:{match.name}"):
-        return _already_provided(
-            "topic", match.stem,
-            reload_hint="Its full text is unchanged; re-load it only if you truly need it again.",
-        )
-
-    result: dict[str, Any] = {"name": match.name, "topic": match.stem, "content": content}
-    # The FULL content stays put; if it would overflow the loop's feed-back budget (and be clamped
-    # to a blind preview for the model), add the clamp-surviving 'dropped_sections' + note so the
-    # model still learns which sections it is missing and how to re-fetch them.
-    if len(json.dumps(result)) > DEFAULT_TOOL_RESULT_BUDGET:
-        _annotate_budget_overflow(result, content, DEFAULT_TOOL_RESULT_BUDGET)
-    return result
+    return {"name": match.name, "topic": match.stem, "content": content}
 
 
 # --- search_knowledge: lexical search over knowledge/ + the curated repo-doc index ---------

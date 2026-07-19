@@ -30,14 +30,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # LLM provider
-    llm_provider: str = "anthropic"
-    anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-opus-4-8"
-    # Claude Agent SDK provider (LLM_PROVIDER=claude-agent-sdk): runs inference on the user's
-    # Claude subscription (e.g. a Max plan) via the logged-in ``claude`` CLI — no API key needed.
-    # The SDK's own built-in tools stay disabled; the app's tools + agent loop are unchanged.
+    # LLM engine: the Claude Agent SDK is the ONLY supported provider (runs inference on the
+    # user's Claude subscription via the logged-in ``claude`` CLI — no API key needed). Any
+    # other LLM_PROVIDER value fails readiness with a clear "unsupported provider" reason.
     # ``claude_cli_path`` is optional (the SDK auto-discovers the CLI on PATH when unset).
+    llm_provider: str = "claude-agent-sdk"
     agent_sdk_model: str = "claude-haiku-4-5"
     claude_cli_path: str | None = None
     # Reasoning quality + chain-of-thought capture for the Claude Agent SDK provider. These two
@@ -54,6 +51,11 @@ class Settings(BaseSettings):
         default="high", validation_alias=AliasChoices("agent_sdk_effort", "llm_effort"))
     agent_sdk_thinking: str = Field(
         default="adaptive", validation_alias=AliasChoices("agent_sdk_thinking", "llm_thinking"))
+    # SDK-native engine stream watchdog: a turn whose SDK stream goes silent for this many
+    # seconds WITH NO TOOL RUNNING (a parked approval gate lives inside a tool call and is
+    # exempt) is interrupted and surfaced as an error instead of hanging forever. Deliberately
+    # generous — it must only ever catch a genuinely wedged CLI subprocess. <=0 disables.
+    agent_stream_watchdog_s: float = 900.0
 
     # Paths (defaults computed from PROJECT_ROOT when unset)
     repos_dir: Path | None = None
@@ -84,8 +86,9 @@ class Settings(BaseSettings):
     # and what production runs with) => new chats start in the "no_namespace" folder and move
     # to their plan's namespace once approved. The test suite sets DEFAULT_SESSION_NAMESPACE=test
     # so test-created sessions cluster under a foldable "test" folder instead of bloating the
-    # real chat list. Keep this None in production (loop.py only fills an *unset* namespace, so a
-    # non-None default here would swallow the plan's namespace — see app/agent/loop.py).
+    # real chat list. Keep this None in production (the plan-approval hook only fills an *unset*
+    # namespace, so a non-None default here would swallow the plan's namespace — see
+    # app/tools/mcp_server.py).
     default_session_namespace: str | None = None
     # CORS allowed origins for the browser fetch surface. Empty (default) = today's behavior
     # (no CORS middleware installed, so the response carries no CORS headers). Set a

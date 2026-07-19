@@ -1,9 +1,10 @@
 """Deterministic, hermetic flow validation — this is what GATES CI.
 
-For each flow we replay its golden transcript through the real agent loop (no API key, no
-Docker, no kind, no repos) and assert the agent produces exactly the right commands, with
-correct read-only/mutating classification and approval gating. Plus direct policy
-assertions (deny-by-default holds) and a drift guard against the live catalog.
+For each flow we replay its golden transcript through the real engine (the SDK's protocol
+machinery over a hermetic FakeTransport — no API key, no Docker, no kind, no repos) and assert
+the agent produces exactly the right commands, with correct read-only/mutating classification
+and approval gating. Plus direct policy assertions (deny-by-default holds) and a drift guard
+against the live catalog.
 """
 from __future__ import annotations
 
@@ -29,11 +30,13 @@ _BENCH_REPO = Path(__file__).resolve().parents[2].parent / "llm-d-benchmark"
 
 @pytest.mark.parametrize("flow", ALL_FLOWS, ids=_FLOW_IDS)
 async def test_flow_runs_the_right_commands(flow, tmp_path):
+    """Every golden flow must satisfy the same expectations: right commands in order,
+    correct read-only/mutating classification, every mutating command approval-gated."""
     run = await run_flow(flow, tmp_path=tmp_path)
 
-    # The loop completed cleanly (no crash, no step-limit blow-up).
-    assert run.ended_done, f"[{flow.name}] loop did not finish: events={run.events[-3:]}"
-    assert not run.errors, f"[{flow.name}] loop emitted errors: {run.errors}"
+    # The turn completed cleanly (no crash, no step-limit blow-up).
+    assert run.ended_done, f"[{flow.name}] turn did not finish: events={run.events[-3:]}"
+    assert not run.errors, f"[{flow.name}] turn emitted errors: {run.errors}"
 
     # The universal safety invariant: mutating ⇒ approval-gated; read-only ⇒ auto-run.
     assert not (g := gating_problems(run)), f"[{flow.name}] gating violations:\n" + "\n".join(g)
@@ -144,10 +147,6 @@ def test_every_feature_tool_has_live_coverage():
         # offer as buttons (the structured analog of an approval card) — not a feature a user asks
         # for by name. Exercised incidentally wherever the agent offers follow-ups.
         "suggest_next_steps",
-        # Token-budget mechanism: load_tools is how the model reveals a hidden tool GROUP's schemas
-        # mid-turn — pure plumbing, never a user's standalone ask. The grouped tools it loads
-        # (execute_llmdbenchmark, analyze_results, orchestrate_sweep, …) keep their own flows.
-        "load_tools",
     }
     live_required_tools = {t for f in ALL_FLOWS if f.live_eval for t in f.required_tools}
     # execute_llmdbenchmark is asserted via required_subcommands (standup/run/teardown/plan), not

@@ -4,7 +4,7 @@ The live eval drives a real LLM to check the agent pulls each operation's llm-d-
 into context before the operation — that spends Max-plan quota, so it's gated behind
 LLM_EVAL_LIVE=1. THIS file exercises the SAME detection contract
 (_skill_index / _operation_index / _run_passes) against deterministic scripted
-transcripts driven through the real AgentLoop + real fetch_key_docs / read_repo_doc
+transcripts driven through the real engine + real fetch_key_docs / read_repo_doc
 tools — free, always-run. It proves the skill-grounding signal is observable in the
 tool-call stream and that the detection helpers reward the right orderings and reject
 the wrong ones (missing skill, wrong skill, skill fetched after the operation).
@@ -27,8 +27,17 @@ from tests.flows.harness import run_flow
 _SKILL_MD_SCENARIOS = [s for s in SCENARIOS if s.key.endswith("_skill")]
 
 
+def _plan_tc():
+    """A schema-VALID plan proposal: the SDK's MCP layer rejects schema-invalid input before the
+    app's dispatch runs (no tool_call event at all), so the scripted operation must carry real
+    args — the tests score grounding ORDER, not arg validity."""
+    return _tc("propose_session_plan", use_case_summary="scripted", spec="cicd/kind",
+               namespace="llmd-quickstart", harness="inference-perf",
+               workload="sanity_random.yaml", expected_steps=["standup"])
+
+
 async def _tool_calls_for(turns, ask, tmp_path):
-    """Run a scripted golden transcript through the real AgentLoop, return run.tool_calls."""
+    """Run a scripted golden transcript through the real engine, return run.tool_calls."""
     flow = Flow(
         name="skill-scripted",
         title="scripted skill grounding",
@@ -45,7 +54,7 @@ async def test_scripted_fetch_key_docs_before_op_passes(scenario, tmp_path):
     """fetch_key_docs(task=key) before the operation satisfies the skill-grounding contract."""
     turns = [
         _turn("Grounding in the operation's skill first.", _tc("fetch_key_docs", task=scenario.key)),
-        _turn("Now proposing the plan.", _tc("propose_session_plan")),
+        _turn("Now proposing the plan.", _plan_tc()),
     ]
     calls = await _tool_calls_for(turns, scenario.ask, tmp_path)
     assert _skill_index(calls, scenario) == 0
@@ -59,7 +68,7 @@ async def test_scripted_read_repo_doc_alt_path_passes(scenario, tmp_path):
     turns = [
         _turn("Reading the skill doc directly.",
               _tc("read_repo_doc", path=scenario.read_prefix + "SKILL.md")),
-        _turn("Now proposing the plan.", _tc("propose_session_plan")),
+        _turn("Now proposing the plan.", _plan_tc()),
     ]
     calls = await _tool_calls_for(turns, scenario.ask, tmp_path)
     assert _skill_index(calls, scenario) == 0
@@ -69,7 +78,7 @@ async def test_scripted_read_repo_doc_alt_path_passes(scenario, tmp_path):
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=[s.key for s in SCENARIOS])
 async def test_scripted_op_without_skill_fails(scenario, tmp_path):
     """Jumping to the operation without grounding in the skill must NOT pass."""
-    turns = [_turn("Proposing directly, skipping the skill.", _tc("propose_session_plan"))]
+    turns = [_turn("Proposing directly, skipping the skill.", _plan_tc())]
     calls = await _tool_calls_for(turns, scenario.ask, tmp_path)
     assert _skill_index(calls, scenario) is None
     assert _operation_index(calls) == 0
@@ -82,7 +91,7 @@ async def test_scripted_wrong_skill_does_not_satisfy(scenario, tmp_path):
     other = next(s for s in SCENARIOS if s.key != scenario.key)
     turns = [
         _turn("Grabbing the wrong skill.", _tc("fetch_key_docs", task=other.key)),
-        _turn("Proposing the plan.", _tc("propose_session_plan")),
+        _turn("Proposing the plan.", _plan_tc()),
     ]
     calls = await _tool_calls_for(turns, scenario.ask, tmp_path)
     assert _skill_index(calls, scenario) is None
@@ -93,7 +102,7 @@ async def test_scripted_wrong_skill_does_not_satisfy(scenario, tmp_path):
 async def test_scripted_skill_after_op_fails_ordering(scenario, tmp_path):
     """A skill fetched AFTER the operation is too late — ordering must fail."""
     turns = [
-        _turn("Proposing first.", _tc("propose_session_plan")),
+        _turn("Proposing first.", _plan_tc()),
         _turn("Fetching the skill late.", _tc("fetch_key_docs", task=scenario.key)),
     ]
     calls = await _tool_calls_for(turns, scenario.ask, tmp_path)

@@ -1,7 +1,7 @@
 """Scripted skill-grounding when the operation is execute_llmdbenchmark (not just
 propose_session_plan) — covers the second member of the eval's operation gate.
 
-Driven through the real AgentLoop; reuses the live eval's detection helpers.
+Driven through the real engine; reuses the live eval's detection helpers.
 """
 from __future__ import annotations
 

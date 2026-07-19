@@ -10,8 +10,8 @@ build red (see ``oracle.md`` / ``bug_report.py``).
 Reproducibility (the property the deterministic fuzzer has and we preserve): the selector is
 PROMPT-SEEDED (seed + action index injected; zero variance asked for) and every chosen action is
 LOGGED, so a finding records ``seed`` + ``repro_actions`` and replays through the deterministic
-``Player`` with NO LLM. When no provider is configured, a DETERMINISTIC fallback selector (the
-existing seeded RNG) is used → the bug-hunter degrades to exactly today's fuzzer.
+``Player`` with NO LLM. Without ``use_llm``, a DETERMINISTIC fallback selector (the existing
+seeded RNG) is used → the bug-hunter degrades to exactly today's fuzzer.
 """
 from __future__ import annotations
 
@@ -104,21 +104,19 @@ class DeterministicSelector:
 
 
 class LLMActionSelector:
-    """Picks the next action via the configured provider — PROMPT-SEEDED for reproducibility.
+    """Picks the next action via one bare SDK call — PROMPT-SEEDED for reproducibility.
 
     Each call gets the action vocabulary, a compact state summary, the seed + action index, and
     the oracle's action-selection guidance. The model returns the next action NAME as JSON. Zero
-    variance is requested in the prompt (we don't thread a temperature kwarg through the
-    providers — see judge.py's note). On any parse/quota hiccup it falls back to the deterministic
-    selector so a run never wedges."""
+    variance is requested in the prompt (no temperature knob — see judge.py's note). On any
+    parse/quota hiccup it falls back to the deterministic selector so a run never wedges."""
 
-    def __init__(self, provider, *, seed: int, rng: random.Random, oracle_body: str):
-        self._provider = provider
+    def __init__(self, *, seed: int, rng: random.Random, oracle_body: str):
         self._seed = seed
         self._oracle = oracle_body
         self._fallback = DeterministicSelector(rng)
 
-    def _messages(self, action_index: int, summary: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+    def _messages(self, action_index: int, summary: dict[str, Any]) -> tuple[str, str]:
         system = (
             "You are an exploratory tester hunting for STATE-CORRUPTION bugs in a chat app by "
             "choosing the next UI action to play. You do NOT execute anything — you only pick the "
@@ -132,19 +130,19 @@ class LLMActionSelector:
             f"Current state: {json.dumps(summary)}\n\n"
             'Respond with ONLY a JSON object: {"action": "<one action name>"}'
         )
-        return system, [{"role": "user", "content": user}]
+        return system, user
 
     async def choose(self, action_index: int, summary: dict[str, Any]) -> str:
-        system, messages = self._messages(action_index, summary)
+        from tests.eval._llm import llm_text
+
+        system, user = self._messages(action_index, summary)
         try:
-            turn = await self._provider.chat(
-                system=system, messages=messages, tools=[], cache_key=f"bughunt:{self._seed}"
-            )
-            obj = find_last_json(turn.text or "", "{")
+            raw = await llm_text(system, user)
+            obj = find_last_json(raw or "", "{")
             action = (obj or {}).get("action") if isinstance(obj, dict) else None
             if action in ACTION_NAMES:
                 return action
-        except Exception:  # noqa: BLE001 — any provider/parse failure degrades, never wedges a run
+        except Exception:  # noqa: BLE001 — any model/parse failure degrades, never wedges a run
             pass
         return await self._fallback.choose(action_index, summary)
 
@@ -156,8 +154,8 @@ async def _run_one_seed(
     selector for the next action NAME, play it via the Player, then collect (not raise) any
     invariant violations into deterministic findings. Returns (findings, actions_played)."""
     rng = random.Random(seed)
-    provider = install_isolated_state(app, tmp_path)
-    player = Player(app, client, provider, rng)
+    primer = install_isolated_state(app, tmp_path)
+    player = Player(app, client, primer, rng)
     selector = selector_factory(rng)
     findings: list[Finding] = []
     played = 0
@@ -182,25 +180,25 @@ async def run_bughunt(
     *,
     seeds: list[int],
     actions_budget: int = 30,
-    provider=None,
+    use_llm: bool = False,
 ) -> tuple[list[Finding], int]:
     """Run the bug-hunt across ``seeds``. ``client_factory`` is a no-arg callable returning a
-    fresh ``TestClient`` context manager per seed (the caller owns app import). When ``provider``
-    is None the DETERMINISTIC fallback selector is used (degrades to the seeded fuzzer).
+    fresh ``TestClient`` context manager per seed (the caller owns app import). Without
+    ``use_llm`` the DETERMINISTIC fallback selector is used (degrades to the seeded fuzzer).
 
     Returns (all_findings, total_actions). The CALLER assembles + writes the report and decides
     the gate (only deterministic ``severity >= high`` findings gate). The worst-case quota is
     bounded + printable up front: ``len(seeds) * actions_budget`` selector calls (one per action),
-    plus zero when ``provider`` is None."""
+    plus zero without ``use_llm``."""
     oracle_body = ORACLE_PATH.read_text()
     all_findings: list[Finding] = []
     total_actions = 0
     for seed in seeds:
         # Re-seed the selector per seed so its prompt-seed matches the run seed (reproducibility).
         def _seeded_factory(rng: random.Random, _seed=seed):
-            if provider is None:
+            if not use_llm:
                 return DeterministicSelector(rng)
-            return LLMActionSelector(provider, seed=_seed, rng=rng, oracle_body=oracle_body)
+            return LLMActionSelector(seed=_seed, rng=rng, oracle_body=oracle_body)
 
         with client_factory() as client:
             findings, played = await _run_one_seed(

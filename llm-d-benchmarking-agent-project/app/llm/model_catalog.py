@@ -14,6 +14,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+# The LLM_PROVIDER values that mean "the Claude Agent SDK" — the ONLY supported engine after
+# the SDK-native cutover. Anything else fails app readiness with a clear "unsupported provider"
+# error (see app/main.py). Kept as a set for the .env aliases users already have.
+AGENT_SDK_PROVIDERS: frozenset[str] = frozenset({"claude-agent-sdk", "agent-sdk", "claude-max"})
+
 
 @dataclass(frozen=True)
 class ModelInfo:

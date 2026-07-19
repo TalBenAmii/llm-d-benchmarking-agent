@@ -23,11 +23,11 @@ from fastapi.testclient import TestClient
 
 from app.agent.lifecycle import RunRegistry
 from app.config import Settings, get_settings
-from app.llm.provider import AssistantTurn, ToolCall
 from app.security.policy import CommandPolicy
 from app.security.runner import CommandRunner, RunResult
 from app.tools.context import ToolContext, ToolError
 from app.tools.run.manage_runs import cancel_run
+from tests._scripted import AssistantTurn, ScriptedTransports, ToolCall
 from tests.flows.catalog_snapshot import frozen_catalog
 
 MUT = ["kind", "create", "cluster", "--name", "lc-a"]
@@ -292,8 +292,7 @@ def test_graceful_shutdown_cancels_background_pre_probe(tmp_path):
     that lands mid-probe leaves the task running and ORPHANS its child process group — the exact
     leak ``graceful_shutdown`` exists to prevent. We model the probe with a task that, like the
     real runner's ``CancelledError`` path (``app/security/runner.py``), reaps its 'subprocess' only
-    when cancelled; the test asserts both the cancel AND the reap, and that the provider close still
-    runs (a leftover probe must not abort the rest of teardown).
+    when cancelled; the test asserts both the cancel AND the reap.
     """
     from app.main import app, graceful_shutdown
 
@@ -309,14 +308,7 @@ def test_graceful_shutdown_cancels_background_pre_probe(tmp_path):
                 reaped["value"] = True  # the runner's killpg(...) on shutdown-cancel
                 raise
 
-        provider_closed = {"value": False}
-
-        class _ClosableProvider:
-            async def aclose(self) -> None:
-                provider_closed["value"] = True
-
         async def _drive():
-            app.state.provider = _ClosableProvider()
             probe = asyncio.create_task(_fake_pre_probe())
             app.state.background_tasks.add(probe)
             probe.add_done_callback(app.state.background_tasks.discard)
@@ -331,8 +323,6 @@ def test_graceful_shutdown_cancels_background_pre_probe(tmp_path):
                 "the background environment pre-probe survived shutdown (orphaned subprocess)"
             )
             assert reaped["value"], "the pre-probe's child process group was never reaped on cancel"
-            # The provider close must still have run — a leftover probe can't abort later teardown.
-            assert provider_closed["value"], "provider.aclose() was skipped after the probe cancel"
 
         asyncio.run(_drive())
 
@@ -389,26 +379,15 @@ def test_reattach_replays_buffer_then_cancel_message_stops_run():
     registry (its slot, had it held one, would be freed)."""
     from app.main import app
 
-    turns = [
-        AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
-            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
-        })]),
-        AssistantTurn(text="done.", tool_calls=[]),
-    ]
-
-    class _FakeProvider:
-        def __init__(self, ts):
-            self._t = ts
-            self.i = 0
-
-        async def chat(self, *, system, messages, tools, cache_key=None):
-            t = self._t[min(self.i, len(self._t) - 1)]
-            self.i += 1
-            return t
-
     with TestClient(app) as client:
-        app.state.provider = _FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        st.add_turns(
+            AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+                "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+            })]),
+            AssistantTurn(text="done."),
+        )
 
         # Connection #1: drive until parked at the approval gate, then drop without answering.
         with client.websocket_connect("/ws") as ws1:

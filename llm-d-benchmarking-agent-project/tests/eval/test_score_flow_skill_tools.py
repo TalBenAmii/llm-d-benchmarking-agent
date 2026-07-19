@@ -2,8 +2,7 @@
 
 Ties skill grounding into the general required/forbidden-tool scoring the live flow
 eval uses — not just the skill-specific detection helpers. Scripted through the real
-AgentLoop; group_scoring=False (scripted replay ignores the exposed tool set).
-Sibling-independent — fetch_key_docs never errors.
+engine. Sibling-independent — fetch_key_docs never errors.
 """
 from __future__ import annotations
 
@@ -13,7 +12,7 @@ from tests.flows.harness import run_flow, score_flow
 
 async def _score(flow, tmp_path):
     run = await run_flow(flow, tmp_path=tmp_path, simulate=True)
-    return score_flow(run, flow, group_scoring=False)
+    return score_flow(run, flow)
 
 
 async def test_score_passes_when_required_skill_tool_called(tmp_path):

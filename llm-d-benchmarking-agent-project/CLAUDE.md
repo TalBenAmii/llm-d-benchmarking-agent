@@ -38,7 +38,7 @@ user, checks preconditions, deploys an llm-d stack if needed, runs a benchmark, 
 llm-d-benchmarking-agent-project/
 ├─ app/                   FastAPI backend — mechanism only (no judgment)
 │  ├─ main.py·config.py·paths.py·dig.py   app entry · settings+knowledge load · path resolve · safe dict/JSON accessors
-│  ├─ agent/         📁   the agent loop + system prompt (prompt-cache byte-stability)
+│  ├─ agent/         📁   the SDK-native agent engine + system prompt (prompt-cache byte-stability)
 │  ├─ tools/         📁   the tool registry (registry.py authoritative); handlers in setup/·run/·analyze/·access/ subpackages; schemas/ = tool I/O + SessionPlan JSON schemas
 │  ├─ validation/    📁   the four determinism gates
 │  ├─ security/      📁   command policy validator (pure; the policy itself is data in /security)
@@ -47,7 +47,7 @@ llm-d-benchmarking-agent-project/
 │  ├─ readiness/     📁   endpoint/stack readiness — pure analyzer + thin probe layer
 │  ├─ packaging/     📁   deploy-artifact contract + shareable HTML report/chat export
 │  ├─ observability/ 📁   dependency-free metrics + Prometheus exposition + structured logging
-│  ├─ llm/           📁   provider-agnostic LLM integration (anthropic / openai-compat / claude-agent-sdk)
+│  ├─ llm/           📁   SDK options + switchable model catalog (the engine IS the Claude Agent SDK)
 │  ├─ storage/       📁   persistence: history · provenance · share · retention/GC
 │  ├─ ui/                static chat UI (index.html·app.js·styles.css·preview.html)
 │  └─ web.py             pure, decorator-free HTTP/SSE helpers extracted from main (path-traversal 404s, CORS guard, share redaction)

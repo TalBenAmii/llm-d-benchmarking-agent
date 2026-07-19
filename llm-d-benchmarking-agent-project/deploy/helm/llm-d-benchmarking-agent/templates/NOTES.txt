@@ -11,13 +11,13 @@ The llm-d Benchmarking Assistant ({{ include "agent.fullname" . }}) is deploying
    kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
 
 {{- if not .Values.secret.existingSecret }}
-{{- if not .Values.secret.anthropicApiKey }}{{- if not .Values.secret.openaiApiKey }}
+{{- if not .Values.secret.claudeCodeOauthToken }}
 
-WARNING: no LLM API key was provided. Set --set secret.anthropicApiKey=... (or
-secret.openaiApiKey=...), or point secret.existingSecret at a Secret you manage. Without a
-key the server still starts (and /readyz reports the provider component not ready), but chat
+WARNING: no Claude subscription token was provided. Set
+--set-string secret.claudeCodeOauthToken=<token from `claude setup-token`>, or point
+secret.existingSecret at a Secret you manage. Without it the server still starts, but chat
 is disabled. (/healthz is liveness-only — it just reports {"ok": true}.)
-{{- end }}{{- end }}
+{{- end }}
 {{- end }}
 
 {{- if .Values.rbac.create }}

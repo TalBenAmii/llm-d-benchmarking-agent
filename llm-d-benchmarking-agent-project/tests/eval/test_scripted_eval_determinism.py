@@ -16,7 +16,11 @@ def _flow():
         mock_user_input="deploy on kind then benchmark it",
         turns=[
             _turn("Grounding in the deploy skill.", _tc("fetch_key_docs", task="deploy_skill")),
-            _turn("Proposing the plan.", _tc("propose_session_plan")),
+            _turn("Proposing the plan.", _tc("propose_session_plan", use_case_summary="scripted",
+                                             spec="cicd/kind", namespace="llmd-quickstart",
+                                             harness="inference-perf",
+                                             workload="sanity_random.yaml",
+                                             expected_steps=["standup"])),
         ],
     )
 

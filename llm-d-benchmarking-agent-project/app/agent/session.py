@@ -69,17 +69,6 @@ def _effective_namespace(data: dict[str, Any]) -> str | None:
     return data.get("namespace") or (data.get("approved_plan") or {}).get("namespace")
 
 
-def _loaded_groups_from(data: dict[str, Any]) -> set[str]:
-    """The set of loaded tool groups for a saved session. Reads the ``loaded_groups`` list, and
-    MIGRATES a pre-feature snapshot's old boolean ``advanced_tools_enabled: True`` to {"advanced"}
-    (the advanced tier is now just one group). Defaults empty so older files load with the lean
-    starter kit."""
-    groups = set(data.get("loaded_groups") or [])
-    if data.get("advanced_tools_enabled"):
-        groups.add("advanced")
-    return groups
-
-
 def _bounded_append(seq: list, item: object, limit: int) -> None:
     """Append item, then drop oldest so the list never exceeds ``limit`` (in-place, preserves
     identity). The in-place ``del`` keeps the SAME list object so JSON persistence and any
@@ -118,10 +107,9 @@ class Session:
     in_flight_approvals: list[dict[str, Any]] = field(default_factory=list)
     # Full structured results of the tools whose result renders a rich UI card (the report
     # summary + its clickable charts, the Pareto/comparison/env/etc. cards). NOT part of the
-    # LLM message stream — the LLM-facing copy in ``messages`` is budget-clamped (loop.py), so
-    # the un-truncated result the renderer needs is stored here separately, keyed to its tool
-    # call (like ``commands``/``approvals``) so a resumed chat can replay the card in its
-    # transcript position. Bounded to the most recent _CARD_RESULTS_MAX entries.
+    # LLM message stream — stored here separately, keyed to its tool call (like
+    # ``commands``/``approvals``) so a resumed chat can replay the card in its transcript
+    # position. Bounded to the most recent _CARD_RESULTS_MAX entries.
     card_results: list[dict[str, Any]] = field(default_factory=list)
     # Wall-clock run time (seconds) of each tool call, keyed by tool_call_id. Persisted so a
     # resumed/reloaded chat shows the SAME duration badge on each action row that a live run does
@@ -131,8 +119,8 @@ class Session:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     # The Kubernetes namespace this chat belongs to — the sidebar groups chats into one folder
-    # per namespace. None until configured (an approved SessionPlan fills it; see loop.py), so the
-    # chat sits in the UI's "no_namespace" folder until then.
+    # per namespace. None until configured (an approved SessionPlan fills it; see
+    # app/tools/mcp_server.py), so the chat sits in the UI's "no_namespace" folder until then.
     namespace: str | None = None
     # Cumulative REAL token usage across every LLM call in this session (the loop adds each
     # call's normalized Usage here). Persisted so the header chip is correct on reload.
@@ -146,7 +134,7 @@ class Session:
     # Persisted so the context-window meter is correct on reload, before the next turn refreshes it.
     last_context_tokens: int = 0
     # One-shot flag: the live catalog snapshot has been injected as a synthetic conversation
-    # message (see app/agent/loop.py). PERSISTED — the injected message itself lives in
+    # message (see app/agent/engine.py). PERSISTED — the injected message itself lives in
     # ``messages`` and is reloaded with the transcript, so a resumed chat must NOT inject a
     # second copy. Defaults False so pre-feature state.json files (no catalog message yet) get
     # one injected on their next turn.
@@ -156,7 +144,7 @@ class Session:
     # a resumed chat re-probes fresh, so persisting it would be stale.
     env_snapshot: dict[str, Any] | None = None
     # One-shot flag: the environment pre-probe snapshot has been injected as a synthetic turn
-    # message (see app/agent/loop.py). PERSISTED — the injected synthetic message itself lives in
+    # message (see app/agent/engine.py). PERSISTED — the injected synthetic message itself lives in
     # ``messages`` and is reloaded with the transcript, so a resumed chat must NOT inject a second
     # copy. Critically, were this NOT persisted it would reset to False on resume, and any later
     # pre-probe (or a stale-but-set env_snapshot) would re-inject the snapshot mid-transcript —
@@ -164,29 +152,24 @@ class Session:
     # False so pre-feature state.json files (no snapshot injected yet) behave as before.
     prewarmed: bool = False
     # RUNTIME-ONLY (deliberately NOT persisted, like ``env_snapshot``): the Anthropic model +
-    # reasoning effort this chat picked from the UI model picker (the ``set_model`` WS frame; only
-    # meaningful for the switchable agent-SDK provider). Overrides the provider's configured
-    # model/effort for THIS chat's turns only — captured ONCE at the start of each run_turn
-    # (loop.py) and applied as a per-turn override, never mid-turn, never mutating the global
-    # provider singleton. None => the provider's configured defaults (unchanged behavior). Ephemeral
-    # by design: a reload resets to the configured default (the picker re-seeds from /api/provider).
+    # reasoning effort this chat picked from the UI model picker (the ``set_model`` WS frame).
+    # Overrides the configured model/effort for THIS chat's turns only — captured ONCE at the
+    # start of each run_turn (engine.py) and applied as a per-turn override, never mid-turn.
+    # None => the configured defaults (unchanged behavior). Ephemeral by design: a reload resets
+    # to the configured default (the picker re-seeds from /api/provider).
     model_override: str | None = None
     effort_override: str | None = None
+    # The Claude Agent SDK/CLI conversation id for this chat. PERSISTED so a later turn — or a
+    # restarted server — resumes the CLI's own transcript via ClaudeAgentOptions(resume=...).
+    # None until the first turn completes; the id is stable across resumes (re-issued unchanged
+    # by the CLI).
+    sdk_session_id: str | None = None
     # Per-session "auto-approve commands" toggle (the UI button). When True, the Channel
     # auto-approves every kind=="command" approval gate (run_shell + the dedicated mutating
     # tools) WITHOUT prompting; the kind=="session_plan" gate is NEVER auto-approved (the one
     # deliberate "are you sure" stays). PERSISTED so the toggle survives reconnect/reload and the
     # `ready` frame can re-seed the button. Defaults False (every chat starts with it off).
     auto_approve: bool = False
-    # Capability gate: the names of the load-on-demand tool GROUPS the model has loaded via
-    # load_tools (registry._TOOL_GROUPS: setup/run/analyze/advanced), so those groups' tool schemas
-    # are now exposed for the rest of the session. The agent loop updates this when load_tools is
-    # dispatched and re-opens the provider turn so the group's tools are callable the SAME turn (see
-    # app/agent/loop.py). PERSISTED so a resumed chat keeps them loaded (the user was already mid
-    # workflow); defaults empty so a fresh session starts with only the lean STARTER_KIT. A
-    # pre-feature state.json with the old ``advanced_tools_enabled: True`` migrates to {"advanced"}
-    # on load (see SessionManager.load).
-    loaded_groups: set[str] = field(default_factory=set)
 
     @property
     def session_total(self) -> int:
@@ -251,7 +234,7 @@ class Session:
 
         Written ATOMICALLY (temp file + ``os.replace``) like every sibling store
         (history/share/provenance). ``persist`` fires on nearly every turn event
-        (channel.py/loop.py/main.py) while ``SessionManager.load``/``list`` read ``state.json``
+        (channel.py/engine.py/main.py) while ``SessionManager.load``/``list`` read ``state.json``
         concurrently (a sidebar refresh, a reconnect, another tab) — a direct ``write_text`` to
         the live path let a reader observe a TORN file (``JSONDecodeError`` → the running chat
         reads as GONE / drops out of the sidebar), and a crash mid-write truncated the whole
@@ -287,8 +270,8 @@ class Session:
                     "last_context_tokens": self.last_context_tokens,
                     "catalog_injected": self.catalog_injected,
                     "prewarmed": self.prewarmed,
+                    "sdk_session_id": self.sdk_session_id,
                     "auto_approve": self.auto_approve,
-                    "loaded_groups": sorted(self.loaded_groups),
                 },
                 indent=2,
             )
@@ -384,14 +367,12 @@ class SessionManager:
             # Default False: a pre-feature snapshot has no catalog message, so let the next turn
             # inject one. (Once injected + persisted, a reloaded chat sees True and skips it.)
             catalog_injected=data.get("catalog_injected", False),
+            # None on pre-SDK-native snapshots — the next SDK-native turn just starts fresh.
+            sdk_session_id=data.get("sdk_session_id"),
             auto_approve=data.get("auto_approve", False),
             # Default False so older state files (no key) load — but a session that already
             # injected the env pre-probe snapshot persists True, so a resume never re-injects it.
             prewarmed=data.get("prewarmed", False),
-            # Default empty so older state files load; a session that already loaded groups persists
-            # them, so a resume keeps them exposed. MIGRATION: a pre-feature state.json carrying the
-            # old boolean ``advanced_tools_enabled: True`` maps to the "advanced" group.
-            loaded_groups=_loaded_groups_from(data),
         )
         self._sessions[session.id] = session
         return session

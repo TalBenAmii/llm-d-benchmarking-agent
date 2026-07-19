@@ -44,10 +44,11 @@ knowledge/
   cues it. **There is no manual index file** — discovery is the glob + each file's first heading.
 
 ## Invariants / gotchas
-- **After ANY edit, check `wc -c` ≤ ~6,000** (the whole-guide `read_knowledge` clamp,
-  `DEFAULT_TOOL_RESULT_BUDGET`). Adding even one bullet to an over-budget file EVICTS its own tail
-  from the preview — and `dropped_sections` only names HEADINGS past the cut, so vanished mid-section
-  bullets give the agent zero signal. Over budget → split into a new file + a stub cross-cue, don't trim facts.
+- **Keep files lean (soft guidance: aim ≤ ~6,000 bytes).** There is no hard clamp anymore — the
+  engine feeds `read_knowledge` results to the model whole (CLI auto-compaction is the only bound) —
+  but every byte of an over-fat guide rides in context on the turn that loads it. Prefer splitting
+  into a new file + a stub cross-cue over one sprawling guide; `section=` fetches exist for pulling
+  one part of a big file.
 - **Renaming a file breaks its `read_knowledge('<stem>')` cues** (and any test). Grep `knowledge/` for the
   old stem before renaming. Cross-file cueing convention: a file says `read_knowledge('other')` to defer.
 - **Basenames AND stems must stay globally unique across ALL subfolders.** Resolution is by

@@ -1,23 +1,20 @@
 """WebSocket integration test of the real FastAPI wiring (main.py): event streaming and
-the approval round-trip, driven by a fake provider injected into app.state."""
+the approval round-trip, driven by scripted turns over the hermetic FakeTransport
+(``tests/_scripted.ScriptedTransports`` installed on ``app.state.sdk_transport_factory``)."""
 from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
+from app.agent.engine import LIVE_TURNS
 from app.config import get_settings
-from app.llm.provider import AssistantTurn, ToolCall
+from app.tools.registry import REGISTRY, ToolSpec
+from tests._scripted import AssistantTurn, ScriptedTransports, ToolCall, sdk_script
 
 
-class FakeProvider:
-    def __init__(self, turns):
-        self._turns = turns
-        self.i = 0
-
-    async def chat(self, *, system, messages, tools, cache_key=None):
-        turn = self._turns[self.i]
-        self.i += 1
-        return turn
+class _EmptyInput(BaseModel):
+    pass
 
 
 # Frames the background environment pre-probe (W2) can stream onto a brand-new connection while
@@ -40,22 +37,20 @@ def _next_protocol(ws):
 def test_ws_approval_roundtrip():
     from app.main import app
 
-    turns = [
-        AssistantTurn(text="Checking catalog.", tool_calls=[ToolCall("c1", "list_catalog", {"kinds": ["harnesses"]})]),
-        AssistantTurn(text="Plan:", tool_calls=[ToolCall("c2", "propose_session_plan", {
-            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
-        })]),
-        AssistantTurn(text="Standing up.", tool_calls=[ToolCall("c3", "execute_llmdbenchmark", {
-            "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "flags": {"skip_smoketest": True},
-        })]),
-        AssistantTurn(text="Rejected, understood.", tool_calls=[]),
-    ]
-
     with TestClient(app) as client:
-        # Inject the fake provider after startup.
-        app.state.provider = FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        st.add_turns(
+            AssistantTurn(text="Checking catalog.", tool_calls=[ToolCall("c1", "list_catalog", {"kinds": ["harnesses"]})]),
+            AssistantTurn(text="Plan:", tool_calls=[ToolCall("c2", "propose_session_plan", {
+                "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+            })]),
+            AssistantTurn(text="Standing up.", tool_calls=[ToolCall("c3", "execute_llmdbenchmark", {
+                "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "flags": {"skip_smoketest": True},
+            })]),
+            AssistantTurn(text="Rejected, understood."),
+        )
 
         with client.websocket_connect("/ws") as ws:
             assert ws.receive_json()["type"] == "ready"
@@ -93,7 +88,7 @@ def test_ws_unicode_digit_after_seq_does_not_crash():
     from app.main import app
 
     with TestClient(app) as client:
-        app.state.provider = FakeProvider([])
+        ScriptedTransports().install(app)
         with client.websocket_connect("/ws?after_seq=²") as ws:
             assert _next_protocol(ws)["type"] == "ready"
 
@@ -106,20 +101,18 @@ def test_ws_typing_instead_of_approving_steers_the_turn():
     tool result, so the model continues and responds to the steer (here: re-proposing)."""
     from app.main import app
 
-    turns = [
-        # Turn 1: propose a plan -> parks at the approval gate.
-        AssistantTurn(text="Here's the plan:", tool_calls=[ToolCall("c1", "propose_session_plan", {
-            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
-        })]),
-        # Turn 2: after the user typed a steer instead of approving, the model sees the rejected
-        # plan + their message and acknowledges (could re-propose; a plain text close is enough
-        # to prove the turn CONTINUED rather than being blocked).
-        AssistantTurn(text="Got it — switching to 1000 concurrent users.", tool_calls=[]),
-    ]
-
     with TestClient(app) as client:
-        app.state.provider = FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        # Wire turn 1: propose a plan -> parks at the approval gate. Wire turn 2: the queued
+        # steer's follow-up query — after the user typed instead of approving, the model sees
+        # the rejected plan + their message and acknowledges (a plain text close is enough to
+        # prove the turn CONTINUED rather than being blocked).
+        st.add_script(sdk_script([
+            AssistantTurn(text="Here's the plan:", tool_calls=[ToolCall("c1", "propose_session_plan", {
+                "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+            })]),
+        ]) + sdk_script([AssistantTurn(text="Got it — switching to 1000 concurrent users.")]))
 
         with client.websocket_connect("/ws") as ws:
             ready = ws.receive_json()
@@ -161,62 +154,57 @@ def test_ws_typing_instead_of_approving_steers_the_turn():
             "steer message must follow the rejected tool result, in the same turn"
 
 
-class _BlockingProvider:
-    """Returns scripted turns but BLOCKS at the start of a chosen LLM call until released, so a test
-    can send a message while the agent is 'thinking' (mid-chat) and assert it steers the SAME turn.
-    ``await asyncio.to_thread(...)`` yields the event loop while blocked, so the WS receive handler
-    still runs and processes the inbound steer frame."""
+def _blocking_probe(started, release):
+    """A registry tool that parks mid-execution until released — the 'agent is busy working'
+    window a test injects a steer into. ``await asyncio.to_thread(...)`` yields the event loop
+    while blocked, so the WS receive handler still runs and processes the inbound frames."""
+    import asyncio
 
-    def __init__(self, turns, block_at, started, release):
-        self._turns = turns
-        self.i = 0
-        self._block_at = block_at
-        self._started = started
-        self._release = release
+    async def blocking_probe(ctx):
+        started.set()
+        await asyncio.to_thread(release.wait, 5)
+        return {"ok": True}
 
-    async def chat(self, *, system, messages, tools, cache_key=None):
-        import asyncio
-        if self.i == self._block_at:
-            self._started.set()
-            await asyncio.to_thread(self._release.wait, 5)
-        turn = self._turns[self.i]
-        self.i += 1
-        return turn
+    return ToolSpec("blocking_probe", "test probe that parks until released",
+                    _EmptyInput, blocking_probe)
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
-def test_ws_typing_while_thinking_steers_the_same_turn():
-    """Mid-thinking steer (Claude-Code style): a user_message sent WHILE the agent is thinking and
+def test_ws_typing_while_thinking_steers_the_same_turn(monkeypatch):
+    """Mid-turn steer (Claude-Code style): a user_message sent WHILE the agent is working and
     NO approval gate is open must NOT be rejected ("please wait") or start a concurrent turn — it's
-    queued and threaded into the SAME turn, which the model then answers. The provider blocks on its
-    first LLM call so the test can inject the steer during the thinking window."""
+    queued and threaded into the SAME turn, which the model then answers. A registry tool blocks
+    mid-execution so the test can inject the steer during the working window."""
     import threading
     import time
 
     from app.main import app
 
     started, release = threading.Event(), threading.Event()
-    turns = [
-        AssistantTurn(text="On it.", tool_calls=[]),                # would END the turn without a steer
-        AssistantTurn(text="Got it — 1000 users.", tool_calls=[]),  # only reached because of the steer
-    ]
+    monkeypatch.setitem(REGISTRY, "blocking_probe", _blocking_probe(started, release))
     with TestClient(app) as client:
-        app.state.provider = _BlockingProvider(turns, 0, started, release)
+        st = ScriptedTransports().install(app)
+        # Wire turn 1 would END the turn without a steer; wire turn 2 is only consumed by the
+        # queued steer's follow-up query.
+        st.add_script(sdk_script([
+            AssistantTurn(text="On it.", tool_calls=[ToolCall("b1", "blocking_probe", {})]),
+        ]) + sdk_script([AssistantTurn(text="Got it — 1000 users.")]))
         with client.websocket_connect("/ws") as ws:
             ready = ws.receive_json()
             assert ready["type"] == "ready"
             sid = ready["data"]["session_id"]
             ws.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
-            assert started.wait(timeout=5)        # the agent is now thinking (blocked in chat)
-            # Type a steer WHILE it's thinking. No gate is open.
+            assert started.wait(timeout=5)        # the agent is now mid-tool (working)
+            # Type a steer WHILE it's working. No gate is open.
             ws.send_json({"type": "user_message", "text": "actually make it 1000 concurrent users"})
             s = app.state.sessions.get(sid)
             for _ in range(150):                  # wait for the handler to queue it (not reject it)
-                if "actually make it 1000 concurrent users" in s.ctx.steer_messages:
+                live = LIVE_TURNS.get(sid)
+                if live is not None and "actually make it 1000 concurrent users" in live._steers:
                     break
                 time.sleep(0.02)
-            assert "actually make it 1000 concurrent users" in s.ctx.steer_messages
-            release.set()                          # let the agent finish thinking; the steer drains
+            assert "actually make it 1000 concurrent users" in LIVE_TURNS[sid]._steers
+            release.set()                          # let the tool finish; the steer drains
             seen = []
             for _ in range(80):
                 ev = ws.receive_json()
@@ -226,75 +214,57 @@ def test_ws_typing_while_thinking_steers_the_same_turn():
 
     assert "error" not in seen, f"a steer while thinking produced an error frame: {seen}"
     assert seen[-1] == "done"
-    # The steer extended the turn to a 2nd LLM call (it didn't stop at the first tool-less reply)…
-    assert app.state.provider.i == 2
+    # The steer extended the turn to a follow-up model call (it didn't stop at the first reply)…
+    assert any(m.get("role") == "assistant" and m.get("content") == "Got it — 1000 users."
+               for m in s.messages)
     # …and was threaded into the transcript as a real user message the model could answer.
     assert any(m.get("role") == "user" and m.get("content") == "actually make it 1000 concurrent users"
                for m in s.messages)
 
 
-class _CancelSteerProvider:
-    """Counts every entry into ``chat()``. The first entry blocks until released (so a test can
-    queue a steer + cancel while the agent 'thinks'); ANY entry after the cancel-release is a
-    backstop turn wrongly resurrecting the cancelled run — flagged via ``entered`` and parked so
-    the test can observe it before the test-client teardown cancels it."""
-
-    def __init__(self, started, release, entered, released):
-        self.entries = 0
-        self._started = started
-        self._release = release
-        self._entered = entered   # set on the 2nd+ chat entry (the resurrecting backstop)
-        self._released = released  # set by the test once it has issued the cancel + release
-
-    async def chat(self, *, system, messages, tools, cache_key=None):
-        import asyncio
-        self.entries += 1
-        if self.entries == 1:
-            self._started.set()
-            await asyncio.to_thread(self._release.wait, 5)
-        else:
-            # A 2nd entry == a backstop turn ran another LLM call after the user cancelled.
-            self._entered.set()
-            await asyncio.Event().wait()   # park forever (an un-set event); the test tears it down
-        return AssistantTurn(text="ok", tool_calls=[])
-
-
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
-def test_ws_cancel_with_queued_steer_does_not_resurrect_the_turn():
+def test_ws_cancel_with_queued_steer_does_not_resurrect_the_turn(monkeypatch):
     """A user who clicks Stop must actually STOP — even if a steer message was queued mid-turn.
 
     The steer backstop (run_turn's `finally`) starts a fresh follow-up turn for any steer left
     queued when the turn ends, so a steer sent in the closing-await tail still gets answered. But
     when the turn ended because the user CANCELLED it (clicked Stop), that backstop would resurrect
-    the very turn the user just stopped: the cancel raises CancelledError mid-step (before the loop
-    drained the queued steer), the `finally` sees the leftover steer + an attached socket, and spawns
-    a backstop turn — so the agent keeps working right after the user asked it to stop. The cancel
-    must win: no backstop turn, the run stays ended."""
+    the very turn the user just stopped: the cancel raises CancelledError mid-step (before the
+    engine drained the queued steer), the `finally` sees the leftover steer + an attached socket,
+    and spawns a backstop turn — so the agent keeps working right after the user asked it to stop.
+    The cancel must win: no backstop turn, the run stays ended."""
     import threading
     import time
 
     from app.main import app
 
-    started, release, entered, released = (threading.Event() for _ in range(4))
+    started, release = threading.Event(), threading.Event()
+    monkeypatch.setitem(REGISTRY, "blocking_probe", _blocking_probe(started, release))
     with TestClient(app) as client:
-        app.state.provider = _CancelSteerProvider(started, release, entered, released)
+        st = ScriptedTransports().install(app)
+        st.add_turns(AssistantTurn(text="On it.", tool_calls=[ToolCall("b1", "blocking_probe", {})]),
+                     AssistantTurn(text="ok"))
+        # Count engine connects: a backstop turn resurrecting the cancelled run would pop a 2nd.
+        factory_calls = []
+        inner = app.state.sdk_transport_factory
+        app.state.sdk_transport_factory = lambda: (factory_calls.append(1) or inner)()
         with client.websocket_connect("/ws") as ws:
             ready = ws.receive_json()
             assert ready["type"] == "ready"
             sid = ready["data"]["session_id"]
             ws.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
-            assert started.wait(timeout=5)        # the agent is now thinking (blocked in chat)
-            # Queue a steer WHILE it's thinking (no gate open), then immediately CANCEL.
+            assert started.wait(timeout=5)        # the agent is now mid-tool (working)
+            # Queue a steer WHILE it's working (no gate open), then immediately CANCEL.
             ws.send_json({"type": "user_message", "text": "actually do something else"})
             s = app.state.sessions.get(sid)
             for _ in range(150):                  # wait for the handler to queue the steer
-                if "actually do something else" in s.ctx.steer_messages:
+                live = LIVE_TURNS.get(sid)
+                if live is not None and "actually do something else" in live._steers:
                     break
                 time.sleep(0.02)
-            assert "actually do something else" in s.ctx.steer_messages
+            assert "actually do something else" in LIVE_TURNS[sid]._steers
             ws.send_json({"type": "cancel"})      # the user clicks Stop
-            released.set()
-            release.set()                          # unblock the cancelled chat call
+            release.set()                          # let the blocked tool's thread wind down
 
             seen = []
             for _ in range(80):
@@ -307,16 +277,15 @@ def test_ws_cancel_with_queued_steer_does_not_resurrect_the_turn():
             assert "cancelled" in seen, f"no cancelled frame after Stop: {seen}"
             assert "done" in seen
 
-            # …and crucially the steer backstop did NOT resurrect the turn. A backstop would enter
-            # chat() a SECOND time (running the queued steer as a new LLM turn) — wait long enough
-            # that it would have, then confirm it didn't and that no run is registered.
-            assert not entered.wait(timeout=1.5), (
-                "a backstop turn resurrected the cancelled run (the queued steer started a new turn)"
+            # …and crucially the steer backstop did NOT resurrect the turn: the leftover steer is
+            # dropped (not spawned as a follow-up turn) and no run stays registered. Wait long
+            # enough that a backstop would have connected a second transport, then confirm.
+            time.sleep(1.0)
+            assert len(factory_calls) == 1, (
+                f"expected exactly one engine connect; the cancelled run was resurrected "
+                f"({len(factory_calls)} connects)"
             )
-            assert app.state.provider.entries == 1, (
-                f"expected exactly one LLM call; the cancelled run was resurrected "
-                f"({app.state.provider.entries} chat entries)"
-            )
+            assert s.ctx.steer_messages == [], "the queued steer must be dropped on cancel"
             assert not app.state.runs.is_running(sid), "a run is still active after the user cancelled"
 
 
@@ -327,20 +296,19 @@ def test_ws_approval_decisions_persist_and_replay():
     switch / reload."""
     from app.main import app
 
-    turns = [
-        AssistantTurn(text="Plan:", tool_calls=[ToolCall("c2", "propose_session_plan", {
-            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
-        })]),
-        AssistantTurn(text="Standing up.", tool_calls=[ToolCall("c3", "execute_llmdbenchmark", {
-            "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "flags": {"skip_smoketest": True},
-        })]),
-        AssistantTurn(text="Understood.", tool_calls=[]),
-    ]
-
     with TestClient(app) as client:
-        app.state.provider = FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        st.add_turns(
+            AssistantTurn(text="Plan:", tool_calls=[ToolCall("c2", "propose_session_plan", {
+                "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+            })]),
+            AssistantTurn(text="Standing up.", tool_calls=[ToolCall("c3", "execute_llmdbenchmark", {
+                "subcommand": "standup", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "flags": {"skip_smoketest": True},
+            })]),
+            AssistantTurn(text="Understood."),
+        )
 
         with client.websocket_connect("/ws") as ws:
             ready = ws.receive_json()
@@ -391,10 +359,10 @@ def test_ws_malformed_frame_rejected_socket_survives():
     `pong`. The handler must never crash on a bad/hostile frame."""
     from app.main import app
 
-    # Bind a real (fake) provider BEFORE connecting: the /ws handler snapshots app.state.provider
-    # into its AgentLoop at handshake, so step (5)'s user_message drives a real turn.
+    # Prime the scripted transport BEFORE connecting so step (5)'s user_message drives a real turn.
     with TestClient(app) as client:
-        app.state.provider = FakeProvider([AssistantTurn(text="hi there", tool_calls=[])])
+        st = ScriptedTransports().install(app)
+        st.add_turns(AssistantTurn(text="hi there"))
         with client.websocket_connect("/ws") as ws:
             assert ws.receive_json()["type"] == "ready"
             # A brand-new connection now emits a DETERMINISTIC `welcome` card (B2) then the
@@ -468,16 +436,15 @@ def test_ws_reconnect_midturn_replays_live_events():
     SAME turn continues to `done` (not a replayed end-state)."""
     from app.main import app
 
-    turns = [
-        AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
-            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
-        })]),
-        AssistantTurn(text="Plan approved — all set.", tool_calls=[]),
-    ]
-
     with TestClient(app) as client:
-        app.state.provider = FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        st.add_turns(
+            AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+                "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+            })]),
+            AssistantTurn(text="Plan approved — all set."),
+        )
 
         # Connection #1: start the turn, drive it until it parks at the approval gate, then
         # DISCONNECT without answering (leave the context manager) — the turn stays parked.
@@ -535,7 +502,7 @@ def test_ws_reconnect_midturn_replays_live_events():
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
-def test_ws_disconnect_during_preplan_probe_still_reaches_gate():
+def test_ws_disconnect_during_preplan_probe_still_reaches_gate(monkeypatch):
     """Regression (sessions 56d8663a25c1 / 4dd131482da9 / 3ba9ba587a40): a turn whose socket drops
     DURING the pre-plan probe — before any approval gate has been proposed — must still run on to
     its first gate and PARK there (not be abandoned), so the plan card is waiting when the chat is
@@ -548,64 +515,41 @@ def test_ws_disconnect_during_preplan_probe_still_reaches_gate():
     now keeps a turn alive until it surfaces its FIRST approval gate, so the turn reaches the gate
     and the existing in-flight-approval machinery carries it across the reconnect.
     """
-    import asyncio
     import threading
     import time
 
     from app.main import app
 
-    turns = [
-        # Step 1: a read-only probe (auto-runs, no gate) — the loop then continues to step 2. This
-        # is the "still only probing" window the bug abandoned the turn in.
-        AssistantTurn(text="Checking the catalog.", tool_calls=[
-            ToolCall("c1", "list_catalog", {"kinds": ["harnesses"]})]),
-        # Step 2: propose the plan — the gate the user must come back to and approve.
-        AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c2", "propose_session_plan", {
-            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
-        })]),
-        AssistantTurn(text="Plan approved — all set.", tool_calls=[]),
-    ]
-
-    class GatedProvider:
-        """Blocks the FIRST model call until the test releases it, so the test can GUARANTEE the
-        socket is already detached when the loop next evaluates should_continue() — i.e. the
-        disconnect lands squarely in the pre-gate window, making this a deterministic regression
-        test rather than a race (drop after the probe / before the plan)."""
-
-        def __init__(self, scripted):
-            self._turns = scripted
-            self.i = 0
-            self.loop = None
-            self.release = None
-            self.armed = threading.Event()  # set once loop + release are captured on the loop thread
-
-        async def chat(self, *, system, messages, tools, cache_key=None):
-            if self.loop is None:
-                # First call (step 1): capture the running loop + an Event created ON it, signal the
-                # test, then hold here until the test has dropped the socket.
-                self.loop = asyncio.get_running_loop()
-                self.release = asyncio.Event()
-                self.armed.set()
-                await self.release.wait()
-            turn = self._turns[self.i]
-            self.i += 1
-            return turn
+    started, release = threading.Event(), threading.Event()
+    monkeypatch.setitem(REGISTRY, "blocking_probe", _blocking_probe(started, release))
 
     with TestClient(app) as client:
-        provider = GatedProvider(turns)
-        app.state.provider = provider
+        st = ScriptedTransports().install(app)
+        # Step 1: a read-only probe that BLOCKS until the test releases it — so the test can
+        # GUARANTEE the socket is already detached when the engine next evaluates
+        # should_continue(), i.e. the disconnect lands squarely in the pre-gate window (a
+        # deterministic regression test, not a race). Step 2: propose the plan — the gate the
+        # user must come back to and approve.
+        st.add_turns(
+            AssistantTurn(text="Checking the catalog.", tool_calls=[
+                ToolCall("c1", "blocking_probe", {})]),
+            AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c2", "propose_session_plan", {
+                "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+            })]),
+            AssistantTurn(text="Plan approved — all set."),
+        )
 
         with client.websocket_connect("/ws") as ws1:
             ready = ws1.receive_json()
             assert ready["type"] == "ready"
             sid = ready["data"]["session_id"]
             ws1.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
-            # Wait until the turn is blocked inside its FIRST model call (socket still attached).
-            assert provider.armed.wait(timeout=5), "turn never reached its first model call"
-        # ws1 is now closed. Wait for the server to process the disconnect (channel.ws -> None) so the
-        # NEXT should_continue() the loop evaluates sees a DETACHED socket — the exact pre-gate window
-        # the old guard abandoned the turn in.
+            # Wait until the turn is blocked inside its FIRST tool (socket still attached).
+            assert started.wait(timeout=5), "turn never reached its first probe"
+        # ws1 is now closed. Wait for the server to process the disconnect (channel.ws -> None) so
+        # the NEXT should_continue() the engine evaluates sees a DETACHED socket — the exact
+        # pre-gate window the old guard abandoned the turn in.
         channel = app.state.channels.get(sid)
         assert channel is not None
         for _ in range(200):
@@ -614,10 +558,9 @@ def test_ws_disconnect_during_preplan_probe_still_reaches_gate():
             time.sleep(0.02)
         assert channel.ws is None, "disconnect was not processed"
 
-        # Release the held first model call: the turn runs the probe and reaches the step-2 boundary
-        # with NO socket attached. Old guard -> abandon before the gate; fixed guard -> run on to the
-        # gate and park. call_soon_threadsafe because we're poking the loop from the test thread.
-        provider.loop.call_soon_threadsafe(provider.release.set)
+        # Release the held probe: the turn continues to the plan step with NO socket attached.
+        # Old guard -> abandon before the gate; fixed guard -> run on to the gate and park.
+        release.set()
 
         # The turn must reach + park at the plan gate, persisting it to session.in_flight_approvals.
         session = app.state.sessions.get(sid)
@@ -653,15 +596,15 @@ def test_ws_reconnect_does_not_double_send_approval():
     exactly ONE approval card for the single pending gate, not a duplicate."""
     from app.main import app
 
-    turns = [
-        AssistantTurn(text="Plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
-            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
-        })]),
-        AssistantTurn(text="done.", tool_calls=[]),
-    ]
     with TestClient(app) as client:
-        app.state.provider = FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        st.add_turns(
+            AssistantTurn(text="Plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+                "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+            })]),
+            AssistantTurn(text="done."),
+        )
         with client.websocket_connect("/ws") as ws1:
             sid = ws1.receive_json()["data"]["session_id"]
             ws1.send_json({"type": "user_message", "text": "go"})
@@ -700,16 +643,16 @@ def test_ws_incremental_resume_resurfaces_pending_approval():
         "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
         "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
     }
-    # Re-park the SAME session at the gate for each cursor offset (a fresh provider per run so the
+    # Re-park the SAME session at the gate for each cursor offset (a fresh script per run so the
     # first turn always proposes the plan). offset 0 = client had rendered the gate before leaving;
     # negative = it left mid-stream and the gate opened while away.
     for offset in (0, -1, -3):
-        turns = [
-            AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", plan)]),
-            AssistantTurn(text="Plan approved.", tool_calls=[]),
-        ]
         with TestClient(app) as client:
-            app.state.provider = FakeProvider(turns)
+            st = ScriptedTransports().install(app)
+            st.add_turns(
+                AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", plan)]),
+                AssistantTurn(text="Plan approved."),
+            )
             with client.websocket_connect("/ws") as ws1:
                 sid = ws1.receive_json()["data"]["session_id"]
                 ws1.send_json({"type": "user_message", "text": "benchmark a tiny chat model"})
@@ -854,7 +797,8 @@ def test_ws_new_connection_emits_suggestions_after_ready():
     from app.main import app
 
     with TestClient(app) as client:
-        app.state.provider = FakeProvider([AssistantTurn(text="hi", tool_calls=[])])
+        st = ScriptedTransports().install(app)
+        st.add_turns(AssistantTurn(text="hi"))
 
         # Brand-new chat: ready, then the deterministic welcome card, then suggestions.
         with client.websocket_connect("/ws") as ws:
@@ -1123,15 +1067,15 @@ def test_ws_ready_reports_running_elapsed():
     int when reconnecting to a chat whose turn is still in flight (parked at an approval gate)."""
     from app.main import app
 
-    turns = [
-        AssistantTurn(text="Plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
-            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
-        })]),
-        AssistantTurn(text="done.", tool_calls=[]),
-    ]
     with TestClient(app) as client:
-        app.state.provider = FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        st.add_turns(
+            AssistantTurn(text="Plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+                "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+            })]),
+            AssistantTurn(text="done."),
+        )
 
         with client.websocket_connect("/ws") as ws1:
             ready1 = ws1.receive_json()
@@ -1171,15 +1115,15 @@ def test_ws_incremental_resume_skips_history_no_duplicates():
     re-surfaces (it's cursor-independent)."""
     from app.main import app
 
-    turns = [
-        AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
-            "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
-            "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
-        })]),
-        AssistantTurn(text="Plan approved.", tool_calls=[]),
-    ]
     with TestClient(app) as client:
-        app.state.provider = FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        st.add_turns(
+            AssistantTurn(text="Here is the plan.", tool_calls=[ToolCall("c1", "propose_session_plan", {
+                "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
+                "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
+            })]),
+            AssistantTurn(text="Plan approved."),
+        )
 
         last_seq = 0
         with client.websocket_connect("/ws") as ws1:
@@ -1225,9 +1169,9 @@ def test_ws_stale_cursor_falls_back_to_full_history():
     history rebuild so the client never silently misses events."""
     from app.main import app
 
-    turns = [AssistantTurn(text="hi", tool_calls=[])]
     with TestClient(app) as client:
-        app.state.provider = FakeProvider(turns)
+        st = ScriptedTransports().install(app)
+        st.add_turns(AssistantTurn(text="hi"))
         with client.websocket_connect("/ws") as ws1:
             sid = ws1.receive_json()["data"]["session_id"]
             ws1.send_json({"type": "user_message", "text": "hello"})
@@ -1249,7 +1193,7 @@ _PARK_TURNS = [
         "use_case_summary": "tiny chat", "spec": "cicd/kind", "namespace": "llmd-quickstart",
         "harness": "inference-perf", "workload": "sanity_random.yaml", "expected_steps": ["standup"],
     })]),
-    AssistantTurn(text="done.", tool_calls=[]),
+    AssistantTurn(text="done."),
 ]
 
 
@@ -1272,7 +1216,7 @@ def test_ws_pending_approval_persisted_and_replayed_in_history():
     from app.main import app
 
     with TestClient(app) as client:
-        app.state.provider = FakeProvider(list(_PARK_TURNS))
+        ScriptedTransports().install(app).add_turns(*_PARK_TURNS)
         with client.websocket_connect("/ws") as ws1:
             sid = ws1.receive_json()["data"]["session_id"]
             rid = _drive_to_parked_gate(ws1)
@@ -1317,7 +1261,7 @@ def test_ws_pending_approval_survives_channel_eviction():
     from app.main import app
 
     with TestClient(app) as client:
-        app.state.provider = FakeProvider(list(_PARK_TURNS))
+        ScriptedTransports().install(app).add_turns(*_PARK_TURNS)
         with client.websocket_connect("/ws") as ws1:
             sid = ws1.receive_json()["data"]["session_id"]
             rid = _drive_to_parked_gate(ws1)
@@ -1365,7 +1309,7 @@ def test_ws_fresh_channel_restores_pending_and_resolves():
     from app.main import app
 
     with TestClient(app) as client:
-        app.state.provider = FakeProvider(list(_PARK_TURNS))
+        ScriptedTransports().install(app).add_turns(*_PARK_TURNS)
         with client.websocket_connect("/ws") as ws1:
             sid = ws1.receive_json()["data"]["session_id"]
             rid = _drive_to_parked_gate(ws1)
