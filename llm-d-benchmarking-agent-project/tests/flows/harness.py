@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from app.agent.engine import SdkNativeEngine
 from app.agent.loop import AgentLoop
 from app.agent.session import Session
 from app.config import BENCH_REPO_NAME, GUIDE_REPO_NAME, Settings
@@ -39,9 +40,11 @@ from app.llm.provider import AssistantTurn, LLMProvider, ProviderTurn, open_prov
 from app.security.policy import MUTATING, READ_ONLY, CommandPolicy
 from app.security.runner import CommandRunner, RunResult
 from app.tools.context import ToolContext
+from app.tools.mcp_server import TOOL_PREFIX
 from app.tools.registry import _group_of
 from app.tools.run.shell import classify_shell_command
 from app.tools.setup.catalog import catalog_for_policy
+from tests._sdk_fake import FakeTransport, assistant, result, text, tool_use
 
 from .catalog_snapshot import frozen_catalog
 
@@ -67,6 +70,23 @@ class ScriptedProvider(LLMProvider):
         turn = self._turns[self.i]
         self.i += 1
         return turn
+
+
+def _sdk_script(turns: list[AssistantTurn]) -> list[list[dict[str, Any]]]:
+    """Render a flow's golden transcript as ONE FakeTransport scripted turn for the SDK-native
+    engine. Each :class:`AssistantTurn` becomes one wire ``assistant`` message (text block +
+    a ``mcp__benchtools__``-prefixed tool_use per ToolCall); the fake auto-executes every
+    tool_use through the real in-process MCP handlers and feeds the result back between
+    assistant messages — the same model→tool→model alternation the old ScriptedProvider
+    replayed one ``chat()`` at a time. ``flows.py`` stays pure data, engine-agnostic."""
+    messages: list[dict[str, Any]] = []
+    for turn in turns:
+        blocks = [text(turn.text)] if turn.text else []
+        blocks += [tool_use(tc.id, TOOL_PREFIX + tc.name, tc.input) for tc in turn.tool_calls]
+        if blocks:
+            messages.append(assistant(*blocks))
+    messages.append(result())
+    return [messages]
 
 
 # ---- per-call fail-fast watchdog --------------------------------------------
@@ -430,6 +450,8 @@ class FlowRun:
     # True when the flow ran in SIMULATE mode (mutating commands auto-run as no-ops with the
     # per-command approval gate intentionally skipped — see ``run_flow``/``gating_problems``).
     simulate: bool = False
+    # Which engine drove the turn: "loop" (the old AgentLoop) or "sdk-native".
+    engine: str = "loop"
 
     @property
     def significant(self) -> list[CapturedCommand]:
@@ -520,12 +542,19 @@ async def run_flow(
     approve=None,
     simulate: bool = False,
     call_timeout: float | None = None,
+    engine: str = "loop",
 ) -> FlowRun:
     """Run one flow through the real agent loop in a hermetic sandbox.
 
     ``provider`` defaults to a :class:`ScriptedProvider` replaying ``flow.turns`` (the
     deterministic path). Pass a real provider for the live eval. ``approve`` is a sync
     ``(kind, payload) -> bool``; defaults to approving everything.
+
+    ``engine`` selects who drives the turn: ``"loop"`` (default — the old AgentLoop,
+    byte-for-byte unchanged) or ``"sdk-native"`` (the SdkNativeEngine replaying the SAME
+    golden transcript through the SDK's real protocol machinery over a hermetic
+    FakeTransport — see :func:`_sdk_script`). The sdk-native path is scripted-only: the
+    live eval (a real ``provider``) stays on the old engine until the Phase 5 cutover.
 
     ``call_timeout`` bounds EACH live LLM call (seconds) via the per-call watchdog so one hung
     call fails the flow fast instead of stalling to the test backstop — see
@@ -542,6 +571,11 @@ async def run_flow(
     intentionally-skipped per-command gate is NOT treated as a violation (the upfront
     SessionPlan approval still applies).
     """
+    if engine not in ("loop", "sdk-native"):
+        raise ValueError(f"unknown engine {engine!r} (expected 'loop' or 'sdk-native')")
+    if engine == "sdk-native" and provider is not None:
+        raise ValueError("engine='sdk-native' replays flow.turns over FakeTransport; "
+                         "a real provider (the live eval) stays on the old engine")
     repos_dir = tmp_path / "repos"
     _materialize_repo_state(repos_dir, flow.repo_state)
     # LIVE-eval fidelity (real provider only): a "present" repo state must carry the REAL config tree
@@ -611,8 +645,15 @@ async def run_flow(
 
     # Patch the environment-sensing layer so probe behaviour is identical on every host.
     with patch("app.tools.setup.probe.shutil.which", side_effect=fake_which):
-        loop = AgentLoop(provider)
-        await loop.run_turn(session, flow.mock_user_input, emit=emit, request_approval=request_approval)
+        if engine == "sdk-native":
+            script = _sdk_script(flow.turns)
+            sdk_engine = SdkNativeEngine(transport_factory=lambda: FakeTransport(script))
+            await sdk_engine.run_turn(
+                session, flow.mock_user_input, emit=emit, request_approval=request_approval)
+        else:
+            loop = AgentLoop(provider)
+            await loop.run_turn(
+                session, flow.mock_user_input, emit=emit, request_approval=request_approval)
 
     # Label each captured command with its real policy mode + whether it was gated.
     cat = catalog_for_policy(frozen_catalog())
@@ -648,6 +689,7 @@ async def run_flow(
         tool_calls=tool_calls,
         session=session,
         simulate=simulate,
+        engine=engine,
     )
 
 

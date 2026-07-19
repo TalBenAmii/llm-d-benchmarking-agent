@@ -54,6 +54,11 @@ class Settings(BaseSettings):
         default="high", validation_alias=AliasChoices("agent_sdk_effort", "llm_effort"))
     agent_sdk_thinking: str = Field(
         default="adaptive", validation_alias=AliasChoices("agent_sdk_thinking", "llm_thinking"))
+    # SDK-native engine stream watchdog: a turn whose SDK stream goes silent for this many
+    # seconds WITH NO TOOL RUNNING (a parked approval gate lives inside a tool call and is
+    # exempt) is interrupted and surfaced as an error instead of hanging forever. Deliberately
+    # generous — it must only ever catch a genuinely wedged CLI subprocess. <=0 disables.
+    agent_stream_watchdog_s: float = 900.0
 
     # Paths (defaults computed from PROJECT_ROOT when unset)
     repos_dir: Path | None = None

@@ -61,6 +61,14 @@ _CLI_ENV = {
 
 ContinueFn = Callable[[], bool]
 
+# Sentinel for a cleanly exhausted SDK stream (the watchdog-aware iteration below).
+_STREAM_END = object()
+
+
+class StreamStalledError(RuntimeError):
+    """The SDK stream went silent past the watchdog deadline with no tool running — the CLI
+    subprocess is wedged. The turn was interrupted; run_turn surfaces this as an ERROR event."""
+
 
 @dataclass
 class LiveTurn:
@@ -81,6 +89,10 @@ class LiveTurn:
     # Any stream message arrived — distinguishes a dead-on-arrival connection (a resume id
     # whose CLI transcript is gone → fresh-session fallback) from a turn that died mid-flight.
     saw_activity: bool = False
+    # >0 while a benchtools handler is executing (mcp_server.execute_tool). The stream is
+    # LEGITIMATELY silent then — a long benchmark command, or an approval gate parked for
+    # hours — so the stream watchdog must not count that silence as a wedged CLI.
+    tool_depth: int = 0
     _steers: list[str] = field(default_factory=list)
     # bare tool name -> queue of tool_use ids stashed by can_use_tool, popped by the wrapper.
     _pending_ids: dict[str, deque[str]] = field(default_factory=dict)
@@ -88,6 +100,9 @@ class LiveTurn:
     _results: dict[str, tuple[str, Any]] = field(default_factory=dict)
     # tool_use_id -> bare name, from the assistant mirror — names denied/unknown tool rows.
     names_by_id: dict[str, str] = field(default_factory=dict)
+    # Pulsed each time the consumer finishes processing an AssistantMessage (mirror + text
+    # emit) — see wait_mirrored.
+    _mirror_advanced: asyncio.Event = field(default_factory=asyncio.Event)
 
     def steer(self, text: str) -> None:
         self._steers.append(text)
@@ -109,6 +124,19 @@ class LiveTurn:
             raise RuntimeError(
                 f"no pending tool_use id for {name!r} — can_use_tool never saw this call")
         return pending.popleft()
+
+    def note_mirrored(self) -> None:
+        self._mirror_advanced.set()
+
+    async def wait_mirrored(self, tool_use_id: str) -> None:
+        """Block until the consumer has processed the AssistantMessage carrying this tool_use
+        (mirror appended, ASSISTANT_TEXT emitted). The SDK dispatches a tool from the control
+        stream concurrently with the app-level message consumer, so without this hold the
+        TOOL_CALL event could hit the wire BEFORE the assistant text that introduces it —
+        breaking the old loop's transcript order (text bubble, then tool row)."""
+        while tool_use_id not in self.names_by_id:
+            self._mirror_advanced.clear()
+            await self._mirror_advanced.wait()
 
     def record_result(self, tool_use_id: str, name: str, result: Any) -> None:
         self._results[tool_use_id] = (name, result)
@@ -180,12 +208,21 @@ class SdkNativeEngine:
     """Drop-in replacement for ``AgentLoop`` at the main.py seam: same ``run_turn``
     signature, but the SDK/CLI drives model→tool→model natively."""
 
-    def __init__(self, transport_factory: Callable[[], Any] | None = None):
+    def __init__(
+        self,
+        transport_factory: Callable[[], Any] | None = None,
+        *,
+        stream_watchdog_s: float | None = None,
+        watchdog_poll_s: float = 5.0,
+    ):
         # Hermetic-test seam: a factory returning a Transport (tests/_sdk_fake.py
         # FakeTransport) drives the SDK's real protocol machinery with no CLI subprocess.
         # None (production) lets the SDK spawn the ``claude`` CLI. Called once per connect,
         # so the resume-fallback's second client gets a fresh transport.
         self._transport_factory = transport_factory
+        # Stream watchdog override (tests); None reads settings.agent_stream_watchdog_s.
+        self._stream_watchdog_s = stream_watchdog_s
+        self._watchdog_poll_s = watchdog_poll_s
 
     async def run_turn(
         self,
@@ -235,6 +272,8 @@ class SdkNativeEngine:
                 seeded = _mirror_replay_text(session.messages[:prior_mirror]) + query_text
                 await self._drive_turn(session, turn, usage, seeded, should_continue,
                                        resume=None)
+        except StreamStalledError as exc:
+            await emit(events.ERROR, {"message": str(exc)})
         except Exception as exc:  # noqa: BLE001 — a failed turn ends cleanly, like the old loop
             await emit(events.ERROR, {"message": f"LLM call failed: {exc}"})
         finally:
@@ -399,7 +438,11 @@ class SdkNativeEngine:
         # response, so it answers un-suppressed (steer outranks the terminal offer).
         terminal = False
 
-        async for msg in client.receive_response():
+        stream = aiter(client.receive_response())
+        while True:
+            msg = await self._next_message(stream, turn, client)
+            if msg is _STREAM_END:
+                break
             turn.saw_activity = True
             # Abandoned-turn guard, honored at stream-message boundaries (never mid-tool):
             # no recipient and no reason to keep running → interrupt; the stream still plays
@@ -436,6 +479,8 @@ class SdkNativeEngine:
                         {"role": "assistant", "content": text, "tool_calls": calls})
                 if text:
                     await emit(events.ASSISTANT_TEXT, {"text": text})
+                # Release any tool call parked in wait_mirrored on this message's ids.
+                turn.note_mirrored()
             elif isinstance(msg, UserMessage):
                 content = msg.content if isinstance(msg.content, list) else []
                 for block in content:
@@ -476,6 +521,44 @@ class SdkNativeEngine:
             await emit(events.ERROR, {"message": f"agent turn failed: {result_msg.subtype}"})
             return False
         return not interrupted
+
+    async def _next_message(self, stream: Any, turn: LiveTurn, client: Any) -> Any:
+        """Next SDK stream message, bounded by the stream watchdog. Silence past the deadline
+        WITH NO TOOL RUNNING (``turn.tool_depth`` — a long command or an hours-parked approval
+        gate lives inside a tool call and is exempt) means a wedged CLI: interrupt it, allow a
+        short grace for the ResultMessage to flush, then raise :class:`StreamStalledError`.
+        Returns ``_STREAM_END`` on clean exhaustion."""
+        watchdog = (self._stream_watchdog_s if self._stream_watchdog_s is not None
+                    else turn.session.ctx.settings.agent_stream_watchdog_s)
+        task = asyncio.ensure_future(anext(stream))
+        poll = min(self._watchdog_poll_s, watchdog) if watchdog > 0 else None
+        silent = 0.0
+        nudged = False
+        while True:
+            done, _pending = await asyncio.wait({task}, timeout=poll)
+            if task in done:
+                try:
+                    return task.result()
+                except StopAsyncIteration:
+                    return _STREAM_END
+            assert poll is not None  # timeout fired ⇒ the watchdog is enabled
+            if turn.tool_depth:
+                silent = 0.0
+                continue
+            silent += poll
+            if not nudged and silent >= watchdog:
+                nudged = True
+                log.warning("turn.stream_stalled", extra={
+                    "session_id": turn.session.id, "watchdog_s": watchdog})
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(client.interrupt(), timeout=2 * poll)
+            elif nudged and silent >= watchdog + 2 * poll:
+                task.cancel()
+                with contextlib.suppress(BaseException):
+                    await task
+                raise StreamStalledError(
+                    f"agent stream stalled: no output for {watchdog:g}s with no tool running; "
+                    "interrupted the wedged turn")
 
     @staticmethod
     def _flush_tool_results(session: Session, pending: list[dict[str, Any]]) -> None:

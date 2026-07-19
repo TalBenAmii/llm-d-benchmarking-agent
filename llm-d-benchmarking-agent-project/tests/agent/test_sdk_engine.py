@@ -461,6 +461,50 @@ async def test_options_carry_session_overrides(tmp_path, monkeypatch):
     assert set(opts.mcp_servers) == {"benchtools"}
 
 
+async def test_watchdog_interrupts_dead_stream(tmp_path):
+    """A stream that goes silent mid-turn with NO tool running is a wedged CLI: the watchdog
+    interrupts it and surfaces a clean error instead of hanging the turn forever."""
+    session = _make_session(tmp_path)
+    # The "CLI" accepts the user message, then never sends anything — a dead stream.
+    engine = SdkNativeEngine(transport_factory=lambda: FakeTransport([[]]),
+                             stream_watchdog_s=0.05)
+    seen, emit = _collector()
+
+    await engine.run_turn(session, "hi", emit=emit, request_approval=_approve)
+
+    err = next(p for t, p in seen if t == "error")
+    assert "stalled" in err["message"] and "no tool running" in err["message"]
+    assert [t for t, _ in seen][-1] == "done"
+
+
+async def test_watchdog_spares_parked_approval_gate(tmp_path):
+    """Silence while a tool is RUNNING is legitimate — an approval gate parked inside the
+    handler (here far past the watchdog deadline) must never be counted as a wedged CLI."""
+    import asyncio
+
+    session = _make_session(tmp_path)
+
+    async def slow_approve(kind, payload):
+        await asyncio.sleep(0.3)  # park the gate well past the 0.05s watchdog
+        return True
+
+    script = [[
+        assistant(tool_use("tu_1", BT + "run_shell", {"command": "rm -rf /tmp/scratch"})),
+        assistant(text("cleaned")),
+        result(),
+    ]]
+    engine = SdkNativeEngine(transport_factory=lambda: FakeTransport(script),
+                             stream_watchdog_s=0.05)
+    seen, emit = _collector()
+
+    await engine.run_turn(session, "clean up", emit=emit, request_approval=slow_approve)
+
+    assert not any(t == "error" for t, _ in seen)
+    tr = next(p for t, p in seen if t == "tool_result")
+    assert "rejected" not in tr["result"] and "error" not in tr["result"]
+    assert [p["text"] for t, p in seen if t == "assistant_text"] == ["cleaned"]
+
+
 async def test_simulate_mutating_command_is_a_noop(tmp_path):
     """SIMULATE end-to-end under the new engine: an approved mutating run_shell is ANNOUNCED
     (command event, simulated badge) but never executed — the same synthetic no-op result the

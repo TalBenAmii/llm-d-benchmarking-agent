@@ -90,6 +90,31 @@ def test_selfplay_fuzz(seed: int, tmp_path) -> None:
             player.finish()
 
 
+_SDK_SEEDS = [1, 42, 777]
+
+
+@pytest.mark.parametrize("seed", _SDK_SEEDS)
+def test_selfplay_fuzz_sdk_native(seed: int, tmp_path, monkeypatch) -> None:
+    """The SAME seeded self-play battery with the app on the SDK-native engine
+    (``AGENT_ENGINE=sdk-native`` over a scripted FakeTransport — see
+    ``app_driver.SdkFuzzScripts``): the handshake / gate-resume / state-isolation invariants
+    must hold identically. A trimmed seed set — the flow corpus carries the exhaustive
+    per-flow engine parity; this guards the WS-handler↔engine wiring (steer/cancel/parked
+    gates) end to end."""
+    from app.main import app
+
+    monkeypatch.setenv("AGENT_ENGINE", "sdk-native")
+    rng = random.Random(seed)
+    with TestClient(app) as client:
+        primer = _install_isolated_state(app, tmp_path, engine="sdk-native")
+        player = _Player(app, client, primer, rng)
+        try:
+            for _ in range(_ACTIONS_PER_RUN):
+                player.step()
+        finally:
+            player.finish()
+
+
 @pytest.mark.skipif(
     os.environ.get("FUZZ_SOAK") != "1", reason="opt-in soak: set FUZZ_SOAK=1 to run"
 )

@@ -94,7 +94,13 @@ class FakeTransport(Transport):
     can_use_tool decision payload the SDK returned in ``permission_responses``.
     """
 
-    def __init__(self, script: list[list[dict[str, Any]]]):
+    def __init__(self, script: list[list[dict[str, Any]]], *,
+                 response_timeout: float = _RESPONSE_TIMEOUT):
+        # ``response_timeout`` bounds how long the fake waits for the SDK to answer a control
+        # request. An approval gate parked inside a tools/call holds that request open for as
+        # long as the user leaves the card unanswered, so drivers that legitimately park gates
+        # (the self-play fuzzer) pass a generous value; unit tests keep the tight default.
+        self._response_timeout = response_timeout
         self._script = list(script)
         self._turn_index = 0
         self._ready = False
@@ -207,7 +213,7 @@ class FakeTransport(Transport):
     async def _await_response(
         self, event: anyio.Event, slot: list[dict[str, Any]], what: str
     ) -> dict[str, Any]:
-        with anyio.fail_after(_RESPONSE_TIMEOUT):
+        with anyio.fail_after(self._response_timeout):
             await event.wait()
         response = slot[0]
         assert response["subtype"] == "success", (

@@ -83,13 +83,30 @@ async def execute_tool(turn: LiveTurn, name: str, args: dict[str, Any]) -> dict[
     """Run one registry tool for the SDK-native engine — the per-call pipeline the old loop
     performed inline, relocated verbatim. Serialized under the per-turn lock because
     ``ToolContext`` assumes sequential dispatch (``current_tool_call_id`` and the gate
-    bookkeeping are single-slot)."""
+    bookkeeping are single-slot). ``tool_depth`` marks the whole call for the engine's stream
+    watchdog: the SDK stream is legitimately silent while a handler runs (a long benchmark
+    command, an approval gate parked for hours), so that silence must never count as wedged."""
+    turn.tool_depth += 1
+    try:
+        return await _execute_locked(turn, name, args)
+    finally:
+        turn.tool_depth -= 1
+
+
+async def _execute_locked(turn: LiveTurn, name: str, args: dict[str, Any]) -> dict[str, Any]:
     async with turn.tool_lock:
         session = turn.session
         ctx = session.ctx
         # The tool_use id stashed by the engine's can_use_tool gatekeeper just before the SDK
         # dispatched this call — ties events/approvals/durations back to the model's tool call.
         tc_id = turn.take_tool_use_id(name)
+        # Hold until the engine's consumer has emitted the assistant message that carries this
+        # tool_use, so the WS transcript keeps the old loop's order (text bubble, then tool
+        # row). The CLI always flushes that message before dispatching the tool, so the wait
+        # resolves as soon as the consumer catches up; skipped for a CLI that supplied no
+        # tool_use_id (nothing to match the mirror on).
+        if tc_id:
+            await turn.wait_mirrored(tc_id)
         with log_bind(tool=name):
             log.info("tool.call.start", extra={"tool_call_id": tc_id})
             await turn.emit(events.TOOL_CALL, {"id": tc_id, "name": name, "input": args})

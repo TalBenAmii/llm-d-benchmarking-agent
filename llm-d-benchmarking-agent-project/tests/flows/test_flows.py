@@ -27,9 +27,13 @@ _FLOW_IDS = [f.name for f in ALL_FLOWS]
 _BENCH_REPO = Path(__file__).resolve().parents[2].parent / "llm-d-benchmark"
 
 
+@pytest.mark.parametrize("engine", ["loop", "sdk-native"])
 @pytest.mark.parametrize("flow", ALL_FLOWS, ids=_FLOW_IDS)
-async def test_flow_runs_the_right_commands(flow, tmp_path):
-    run = await run_flow(flow, tmp_path=tmp_path)
+async def test_flow_runs_the_right_commands(flow, engine, tmp_path):
+    """Every golden flow, replayed on BOTH engines (the old AgentLoop and the SDK-native
+    engine over FakeTransport), must satisfy the same expectations: right commands in order,
+    correct read-only/mutating classification, every mutating command approval-gated."""
+    run = await run_flow(flow, tmp_path=tmp_path, engine=engine)
 
     # The loop completed cleanly (no crash, no step-limit blow-up).
     assert run.ended_done, f"[{flow.name}] loop did not finish: events={run.events[-3:]}"
@@ -88,6 +92,62 @@ async def test_flow_runs_the_right_commands(flow, tmp_path):
     # Refusal flow: the named tools must have errored/refused (nothing silently slipped through).
     for name in flow.expect_tool_errors_for:
         assert run.tool_errored(name), f"[{flow.name}] expected tool {name!r} to refuse, but it didn't"
+
+
+def _fingerprint(run, root) -> list[tuple]:
+    """Engine-comparable digest of a FlowRun's event stream. ``usage`` events are excluded —
+    their cadence is the one ADJUDICATED engine difference (once per LLM call on the old loop
+    vs once per SDK response on the new engine); sandbox-root paths are normalized so runs in
+    different tmp dirs compare equal."""
+    def norm(s: str) -> str:
+        return s.replace(str(root), "<TMP>")
+
+    out: list[tuple] = []
+    for t, p in run.events:
+        if t == "usage":
+            continue
+        if t in ("assistant_text", "assistant_delta"):
+            out.append((t, p["text"]))
+        elif t == "tool_call":
+            out.append((t, p["name"]))
+        elif t == "tool_result":
+            res = p.get("result") if isinstance(p.get("result"), dict) else {}
+            out.append((t, p["name"], bool(res.get("error")), bool(res.get("rejected"))))
+        elif t == "command":
+            out.append((t, tuple(norm(a) for a in p["argv"]), p["mode"], p["auto_run"],
+                        p.get("tool_call_id")))
+        elif t == "error":
+            out.append((t, norm(p.get("message", ""))))
+        else:
+            out.append((t,))
+    return out
+
+
+@pytest.mark.parametrize("flow", ALL_FLOWS, ids=_FLOW_IDS)
+async def test_flow_engines_agree(flow, tmp_path):
+    """Cross-engine parity, flow by flow: the SAME golden transcript driven through the old
+    AgentLoop and through the SDK-native engine must produce the same observable behavior —
+    identical event sequence (types, texts, tool names, full command argv + gating labels),
+    identical significant commands, identical approval traffic. Any NEW behavioral divergence
+    between the engines fails here, not at the Phase 5 cutover."""
+    old = await run_flow(flow, tmp_path=tmp_path / "loop")
+    new = await run_flow(flow, tmp_path=tmp_path / "sdk", engine="sdk-native")
+
+    assert _fingerprint(new, tmp_path / "sdk") == _fingerprint(old, tmp_path / "loop"), (
+        f"[{flow.name}] engines diverged on the event stream"
+    )
+    def norm_argv(commands, root):
+        # Dynamic path arguments (the run command's ``-r <results_dir>``) live under each
+        # run's own sandbox root — normalize so the two runs compare equal.
+        return [tuple(a.replace(str(root), "<TMP>") for a in c.argv) for c in commands]
+
+    assert norm_argv(new.significant, tmp_path / "sdk") == norm_argv(old.significant, tmp_path / "loop"), (
+        f"[{flow.name}] engines diverged on significant commands"
+    )
+    assert (
+        [(r["kind"], r["approved"]) for r in new.approval_requests]
+        == [(r["kind"], r["approved"]) for r in old.approval_requests]
+    ), f"[{flow.name}] engines diverged on approval traffic"
 
 
 @pytest.mark.parametrize("flow", [f for f in ALL_FLOWS if f.policy_checks],

@@ -595,7 +595,10 @@ async def ws(websocket: WebSocket) -> None:
     # the old loop) dies at the Phase 5 cutover — never document it as a feature.
     loop: SdkNativeEngine | AgentLoop | None
     if os.environ.get("AGENT_ENGINE") == "sdk-native":
-        loop = SdkNativeEngine()
+        # Hermetic-test seam (the engine's own transport_factory, surfaced app-wide): tests
+        # install a FakeTransport factory on app.state; unset (production) → the real CLI.
+        loop = SdkNativeEngine(
+            transport_factory=getattr(app.state, "sdk_transport_factory", None))
     else:
         loop = AgentLoop(app.state.provider) if app.state.provider else None
 
