@@ -8,7 +8,7 @@ agent asks a couple of questions, checks your environment, shows you a plan, dep
 `llm-d` stack if needed, runs the benchmark, and explains the results in plain words.
 Nothing changes your system without your approval.
 
-Licensed Apache-2.0.
+Licensed [Apache-2.0](LICENSE).
 
 ## Demo
 
@@ -119,10 +119,10 @@ pytest tests/     # the full suite
 
 | Doc | For |
 |---|---|
-| [USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/guides/USER_GUIDE.md) | Using the agent end-to-end |
+| [USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/guides/USER_GUIDE.md) | **User Manual** — using the agent end-to-end |
 | [GPU_CLUSTER_RUNBOOK.md](llm-d-benchmarking-agent-project/docs/guides/GPU_CLUSTER_RUNBOOK.md) | From CPU-sim to a real single-GPU cluster |
 | [DEPLOYMENT.md](llm-d-benchmarking-agent-project/docs/guides/DEPLOYMENT.md) | Local and in-cluster deploy, config, secrets |
-| [ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/reference/ARCHITECTURE.md) | Layers, determinism gates, trust boundaries |
+| [ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/reference/ARCHITECTURE.md) | **Programmer's Guide** — layers, determinism gates, trust boundaries |
 | [FEATURES.md](llm-d-benchmarking-agent-project/docs/reference/FEATURES.md) | Everything it can do + how to verify each |
 
 Full index: [docs/README.md](llm-d-benchmarking-agent-project/docs/README.md).
