@@ -125,8 +125,30 @@ def test_results_card_from_analysis_sweep():
     assert card is not None and card["kind"] == "sweep"
     assert card["n"] == 2
     assert card["frontier"] == ["a"]
+    assert card["frontier_basis"] == "slo_feasible"
     assert card["objectives"] == ["ttft", "output_token_rate"]
     assert {r["label"]: r["slo_met"] for r in card["runs"]} == {"a": True, "b": False}
+
+
+def test_results_card_sweep_with_no_slo_feasible_run_falls_back_to_the_raw_frontier():
+    """SLOs given but NO run meets them -> the analyzer's ``slo_frontier`` is EMPTY. Starring it
+    would blank every ★ and leave the footnote explaining nothing, so the card falls back to the
+    raw frontier and carries the analyzer's note to say why."""
+    analysis = {
+        "analyzed": True, "n": 2,
+        "runs": [
+            {"label": "a", "model": "m", "slo": {"overall_met": False}},
+            {"label": "b", "model": "m", "slo": {"overall_met": False}},
+        ],
+        "pareto": {"frontier": ["a", "b"], "slo_feasible": [], "slo_frontier": [],
+                   "note": "no run satisfies all SLO targets",
+                   "objectives": [{"name": "ttft"}, {"name": "output_token_rate"}]},
+        "skipped": [],
+    }
+    card = build_results_card("analyze_results", analysis)
+    assert card is not None and card["frontier"] == ["a", "b"]
+    assert card["frontier_basis"] == "no_slo_feasible"
+    assert card["note"] == "no run satisfies all SLO targets"
 
 
 def test_results_card_sweep_without_slos_stars_the_raw_frontier():
@@ -139,6 +161,8 @@ def test_results_card_sweep_without_slos_stars_the_raw_frontier():
     }
     card = build_results_card("analyze_results", analysis)
     assert card is not None and card["frontier"] == ["a", "b"]
+    assert card["frontier_basis"] == "overall"
+    assert "note" not in card
 
 
 def test_results_card_ignores_other_tools():

@@ -114,16 +114,17 @@ class MetricVerdict:
 def _convert(value: float, units: str | None, table: dict[str, float]) -> float | None:
     """Convert ``value`` from its reported ``units`` into the table's canonical unit.
 
-    Rounded to 3 decimals (1 us / 0.001 tok/s — far below any harness's resolution): the
-    scaling is binary float arithmetic, so an observed 2.7387 s would otherwise reach the
-    user as ``2738.7000000000003 ms`` in the verdict / the agent's prose."""
+    De-noised to 12 significant figures (same rule as ``report.py::_to_canonical``): the scaling
+    is binary float arithmetic, so an observed 2.7387 s would otherwise reach the user as
+    ``2738.7000000000003 ms`` in the verdict / the agent's prose. Significant figures rather than
+    decimals, so small-magnitude rates keep their precision."""
     if units is None:
         # No declared unit: assume the value is already canonical (caller's risk).
         return float(value)
     mult = table.get(str(units).strip().lower())
     if mult is None:
         return None
-    return round(float(value) * mult, 3)
+    return float(f"{float(value) * mult:.12g}")
 
 
 def _stat(metric_obj: Any, stat: str) -> float | None:

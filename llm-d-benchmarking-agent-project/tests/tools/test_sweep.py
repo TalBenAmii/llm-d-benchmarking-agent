@@ -85,9 +85,26 @@ def test_compare_summaries_unit_conversion_has_no_float_noise():
     by_label = {p["label"]: p for p in ttft["per_run"]}
     assert by_label["A"]["value"] == 2738.7          # exact, not 2738.7000000000003
     assert ttft["baseline_value"] == 2738.7
-    assert by_label["B"]["delta_abs"] == 261.3
     # the headline interpolates the winning value RAW — no UI formatter sees it.
     assert ttft["best"]["label"] == "A" and "2738.7 ms" in out["headline"]
+
+
+def test_compare_summaries_keeps_small_magnitude_rates_exact():
+    # `queries/s` needs no scaling (mult == 1.0), so there is no float noise to remove — yet
+    # canonicalizing to a fixed 3 decimals truncated the family anyway: 0.0017 q/s -> 0.002 (17%
+    # off) and 0.0004 -> 0.0, with delta_abs derived from the wrecked values. De-noising to
+    # significant figures instead is magnitude-independent.
+    def _rate(label: str, mean: float):
+        return {"label": label, "summary": {"model": "m", "run_uid": label, "latency": {},
+                "throughput": {"request_rate": {"units": "queries/s", "mean": mean}}}}
+
+    out = compare_summaries([_rate("A", 0.0017), _rate("B", 0.0004)], baseline_index=0)
+    rate = next(m for m in out["metrics"] if m["key"] == "throughput.request_rate")
+    by_label = {p["label"]: p for p in rate["per_run"]}
+    assert by_label["A"]["value"] == 0.0017
+    assert by_label["B"]["value"] == 0.0004          # not 0.0
+    assert by_label["B"]["delta_abs"] == -0.0013     # not -0.002
+    assert rate["best"]["label"] == "A"              # higher request rate wins
 
 
 def test_compare_summaries_requires_two():
