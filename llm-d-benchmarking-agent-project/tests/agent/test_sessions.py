@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -250,6 +251,54 @@ def test_api_delete_unknown_returns_404(tmp_path):
     with TestClient(app) as client:
         client.app.state.sessions = manager
         assert client.delete("/api/sessions/nope").status_code == 404
+
+
+class _FakeTurn:
+    """Stand-in for a turn task: the busy endpoint asks whether it is done, and the delete path
+    cancels it."""
+    def __init__(self, done: bool) -> None:
+        self._done = done
+
+    def done(self) -> bool:
+        return self._done
+
+    def cancel(self) -> None:
+        self._done = True
+
+
+def test_api_sessions_running_lists_every_busy_chat(tmp_path):
+    # The sidebar's per-conversation busy dots. The WS only streams the ATTACHED session, so this
+    # is the one place the client can learn that a BACKGROUND chat is still working. A finished
+    # turn drops out (no stuck dot), and a chat parked at an approval gate is excluded: it holds a
+    # task but is idle awaiting the user, exactly like the active chat's `#working` chip hiding.
+    with TestClient(app) as client:
+        client.app.state.sessions = make_manager(tmp_path)
+        client.app.state.running = {
+            "busy": _FakeTurn(False), "finished": _FakeTurn(True), "parked": _FakeTurn(False)}
+        # "busy" has a live channel too — the exclusion is keyed on an OPEN gate, not on whether
+        # a channel happens to exist (every attached chat has one).
+        client.app.state.channels = {
+            "busy": SimpleNamespace(pending={}), "parked": SimpleNamespace(pending={"req-1": {}})}
+        assert client.get("/api/sessions/running").json()["running"] == ["busy"]
+
+
+def test_api_sessions_running_is_empty_when_idle(tmp_path):
+    with TestClient(app) as client:
+        client.app.state.sessions = make_manager(tmp_path)
+        assert client.get("/api/sessions/running").json()["running"] == []
+
+
+def test_deleting_a_chat_mid_run_clears_its_busy_state(tmp_path):
+    # Terminal case: delete a conversation while its turn is in flight. `_teardown_session_runtime`
+    # cancels + pops the task, so the chat must vanish from the busy list (a dot can't outlive the row).
+    manager = make_manager(tmp_path)
+    s = _seed(manager, "run a sweep")
+    with TestClient(app) as client:
+        client.app.state.sessions = manager
+        client.app.state.running = {s.id: _FakeTurn(False)}
+        assert client.get("/api/sessions/running").json()["running"] == [s.id]
+        assert client.delete(f"/api/sessions/{s.id}").status_code == 200
+        assert client.get("/api/sessions/running").json()["running"] == []
 
 
 # ---- namespace: the sidebar's folder key -------------------------------------

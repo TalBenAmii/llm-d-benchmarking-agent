@@ -160,16 +160,25 @@ def _card_from_analysis(result: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(pareto, dict):
         # With SLO targets the analyzer also computes the frontier restricted to the
         # SLO-feasible runs — star THAT one, so a run is never marked on-frontier next to
-        # its own ✗ SLO verdict (``slo_frontier`` is absent exactly when no SLOs were given,
-        # and EMPTY when no run met them — then fall back to the raw frontier, so a
-        # nothing-passed sweep still shows its trade-offs instead of a starless table).
+        # its own ✗ SLO verdict. ``slo_frontier`` is absent exactly when no SLOs were given;
+        # EMPTY splits two ways, told apart by ``slo_feasible``: no run met the SLOs at all
+        # (``no_slo_feasible``), or runs DID pass but none is placeable/rankable on the frontier
+        # (``slo_unrankable`` — e.g. every feasible run is missing a deciding objective). Both
+        # empty cases fall back to the raw frontier, so the sweep still shows its trade-offs
+        # instead of a starless table; only the footnote wording differs.
         slo_frontier = pareto.get("slo_frontier")
         if slo_frontier:
             sweep_card["frontier"], basis = slo_frontier, "slo_feasible"
+        elif slo_frontier is None:
+            sweep_card["frontier"], basis = pareto.get("frontier") or [], "overall"
         else:
             sweep_card["frontier"] = pareto.get("frontier") or []
-            basis = "overall" if slo_frontier is None else "no_slo_feasible"
+            basis = "no_slo_feasible" if not pareto.get("slo_feasible") else "slo_unrankable"
         sweep_card["frontier_basis"] = basis
+        # Degeneracy of the frontier actually being starred: when EVERY placeable run is on it,
+        # the ★s narrowed nothing down and the UI has to say so (a monotone sweep's normal shape).
+        sweep_card["frontier_degenerate"] = bool(pareto.get(
+            "slo_frontier_degenerate" if basis == "slo_feasible" else "frontier_degenerate"))
         if pareto.get("note"):
             sweep_card["note"] = pareto["note"]
         sweep_card["slo_feasible"] = pareto.get("slo_feasible")

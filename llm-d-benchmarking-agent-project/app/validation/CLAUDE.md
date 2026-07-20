@@ -38,8 +38,12 @@ An agent convention; making it a gate would have to be written.
 - **Fail loud, but degrade gracefully on newer reports.** A report newer than the committed schema
   surfaces as **non-fatal** deviations — the raw jsonschema messages, exposed under `schema_deviations`
   (`app/tools/analyze/report_locate.py`) — not a silent drop and not a crash.
-- **Unit tables are string-matched** (`analysis.py` `_TO_MS`/`_TO_TOK_S`). An unknown unit → `met=None`
-  (unchecked, not failed). Add new harness units to the tables.
+- **Unit tables are string-matched, SHARED, and FROZEN.** `report.py` `_CANONICAL_CONVERSIONS` is the
+  single source of truth; `analysis.py` `_TO_MS`/`_TO_TOK_S` are the SAME objects (its `ms`/`tokens/s`
+  families), so coverage cannot drift — and they're `MappingProxyType`, so neither module can mutate
+  the other's table behind its back. Add new harness units THERE, once. The two *converters* stay separate on
+  purpose — opposite degradation policies: `report._to_canonical` passes an unknown unit through
+  unconverted (raw number), `analysis._convert` returns None → `met=None` (unchecked, not failed).
 - **`SessionPlan.flags` is intentionally untyped** — per-tool validation owns flag shape (thin code, thick agent).
 
 ## Key files

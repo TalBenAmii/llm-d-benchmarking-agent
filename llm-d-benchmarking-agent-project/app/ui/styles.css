@@ -136,7 +136,22 @@ body {
 .conv.active { background: color-mix(in srgb, var(--accent-strong) 18%, var(--panel-2)); }
 .conv-main { flex: 1; min-width: 0; }
 .conv-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.conv-time { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.conv-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.conv-time { font-size: 11px; color: var(--muted); }
+/* Per-conversation busy indicator: always in the DOM, revealed by `.conv.running` so the JS only
+   toggles a class. Reuses the run stepper's pulsing-dot vocabulary (@keyframes stepPulse), sized
+   down for the sidebar — this is the ONLY way to see that a NON-active chat is still working. */
+.conv-busy { display: none; align-items: center; gap: 5px; margin-left: auto; }
+.conv.running .conv-busy { display: inline-flex; }
+.conv-busy-dot {
+  flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  animation: stepPulse 1.5s ease-in-out infinite;
+}
+.conv-busy-word {
+  font: 600 9.5px/1 var(--mono); letter-spacing: .08em;
+  text-transform: uppercase; color: var(--accent);
+}
+@media (prefers-reduced-motion: reduce) { .conv-busy-dot { animation: none; } }
 .conv-del {
   flex: none; border: none; background: transparent; color: var(--muted);
   font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 6px;

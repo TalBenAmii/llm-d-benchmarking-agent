@@ -20,6 +20,7 @@ the LLM as JSON Schema); the registry and descriptions live in
 | `GET` | `/metrics` | Prometheus text exposition of the agent + orchestrator metrics (content-type `text/plain; version=0.0.4`). Scrape target. |
 | `GET` | `/api/provider` | The active LLM provider + model, for the composer badge. Includes `switchable` (true only for the agent-SDK provider), the current `effort`, and the switchable `models` list (`{id,label,efforts}` from `app/llm/model_catalog.py`) the picker offers. |
 | `GET` | `/api/sessions` | Recent chats for the sidebar (summaries, newest first). |
+| `GET` | `/api/sessions/running` | Ids of the chats with a turn in flight right now — the sidebar's per-conversation busy dots (the WebSocket only streams the attached session, so this is how a *background* chat's running state reaches the client). A chat parked at an approval gate is excluded (it is idle awaiting the user). In-memory, no disk read. Returns `{running: [id, …]}`. |
 | `DELETE` | `/api/sessions/{id}` | Delete a saved chat; `404` if unknown. |
 | `DELETE` | `/api/namespaces/{namespace}` | Delete a whole sidebar folder: every chat in one namespace at once (the `no_namespace` sentinel removes chats with no namespace). Returns `{deleted, count}`; `404` if the folder is empty. |
 | `GET` | `/api/sessions/{id}/artifact?path=` | Serve one image artifact (e.g. a run's latency/throughput PNG) from a session's gitignored workspace dir. Read-only, image suffixes only, path hardened against `..` traversal. |

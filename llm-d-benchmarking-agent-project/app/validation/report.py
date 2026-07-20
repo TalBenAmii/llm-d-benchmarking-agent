@@ -8,9 +8,10 @@ which is determinism gate (d).
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import jsonschema
@@ -338,23 +339,37 @@ _COMPARE_SCALARS: tuple[tuple[str, str, str], ...] = (
 )
 _STAT_PREFERENCE = ("mean", "p50", "p90", "p95", "p99")
 
-# Per canonical unit, the multipliers that bring a reported (schema-valid) unit onto it.
-# A reported unit absent from its canonical family's table is left UNCONVERTED but flagged,
-# so we never silently apply a wrong factor; an unknown/missing unit is treated as already
-# canonical (the BR Units enum is closed, so this only bites a non-conforming report).
-_CANONICAL_CONVERSIONS: dict[str, dict[str, float]] = {
-    "ms": {
-        "ms": 1.0, "s": 1000.0, "us": 0.001,
-        "ms/token": 1.0, "s/token": 1000.0,
-    },
-    "tokens/s": {
-        "tokens/s": 1.0, "tokens/sec": 1.0, "tok/s": 1.0, "tps": 1.0,
-        "tokens/min": 1.0 / 60.0,
-    },
-    "queries/s": {
-        "queries/s": 1.0, "queries/sec": 1.0, "req/s": 1.0, "requests/s": 1.0, "qps": 1.0,
-    },
-}
+# Per canonical unit, the multipliers that bring a reported unit onto it — the SINGLE SOURCE
+# OF TRUTH for unit conversion: ``analysis.py`` imports these families for its own conversion
+# so the tables cannot drift apart in coverage (the same hazard as the percentile ladder above).
+# Lookup is on the lower-cased unit string. The BR Units enum is closed and covered exactly
+# (``ms``/``s``/``ms/token``/``s/token``, ``tokens/s``, ``queries/s``); the remaining spellings
+# are tolerance for a NON-conforming report, never reachable from a schema-valid one.
+#
+# Consumers keep their own failure policy for an unrecognized unit: ``_to_canonical`` passes the
+# raw value through (a bad report degrades to its raw number), ``analysis._convert`` returns None
+# (an SLO verdict degrades to "metric absent"). Share the data, not the policy.
+#
+# Frozen (``MappingProxyType``): ``analysis.py`` binds these exact family dicts as its own
+# ``_TO_MS``/``_TO_TOK_S``, so a module-local mutation in either file would silently rewrite the
+# other's table. Read-only makes that a TypeError instead.
+_CANONICAL_CONVERSIONS: Mapping[str, Mapping[str, float]] = MappingProxyType({
+    family: MappingProxyType(table) for family, table in {
+        "ms": {
+            "ms": 1.0, "millisecond": 1.0, "milliseconds": 1.0,
+            "s": 1000.0, "sec": 1000.0, "secs": 1000.0, "second": 1000.0, "seconds": 1000.0,
+            "us": 0.001, "microsecond": 0.001, "microseconds": 0.001,
+            "ms/token": 1.0, "s/token": 1000.0,
+        },
+        "tokens/s": {
+            "tokens/s": 1.0, "tokens/sec": 1.0, "tok/s": 1.0, "tps": 1.0,
+            "tokens/min": 1.0 / 60.0,
+        },
+        "queries/s": {
+            "queries/s": 1.0, "queries/sec": 1.0, "req/s": 1.0, "requests/s": 1.0, "qps": 1.0,
+        },
+    }.items()
+})
 
 
 def _to_canonical(value: float, units: Any, canonical: str) -> tuple[float, bool]:

@@ -301,8 +301,8 @@
       ],
       pareto: {
         objectives: [
-          { name: "output_token_rate", direction: "higher", units: "tok/s" },
-          { name: "ttft_p99", direction: "lower", units: "ms" },
+          { name: "output_token_rate", direction: "max", units: "tok/s" },
+          { name: "ttft_p99", direction: "min", units: "ms" },
         ],
         runs: [
           { label: "r1", objectives: { output_token_rate: 420, ttft_p99: 90 }, on_frontier: true },

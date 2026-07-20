@@ -515,6 +515,9 @@ function handle(msg) {
       // here just blanked and repainted it for a frame: the flicker on every switch. Title/timestamp
       // refreshes still ride in via `session_saved` and `done`.
       if (wasNewChat) loadSessions();
+      // The server's whole-app view is authoritative for EVERY row's busy dot (incl. chats still
+      // running in the background after a page reload) — `data.running` only covers this one.
+      refreshRunning();
       if (data.running) { if (cur) cur.running = true; resumeWorking(data.running_elapsed_ms); }  // re-seed elapsed from the server
       // Not running per the SERVER (authoritative). The turn may have FINISHED while this chat was
       // detached, in which case activate() optimistically restarted the spinner from the now-stale
@@ -558,12 +561,12 @@ function handle(msg) {
     case "output": appendConsole(data.line); break;
     case "tool_result": finishTool(data); resumeThinking(); break;
     case "results_card": renderResultsCard(data.card); break;
-    case "approval_request": if (addApprovalCard(data)) noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); setEnabled(true); break;  // now waiting on the user: they can click Approve/Decline OR type a message to steer (which declines + redirects); tally only if a NEW card rendered (a reconnect re-emit dedups)
-    case "error": if (pickRevert && data.kind === "protocol_error") { llmPick = pickRevert; pickRevert = null; persistPick(); renderBadge(); if (modelPopover && !modelPopover.hidden) renderPopover(); } resetStreamBubble(); addBubble("error", data.message); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // ONLY a set_model rejection (kind="protocol_error") rolls the badge back; a generic turn error leaves the pick — the backend already accepted the switch
-    case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); noteNewMessage(); if (cur) cur.running = false; clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
+    case "approval_request": if (addApprovalCard(data)) noteNewMessage(); if (cur) cur.running = false; markRunning(currentSession, false); clearPhaseActive(); stopWorking(); setEnabled(true); break;  // now waiting on the user: they can click Approve/Decline OR type a message to steer (which declines + redirects); tally only if a NEW card rendered (a reconnect re-emit dedups)
+    case "error": if (pickRevert && data.kind === "protocol_error") { llmPick = pickRevert; pickRevert = null; persistPick(); renderBadge(); if (modelPopover && !modelPopover.hidden) renderPopover(); } resetStreamBubble(); addBubble("error", data.message); noteNewMessage(); if (cur) cur.running = false; markRunning(currentSession, false); clearPhaseActive(); stopWorking(); break;  // ONLY a set_model rejection (kind="protocol_error") rolls the badge back; a generic turn error leaves the pick — the backend already accepted the switch
+    case "cancelled": resetStreamBubble(); addNote("⏹ " + (data.message || "run cancelled")); noteNewMessage(); if (cur) cur.running = false; markRunning(currentSession, false); clearPhaseActive(); stopWorking(); break;  // a `done` follows and re-enables input
     case "usage": onUsage(data); break;
     case "resource_stats": renderResourceStats(data); break;
-    case "done": pickRevert = null; resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; clearPhaseActive(); appendTurnTokens(); clearResourceStats(); if (cur) cur.resourceRunEnded = true; loadSessions(); loadHistory(); stopWorking(); break;  // a completed turn used the current pick -> no rollback pending
+    case "done": pickRevert = null; resetStreamBubble(); setEnabled(true); activeConsole = null; if (cur) cur.running = false; markRunning(currentSession, false); clearPhaseActive(); appendTurnTokens(); clearResourceStats(); if (cur) cur.resourceRunEnded = true; loadSessions(); loadHistory(); stopWorking(); break;  // a completed turn used the current pick -> no rollback pending
     case "pong": break;
   }
   // Advance this chat's resume cursor for every turn event we rendered (live or replayed); the
@@ -853,6 +856,61 @@ function renderSidebar(sessions) {
   for (const [ns, items] of groups) {
     convList.appendChild(renderFolder(ns, items));
   }
+  paintRunningRows();   // freshly built rows start with no class — restore the busy dots
+}
+
+// ---- per-conversation busy indicator ------------------------------------
+// The single-pane UI shows one chat at a time, but turns keep running in the background — so a
+// sidebar row needs its own live "running" state. The WS only ever streams the ATTACHED session,
+// so the other chats' state can't come from it: `/api/sessions/running` is the server's whole-app
+// view (in-memory, no disk) and we poll it. Events on the active chat update the set immediately
+// so its own dot never lags a poll interval behind its `#working` chip.
+const RUNNING_POLL_MS = 3000;
+const runningSessions = new Set();
+
+function paintRunningRows() {
+  if (!convList) return;
+  for (const row of convList.querySelectorAll(".conv[data-sid]"))
+    row.classList.toggle("running", runningSessions.has(row.dataset.sid));
+}
+
+// Poll generation. Bumped by BOTH a local event and the start of a poll, so a response that was
+// already in flight when it changed is dropped rather than applied: a poll issued before the user
+// hit send would otherwise clear the dot for a whole interval while `#working` spins, and a poll
+// issued before `done` would re-add it — the two indicators visibly disagreeing either way.
+let runningGen = 0;
+
+// Optimistic local update for the chat this client is driving (send / done / error / cancelled).
+function markRunning(sid, on) {
+  if (!sid) return;
+  runningGen++;
+  if (on) runningSessions.add(sid); else runningSessions.delete(sid);
+  paintRunningRows();
+}
+
+async function refreshRunning() {
+  const gen = ++runningGen;
+  let ids;
+  try {
+    const r = await fetch("/api/sessions/running");
+    if (!r.ok) return;      // server error — a 5xx body is not an empty chat list, keep what's shown
+    ids = (await r.json()).running || [];
+  } catch (e) { return; }   // offline — keep whatever's shown
+  if (gen !== runningGen) return;   // superseded by a local event (or a newer poll) — this is stale
+  runningSessions.clear();
+  for (const id of ids) runningSessions.add(id);
+  paintRunningRows();
+}
+
+// Armed by the LIVE boot only — the share/preview boots have no sidebar, and the static export
+// must make no network calls at all. Polls only while the tab is visible, and catches up the
+// moment it returns to the foreground.
+function startRunningPoll() {
+  setInterval(() => { if (document.visibilityState === "visible") refreshRunning(); }, RUNNING_POLL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshRunning();
+  });
+  refreshRunning();
 }
 
 function renderFolder(ns, items) {
@@ -889,7 +947,14 @@ function renderConvRow(s) {
   row.title = s.title || "New chat";
   const main = el("div", "conv-main");
   main.appendChild(el("div", "conv-title", s.title || "New chat"));
-  main.appendChild(el("div", "conv-time", relTime(s.updated_at)));
+  const meta = el("div", "conv-meta");
+  meta.appendChild(el("span", "conv-time", relTime(s.updated_at)));
+  // Always present, revealed by `.conv.running` — so paintRunningRows() only toggles a class.
+  const busy = el("span", "conv-busy");
+  busy.appendChild(el("span", "conv-busy-dot"));
+  busy.appendChild(el("span", "conv-busy-word", "running"));
+  meta.appendChild(busy);
+  main.appendChild(meta);
   const del = el("button", "conv-del", "×");
   del.type = "button";
   del.title = "Delete conversation";
@@ -1711,7 +1776,9 @@ function goodputGauge(pct) {
 
 // An objective's axis caption: name + an arrow toward "better" + units, e.g. "throughput ↑ (tok/s)".
 function objAxisLabel(m) {
-  const arrow = m.direction === "higher" ? " ↑" : m.direction === "lower" ? " ↓" : "";
+  // The analyzer's objective direction vocabulary is "max"/"min" (see `_OBJECTIVES` in analysis.py),
+  // NOT the "higher"/"lower" that compare_reports uses for its metric rows.
+  const arrow = m.direction === "max" ? " ↑" : m.direction === "min" ? " ↓" : "";
   return `${m.name}${arrow}${m.units ? ` (${m.units})` : ""}`;
 }
 
@@ -1826,11 +1893,16 @@ function addCardCopy(root, text) {
 
 // ★ means a different frontier depending on the SLOs — the backend picked one and says which
 // via `frontier_basis`. The table and the scatter share this wording so ★ never means two
-// things in one message.
-function frontierNote(basis, note) {
-  if (basis === "slo_feasible") return "★ = Pareto-optimal among the SLO-feasible runs";
-  if (basis === "no_slo_feasible") return (note || "no run met the SLO targets") + " — ★ = Pareto-optimal overall";
-  return "★ = Pareto-optimal";
+// things in one message. `degenerate` = every placeable run landed on that frontier, so the ★s
+// eliminated nothing (the normal shape of a monotone concurrency sweep) — say it, don't imply
+// the sweep narrowed to a winner.
+function frontierNote(basis, note, degenerate) {
+  const star = basis === "slo_feasible" ? "★ = Pareto-optimal among the SLO-feasible runs"
+    : basis === "no_slo_feasible" ? (note || "no run met the SLO targets") + " — ★ = Pareto-optimal overall"
+    : basis === "slo_unrankable" ? "runs met the SLO targets but none could be ranked — ★ = Pareto-optimal overall"
+    : "★ = Pareto-optimal";
+  if (!degenerate) return star;
+  return star + ". The frontier rules nothing out here: every starred config is a genuine trade-off, so look for the knee";
 }
 
 function renderResultsCard(card) {
@@ -1922,7 +1994,7 @@ function renderResultsCard(card) {
     root.appendChild(table);
     if (card.objectives && card.objectives.length) {
       root.appendChild(el("div", "results-note", "Compared on: " + card.objectives.join(", ")
-        + ". " + frontierNote(card.frontier_basis, card.note) + "."));
+        + ". " + frontierNote(card.frontier_basis, card.note, card.frontier_degenerate) + "."));
     }
   }
 
@@ -1948,10 +2020,15 @@ function renderParetoCard(result) {
     if (run && run.label != null) feasible[run.label] = (run.slo || {}).overall_met;
   }
   // Same frontier the results TABLE stars (see `frontierNote`): the SLO-restricted one when the
-  // analyzer computed a non-empty one, otherwise the raw `on_frontier` flag on each run row.
+  // analyzer computed a non-empty one, otherwise the raw `on_frontier` flag on each run row. An
+  // EMPTY `slo_frontier` splits on `slo_feasible` exactly as the table does (cards.py) — no run
+  // passed vs. runs passed but none is rankable — so both surfaces agree on the wording.
   const sloFrontier = pareto.slo_frontier;
-  const basis = sloFrontier == null ? "overall" : (sloFrontier.length ? "slo_feasible" : "no_slo_feasible");
+  const basis = sloFrontier == null ? "overall"
+    : sloFrontier.length ? "slo_feasible"
+    : (pareto.slo_feasible && pareto.slo_feasible.length) ? "slo_unrankable" : "no_slo_feasible";
   const sloSet = basis === "slo_feasible" ? new Set(sloFrontier) : null;
+  const degenerate = basis === "slo_feasible" ? pareto.slo_frontier_degenerate : pareto.frontier_degenerate;
   const points = [];
   for (const run of pareto.runs) {
     const o = run.objectives || {};
@@ -1968,7 +2045,7 @@ function renderParetoCard(result) {
   const root = el("div", "results-card");
   root.appendChild(el("div", "results-head", "Pareto frontier — best trade-offs"));
   root.appendChild(el("div", "report-sub",
-    `${points.length} configurations · ${frontierNote(basis, pareto.note)}`));
+    `${points.length} configurations · ${frontierNote(basis, pareto.note, degenerate)}`));
   root.appendChild(scatterPlot(points, xMeta, yMeta));
   const legend = el("div", "scatter-legend");
   legend.appendChild(legendItem("frontier", basis === "slo_feasible" ? "on SLO frontier" : "on frontier"));
@@ -2924,6 +3001,7 @@ function addApprovalCard(data) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ type: "approval", request_id, approved: ok }));
     if (cur) { cur.running = true; delete cur.pendingApprovals[request_id]; }
+    markRunning(currentSession, true);   // the gate is decided — the chat is busy again
     setEnabled(false);  // re-lock the composer: clicking resumes the turn (working), not parked
     startWorking();     // the turn resumes after the user decides (approve or reject), until "done"
     approve.disabled = reject.disabled = true;
@@ -3108,6 +3186,7 @@ function sendUserMessage(text) {
   } else {
     setEnabled(false);
     if (cur) cur.running = true;    // this chat now has a turn in flight (kept across switches)
+    markRunning(currentSession, true);
     startWorking();
   }
   stickBottom = true; scroll();     // sending always pins to the newest message
@@ -3489,5 +3568,6 @@ if (window.__LLMD_SHARED__) {
   loadSessions();
   loadHistory();
   loadProviderBadge();
+  startRunningPoll();
   bootChat();
 }

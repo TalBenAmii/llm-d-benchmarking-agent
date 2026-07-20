@@ -765,3 +765,49 @@ def test_sidebar_hides_the_pytest_test_namespace_folder():
     assert filter_at != -1, "renderSidebar no longer filters the hidden test namespace"
     assert group_at != -1, "renderSidebar no longer groups by namespace"
     assert filter_at < group_at, "the hidden-namespace filter must run BEFORE grouping"
+
+
+def test_per_conversation_busy_indicator():
+    """A sidebar row shows its OWN live running state, so a chat working in the background is
+    visible without clicking into it. (No JS runtime in CI — pin the wiring structurally.)"""
+    js = _ui("app.js")
+    css = _ui("styles.css")
+    # Server truth for every chat at once: the WS only ever streams the ATTACHED session.
+    assert '"/api/sessions/running"' in js, "the sidebar no longer polls the busy-chats endpoint"
+    assert "function paintRunningRows" in js and "function markRunning" in js
+    # Rebuilt rows start classless — the rebuild must repaint the dots.
+    assert "paintRunningRows();   // freshly built rows" in js
+    # Every terminal event of the active chat clears its dot immediately (done/error/cancelled/
+    # parked-at-a-gate); deciding a gate or sending a message re-arms it. The poll is the backstop
+    # for a reload mid-run and for chats this client never drove.
+    assert js.count("markRunning(currentSession, false)") == 4
+    assert js.count("markRunning(currentSession, true)") == 2
+    # The poll is armed by the LIVE boot only: the share/preview boots have no sidebar, and the
+    # self-contained static export must make no network calls at all (it may be opened from disk).
+    assert "  startRunningPoll();\n  bootChat();" in js, "the busy poll escaped the live boot"
+    assert js.count("startRunningPoll()") == 2, "expected the definition plus exactly ONE call site"
+    for cls in ("conv-busy", "conv-busy-dot", "conv-busy-word"):
+        assert f'"{cls}"' in js, f"{cls} not built in app.js"
+        assert f".{cls}" in css, f"missing .{cls} in styles.css"
+    assert ".conv.running .conv-busy" in css, "the busy chip is no longer class-driven"
+    # Reuses the run stepper's existing pulse rather than inventing a second spinner style.
+    assert "animation: stepPulse" in css
+
+
+def test_running_poll_discards_stale_snapshots():
+    """The poll and the optimistic local updates race: a response can be in flight when the user
+    sends (its pre-send snapshot would clear the dot for a whole interval while `#working` spins)
+    or when the turn finishes (its pre-done snapshot would re-add a dot that just cleared). A
+    generation counter bumped by both sides makes the loser drop its result. Also pin the `r.ok`
+    check — `fetch` does NOT reject on 5xx, so an error body would parse to `[]` and wipe every
+    dot. (No JS runtime in CI — pin the wiring structurally.)"""
+    js = _ui("app.js")
+    body = js[js.index("async function refreshRunning"):js.index("function startRunningPoll")]
+    assert "runningGen++;" in js[js.index("function markRunning"):js.index("async function refreshRunning")], \
+        "markRunning no longer invalidates an in-flight poll"
+    assert "const gen = ++runningGen;" in body, "refreshRunning no longer stamps a generation"
+    guard = body.index("if (gen !== runningGen) return;")
+    assert body.index("await fetch") < guard < body.index("runningSessions.clear()"), \
+        "the generation guard must run AFTER the response lands and BEFORE it is applied"
+    assert body.index("if (!r.ok) return;") < body.index("await r.json()"), \
+        "refreshRunning no longer bails on a non-2xx response"

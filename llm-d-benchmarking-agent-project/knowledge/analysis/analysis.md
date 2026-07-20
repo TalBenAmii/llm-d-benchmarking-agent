@@ -104,22 +104,44 @@ invalid numbers; require a validated report (re-run the scenario) first.
 
 For a sweep (pass `experiment_dir`, or `sources` with 2+ runs), the tool returns `pareto`:
 - `objectives` - the metrics present in >=2 runs, each with its `direction` (latency =
-  lower-better, throughput = higher-better) and units.
+  lower-better, throughput = higher-better), `units`, `family` (latency/throughput) and
+  `deciding`. The **deciding** ones come first in the list.
+- `deciding_objectives` - the subset dominance is actually judged on: ONE representative per
+  family (normally `ttft` + `output_token_rate`). The other objectives are still reported and
+  still worth quoting, they just don't decide the frontier. Why: the four latency metrics move
+  together and so do the three throughput metrics, so scoring all seven would leave nearly
+  every run non-dominated and the frontier would say nothing.
 - `frontier` - the labels of the **Pareto-optimal** runs: those that no other run beats on
-  every objective at once. A run *off* the frontier is strictly dominated - there's another
-  run at least as good everywhere and better somewhere, so never recommend a dominated run.
+  every *deciding* objective at once. A run *off* the frontier is either strictly dominated -
+  there's another run at least as good on both axes and better on one, so never recommend it -
+  or **incomparable**, because it is missing one of the deciding metrics. Check its
+  `objectives`: an incomparable run isn't a loser, it just can't be ranked, and saying so is
+  the honest answer.
+- `frontier_degenerate` (and `slo_frontier_degenerate`) - `true` when **every** run that carries
+  all the deciding objectives is on that frontier (incomparable runs don't count either way). This is the normal outcome of a clean concurrency sweep: each step up
+  buys throughput and costs latency, so there is no dominated loser to drop. When it's true,
+  say so plainly - "every config here is a genuine trade-off, none is strictly worse" - and
+  then advise with the **knee** (below). Do NOT present a 5-of-5 frontier as if the analysis
+  had narrowed anything down.
 - With SLOs: `slo_feasible` (runs meeting all targets) and `slo_frontier` (the best
   trade-offs **among** the feasible runs). This answers the proposal's example directly:
   "best throughput at a given latency constraint" = the feasible-frontier run that maximizes
   throughput. If `slo_feasible` is empty, **no config meets the targets** - say so plainly
   and show how close the nearest run came (its verdicts), rather than recommending a failure.
+  An empty `slo_frontier` does NOT by itself mean nothing passed: when `slo_feasible` is
+  **non-empty but `slo_frontier` is empty**, runs DID meet the targets, they just can't be
+  ranked - every feasible run is incomparable, missing a deciding objective (see `frontier`
+  above). Say the runs passed but couldn't be placed on a trade-off curve, and lean on their
+  verdicts/informational metrics; do NOT report it as "no config meets the targets".
 
 How to advise:
 1. If SLOs were given: recommend from `slo_frontier`, picking the point that best serves the
    *primary* goal (lowest TTFT for chat; highest throughput for batch). Mention the runner-up
    trade-off ("conc=16 hits 2x throughput but TTFT p99 rises from 180ms to 410ms").
-2. If no SLOs: explain the frontier as a trade-off curve and find the **knee** - the highest
-   load where latency is still acceptable - rather than declaring a single winner.
+2. If no SLOs - or the frontier is degenerate - explain it as a trade-off curve and find the
+   **knee**: the highest load where throughput is still climbing meaningfully and latency is
+   still acceptable. Past the knee, extra concurrency buys little throughput for a lot of
+   latency. The knee is a judgment call over the reported numbers, not a field in the object.
 3. Always tie the pick back to what the user said they care about, and only quote numbers
    that appear in the analysis object (validated reports). Never extrapolate beyond the
    reported percentiles or invent a treatment that wasn't run.
