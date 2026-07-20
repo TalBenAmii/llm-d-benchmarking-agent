@@ -724,7 +724,9 @@ function renderPopover() {
     seg.setAttribute("role", "menuitemradio");
     seg.setAttribute("aria-checked", level === llmPick.effort ? "true" : "false");
     seg.tabIndex = -1;                         // the checked model owns the initial tabstop
-    seg.addEventListener("click", () => selectEffort(level));
+    // selectEffort re-renders this button away, so by the time the click reaches the document the
+    // target is detached and `popover.contains(target)` reads as an outside click — stop it here.
+    seg.addEventListener("click", (e) => { e.stopPropagation(); selectEffort(level); });
     mpEfforts.appendChild(seg);
   }
 }
@@ -1822,6 +1824,15 @@ function addCardCopy(root, text) {
   root.appendChild(btn);
 }
 
+// ★ means a different frontier depending on the SLOs — the backend picked one and says which
+// via `frontier_basis`. The table and the scatter share this wording so ★ never means two
+// things in one message.
+function frontierNote(basis, note) {
+  if (basis === "slo_feasible") return "★ = Pareto-optimal among the SLO-feasible runs";
+  if (basis === "no_slo_feasible") return (note || "no run met the SLO targets") + " — ★ = Pareto-optimal overall";
+  return "★ = Pareto-optimal";
+}
+
 function renderResultsCard(card) {
   if (!card || typeof card !== "object") return;
   removeWelcomeCard();
@@ -1910,7 +1921,8 @@ function renderResultsCard(card) {
     }
     root.appendChild(table);
     if (card.objectives && card.objectives.length) {
-      root.appendChild(el("div", "results-note", "Compared on: " + card.objectives.join(", ") + ". ★ = Pareto-optimal."));
+      root.appendChild(el("div", "results-note", "Compared on: " + card.objectives.join(", ")
+        + ". " + frontierNote(card.frontier_basis, card.note) + "."));
     }
   }
 
@@ -1935,22 +1947,31 @@ function renderParetoCard(result) {
   for (const run of (result.runs || [])) {
     if (run && run.label != null) feasible[run.label] = (run.slo || {}).overall_met;
   }
+  // Same frontier the results TABLE stars (see `frontierNote`): the SLO-restricted one when the
+  // analyzer computed a non-empty one, otherwise the raw `on_frontier` flag on each run row.
+  const sloFrontier = pareto.slo_frontier;
+  const basis = sloFrontier == null ? "overall" : (sloFrontier.length ? "slo_feasible" : "no_slo_feasible");
+  const sloSet = basis === "slo_feasible" ? new Set(sloFrontier) : null;
   const points = [];
   for (const run of pareto.runs) {
     const o = run.objectives || {};
     const x = o[xMeta.name], y = o[yMeta.name];
     if (typeof x !== "number" || typeof y !== "number") continue;
-    points.push({ label: run.label || "", x, y, frontier: !!run.on_frontier, feasible: feasible[run.label] });
+    points.push({
+      label: run.label || "", x, y,
+      frontier: sloSet ? sloSet.has(run.label) : !!run.on_frontier,
+      feasible: feasible[run.label],
+    });
   }
   if (points.length < 2) return;
   removeWelcomeCard();
   const root = el("div", "results-card");
   root.appendChild(el("div", "results-head", "Pareto frontier — best trade-offs"));
   root.appendChild(el("div", "report-sub",
-    `${points.length} configurations · ★ frontier = not dominated on any objective`));
+    `${points.length} configurations · ${frontierNote(basis, pareto.note)}`));
   root.appendChild(scatterPlot(points, xMeta, yMeta));
   const legend = el("div", "scatter-legend");
-  legend.appendChild(legendItem("frontier", "on frontier"));
+  legend.appendChild(legendItem("frontier", basis === "slo_feasible" ? "on SLO frontier" : "on frontier"));
   legend.appendChild(legendItem("dominated", "dominated"));
   if (Object.values(feasible).some((v) => v === false)) legend.appendChild(legendItem("infeasible", "misses SLO"));
   root.appendChild(legend);

@@ -112,14 +112,19 @@ class MetricVerdict:
 
 
 def _convert(value: float, units: str | None, table: dict[str, float]) -> float | None:
-    """Convert ``value`` from its reported ``units`` into the table's canonical unit."""
+    """Convert ``value`` from its reported ``units`` into the table's canonical unit.
+
+    De-noised to 12 significant figures (same rule as ``report.py::_to_canonical``): the scaling
+    is binary float arithmetic, so an observed 2.7387 s would otherwise reach the user as
+    ``2738.7000000000003 ms`` in the verdict / the agent's prose. Significant figures rather than
+    decimals, so small-magnitude rates keep their precision."""
     if units is None:
         # No declared unit: assume the value is already canonical (caller's risk).
         return float(value)
     mult = table.get(str(units).strip().lower())
     if mult is None:
         return None
-    return float(value) * mult
+    return float(f"{float(value) * mult:.12g}")
 
 
 def _stat(metric_obj: Any, stat: str) -> float | None:
@@ -161,7 +166,8 @@ def _goodput_for_latency(metric_obj: dict[str, Any], target_canonical: float, un
             if lat_hi == lat_lo:
                 return frac_hi, "percentile-interpolation"
             t = (target_canonical - lat_lo) / (lat_hi - lat_lo)
-            return frac_lo + t * (frac_hi - frac_lo), "percentile-interpolation"
+            # 4 decimals = 0.01% of requests, the resolution `estimate_pct` already reports.
+            return round(frac_lo + t * (frac_hi - frac_lo), 4), "percentile-interpolation"
     return ladder[-1][1], "percentile-interpolation"
 
 
