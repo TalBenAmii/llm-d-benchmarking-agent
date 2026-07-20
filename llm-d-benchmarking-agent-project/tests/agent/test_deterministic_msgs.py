@@ -115,7 +115,9 @@ def test_results_card_from_analysis_sweep():
             {"label": "a", "model": "m", "slo": {"overall_met": True}},
             {"label": "b", "model": "m", "slo": {"overall_met": False}},
         ],
-        "pareto": {"frontier": ["a"], "slo_feasible": ["a"],
+        # Both runs are mutually non-dominated (the usual concurrency-sweep shape), but only
+        # "a" meets the SLOs -> the card must star the SLO-feasible frontier, not the raw one.
+        "pareto": {"frontier": ["a", "b"], "slo_feasible": ["a"], "slo_frontier": ["a"],
                    "objectives": [{"name": "ttft"}, {"name": "output_token_rate"}]},
         "skipped": [],
     }
@@ -125,6 +127,18 @@ def test_results_card_from_analysis_sweep():
     assert card["frontier"] == ["a"]
     assert card["objectives"] == ["ttft", "output_token_rate"]
     assert {r["label"]: r["slo_met"] for r in card["runs"]} == {"a": True, "b": False}
+
+
+def test_results_card_sweep_without_slos_stars_the_raw_frontier():
+    """No SLO targets -> no ``slo_frontier`` from the analyzer -> the card stars the raw one."""
+    analysis = {
+        "analyzed": True, "n": 2,
+        "runs": [{"label": "a", "model": "m"}, {"label": "b", "model": "m"}],
+        "pareto": {"frontier": ["a", "b"], "objectives": [{"name": "ttft"}]},
+        "skipped": [],
+    }
+    card = build_results_card("analyze_results", analysis)
+    assert card is not None and card["frontier"] == ["a", "b"]
 
 
 def test_results_card_ignores_other_tools():

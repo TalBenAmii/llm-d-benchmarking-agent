@@ -87,6 +87,12 @@ def test_evaluate_slo_unit_conversion_seconds_to_ms():
     assert v["observed"] == pytest.approx(180.0)   # 0.18s -> 180ms
     assert v["met"] is True
 
+    # ...and the scaling must not leak binary-float noise (2.7387s -> 2738.7, never
+    # 2738.7000000000003): the agent quotes `observed` verbatim in its prose.
+    s["latency"]["ttft"] = {"units": "s", "mean": 2.7387, "p99": 2.7387}
+    noisy = evaluate_slo(s, SLOTargets(ttft_ms=3000))
+    assert next(v for v in noisy["verdicts"] if v["metric"] == "ttft")["observed"] == 2738.7
+
 
 def test_evaluate_slo_missing_metric_is_none_not_pass():
     # SLO on a metric the report doesn't carry -> met is None, and not counted as a pass.

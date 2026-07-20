@@ -362,13 +362,18 @@ def _to_canonical(value: float, units: Any, canonical: str) -> tuple[float, bool
 
     Returns ``(converted_value, converted)``. ``converted`` is False when the reported
     unit is missing or not in the canonical family (the value is passed through unchanged,
-    so a non-conforming report degrades to its raw number rather than a wrong scale)."""
+    so a non-conforming report degrades to its raw number rather than a wrong scale).
+
+    The converted value is rounded to 3 decimals (1 us / 0.001 tok/s — far below any
+    harness's resolution): the scaling is binary float arithmetic, so 2.7387 s would
+    otherwise reach the user as ``2738.7000000000003 ms`` in the row, the headline, or
+    the agent's prose."""
     if units is None:
         return float(value), False
     mult = _CANONICAL_CONVERSIONS.get(canonical, {}).get(str(units).strip().lower())
     if mult is None:
         return float(value), False
-    return float(value) * mult, True
+    return round(float(value) * mult, 3), True
 
 
 def _stat_value(metric_obj: Any) -> tuple[float | None, str | None, Any]:

@@ -158,7 +158,11 @@ def _card_from_analysis(result: dict[str, Any]) -> dict[str, Any] | None:
         sweep_card["slo_targets"] = slo_targets
     pareto = result.get("pareto")
     if isinstance(pareto, dict):
-        sweep_card["frontier"] = pareto.get("frontier") or []
+        # With SLO targets the analyzer also computes the frontier restricted to the
+        # SLO-feasible runs — star THAT one, so a run is never marked on-frontier next to
+        # its own ✗ SLO verdict (``slo_frontier`` is absent exactly when no SLOs were given).
+        slo_frontier = pareto.get("slo_frontier")
+        sweep_card["frontier"] = (pareto.get("frontier") if slo_frontier is None else slo_frontier) or []
         sweep_card["slo_feasible"] = pareto.get("slo_feasible")
         sweep_card["objectives"] = [o.get("name") for o in (pareto.get("objectives") or [])]
     return sweep_card

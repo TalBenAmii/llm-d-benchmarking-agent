@@ -72,6 +72,24 @@ def test_compare_summaries_normalizes_mixed_latency_units_for_winner():
     assert by_label["B"]["delta_pct"] == pytest.approx(-60.0)   # not +39900%
 
 
+def test_compare_summaries_unit_conversion_has_no_float_noise():
+    # A report in `s` is scaled by 1000 to canonical ms — binary float arithmetic, so
+    # 2.7387s came out as 2738.7000000000003 and reached the user verbatim (the row, the
+    # headline, and the agent's prose, which quotes the tool result as-is).
+    A = {"label": "A", "summary": {"model": "m", "run_uid": "a",
+         "latency": {"ttft": {"units": "s", "mean": 2.7387}}, "throughput": {}}}
+    B = {"label": "B", "summary": {"model": "m", "run_uid": "b",
+         "latency": {"ttft": {"units": "s", "mean": 3.0}}, "throughput": {}}}
+    out = compare_summaries([A, B], baseline_index=0)
+    ttft = next(m for m in out["metrics"] if m["key"] == "latency.ttft")
+    by_label = {p["label"]: p for p in ttft["per_run"]}
+    assert by_label["A"]["value"] == 2738.7          # exact, not 2738.7000000000003
+    assert ttft["baseline_value"] == 2738.7
+    assert by_label["B"]["delta_abs"] == 261.3
+    # the headline interpolates the winning value RAW — no UI formatter sees it.
+    assert ttft["best"]["label"] == "A" and "2738.7 ms" in out["headline"]
+
+
 def test_compare_summaries_requires_two():
     with pytest.raises(ReportError):
         compare_summaries([{"label": "x", "summary": _summary(1.0, 1.0)}])

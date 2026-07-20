@@ -724,7 +724,9 @@ function renderPopover() {
     seg.setAttribute("role", "menuitemradio");
     seg.setAttribute("aria-checked", level === llmPick.effort ? "true" : "false");
     seg.tabIndex = -1;                         // the checked model owns the initial tabstop
-    seg.addEventListener("click", () => selectEffort(level));
+    // selectEffort re-renders this button away, so by the time the click reaches the document the
+    // target is detached and `popover.contains(target)` reads as an outside click — stop it here.
+    seg.addEventListener("click", (e) => { e.stopPropagation(); selectEffort(level); });
     mpEfforts.appendChild(seg);
   }
 }
@@ -1910,7 +1912,8 @@ function renderResultsCard(card) {
     }
     root.appendChild(table);
     if (card.objectives && card.objectives.length) {
-      root.appendChild(el("div", "results-note", "Compared on: " + card.objectives.join(", ") + ". ★ = Pareto-optimal."));
+      root.appendChild(el("div", "results-note", "Compared on: " + card.objectives.join(", ")
+        + ". ★ = Pareto-optimal" + (card.slo_targets ? " among the SLO-feasible runs." : ".")));
     }
   }
 
