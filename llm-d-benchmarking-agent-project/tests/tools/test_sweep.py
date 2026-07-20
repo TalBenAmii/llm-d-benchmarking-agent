@@ -72,6 +72,23 @@ def test_compare_summaries_normalizes_mixed_latency_units_for_winner():
     assert by_label["B"]["delta_pct"] == pytest.approx(-60.0)   # not +39900%
 
 
+def test_compare_summaries_normalizes_spelled_out_units():
+    # Sharing report.py's table with analysis.py enlarged the `ms` family with the spelled-out
+    # spellings (`seconds`, `sec`, `microseconds`, ...). They are NOT in the BR Units enum, so
+    # only a non-conforming report carries one — it used to pass through raw and unflagged
+    # (0.5 "seconds" compared against 200 ms, crowning A). It is now scaled and labelled `ms`.
+    A = {"label": "A", "summary": {"model": "m", "run_uid": "a",
+         "latency": {"ttft": {"units": "seconds", "mean": 0.5}}, "throughput": {}}}
+    B = {"label": "B", "summary": {"model": "m", "run_uid": "b",
+         "latency": {"ttft": {"units": "ms", "mean": 200.0}}, "throughput": {}}}
+    out = compare_summaries([A, B], baseline_index=0)
+    ttft = next(m for m in out["metrics"] if m["key"] == "latency.ttft")
+    assert ttft["units"] == "ms"
+    by_label = {p["label"]: p for p in ttft["per_run"]}
+    assert by_label["A"]["value"] == pytest.approx(500.0)   # 0.5 "seconds" -> 500 ms
+    assert ttft["best"]["label"] == "B"
+
+
 def test_compare_summaries_unit_conversion_has_no_float_noise():
     # A report in `s` is scaled by 1000 to canonical ms — binary float arithmetic, so
     # 2.7387s came out as 2738.7000000000003 and reached the user verbatim (the row, the

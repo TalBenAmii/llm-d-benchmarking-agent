@@ -26,13 +26,14 @@ be honest with the user. No extrapolation beyond the reported percentiles.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from app.dig import dig_dotted
-from app.validation.report import _PERCENTILE_LADDER
+from app.validation.report import _CANONICAL_CONVERSIONS, _PERCENTILE_LADDER
 
 # Latency SLO fields map onto the summary's latency.<key>; throughput floors onto
 # throughput.<key>. Each carries a canonical unit the target is expressed in.
@@ -51,18 +52,13 @@ _THROUGHPUT_SLOS: tuple[tuple[str, str, str], ...] = (
 # of requests at-or-below). Imported from ``report.py`` (the single source of truth) so the
 # two ladders cannot drift apart — the documented silent-floor bug.
 
-# Multipliers to convert a reported latency unit into milliseconds.
-_TO_MS: dict[str, float] = {
-    "ms": 1.0, "millisecond": 1.0, "milliseconds": 1.0,
-    "s": 1000.0, "sec": 1000.0, "secs": 1000.0, "second": 1000.0, "seconds": 1000.0,
-    "s/token": 1000.0, "ms/token": 1.0,
-    "us": 0.001, "microsecond": 0.001, "microseconds": 0.001,
-}
-# Multipliers to convert a reported throughput unit into tokens/s.
-_TO_TOK_S: dict[str, float] = {
-    "tokens/s": 1.0, "tokens/sec": 1.0, "tok/s": 1.0, "tps": 1.0,
-    "tokens/min": 1.0 / 60.0,
-}
+# Multipliers to convert a reported unit into milliseconds / tokens-per-second. Imported from
+# ``report.py`` (the single source of truth) so the two modules' unit coverage cannot drift
+# apart — the same hazard the percentile ladder above is shared to avoid. The *functions* stay
+# separate on purpose: ``_convert`` below returns None for an unrecognized unit, where
+# ``report._to_canonical`` passes the raw value through.
+_TO_MS: Mapping[str, float] = _CANONICAL_CONVERSIONS["ms"]
+_TO_TOK_S: Mapping[str, float] = _CANONICAL_CONVERSIONS["tokens/s"]
 
 
 class SLOTargets(BaseModel):
@@ -111,7 +107,7 @@ class MetricVerdict:
     goodput_method: str | None = None        # how goodput_fraction was derived
 
 
-def _convert(value: float, units: str | None, table: dict[str, float]) -> float | None:
+def _convert(value: float, units: str | None, table: Mapping[str, float]) -> float | None:
     """Convert ``value`` from its reported ``units`` into the table's canonical unit.
 
     De-noised to 12 significant figures (same rule as ``report.py::_to_canonical``): the scaling
@@ -256,16 +252,28 @@ def evaluate_slo(summary: dict[str, Any], slo: SLOTargets) -> dict[str, Any]:
 
 # ---- Pareto / DoE analysis over a sweep ------------------------------------
 
-# The objective space for the frontier: (summary path, human name, direction).
+# The objective space: (summary path, human name, direction, family).
 # "min" = smaller is better (latency); "max" = larger is better (throughput).
-_OBJECTIVES: tuple[tuple[str, str, str], ...] = (
-    ("latency.ttft", "ttft", "min"),
-    ("latency.tpot", "tpot", "min"),
-    ("latency.itl", "itl", "min"),
-    ("latency.request_latency", "request_latency", "min"),
-    ("throughput.output_token_rate", "output_token_rate", "max"),
-    ("throughput.total_token_rate", "total_token_rate", "max"),
-    ("throughput.request_rate", "request_rate", "max"),
+#
+# The seven objectives are NOT seven independent axes: the four latency measures move
+# together, and so do the three throughput measures. Running dominance over all seven makes
+# almost every run non-dominated (any run winning one near-collinear measure survives), which
+# is mathematically correct and useless as a "which config wins" signal. So dominance is
+# decided on ONE representative per family — the real trade-off is latency vs throughput —
+# while the rest stay fully reported and compared, just not deciding.
+#
+# The representative is the first objective of its family present in >=2 runs; declaration
+# order IS the preference (same idiom as _STAT_PREFERENCE below). The heads are the two
+# metrics the SLO model already privileges: ``ttft`` leads _LATENCY_SLOS and is the canonical
+# interactive-latency measure, and ``output_token_rate`` is the ONLY throughput SLO.
+_OBJECTIVES: tuple[tuple[str, str, str, str], ...] = (
+    ("latency.ttft", "ttft", "min", "latency"),
+    ("latency.tpot", "tpot", "min", "latency"),
+    ("latency.itl", "itl", "min", "latency"),
+    ("latency.request_latency", "request_latency", "min", "latency"),
+    ("throughput.output_token_rate", "output_token_rate", "max", "throughput"),
+    ("throughput.total_token_rate", "total_token_rate", "max", "throughput"),
+    ("throughput.request_rate", "request_rate", "max", "throughput"),
 )
 _STAT_PREFERENCE = ("mean", "p50", "p90", "p95", "p99")
 
@@ -345,16 +353,26 @@ def _informational_objectives(
     return out
 
 
+def _placeable(point: dict[str, float], dirs: dict[str, str]) -> bool:
+    """Can this point be placed on the frontier at all? Only if it carries EVERY deciding
+    objective. ``dirs`` is small and mandatory (one metric per family), so a run missing one
+    is *incomparable* — it must be neither starred nor counted toward degeneracy."""
+    return all(key in point for key in dirs)
+
+
 def _dominates(a: dict[str, float], b: dict[str, float], dirs: dict[str, str]) -> bool:
-    """Does point ``a`` Pareto-dominate ``b`` across the shared objectives ``dirs``?
+    """Does point ``a`` Pareto-dominate ``b`` across the deciding objectives ``dirs``?
     a dominates b iff a is no worse on every objective and strictly better on at least one.
+
+    Every objective in ``dirs`` must be present on BOTH points: with a deciding subset this
+    small, skipping a missing one would let a run dominate on a single axis alone.
     """
     no_worse_all = True
     strictly_better_any = False
     for key, direction in dirs.items():
         av, bv = a.get(key), b.get(key)
         if av is None or bv is None:
-            continue
+            return False    # incomparable on the deciding subset
         if direction == "min":
             if av > bv:
                 no_worse_all = False
@@ -376,10 +394,14 @@ def pareto_analysis(
     """Identify Pareto-optimal configurations across a sweep matrix (proposal §3.4 DoE).
 
     ``entries`` is ``[{"label": str, "summary": <summarize_report output>}, ...]``.
-    Computes, for the set of objectives present in 2+ runs, which runs are on the Pareto
-    frontier (no other run dominates them). If ``slo`` is given, each run is also tagged
-    with whether it satisfies the SLOs, an estimated goodput, and the SLO-feasible subset
-    gets its own frontier (so "best throughput at a given latency constraint" is answerable).
+    Reports every objective present in 2+ runs, but judges dominance on the *deciding* subset
+    (``deciding_objectives`` — one representative per family, see ``_OBJECTIVES``) so a sweep's
+    near-collinear latency/throughput measures can't make every run non-dominated. When every
+    placeable run still lands on the frontier the trade-off genuinely has no losers; that is
+    reported as ``frontier_degenerate`` so the agent says so instead of starring everything.
+    If ``slo`` is given, each run is also tagged with whether it satisfies the SLOs, an
+    estimated goodput, and the SLO-feasible subset gets its own frontier (so "best throughput
+    at a given latency constraint" is answerable).
     Returns facts only; the recommendation is the agent's job (knowledge/analysis.md).
     """
     if len(entries) < 2:
@@ -392,7 +414,9 @@ def pareto_analysis(
     points: list[dict[str, float]] = [{} for _ in entries]
     dirs: dict[str, str] = {}
     obj_meta: dict[str, dict[str, Any]] = {}
-    for path, name, direction in _OBJECTIVES:
+    deciding: dict[str, str] = {}   # the representative-per-family subset dominance is judged on
+    seated: set[str] = set()        # families that already have their representative
+    for path, name, direction, family in _OBJECTIVES:
         vals = [_objective_value(s, path) for s in summaries]
         present = sum(v is not None for v in vals)
         if present < 2:
@@ -403,27 +427,46 @@ def pareto_analysis(
              if isinstance(d := dig_dotted(s, path), dict) and d.get("units") is not None),
             None,
         )
-        obj_meta[name] = {"path": path, "direction": direction, "units": units}
+        # First comparable objective of its family wins the seat (declaration order = preference).
+        is_deciding = family not in seated
+        if is_deciding:
+            seated.add(family)
+            deciding[name] = direction
+        obj_meta[name] = {"path": path, "direction": direction, "units": units,
+                          "family": family, "deciding": is_deciding}
         for i, v in enumerate(vals):
             if v is not None:
                 points[i][name] = v
 
     informational = _informational_objectives(labels, summaries)
 
-    if not dirs:
-        return {
-            "objectives": [], "runs": [], "frontier": [],
-            "informational_objectives": informational,
-            "note": "no objective metric is present in two or more runs — nothing to compare",
-        }
-
     # SLO tagging (optional).
     slo_eval: list[dict[str, Any] | None] = [None] * len(entries)
     if slo is not None:
         slo_eval = [evaluate_slo(s, slo) for s in summaries]
+    feasible_idx = [i for i, ev in enumerate(slo_eval) if ev is not None and ev["overall_met"]]
 
-    # Frontier over ALL runs.
-    frontier = _frontier_labels(points, dirs, labels)
+    if not dirs:
+        out: dict[str, Any] = {
+            "objectives": [], "runs": [], "frontier": [],
+            "deciding_objectives": [], "frontier_degenerate": False,
+            "informational_objectives": informational,
+            "note": "no objective metric is present in two or more runs — nothing to compare",
+        }
+        if slo is not None:
+            # An ABSENT ``slo_frontier`` means "no SLOs were given" downstream, so the keys must
+            # be present here — SLOs *were* given, and feasibility is still known. Nothing is
+            # placeable without a comparable objective, so the frontier is legitimately empty.
+            out["slo_feasible"] = [labels[i] for i in feasible_idx]
+            out["slo_frontier"] = []
+            out["slo_frontier_degenerate"] = False
+        return out
+
+    # Frontier over ALL runs, judged on the representative subset (see _OBJECTIVES).
+    frontier = _frontier_labels(points, deciding, labels)
+    # A run missing a deciding objective can't be placed on the frontier at all, so degeneracy
+    # is "every placeable run is non-dominated" — the trade-off curve has no losers to drop.
+    placeable = [lbl for lbl, p in zip(labels, points, strict=True) if _placeable(p, deciding)]
 
     runs_out: list[dict[str, Any]] = []
     for i, label in enumerate(labels):
@@ -439,42 +482,49 @@ def pareto_analysis(
             item["slo_eval"] = ev
         runs_out.append(item)
 
+    # Deciding objectives lead the list, because the UI scatter plots objectives[0] vs
+    # objectives[1]. That makes the plotted axes the pair dominance was judged on ONLY when both
+    # families are seated (``len(deciding_objectives) == 2``). With one family present the
+    # frontier is a 1-D ranking on objectives[0] while objectives[1] is a non-deciding axis, so a
+    # point can sit off the drawn line at that axis' optimum — read ``deciding_objectives`` to
+    # tell the two cases apart.
+    ordered = sorted(dirs, key=lambda k: not obj_meta[k]["deciding"])
     result: dict[str, Any] = {
-        "objectives": [{"name": k, **obj_meta[k]} for k in dirs],
+        "objectives": [{"name": k, **obj_meta[k]} for k in ordered],
+        "deciding_objectives": list(deciding),
         "informational_objectives": informational,
         "n": len(entries),
         "runs": runs_out,
         "frontier": frontier,
+        "frontier_degenerate": len(frontier) == len(placeable) > 1,
     }
 
     # SLO-feasible frontier: best trade-offs among only the runs that meet the SLOs.
     if slo is not None:
-        feasible_idx = [
-            i for i in range(len(entries))
-            if (ev := slo_eval[i]) is not None and ev["overall_met"]
-        ]
         feasible_labels = [labels[i] for i in feasible_idx]
         result["slo_feasible"] = feasible_labels
         if len(feasible_idx) >= 1:
             fpoints = [points[i] for i in feasible_idx]
-            result["slo_frontier"] = _frontier_labels(fpoints, dirs, feasible_labels)
+            sfront = _frontier_labels(fpoints, deciding, feasible_labels)
+            fplaceable = [lbl for lbl, p in zip(feasible_labels, fpoints, strict=True)
+                          if _placeable(p, deciding)]
+            result["slo_frontier"] = sfront
+            result["slo_frontier_degenerate"] = len(sfront) == len(fplaceable) > 1
         else:
             result["slo_frontier"] = []
+            result["slo_frontier_degenerate"] = False
             result["note"] = "no run satisfies all SLO targets"
 
     return result
 
 
 def _frontier_labels(points: list[dict[str, float]], dirs: dict[str, str], labels: list[str]) -> list[str]:
-    """Return the labels of the Pareto-non-dominated points."""
+    """Return the labels of the Pareto-non-dominated *placeable* points (see ``_placeable``)."""
     frontier: list[str] = []
     for i, pi in enumerate(points):
-        if not pi:
-            continue  # a run with no comparable objective can't be placed
-        dominated = any(
-            j != i and points[j] and _dominates(points[j], pi, dirs)
-            for j in range(len(points))
-        )
+        if not _placeable(pi, dirs):
+            continue
+        dominated = any(j != i and _dominates(points[j], pi, dirs) for j in range(len(points)))
         if not dominated:
             frontier.append(labels[i])
     return frontier

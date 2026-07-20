@@ -151,6 +151,30 @@ def test_results_card_sweep_with_no_slo_feasible_run_falls_back_to_the_raw_front
     assert card["note"] == "no run satisfies all SLO targets"
 
 
+def test_results_card_sweep_feasible_but_unrankable_is_not_no_slo_feasible():
+    """SLOs given, runs DID meet them (``slo_feasible`` non-empty), but none is placeable on the
+    frontier -> ``slo_frontier`` is EMPTY. This must NOT be labelled ``no_slo_feasible`` (which
+    tells the user "no run met the SLO targets" — false here); it gets its own basis, and still
+    falls back to the raw frontier so the trade-offs are shown."""
+    analysis = {
+        "analyzed": True, "n": 2,
+        "runs": [
+            {"label": "a", "model": "m", "slo": {"overall_met": True}},
+            {"label": "b", "model": "m", "slo": {"overall_met": False}},
+        ],
+        # "a" passed the SLOs but carries no deciding latency objective, so it can't be ranked ->
+        # slo_frontier empty while slo_feasible is not.
+        "pareto": {"frontier": ["b"], "slo_feasible": ["a"], "slo_frontier": [],
+                   "objectives": [{"name": "ttft"}, {"name": "output_token_rate"}]},
+        "skipped": [],
+    }
+    card = build_results_card("analyze_results", analysis)
+    assert card is not None
+    assert card["frontier_basis"] == "slo_unrankable"
+    assert card["frontier"] == ["b"]           # raw frontier fallback, so trade-offs still show
+    assert "note" not in card                  # the analyzer sets no "nothing passed" note here
+
+
 def test_results_card_sweep_without_slos_stars_the_raw_frontier():
     """No SLO targets -> no ``slo_frontier`` from the analyzer -> the card stars the raw one."""
     analysis = {
@@ -163,6 +187,43 @@ def test_results_card_sweep_without_slos_stars_the_raw_frontier():
     assert card is not None and card["frontier"] == ["a", "b"]
     assert card["frontier_basis"] == "overall"
     assert "note" not in card
+
+
+def test_results_card_forwards_degeneracy_of_the_frontier_it_stars():
+    """A monotone sweep puts EVERY run on the frontier — correct, but the ★s then narrow nothing
+    down. The card must carry that fact for the footnote, and must read the flag belonging to the
+    frontier it actually stars (the SLO-restricted one here, which is NOT degenerate)."""
+    analysis = {
+        "analyzed": True, "n": 3,
+        "runs": [
+            {"label": "a", "model": "m", "slo": {"overall_met": True}},
+            {"label": "b", "model": "m", "slo": {"overall_met": True}},
+            {"label": "c", "model": "m", "slo": {"overall_met": False}},
+        ],
+        "pareto": {"frontier": ["a", "b", "c"], "frontier_degenerate": True,
+                   "slo_feasible": ["a", "b"], "slo_frontier": ["a"],
+                   "slo_frontier_degenerate": False,
+                   "objectives": [{"name": "ttft"}, {"name": "output_token_rate"}]},
+        "skipped": [],
+    }
+    card = build_results_card("analyze_results", analysis)
+    assert card is not None and card["frontier_basis"] == "slo_feasible"
+    # the OVERALL frontier is degenerate, but the starred one isn't -> must not claim it is
+    assert card["frontier_degenerate"] is False
+
+
+def test_results_card_degeneracy_without_slos_comes_from_the_raw_frontier():
+    analysis = {
+        "analyzed": True, "n": 3,
+        "runs": [{"label": "a", "model": "m"}, {"label": "b", "model": "m"},
+                 {"label": "c", "model": "m"}],
+        "pareto": {"frontier": ["a", "b", "c"], "frontier_degenerate": True,
+                   "objectives": [{"name": "ttft"}, {"name": "output_token_rate"}]},
+        "skipped": [],
+    }
+    card = build_results_card("analyze_results", analysis)
+    assert card is not None and card["frontier_basis"] == "overall"
+    assert card["frontier_degenerate"] is True
 
 
 def test_results_card_ignores_other_tools():

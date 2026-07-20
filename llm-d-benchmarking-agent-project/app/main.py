@@ -234,6 +234,25 @@ async def list_sessions() -> JSONResponse:
     return JSONResponse({"sessions": app.state.sessions.list()})
 
 
+@app.get("/api/sessions/running")
+async def list_running_sessions() -> JSONResponse:
+    """Ids of the chats with a turn IN FLIGHT right now — the sidebar's per-conversation busy dots.
+
+    The `ready` frame already carries this fact, but only for the one session the socket attached
+    to; the single-pane UI therefore had no way to show that a *background* chat is still working.
+    This is the same truth (an undone turn task) for every session at once.
+
+    A chat parked at an approval gate is EXCLUDED: it holds a task but is idle awaiting the user,
+    so a spinner there would read as stuck (the active-chat `#working` chip hides for the same
+    reason when its approval card appears). In-memory only — no disk read, safe to poll.
+    """
+    parked = {sid for sid, channel in app.state.channels.items() if channel.pending}
+    return JSONResponse({"running": [
+        sid for sid, task in app.state.running.items()
+        if not task.done() and sid not in parked
+    ]})
+
+
 @app.get("/api/provider")
 async def provider_info() -> JSONResponse:
     """The active LLM provider + model for the header badge — plus whether the provider
