@@ -77,10 +77,8 @@ def test_mypy_config_scoped_to_app_not_blanket_strict():
     # Meaningful but achievable: NOT --strict over the whole tree.
     assert mypy.get("strict") is not True
     assert mypy.get("check_untyped_defs") is True
-    # The typed-SDK boundary is relaxed (overrides), not the whole tree.
-    overrides = mypy.get("overrides", [])
-    relaxed = {m for o in overrides for m in o.get("module", [])}
-    assert any("provider" in m for m in relaxed), "LLM provider modules should be relaxed"
+    # SDK-only engine: the old vendor-SDK provider carve-outs are gone — no relaxed modules.
+    assert not mypy.get("overrides"), "no mypy overrides expected after the provider removal"
 
 
 def test_coverage_config_present():
