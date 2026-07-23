@@ -119,10 +119,16 @@ pytest tests/     # the full suite
 
 | Doc | For |
 |---|---|
-| [USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/guides/USER_GUIDE.md) | **User Manual** — using the agent end-to-end |
+| [USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/guides/USER_GUIDE.md) | **User Guide** — install → deploy → configure → run → usage, end-to-end |
 | [GPU_CLUSTER_RUNBOOK.md](llm-d-benchmarking-agent-project/docs/guides/GPU_CLUSTER_RUNBOOK.md) | From CPU-sim to a real single-GPU cluster |
 | [DEPLOYMENT.md](llm-d-benchmarking-agent-project/docs/guides/DEPLOYMENT.md) | Local and in-cluster deploy, config, secrets |
-| [ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/reference/ARCHITECTURE.md) | **Programmer's Guide** — layers, determinism gates, trust boundaries |
+| [ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/reference/ARCHITECTURE.md) | **Developer's Guide** — design, modules, interactions, build tooling |
 | [FEATURES.md](llm-d-benchmarking-agent-project/docs/reference/FEATURES.md) | Everything it can do + how to verify each |
 
 Full index: [docs/README.md](llm-d-benchmarking-agent-project/docs/README.md).
+
+---
+
+The llm-d name and logo belong to the [llm-d project](https://github.com/llm-d/llm-d)
+(Apache-2.0); the logo appears here only to identify the tool this app drives. This is an
+independent project, not affiliated with or endorsed by llm-d.

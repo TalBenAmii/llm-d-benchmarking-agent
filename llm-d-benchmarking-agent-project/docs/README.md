@@ -4,9 +4,9 @@ The technical documentation for the llm-d Benchmarking Agent: a conversational a
 Kubernetes-native benchmark orchestrator, and results analyzer for
 [`llm-d-benchmark`](https://github.com/llm-d/llm-d-benchmark).
 
-**User Manual** → [USER_GUIDE.md](guides/USER_GUIDE.md) (with [DEPLOYMENT.md](guides/DEPLOYMENT.md)
+**User Guide** → [USER_GUIDE.md](guides/USER_GUIDE.md) (with [DEPLOYMENT.md](guides/DEPLOYMENT.md)
 and [TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md)) ·
-**Programmer's Guide** → [ARCHITECTURE.md](reference/ARCHITECTURE.md), [API.md](reference/API.md),
+**Developer's Guide** → [ARCHITECTURE.md](reference/ARCHITECTURE.md), [API.md](reference/API.md),
 [VALIDATION.md](reference/VALIDATION.md), [CONTEXT.md](reference/CONTEXT.md)
 
 | Doc | For | Covers |
