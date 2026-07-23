@@ -18,6 +18,28 @@ Everything below follows from two rules (full statement → [`CLAUDE.md`](../../
 
 ## High-level picture
 
+```mermaid
+flowchart TB
+    UI["Browser chat UI<br/>app/ui — HTML/JS/CSS"] -- "WebSocket /ws" --> SM
+
+    subgraph BE["FastAPI backend (app/main.py) — security + secrets boundary"]
+        SM["SessionManager → Session"] --> ENG["SdkNativeEngine (app/agent/engine.py)<br/>system prompt = role + rules + knowledge/ + live catalog"]
+        ENG --> SDK["Claude Agent SDK / CLI<br/>model → tool loop"]
+        SDK -- "tool calls (in-process MCP)" --> REG["Tool registry (app/tools/registry.py)<br/>gate: schema-validated args"]
+        REG --> CTX["ToolContext.run_command / run_readonly"]
+        CTX --> POL["Command policy — deny-by-default<br/>mutating → human approval"]
+        POL --> RUN["CommandRunner<br/>argv list, shell=False, env scrubbed"]
+    end
+
+    RUN --> CLI["llmdbenchmark CLI (repo .venv)"]
+    RUN --> K8S["kubectl / kind / docker / git"]
+    CLI --> REP["Benchmark Report v0.2<br/>validated against repo schema"]
+    REP --> SUM["Analysis → results UI"]
+```
+
+<details>
+<summary>ASCII version</summary>
+
 ```
                     Browser chat UI (app/ui/: HTML/JS/CSS)
                           │  WebSocket /ws
@@ -52,6 +74,8 @@ Everything below follows from two rules (full statement → [`CLAUDE.md`](../../
                           ▼
               Benchmark Report v0.2  ──► validate against the repo schema ──► summary
 ```
+
+</details>
 
 ## Components (by layer)
 
@@ -230,6 +254,19 @@ the namespace with the Baseline Pod Security Standard, so a mistaken/crafted Job
   second connection from double-running one chat.
 - The orchestrator is stateless: the cluster (Job labels) is the source of truth, so it
   can `reconstruct` and reconcile after a backend restart.
+
+## Build & tooling
+
+- **Python 3.11**, managed with [`uv`](https://docs.astral.sh/uv/): the committed `uv.lock`
+  is the source of truth for the venv. Dev setup, from `llm-d-benchmarking-agent-project/`:
+  `uv sync --extra dev`, then `cp .env.example .env` and
+  `uv run uvicorn app.main:app --reload` (details → [`DEPLOYMENT.md`](../guides/DEPLOYMENT.md)).
+- **pytest**: hermetic suite under `tests/`, bucketed by subsystem (`agent/` · `tools/` ·
+  `orchestrator/` · `platform/`, plus golden-transcript replays in `tests/flows/`). Run
+  `pytest tests/` (or `make validate` for the flow replays); layout + gotchas →
+  [`tests/CLAUDE.md`](../../tests/CLAUDE.md).
+- **ruff** (lint + import order) and **mypy** (type-check), configured in `pyproject.toml`;
+  git hooks gate them on `main` (installed via `scripts/install/install-git-hooks.sh`).
 
 ## Where to go next
 

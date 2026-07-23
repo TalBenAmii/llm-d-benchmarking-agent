@@ -46,8 +46,6 @@ Usage:
       --port PORT       local port for the health check / port-forward (default: 8000; env PORT)
       --oauth-token TOKEN  Claude subscription token from `claude setup-token`
                         (default: $CLAUDE_CODE_OAUTH_TOKEN, else the project .env) -> claude-agent-sdk
-      --anthropic-key KEY  Anthropic API key fallback
-                        (default: $ANTHROPIC_API_KEY, else the project .env) -> anthropic
       --no-build        reuse an existing local image; never build (fails if it is absent)
       --no-open         deploy and leave running, but don't port-forward / open a browser
       --open            open the UI even when stdout isn't a terminal (default: open on a terminal)
@@ -82,7 +80,6 @@ IMAGE="${IMAGE:-llm-d-benchmarking-agent}"                      # bare LOCAL ima
 TAG="${TAG:-${VERSION:-0.1.0}}"
 PORT="${PORT:-8000}"
 OAUTH_TOKEN="${OAUTH_TOKEN:-${CLAUDE_CODE_OAUTH_TOKEN:-}}"
-ANTHROPIC_KEY="${ANTHROPIC_KEY:-${ANTHROPIC_API_KEY:-}}"
 BUILD_TIMEOUT="${BUILD_TIMEOUT:-1800}"
 NO_BUILD=0; OPEN=0; NO_OPEN=0
 
@@ -108,7 +105,6 @@ parse_args() {
       --tag)            TAG="${2:?--tag needs a value}"; shift 2 ;;
       --port)           PORT="${2:?--port needs a value}"; shift 2 ;;
       --oauth-token)    OAUTH_TOKEN="${2:?--oauth-token needs a value}"; shift 2 ;;
-      --anthropic-key)  ANTHROPIC_KEY="${2:?--anthropic-key needs a value}"; shift 2 ;;
       --no-build)       NO_BUILD=1; shift ;;
       --open)           OPEN=1; shift ;;
       --no-open)        NO_OPEN=1; shift ;;
@@ -221,16 +217,10 @@ resolve_auth() {
     OAUTH_TOKEN="$(env_fallback CLAUDE_CODE_OAUTH_TOKEN)"
     [[ -n "$OAUTH_TOKEN" ]] && log "Picked up CLAUDE_CODE_OAUTH_TOKEN from $PROJECT_DIR/.env"
   fi
-  if [[ -z "$ANTHROPIC_KEY" ]]; then
-    ANTHROPIC_KEY="$(env_fallback ANTHROPIC_API_KEY)"
-    [[ -n "$ANTHROPIC_KEY" ]] && log "Picked up ANTHROPIC_API_KEY from $PROJECT_DIR/.env"
-  fi
   if [[ -n "$OAUTH_TOKEN" ]]; then
     PROVIDER="claude-agent-sdk"; log "Auth: Claude subscription token -> provider $PROVIDER."
-  elif [[ -n "$ANTHROPIC_KEY" ]]; then
-    PROVIDER="anthropic"; log "Auth: Anthropic API key -> provider $PROVIDER."
   else
-    # No token/key yet — stay silent here; ensure_claude_auth runs next and usually enables chat
+    # No token yet — stay silent here; ensure_claude_auth runs next and usually enables chat
     # (reuse the Claude login or mint a token). report() warns at the end if it's still keyless.
     PROVIDER="claude-agent-sdk"; KEYLESS=1
   fi
@@ -456,8 +446,7 @@ load_image() {
 # pullPolicy Never, kind context targeted explicitly). Provider selection is the installer's job.
 deploy() {
   local auth_args=()
-  if   [[ -n "$OAUTH_TOKEN" ]];   then auth_args=(--oauth-token "$OAUTH_TOKEN")
-  elif [[ -n "$ANTHROPIC_KEY" ]]; then auth_args=(--anthropic-key "$ANTHROPIC_KEY"); fi
+  [[ -n "$OAUTH_TOKEN" ]] && auth_args=(--oauth-token "$OAUTH_TOKEN")
   step "Deploying release '$RELEASE' into namespace '$NAMESPACE' (provider $PROVIDER)"
   bash "$INSTALLER" \
     -n "$NAMESPACE" -r "$RELEASE" \
@@ -510,7 +499,7 @@ health_check() {
 report() {
   step "Service is RUNNING on kind cluster '$CLUSTER'."
   log "Provider: $PROVIDER"
-  [[ "$KEYLESS" == 1 ]] && warn "Chat is DISABLED (no token/key). Add CLAUDE_CODE_OAUTH_TOKEN to $PROJECT_DIR/.env and re-run."
+  [[ "$KEYLESS" == 1 ]] && warn "Chat is DISABLED (no token). Add CLAUDE_CODE_OAUTH_TOKEN to $PROJECT_DIR/.env and re-run."
   log "Reach the UI:"
   log "    kubectl -n $NAMESPACE port-forward svc/$SVC 8000:8000"
   log "    # then open http://localhost:8000"

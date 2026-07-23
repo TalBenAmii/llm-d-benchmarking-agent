@@ -42,11 +42,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarkin
 cd ~/llm-d-benchmarking-agent/llm-d-benchmarking-agent-project && ./scripts/run.sh --open
 ```
 
-**Give it an LLM.** Easiest: your Claude Pro/Max plan — no API key; both installers offer
-to set it up. Or set `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY=...` (or any
-OpenAI-compatible endpoint) in `.env`. To try the whole workflow without touching a
-cluster, set `SIMULATE=1`: read-only commands run for real, mutations are announced but
-no-opped.
+**Give it an LLM.** The engine runs on the Claude Agent SDK, so auth is your Claude
+Pro/Max subscription — no API key. Both installers offer to wire it: a `claude` CLI login
+locally, or a `claude setup-token` token (`CLAUDE_CODE_OAUTH_TOKEN`) for the in-cluster
+service. To try the whole workflow without touching a cluster, set `SIMULATE=1` in `.env`:
+read-only commands run for real, mutations are announced but no-opped.
 
 ## Use it from Claude Code (MCP)
 
@@ -119,10 +119,16 @@ pytest tests/     # the full suite
 
 | Doc | For |
 |---|---|
-| [USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/guides/USER_GUIDE.md) | **User Manual** — using the agent end-to-end |
+| [USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/guides/USER_GUIDE.md) | **User Guide** — install → deploy → configure → run → usage, end-to-end |
 | [GPU_CLUSTER_RUNBOOK.md](llm-d-benchmarking-agent-project/docs/guides/GPU_CLUSTER_RUNBOOK.md) | From CPU-sim to a real single-GPU cluster |
 | [DEPLOYMENT.md](llm-d-benchmarking-agent-project/docs/guides/DEPLOYMENT.md) | Local and in-cluster deploy, config, secrets |
-| [ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/reference/ARCHITECTURE.md) | **Programmer's Guide** — layers, determinism gates, trust boundaries |
+| [ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/reference/ARCHITECTURE.md) | **Developer's Guide** — design, modules, interactions, build tooling |
 | [FEATURES.md](llm-d-benchmarking-agent-project/docs/reference/FEATURES.md) | Everything it can do + how to verify each |
 
 Full index: [docs/README.md](llm-d-benchmarking-agent-project/docs/README.md).
+
+---
+
+The llm-d name and logo belong to the [llm-d project](https://github.com/llm-d/llm-d)
+(Apache-2.0); the logo appears here only to identify the tool this app drives. This is an
+independent project, not affiliated with or endorsed by llm-d.

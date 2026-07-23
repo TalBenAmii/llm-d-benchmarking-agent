@@ -5,8 +5,35 @@ This guide is for the person using the agent. You don't need to know the
 what you want in plain language and the agent does the rest, asking for your approval before
 anything changes your system.
 
-For installing/running the agent, see [`DEPLOYMENT.md`](DEPLOYMENT.md). For what's under the
-hood, see [`ARCHITECTURE.md`](../reference/ARCHITECTURE.md).
+For what's under the hood, see [`ARCHITECTURE.md`](../reference/ARCHITECTURE.md).
+
+## Install & run
+
+Two ways to get the agent up — full detail in [`DEPLOYMENT.md`](DEPLOYMENT.md):
+
+**One command (recommended POC).** Builds the image, deploys to a local
+[kind](https://kind.sigs.k8s.io/) cluster, and opens the chat UI. It auto-installs missing
+prerequisites (docker / kind / kubectl / helm; asks for `sudo`):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/install.sh)
+```
+
+Tear down with `kind delete cluster --name bench-agent`.
+
+**Straight on your host (dev path).** From a clone of the repo:
+
+```bash
+cd llm-d-benchmarking-agent-project
+./scripts/run.sh --open     # syncs the Python venv (uv), ensures a .env, serves http://127.0.0.1:8000
+```
+
+**Give it an LLM.** The agent runs on the Claude Agent SDK; the easiest auth is your Claude
+Pro/Max plan — no API key, both installers offer to wire it
+(`scripts/install/setup-claude-plan.sh`). Configuration lives in `.env`
+(`LLM_PROVIDER=claude-agent-sdk` is the default) — the full variable table is in
+[`DEPLOYMENT.md`](DEPLOYMENT.md#configuration-env). To walk the whole workflow without
+touching a cluster, set `SIMULATE=1` (read-only commands run for real; mutations no-op).
 
 ## The first run: the quickstart
 
