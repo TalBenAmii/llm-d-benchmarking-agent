@@ -45,7 +45,7 @@ Install + launch with `./scripts/run.sh`; full quickstart in the
 [root README](../../../README.md#quick-start) / [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 - [ ] **[A/B]** Server is up: open http://127.0.0.1:8000 and the chat UI loads.
-- [ ] **[A/B]** Startup log on stdout is JSON (e.g. `{"timestamp":...,"message":"startup","provider":"anthropic"}`) and includes a `retention.gc` line. *(§9 structured logging + GC)*
+- [ ] **[A/B]** Startup log on stdout is JSON (e.g. `{"timestamp":...,"message":"startup","provider":"claude-agent-sdk"}`) and includes a `retention.gc` line. *(§9 structured logging + GC)*
 
 Keep a second terminal open for the `curl` checks below.
 

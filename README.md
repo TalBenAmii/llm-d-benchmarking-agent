@@ -42,11 +42,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarkin
 cd ~/llm-d-benchmarking-agent/llm-d-benchmarking-agent-project && ./scripts/run.sh --open
 ```
 
-**Give it an LLM.** Easiest: your Claude Pro/Max plan — no API key; both installers offer
-to set it up. Or set `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY=...` (or any
-OpenAI-compatible endpoint) in `.env`. To try the whole workflow without touching a
-cluster, set `SIMULATE=1`: read-only commands run for real, mutations are announced but
-no-opped.
+**Give it an LLM.** The engine runs on the Claude Agent SDK, so auth is your Claude
+Pro/Max subscription — no API key. Both installers offer to wire it: a `claude` CLI login
+locally, or a `claude setup-token` token (`CLAUDE_CODE_OAUTH_TOKEN`) for the in-cluster
+service. To try the whole workflow without touching a cluster, set `SIMULATE=1` in `.env`:
+read-only commands run for real, mutations are announced but no-opped.
 
 ## Use it from Claude Code (MCP)
 
