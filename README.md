@@ -123,6 +123,9 @@ pytest tests/     # the full suite
 
 ## Docs
 
+For the course ZIP, use the [ZIP user manual](llm-d-benchmarking-agent-project/docs/guides/SUBMISSION_USER_MANUAL.md) and [developer guide](llm-d-benchmarking-agent-project/docs/reference/DEVELOPER_GUIDE.md).
+The [final architecture artifact](llm-d-benchmarking-agent-project/docs/reference/architecture.html) is embedded in the architecture guide and [presentation](llm-d-benchmarking-agent-project/docs/submission/presentation.html).
+
 | Doc | For |
 |---|---|
 | [USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/guides/USER_GUIDE.md) | Installation, configuration, and running a benchmark |

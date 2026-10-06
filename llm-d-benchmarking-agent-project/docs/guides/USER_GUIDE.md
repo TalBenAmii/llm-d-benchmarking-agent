@@ -8,6 +8,8 @@ For what's under the hood, see [`ARCHITECTURE.md`](../reference/ARCHITECTURE.md)
 
 ## Install & run
 
+**Course ZIP:** follow [SUBMISSION_USER_MANUAL.md](SUBMISSION_USER_MANUAL.md) for installation from the submitted source, including a credential-free fixture demo and replay.
+
 Choose one of these two installation methods. Full instructions are in [`DEPLOYMENT.md`](DEPLOYMENT.md):
 
 **One command (recommended POC).** Builds the image, deploys to a local
@@ -27,7 +29,7 @@ cd llm-d-benchmarking-agent-project
 ./scripts/run.sh --open     # syncs the Python venv (uv), ensures a .env, serves http://127.0.0.1:8000
 ```
 
-**Authentication.** The agent uses the Claude Agent SDK with your Claude
+**Authentication.** The local server supports Codex with a ChatGPT subscription (`bash scripts/install/setup-codex-plan.sh` after `uv sync`), or the Claude Agent SDK with your Claude
 Pro/Max subscription. Both installers help configure the login without an API key
 (`scripts/install/setup-claude-plan.sh`). Configuration lives in `.env`
 (`LLM_PROVIDER=claude-agent-sdk` is the default). The full variable table is in

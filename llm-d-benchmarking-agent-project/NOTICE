@@ -11,16 +11,16 @@ their transitive Python/CLI dependencies). Each is licensed under the Apache
 License, Version 2.0; see http://www.apache.org/licenses/LICENSE-2.0 and the
 LICENSE file inside each project for the full terms.
 
-  * llm-d                @ 0227212d78661ef184446c875adb4972fda2237c
+  * llm-d                @ 51f594319fa57166d842e24512a0e66f3cc05a18
     https://github.com/llm-d/llm-d
     Apache-2.0
 
-  * llm-d-benchmark      @ e2e4b9be075bff78dba84e65fe36bbe97753c983
+  * llm-d-benchmark      @ a75d91e114721b4a918a7c22d6f4e7b2764a3051
     https://github.com/llm-d/llm-d-benchmark
     Apache-2.0
     (installed as the `llmdbenchmark` CLI in /repos/llm-d-benchmark/.venv)
 
-  * llm-d-skills         @ 84c100c6ec6f4055b4d8132a6eb9bfa326e6c1d4
+  * llm-d-skills         @ d23b14ccbedfdd8ffb74a2ee6529235bbef193ac
     https://github.com/llm-d-incubation/llm-d-skills
     Apache-2.0
 

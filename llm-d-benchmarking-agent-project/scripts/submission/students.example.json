@@ -1,0 +1,8 @@
+{
+  "project_name": "llm-d Benchmarking Assistant",
+  "course": "0230371",
+  "semester": "spring 2026",
+  "students": [
+    {"name": "Student Name", "id": 123456789}
+  ]
+}

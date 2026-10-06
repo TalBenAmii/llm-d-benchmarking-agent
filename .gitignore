@@ -16,3 +16,7 @@
 
 # Editor config — local-only (kept on disk; each device sets its own)
 .vscode/
+
+# Course deliverables and student IDs are local submission artifacts.
+/final_submission/
+/llm-d-benchmarking-agent-project/scripts/submission/students.json

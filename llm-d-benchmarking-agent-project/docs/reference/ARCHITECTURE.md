@@ -1,275 +1,141 @@
 # Architecture
 
-This guide describes the system layers, data flow, trust boundaries, and validation rules.
-For installation and an overview of the agent, see the [root README](../../../README.md).
-
-## The two governing principles
-
-Everything below follows from two rules (full statement → [`CLAUDE.md`](../../CLAUDE.md)):
-
-1. **Thin code, thick agent.** Python is mechanism only; all judgment lives in the LLM plus
-   editable Markdown/YAML under [`knowledge/`](../../knowledge/). No `if/elif` decision
-   branches encoding benchmarking expertise in Python.
-2. **Determinism via validation, not scripting.** The free-form LLM is constrained at the
-   boundaries: schema-validated tool args, a catalog-cross-checked human-approved
-   `SessionPlan`, structurally validated generated configs, and results parsed from the
-   Benchmark Report v0.2 schema, never scraped from logs.
+The assistant has two conversation engines (Claude and Codex), one shared tool layer,
+a browser UI and a standalone MCP adapter. Python supplies execution and validation;
+benchmarking guidance lives in the model and editable `knowledge/` files.
 
 ## High-level picture
 
+![Final deployment architecture](architecture.svg)
+
+[Open the full architecture artifact](architecture.html). This is adapted from the supplied
+“llm-d Benchmarking Agent · Architecture.html” design: its deployment layout is retained,
+with final engine, prompt-loading and approval behavior corrected. It shows the in-cluster
+service; local installation runs the same backend on the host. Codex subscription setup is
+currently documented for that local path. The diagram is also included in the final presentation.
+
 ```mermaid
 flowchart TB
-    UI["Browser chat UI<br/>app/ui: HTML/JS/CSS"] -- "WebSocket /ws" --> SM
-
-    subgraph BE["FastAPI backend (app/main.py): security + secrets boundary"]
-        SM["SessionManager → Session"] --> ENG["SdkNativeEngine (app/agent/engine.py)<br/>system prompt = role + rules + knowledge/ + live catalog"]
-        ENG --> SDK["Claude Agent SDK / CLI<br/>model → tool loop"]
-        SDK -- "tool calls (in-process MCP)" --> REG["Tool registry (app/tools/registry.py)<br/>gate: schema-validated args"]
-        REG --> CTX["ToolContext.run_command / run_readonly"]
-        CTX --> POL["Command policy: deny-by-default<br/>mutating → human approval"]
-        POL --> RUN["CommandRunner<br/>argv list, shell=False, env scrubbed"]
-    end
-
-    RUN --> CLI["llmdbenchmark CLI (repo .venv)"]
-    RUN --> K8S["kubectl / kind / docker / git"]
-    CLI --> REP["Benchmark Report v0.2<br/>validated against repo schema"]
-    REP --> SUM["Analysis → results UI"]
+    UI[Browser UI] -->|WebSocket| Session[FastAPI / SessionManager]
+    Session --> Claude[SdkNativeEngine / Claude SDK]
+    Session --> Codex[CodexEngine / Codex SDK]
+    Client[External MCP client] --> MCP[Standalone MCP adapter]
+    Knowledge[Core prompt + on-demand knowledge] --> Claude
+    Knowledge --> Codex
+    Claude --> Registry[Shared tool registry / validated arguments]
+    Codex --> Registry
+    MCP --> Registry
+    Registry --> Dedicated[Dedicated commands: policy + approval]
+    Registry --> Shell[run_shell: classifier + approval]
+    Dedicated --> CLI[llmdbenchmark / client tools]
+    Shell --> CLI
+    CLI --> Cluster[llm-d stack / benchmark Jobs]
+    Cluster --> Reports[Workspace reports / schema validation]
+    Reports --> Analysis[Analysis / history / provenance]
+    Analysis --> UI
 ```
 
-<details>
-<summary>ASCII version</summary>
-
-```
-                    Browser chat UI (app/ui/: HTML/JS/CSS)
-                          │  WebSocket /ws
-                          │  (assistant text · tool calls · streamed command output ·
-                          │   approval cards · results · the executed-command trail)
-                          ▼
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │ FastAPI backend (app/main.py)  ── the security + secrets boundary      │
-   │                                                                        │
-   │   SessionManager ──► Session ──► SdkNativeEngine (app/agent/engine.py) │
-   │                                      │                                 │
-   │                       build_system_prompt = ROLE + HARD_RULES +        │
-   │                       knowledge/*.md|*.yaml + LIVE catalog snapshot     │
-   │                                      │                                 │
-   │                                      ▼                                 │
-   │                 Claude Agent SDK / CLI (runs the model→tool loop)      │
-   │                                      │ tool calls via in-process MCP    │
-   │                                      ▼                                 │
-   │            tool registry (app/tools/registry.py)                       │
-   │              dispatch: validate args (gate a) ─► handler                │
-   │                                      │                                 │
-   │                       ToolContext.run_command / run_readonly           │
-   │                                      ▼                                 │
-   │            policy.validate (deny-by-default)  ── gate ──► approval   │
-   │                                      ▼                                 │
-   │            CommandRunner: argv list, shell=False, env scrubbed         │
-   └──────────────────────────────────────────────────────────────────────┘
-                          │                         │
-                          ▼                         ▼
-              llmdbenchmark CLI (repo .venv)   kubectl / kind / docker / git
-                          │
-                          ▼
-              Benchmark Report v0.2  ──► validate against the repo schema ──► summary
-```
-
-</details>
+The standalone MCP client owns its conversation and command permissions. It does not use
+the application's browser session loop. Shared handlers and knowledge avoid duplicating
+benchmark implementation between interfaces.
 
 ## Components (by layer)
 
-### UI: `app/ui/`
-A static, dependency-free chat client (`index.html`, `app.js`, `styles.css`) served by the
-backend. It speaks the WebSocket event protocol (below), renders streamed command output,
-shows Approve/Reject cards with the exact `argv`, exposes a Debug view of the full
-executed-command trail, and provides a recent-chats sidebar and a results-browser/trends
-view. It never sees an API key or a raw shell string.
+Paths below are relative to `llm-d-benchmarking-agent-project/`, except named siblings.
 
-### Backend: `app/`
-FastAPI app (`app/main.py`). It is the trust boundary: the browser exchanges only chat
-text, structured events, and Approve/Reject decisions. Responsibilities:
-
-- **HTTP/WS surface**: see [`API.md`](API.md). `/` and `/static` serve the UI; `/ws` hosts
-  the agent; `/healthz`, `/metrics`, `/api/sessions`, `/api/history*` are control/observe
-  endpoints.
-- **Lifespan wiring**: loads `Settings`, the `CommandPolicy`, the `CommandRunner`, the
-  cross-session concurrency `Semaphore`, and the `SessionManager`; an unsupported
-  `LLM_PROVIDER` is flagged at startup and surfaces as a clean per-turn error (never a crash).
-- **Connection handling**: resume a saved chat via `/ws?session=<id>`; replay history and
-  the command trail; keep an approved in-flight turn alive after a socket drop (background
-  benchmark runs survive navigating away); reject a second connection's concurrent turn.
-
-### Agent engine: `app/agent/`
-- `engine.py`: `SdkNativeEngine`. The Claude Agent SDK/CLI runs the model→tool→model loop
-  natively (bounded by `MAX_TURNS`); the engine assembles the system prompt + options,
-  bridges the SDK stream onto the app's WS events, gates every tool call (approvals), and
-  persists the transcript mirror. Tools execute through the in-process MCP wrapper
-  (`app/tools/mcp_server.py`) → `registry.dispatch()`, so one tool can never crash the
-  turn; rejections and errors are returned to the model so it can replan.
-- `prompt.py`: `build_system_prompt()` = a fixed `ROLE` + `HARD_RULES` + every file
-  under `knowledge/` + a live catalog snapshot read from the repo on disk. This is where
-  the "thick agent" lives: changing the agent's behavior means editing `knowledge/`, not code.
-- `session.py`: `Session` (resumable, persisted to the workspace) + `SessionManager`
-  (per-session isolated workspaces, the shared concurrency cap, recent-chats listing).
-- `events.py`: the typed WebSocket event vocabulary.
-
-### Tools: `app/tools/` (the agent's entire action surface)
-`registry.py` maps each tool name to a Pydantic input model plus a handler.
-`dispatch()` validates the LLM's arguments against the model (determinism gate a) and
-returns validation errors to the model instead of raising, so it can self-correct.
-`ToolContext` (`context.py`) bundles the shared dependencies (settings, command policy, runner,
-per-session workspace, the approval/emit callbacks, the concurrency semaphore) and exposes
-the single command seam `run_command` / `run_readonly` that every execution passes
-through. The agent's tools and their schemas are catalogued in [`API.md`](API.md).
-
-### Security: `app/security/` + `security/command_policy.yaml`
-- `command_policy.yaml` is data: a deny-by-default policy that is the single source of truth
-  for what may be executed. Widening the agent's powers is a reviewed edit here, never a
-  code change.
-- `policy.py` is a pure validator with no per-command knowledge: it checks
-  `argv[0]` (known executable), `argv[1]` (allowed subcommand), every remaining token
-  (allowed flag / constrained value / allowed positional), screens for shell metacharacters,
-  cross-checks `spec`/`harness`/`workload` against the live catalog, and computes the
-  effective mode (`read_only` auto-runs; `mutating` requires approval; flags like
-  `--dry-run` downgrade a mutating command to a read-only preview).
-- `runner.py` (`CommandRunner`) spawns the process as an argv list with `shell=False`
-  (command injection is structurally impossible), with the cwd pinned to the right repo, the
-  environment scrubbed of secrets, output streamed line by line, and the whole process
-  lifecycle bounded by a deadline (SIGKILL the process group on timeout).
-
-### Validation: `app/validation/`
-- `report.py`: loads the Benchmark Report v0.2 JSON Schema from the repo at runtime
-  and validates parsed reports (determinism gate d); treats the schema's known
-  stale-vs-its-own-example `additionalProperties` violations as non-fatal deviations and
-  hard-fails only on structural errors.
-- `session_plan.py`: the `SessionPlan` model (determinism gate b), whose enum fields
-  are cross-checked against the live catalog before the approval card is shown. Carries
-  optional `SLOTargets`.
-- `analysis.py`: pure math for the analyzer. SLO evaluation over the percentile ladder,
-  goodput estimation, and Pareto/DoE frontier selection.
-
-### Orchestrator: `app/orchestrator/` (the Kubernetes-native centerpiece)
-Runs a benchmark as a managed Kubernetes Job rather than a blocking local subprocess:
-- `kube.py`: `KubeClient` over the policy-allowed `kubectl` runner (`RealKubeClient`) plus a
-  `FakeKubeClient` for hermetic tests. Deliberately not the Python client, to keep the
-  deny-by-default + approval + env-scrub model.
-- `job.py`: the Job manifest model (`backoffLimit: 0`, `activeDeadlineSeconds`, run-id
-  labels, a non-breaking pod `securityContext`).
-- `controller.py`: `BenchmarkOrchestrator`. `submit` (write manifest, then `kubectl apply`),
-  poll-based `watch` to a terminal state (wall-clock bounded), `stream_logs`, cluster-only
-  `reconstruct` from labels, `run_with_retries`, parallel `run_sweep` (concurrency-capped,
-  per-treatment dead-letter), and `cleanup`.
-- `faults.py`: facts-only fault classification. `timeout`, `oom`, `unschedulable`,
-  `evicted`, `image_error`, `run_error` (priority-ordered). Transient faults (eviction)
-  retry as fresh, distinct Jobs; deterministic faults dead-letter immediately. Remediation
-  judgment lives in `knowledge/orchestrator.md`, not here.
-
-### Analyzer & history: `app/validation/analysis.py`, `app/storage/`
-The analyzer computes goodput, SLO verdicts, and the Pareto-optimal / SLO-feasible frontier
-across a DoE sweep. `app/storage/history.py` is a cross-session result store (persist a
-validated report's summary; list/get/trend across runs) backing both the `result_history`
-tool and the UI trends view.
-
-### Capacity: `app/capacity/` + `scripts/bridges/capacity_check.py`
-A pre-flight that answers "will this fit?" before a ~10-minute standup fails opaquely with
-OOM. It runs the benchmark repo's own capacity planner (which lives only in that repo's
-venv) through a vetted, policy-allowed bridge script over a workspace-confined JSON request,
-plus weights + activation + KV-cache arithmetic. Pure math and diagnostics in `planner.py`;
-the verdict-interpretation judgment is in `knowledge/capacity.md`.
-
-### Observability: `app/observability/` + `deploy/observability/`
-A dependency-free metrics registry (`metrics.py`) with Prometheus text exposition, plus
-the instrumentation hooks (metric defs + `record_*` helpers, also in `metrics.py`) wired
-through `ToolContext` and the orchestrator so tool calls, commands, and orchestrated runs
-are counted and timed. `GET /metrics` exposes them. A Grafana dashboard and Prometheus
-scrape config ship under `deploy/observability/`. (Distinct from the `observe_run_metrics`
-tool, which reads live cluster CPU/memory via `kubectl top`.)
-
-### Packaging: `Dockerfile` + `deploy/` + `app/packaging/`
-A hardened non-root image (read-only rootfs; only `/workspace` + `/tmp` writable) and a one-command
-Helm chart that renders the Deployment + Service + ServiceAccount + a namespaced least-privilege
-Role/RoleBinding granting exactly the `kubectl` verbs `RealKubeClient` uses. The installer also labels
-the namespace with the Baseline Pod Security Standard, so a mistaken/crafted Job can't mount a
-`hostPath` and escape onto the node. See [`DEPLOYMENT.md`](../guides/DEPLOYMENT.md),
-[`CLUSTER_SERVICE_DEPLOY.md`](../guides/CLUSTER_SERVICE_DEPLOY.md) §Security model, and `knowledge/packaging.md`.
-
-## The four determinism gates
-
-| Gate | Where | Enforces |
-|---|---|---|
-| **a. Tool args** | `tools/registry.py` `dispatch()` | The LLM can only act through schema-validated tool calls; bad args return errors to the model. |
-| **b. SessionPlan** | `validation/session_plan.py` + `tools/setup/plan.py` | A structured plan whose spec/harness/workload are checked against the live catalog (the workload must belong to *that* harness) and whose namespace is RFC1123. A **human checkpoint**, not an infrastructure precondition. See below. |
-| **c. Generated config** | `validation/doe.py` + `validate_structure()` in `tools/run/doe.py` | The DoE cross-product is pure (no benchmarking judgment); the emitted YAML is structurally validated against the repo's format. |
-| **d. Result schema** | `validation/report.py` | Results are parsed from a validated Benchmark Report v0.2 object, never scraped from logs. |
-
-**Prompt conventions:** requested by the prompt and tool descriptions, but not enforced by code:
-- **Config preview via the CLI's own `--dry-run`/`plan`.** `config_artifact.py` states outright that deep
-  `--dry-run` validation is deferred. Older docs listed this as gate (c); they were wrong.
-- **"Plan before mutation."** Nothing keys off `session.approved_plan`. What actually stops an unapproved
-  mutation is the **per-command approval gate** (`tools/command_exec.py`, `tools/run/shell.py`), which is
-  independent of whether a plan exists.
-
-`app/validation/CLAUDE.md` is the single source of truth for this list.
+| Files / directories | Responsibility and interactions |
+|---|---|
+| `app/main.py`, `app/ui/` | FastAPI HTTP/WebSocket service and static HTML/JS/CSS UI. Session events drive text, approval cards, debug output, charts and saved-chat navigation. No frontend compilation. |
+| `app/agent/session.py`, `channel.py`, `events.py`, `ws_schemas.py` | Isolated session workspaces, persistence/resume, typed messages and approval responses. |
+| `app/agent/engine.py`, `codex_engine.py` | Claude SDK and Codex SDK conversation bridges. Map provider events to the same application protocol and dispatch shared tools. |
+| `app/agent/prompt.py`, `app/llm/`, `knowledge/` | Stable core system prompt, on-demand knowledge index, model/configuration adapters. Live catalog/environment context is supplied separately from the stable prefix. |
+| `app/tools/registry.py`, `schemas/`, `mcp_server.py`, `context.py` | Pydantic tool contracts, validated dispatch, Claude in-process MCP wrapping and common execution/event dependencies. Codex uses its dynamic tool bridge. |
+| `app/tools/setup/` | Environment/catalog probes, structured plans, capacity, configuration artifacts, guide conversion and stack discovery. |
+| `app/tools/run/` | Dedicated CLI execution, shell execution, DoE, managed runs/sweeps and operation-grounding checks. |
+| `app/tools/analyze/`, `access/` | Reports, comparisons, aggregation, history and provenance; knowledge/document access and next-step suggestions. |
+| `app/security/`, `security/command_policy.yaml` | Dedicated-command validation; subprocess lifecycle, timeouts and environment scrubbing. The shell tool has a separate classifier. |
+| `app/validation/` | SessionPlan/catalog consistency, generated config structure, upstream report schema validation, units and analysis math. |
+| `app/orchestrator/` | Kubernetes Job manifests and kubectl adapter; submit/watch/logs, fault classification, retries, dead-letter failures, bounded sweeps and checkpoints. |
+| `app/capacity/`, `app/readiness/` | Capacity arithmetic/planner bridge and endpoint/gateway readiness facts. |
+| `app/storage/`, `app/packaging/` | History, provenance, share snapshots, retention and portable HTML exports. |
+| `app/observability/`, `deploy/observability/` | Structured logs, correlation IDs, metrics, resource polling and Prometheus/Grafana assets. |
+| `scripts/`, `deploy/`, `Dockerfile` | Install/run/evaluation helpers, benchmark-environment bridges, Helm/RBAC and container packaging. |
+| `tests/`, `harnesses/` | Unit/integration tests, deterministic flow replay and opt-in live/cluster evaluation. |
+| Sibling `llm-d-bench-mcp/llm_d_bench_mcp/` | stdio MCP server, per-connection ToolContext, resources, prompts and client approval adapters. |
+| Siblings `llm-d/`, `llm-d-benchmark/`, `llm-d-skills/` | Read-only upstream guides, CLI/catalog/report schema, and workflow skills. Packaged at Dockerfile pins. |
 
 ## Request flow (one user turn)
 
-1. The browser sends `user_message` over `/ws`.
-2. `SdkNativeEngine.run_turn` builds the system prompt (role + hard rules + knowledge +
-   live catalog) and opens/resumes the CLI conversation with every tool exposed as an
-   in-process MCP tool.
-3. The model streams `assistant_text` and emits tool calls; the SDK dispatches each into
-   the MCP wrapper.
-4. For each tool call, `dispatch` validates the arguments (gate a) and runs the handler.
-5. A handler that runs a command goes through `ToolContext.run_command`, then
-   `policy.validate`. Read-only commands auto-run and emit a `command` event; mutating
-   commands emit an `approval_request` and block until the user clicks Approve (then the
-   command is re-validated, as defense in depth, and run, emitting the `command` event for
-   what truly ran).
-6. Output streams back as `output` lines; the tool returns a structured result
-   (`tool_result`), which is fed back into the model.
-7. The model↔tool loop repeats inside the SDK until the model stops calling tools, then
-   the engine emits `done`.
+1. The browser sends a message over `/ws`. The backend loads or creates a session and
+   selects the configured engine (`LLM_PROVIDER`).
+2. The engine supplies core knowledge and live context to its SDK conversation. Additional
+   knowledge and upstream procedures are retrieved through tools.
+3. The model calls a registered tool. Registry dispatch validates arguments and returns
+   recoverable errors as tool results so the model can correct them.
+4. Plan tools validate catalog references and request a human checkpoint. Dedicated command
+   tools validate argv through the command policy; `run_shell` classifies a shell string.
+   With Auto-approve off, mutating/unknown commands wait for a command-card decision.
+5. Approved work executes locally through subprocesses or as orchestrated Kubernetes Jobs.
+   Progress and structured results stream back to the UI and model.
+6. Report parsing uses the live upstream schema. Analysis feeds result cards, comparisons,
+   cross-session history and provenance exports. The model explains the evidence.
+
+## The four determinism gates
+
+| Gate | Location | Enforced boundary |
+|---|---|---|
+| Tool arguments | `tools/registry.py` | Pydantic input validation before handler dispatch. |
+| SessionPlan | `validation/session_plan.py`, `tools/setup/plan.py` | Live catalog consistency, namespace structure and a plan approval checkpoint. |
+| Generated config | `validation/doe.py`, `tools/run/doe.py` | Structural validation of generated experiment/config YAML. |
+| Report | `validation/report.py` | Benchmark Report v0.2 structure; additional-field deviations may be tolerated, structural errors fail. |
+
+Plan approval is not a universal precondition on every mutation. Dedicated benchmark
+operations have additional skill-grounding checks; these are not a universal shell sandbox.
+CLI `plan`/`--dry-run` is workflow guidance rather than an unavoidable deep-validation gate.
 
 ## Trust & data-flow boundaries
 
-- **Browser ↔ backend:** only chat text, structured events, and approval decisions. No
-  secrets, no raw commands, no shell strings.
-- **Backend ↔ child processes:** argv lists with `shell=False`; the subprocess environment
-  is scrubbed so the LLM API key and HF token never reach a child (the HF token is passed only
-  when explicitly configured, for gated real-model deploys, not the kind sim).
-- **Backend ↔ repos:** the `llm-d` and `llm-d-benchmark` repos are read-only. The agent
-  may clone them if missing but never modifies them; their docs, catalog, and report
-  schema are read live, never vendored.
-- **Backend ↔ cluster (in-cluster deploy):** `kubectl` calls authenticate as the pod's
-  least-privilege ServiceAccount: exactly the verbs `RealKubeClient` needs and nothing more.
+- **Dedicated command execution:** deny-by-default policy, argv lists and bounded child
+  processes. Normal child environments scrub credentials.
+- **Shell execution:** `run_shell` intentionally invokes `bash -lc`; a heuristic classifier
+  decides whether approval is needed. It is not covered by the dedicated-command allowlist.
+- **Approval modes:** read-only commands normally auto-run. Auto-approve can waive mutation
+  cards. Standalone MCP relies on client tool permissions; plan elicitation falls back to
+  accepting the inert plan when the client lacks elicitation support.
+- **Provider adapters:** Codex disables inherited executable capabilities/MCP servers so
+  application tool calls use the shared dispatch path. Authentication remains server-side.
+- **Service exposure:** the application has no built-in multi-user authentication. Keep
+  the local service bound to loopback or use separately secured access.
+- **Storage:** sessions and results use the configured workspace. In the Helm deployment,
+  the non-root service uses a read-only root filesystem with `/workspace` and `/tmp` writable.
+  Kubernetes access is controlled by the chart's ServiceAccount and RBAC.
+- **Upstreams:** agent operations read upstream source/catalog/schema and call its CLI.
+  Installation builds separate virtual environments; it does not turn upstream source into
+  owned project code.
 
-## Concurrency & resilience
+## Results, concurrency & resilience
 
-- A shared `asyncio.Semaphore` (`settings.max_concurrent_runs`, default 2) bounds concurrent
-  mutating executions across all sessions; read-only probes are never capped.
-- An approved in-flight turn is not cancelled on WS disconnect. It finishes server-side
-  and its result is replayed from history on reconnect. Post-disconnect approvals auto-reject
-  so a detached turn can't hang holding a slot; a per-session running-turn registry blocks a
-  second connection from double-running one chat.
-- The orchestrator is stateless: the cluster (Job labels) is the source of truth, so it
-  can `reconstruct` and reconcile after a backend restart.
+Reports supply measured metrics; missing metrics remain missing. Goodput is a
+percentile-derived upper-bound estimate, not joint per-request SLO success. Cross-harness
+comparisons require compatible workloads and units. `SIMULATE=1` uses synthetic results
+for approved mutations while still running real read-only probes.
+
+A shared semaphore bounds mutating executions. Approved in-flight work can finish after
+WebSocket disconnect; approval requests can remain parked and reappear when the client
+reconnects. Persisted transcripts support resume. Orchestrated Jobs carry run labels/deadlines and can be
+reconstructed; sweeps use bounded concurrency and ConfigMap checkpoints. Transient faults
+can retry as new Jobs while deterministic failures dead-letter. These mechanisms wrap
+benchmark jobs; they do not implement a Kubernetes scheduler.
 
 ## Build & tooling
 
-- **Python 3.11**, managed with [`uv`](https://docs.astral.sh/uv/): the committed `uv.lock`
-  is the source of truth for the venv. Dev setup, from `llm-d-benchmarking-agent-project/`:
-  `uv sync --extra dev`, then `cp .env.example .env` and
-  `uv run uvicorn app.main:app --reload` (details → [`DEPLOYMENT.md`](../guides/DEPLOYMENT.md)).
-- **pytest**: hermetic suite under `tests/`, bucketed by subsystem (`agent/` · `tools/` ·
-  `orchestrator/` · `platform/`, plus golden-transcript replays in `tests/flows/`). Run
-  `pytest tests/` (or `make validate` for the flow replays); layout + gotchas →
-  [`tests/CLAUDE.md`](../../tests/CLAUDE.md).
-- **ruff** (lint + import order) and **mypy** (type-check), configured in `pyproject.toml`;
-  git hooks gate them on `main` (installed via `scripts/install/install-git-hooks.sh`).
+Use Python 3.11 and `uv sync --locked --extra dev`. Runtime dependencies include
+FastAPI/Uvicorn, Pydantic/settings, JSON Schema, PyYAML, Claude Agent SDK and the pinned
+Codex SDK. MCP adds MCP 1.x and AnyIO. Development uses pytest, Ruff and mypy. No Node build
+is required for the UI. Real deployment adds the upstream benchmark CLI environment and
+Docker/kind, kubectl, Helm/helmfile and the documented client utilities.
 
-## Where to go next
-
-- Tool & HTTP/WS reference: [`API.md`](API.md)
-- Deploying to Kubernetes: [`DEPLOYMENT.md`](../guides/DEPLOYMENT.md)
-- Using the agent end-to-end: [`USER_GUIDE.md`](../guides/USER_GUIDE.md)
-- Flow validation (does the agent run the right commands?): [`VALIDATION.md`](VALIDATION.md)
+See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for installation, verification commands,
+module-extension guidance and submission packaging. See
+[the ZIP user manual](../guides/SUBMISSION_USER_MANUAL.md) for a no-clone installation,
+[API.md](API.md) for protocols and [VALIDATION.md](VALIDATION.md) for flow replay.
