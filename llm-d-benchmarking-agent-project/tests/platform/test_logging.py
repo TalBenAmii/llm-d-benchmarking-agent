@@ -6,14 +6,14 @@ Pins the contract the acceptance criteria require:
     records emitted by the engine, a tool, AND the command runner;
 (c) the LOG_FORMAT=text path works.
 
-No network / cluster / GPU: the one real command is `git rev-parse --is-inside-work-tree`
-(read-only, auto-runs, and the project worktree is a git repo), exercising the runner's own
-log records through the policy gate.
+No network / cluster / GPU: a real `git status -s` in a temporary repository exercises
+runner logging, including when the source was extracted from the submission ZIP.
 """
 from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -132,15 +132,16 @@ def test_json_formatter_renders_exception_and_stays_valid_json():
 
 
 @pytest.mark.skipif(not get_settings().bench_repo.is_dir(), reason="repo not present")
-async def test_corr_id_propagates_engine_tool_and_runner_within_one_turn(tmp_path):
+async def test_corr_id_propagates_engine_tool_and_runner_within_one_turn(tmp_path, monkeypatch):
     """The acceptance test: ONE corr_id bound at the WS boundary appears on records from the
     engine, a tool dispatch, AND the command runner — all within a single turn."""
+    subprocess.run(["git", "init", "--quiet", str(tmp_path)], check=True)
+    monkeypatch.chdir(tmp_path)
     handler = _CapturingHandler(JsonFormatter())
     root, prev = _attach(handler)
 
     # A turn that runs a read-only command (git status) so the runner actually executes and
-    # logs. read_only → auto-runs, no approval. The project worktree is a git repo, so the
-    # command exits 0 regardless of where pytest is launched.
+    # logs. The temporary repository makes this independent of the checkout/ZIP layout.
     script = [[
         assistant(text("Checking."),
                   tool_use("tc1", "mcp__benchtools__run_shell", {"command": "git status -s"})),

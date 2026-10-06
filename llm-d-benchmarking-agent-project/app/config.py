@@ -13,6 +13,8 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.paths import benchmark_report_dir
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Repo directory names (siblings of this project under REPOS_DIR).
@@ -239,13 +241,7 @@ class Settings(BaseSettings):
     @property
     def benchmark_report_schema_path(self) -> Path:
         """The repo's authoritative Benchmark Report v0.2 JSON Schema (read at runtime)."""
-        return (
-            self.bench_repo
-            / "llmdbenchmark"
-            / "analysis"
-            / "benchmark_report"
-            / "br_v0_2_json_schema.json"
-        )
+        return benchmark_report_dir(self.bench_repo) / "br_v0_2_json_schema.json"
 
     @property
     def agent_version(self) -> str:

@@ -24,6 +24,7 @@ import copy
 from pathlib import Path
 from typing import Any
 
+from app.paths import benchmark_report_dir
 from app.validation.report import load_report
 
 SIM_IMAGE = "ghcr.io/llm-d/llm-d-inference-sim"
@@ -76,13 +77,7 @@ def build_sim_report(
     — and therefore the schema shape — is read from repo truth, never vendored). The numeric
     knobs let a caller fabricate an A/B pair (two configs) for the compare path.
     """
-    example = (
-        Path(bench_repo)
-        / "llmdbenchmark"
-        / "analysis"
-        / "benchmark_report"
-        / "br_v0_2_example.yaml"
-    )
+    example = benchmark_report_dir(Path(bench_repo)) / "br_v0_2_example.yaml"
     report = copy.deepcopy(load_report(example))
 
     # ---- run provenance -----------------------------------------------------

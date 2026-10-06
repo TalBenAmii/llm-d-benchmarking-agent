@@ -35,14 +35,14 @@ Manual steps, once per release.
 ### Build
 
 ```bash
-make image          # docker build -t ghcr.io/llm-d/llm-d-benchmarking-agent:0.1.0 --build-arg BENCH_REF=v0.7.0 .
+make image          # build the image with the upstream revisions pinned in Dockerfile / Makefile
 ```
 
 The image is ~1 GB, takes several minutes, and needs network egress (it git-clones the three
 pinned upstream repos and pip-installs the CLI + planner; the sibling repos live outside the build
 context and can't be `COPY`ed). Override coordinates on the CLI, e.g. `make image VERSION=0.2.0`
 or `make image BENCH_REF=v0.7.1`. Makefile defaults: `IMAGE=ghcr.io/llm-d/llm-d-benchmarking-agent`,
-`VERSION=0.1.0`, `BENCH_REF=v0.7.0`.
+`VERSION=0.1.0`, `BENCH_REF=e2e4b9be075bff78dba84e65fe36bbe97753c983`.
 
 ### Log in to GHCR
 
@@ -101,10 +101,10 @@ pushes `${IMAGE}:<tag>` and `${IMAGE}:latest` automatically, authenticating with
   (apt-installed = simpler provenance but an unpinned/floating version). Recorded in `NOTICE`.
 - **(b) GHCR public vs private.** Public = zero-config pulls (`IfNotPresent`, no secret). Private = every
   operator must configure an imagePullSecret. Pick one and document it for operators.
-- **(c) Repin upstream refs when a tag lands.** The image pins `llm-d` and `llm-d-skills` to exact
-  main-branch SHAs (`LLMD_REF`, `SKILLS_REF` in the Dockerfile / `NOTICE`); reproducible, but not
-  release tags. It pins `llm-d-benchmark` to the tag `v0.7.0`. Decide whether to repin the two
-  SHA-pinned repos to a release tag once upstream cuts one.
+- **(c) Repin upstream refs after compatibility validation.** All three upstream repos use exact
+  commit SHAs (`LLMD_REF`, `BENCH_REF`, `SKILLS_REF` in the Dockerfile / `NOTICE`). Validate a new
+  revision before updating the pins, and keep the Makefile's `BENCH_REF` in sync. Fresh local
+  installs and CI read their defaults from the Dockerfile; existing local checkouts are preserved.
 
 ---
 

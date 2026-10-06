@@ -329,6 +329,11 @@ header h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -.01em; margin:
 .sub { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; font-weight: 400; }
 
 .header-actions { display: flex; align-items: center; gap: 10px; }
+@media (max-width: 760px) {
+  /* Debug adds a session ID: let the controls wrap instead of clipping them. */
+  header { flex-wrap: wrap; gap: 8px; padding: 9px 12px; }
+  .header-actions { flex-wrap: wrap; gap: 6px; max-width: 100%; }
+}
 .status {
   font-size: 12px; color: var(--muted); padding: 4px 11px;
   border: 1px solid var(--border); border-radius: 999px; white-space: nowrap;

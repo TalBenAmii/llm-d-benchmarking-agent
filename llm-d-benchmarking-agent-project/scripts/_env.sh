@@ -41,7 +41,7 @@ set_env_var() {  # $1 KEY  $2 VALUE
 # Clone an upstream sibling repo into $dest if it's absent/empty; no-op if present. With NO_CLONE=1
 # (install_local.sh's --no-clone) a missing repo is a hard error instead. Needs `git`; uses `log`/`die`.
 clone_if_missing() {
-  local name="$1" dest="$2" owner="${3:-llm-d}"
+  local name="$1" dest="$2" owner="${3:-llm-d}" revision="${4:-}"
   if [[ -d "$dest" && -n "$(ls -A "$dest" 2>/dev/null)" ]]; then
     log "$name present at $dest — skipping clone."
   elif [[ "${NO_CLONE:-0}" == 1 ]]; then
@@ -50,6 +50,10 @@ clone_if_missing() {
     command -v git >/dev/null 2>&1 || die "git is required to clone $name — install git (e.g. 'apt install git') and re-run, or pre-clone the repos and pass --no-clone."
     log "Cloning $name → $dest"
     git clone --depth 1 "https://github.com/$owner/$name" "$dest"
+    if [[ -n "$revision" ]]; then
+      git -C "$dest" fetch --depth 1 origin "$revision"
+      git -C "$dest" checkout --detach FETCH_HEAD
+    fi
   fi
 }
 

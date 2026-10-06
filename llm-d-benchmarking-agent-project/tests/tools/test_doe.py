@@ -9,10 +9,11 @@ structural reference), and the structural validator degrades gracefully if absen
 """
 from __future__ import annotations
 
+import pytest
 import yaml
 
 from app.tools.registry import dispatch, tool_definitions
-from app.tools.run.doe import generate_doe_experiment, validate_structure
+from app.tools.run.doe import _reference_structure, generate_doe_experiment, validate_structure
 from app.validation.doe import DoEError, build_doe_experiment
 
 # ---------------------------------------------------------------------------
@@ -494,3 +495,22 @@ async def test_dispatch_end_to_end(tool_ctx):
     )
     assert result["generated"] is True
     assert result["n_run_treatments"] == 3
+
+
+@pytest.mark.parametrize("layout", ["experiments", "workload/experiments"])
+async def test_tool_validates_against_both_example_layouts(tool_ctx, tmp_path, layout):
+    repo = tmp_path / "repos" / "llm-d-benchmark"
+    examples = repo / layout
+    examples.mkdir(parents=True)
+    (examples / "reference.yaml").write_text(
+        "experiment: {name: reference}\ntreatments: [{name: c8, max-concurrency: 8}]\n"
+    )
+    tool_ctx.settings = tool_ctx.settings.model_copy(update={"repos_dir": repo.parent})
+    out = await generate_doe_experiment(
+        tool_ctx, name="layout-check",
+        run_factors=[{"name": "c", "key": "max-concurrency", "levels": [8, 16]}],
+    )
+    assert out["generated"] is True
+    assert out["validated_against_examples"] == ["reference.yaml"]
+    reference = _reference_structure(repo)
+    assert validate_structure({"unexpected": True, "treatments": [{"name": "c8", "rate": 8}]}, reference)

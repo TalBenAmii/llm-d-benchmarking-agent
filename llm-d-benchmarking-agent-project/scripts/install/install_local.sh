@@ -65,6 +65,16 @@ GUIDE_REPO="$REPOS_DIR/llm-d"
 BENCH_REPO="$REPOS_DIR/llm-d-benchmark"
 SKILLS_REPO="$REPOS_DIR/llm-d-skills"
 VENV="$PROJECT_DIR/.venv"
+# Match the container's tested upstream baseline for fresh clones. Existing checkouts are
+# untouched. Explicit overrides opt into another compatibility baseline.
+image_ref() { sed -n "s/^ARG $1=//p" "$PROJECT_DIR/Dockerfile" | head -1; }
+LLMD_REVISION="${LLMD_REVISION:-$(image_ref LLMD_REF)}"
+BENCH_REVISION="${BENCH_REVISION:-$(image_ref BENCH_REF)}"
+SKILLS_REVISION="${SKILLS_REVISION:-$(image_ref SKILLS_REF)}"
+[[ -n "$LLMD_REVISION" && -n "$BENCH_REVISION" && -n "$SKILLS_REVISION" ]] || {
+  echo "install_local.sh: required upstream revision pins missing from Dockerfile" >&2; exit 1;
+}
+
 
 DEV=0; PREREQS=0; APP_ONLY=0; NO_CLIENT=0; NO_BENCH=0; NO_CLONE=0; NO_LLM_SETUP=0; NO_MCP=0
 while [[ $# -gt 0 ]]; do
@@ -148,9 +158,9 @@ if [[ "$APP_ONLY" != 1 ]]; then
   ensure_base_tools   # git/curl/tar — clone + the client toolchain need these
   # llm-d is needed for the client toolchain; llm-d-benchmark for the framework + CLI;
   # llm-d-skills (llm-d-incubation org) grounds the agent's procedures — required at runtime.
-  [[ "$NO_CLIENT" == 1 ]] || clone_if_missing "llm-d" "$GUIDE_REPO"
-  [[ "$NO_BENCH"  == 1 ]] || clone_if_missing "llm-d-benchmark" "$BENCH_REPO"
-  clone_if_missing "llm-d-skills" "$SKILLS_REPO" "llm-d-incubation"
+  [[ "$NO_CLIENT" == 1 ]] || clone_if_missing "llm-d" "$GUIDE_REPO" "llm-d" "$LLMD_REVISION"
+  [[ "$NO_BENCH"  == 1 ]] || clone_if_missing "llm-d-benchmark" "$BENCH_REPO" "llm-d" "$BENCH_REVISION"
+  clone_if_missing "llm-d-skills" "$SKILLS_REPO" "llm-d-incubation" "$SKILLS_REVISION"
 fi
 
 if [[ "$APP_ONLY" != 1 && "$NO_CLIENT" != 1 ]]; then

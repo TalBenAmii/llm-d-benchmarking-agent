@@ -15,7 +15,7 @@ LICENSE file inside each project for the full terms.
     https://github.com/llm-d/llm-d
     Apache-2.0
 
-  * llm-d-benchmark      @ v0.7.0
+  * llm-d-benchmark      @ e2e4b9be075bff78dba84e65fe36bbe97753c983
     https://github.com/llm-d/llm-d-benchmark
     Apache-2.0
     (installed as the `llmdbenchmark` CLI in /repos/llm-d-benchmark/.venv)

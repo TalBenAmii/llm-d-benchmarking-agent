@@ -170,10 +170,10 @@ RUN groupadd --gid 10001 agent \
 
 # --- bundled upstream repos + the benchmark CLI venv ------------------------------------
 # Pinned refs for the three sibling repos (overridable via --build-arg so the Makefile/CI can bump
-# them). llm-d + llm-d-skills are pinned to exact SHAs (NOT "main") so the build is reproducible;
-# llm-d-benchmark to its release TAG. Declared here (not up top) to keep the toolchain layer cached
+# them). All three are pinned to exact SHAs so the build is reproducible.
+# Declared here (not up top) to keep the toolchain layer cached
 # across ref bumps.
-ARG BENCH_REF=v0.7.0
+ARG BENCH_REF=e2e4b9be075bff78dba84e65fe36bbe97753c983
 ARG LLMD_REF=0227212d78661ef184446c875adb4972fda2237c
 ARG SKILLS_REF=84c100c6ec6f4055b4d8132a6eb9bfa326e6c1d4
 
@@ -194,8 +194,7 @@ RUN set -eux; \
     }; \
     fetch_sha /repos/llm-d        https://github.com/llm-d/llm-d.git                     "${LLMD_REF}"; \
     fetch_sha /repos/llm-d-skills https://github.com/llm-d-incubation/llm-d-skills.git   "${SKILLS_REF}"; \
-    # Tag-pinned repo: `--branch <tag> --depth 1` is the simplest shallow clone.
-    git clone --depth 1 --branch "${BENCH_REF}" https://github.com/llm-d/llm-d-benchmark.git /repos/llm-d-benchmark; \
+    fetch_sha /repos/llm-d-benchmark https://github.com/llm-d/llm-d-benchmark.git       "${BENCH_REF}"; \
     # The CLI venv the app resolves at $REPOS_DIR/llm-d-benchmark/.venv/bin/llmdbenchmark.
     python -m venv /repos/llm-d-benchmark/.venv; \
     /repos/llm-d-benchmark/.venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel; \

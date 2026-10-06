@@ -10,7 +10,7 @@ COV_FAIL_UNDER := 85
 IMAGE   ?= ghcr.io/llm-d/llm-d-benchmarking-agent
 VERSION ?= 0.1.0
 # Pinned llm-d-benchmark ref baked into the image (the Dockerfile default matches this).
-BENCH_REF ?= v0.7.0
+BENCH_REF ?= e2e4b9be075bff78dba84e65fe36bbe97753c983
 
 .PHONY: help install test validate validate-pytest validate-live validate-live-iso \
         validate-simulate-iso snapshot-catalog flows \

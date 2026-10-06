@@ -25,7 +25,7 @@ get_settings.cache_clear()
 # from any checkout/worktree: honors REPOS_DIR/.env, else falls back to the sibling
 # of this project (the layout in the primary checkout). Keeps tests location-portable.
 BENCH_REPO = get_settings().bench_repo
-BR_DIR = BENCH_REPO / "llmdbenchmark" / "analysis" / "benchmark_report"
+BR_DIR = get_settings().benchmark_report_schema_path.parent
 BR_SCHEMA = BR_DIR / "br_v0_2_json_schema.json"
 BR_EXAMPLE = BR_DIR / "br_v0_2_example.yaml"
 

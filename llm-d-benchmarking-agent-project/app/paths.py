@@ -20,3 +20,18 @@ def is_within(child: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def benchmark_report_dir(bench_repo: Path) -> Path:
+    """Find upstream's report schema assets across its package extraction/rename.
+
+    Prefer the current standalone package; retain the monolithic checkout layout used
+    by the pinned container. Return the current expected path when absent so validation
+    still reports a missing schema instead of silently using a bundled copy.
+    """
+    candidates = (
+        bench_repo / "benchmark-report" / "llmd_benchmark_report",
+        bench_repo / "llmdbenchmark" / "analysis" / "benchmark_report",
+    )
+    return next((p for p in candidates if (p / "br_v0_2_json_schema.json").is_file()),
+                candidates[0])
