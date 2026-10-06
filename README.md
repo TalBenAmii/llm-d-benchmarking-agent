@@ -13,9 +13,10 @@ Licensed [Apache-2.0](LICENSE).
 ## Demo
 
 A 72-second recording of a live session — the real agent plans, deploys, benchmarks, runs a sweep, and
-explains the results. The preview below plays automatically.
+explains the results. Use the player to pause, seek along the timeline, or enter fullscreen.
+In Chrome and Edge, open the player's three-dot menu to change playback speed.
 
-![Animated demo: the agent plans, deploys, benchmarks, runs a sweep, and explains the results](llm-d-benchmarking-agent-project/docs/demo/llm-d-demo-live-preview.gif)
+https://github.com/user-attachments/assets/4f913939-811e-42df-a696-f6ed0491da8c
 
 [Download the full-resolution demo (MP4, 72 seconds)](https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/docs/demo/llm-d-demo-live.mp4)
 
