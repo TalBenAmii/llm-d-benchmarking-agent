@@ -73,6 +73,12 @@ PORT="${PORT_OVERRIDE:-$(read_env PORT)}"; PORT="${PORT:-8000}"
 # Lower-cased to match the app's own dispatch (main.py lower-cases LLM_PROVIDER too).
 PROVIDER="$(read_env LLM_PROVIDER | tr '[:upper:]' '[:lower:]')"; PROVIDER="${PROVIDER:-claude-agent-sdk}"
 case "$PROVIDER" in
+  codex-sdk|codex)
+    CODEX_BIN="$(read_env CODEX_CLI_PATH)"
+    CODEX_BIN="${CODEX_BIN:-$("$PY" -c 'from codex_cli_bin import bundled_codex_path; print(bundled_codex_path())')}"
+    if ! "$CODEX_BIN" login status 2>&1 | grep -q 'Logged in using ChatGPT'; then
+      log "Note: Codex needs a ChatGPT login. Run ./scripts/install/setup-codex-plan.sh"
+    fi ;;
   claude-agent-sdk|agent-sdk|claude-max)
     # The credential is the `claude` CLI's login, so a logged-out day-2 start would
     # otherwise surface only as an error at the first chat message.
@@ -82,9 +88,8 @@ case "$PROVIDER" in
       log "Note: the 'claude' CLI is not logged in — the UI loads, chat won't. Run ./scripts/install/setup-claude-plan.sh (or 'claude auth login')."
     fi ;;
   *)
-    # Anything else fails app readiness with a clear per-turn error (the SDK-native engine
-    # supports only the Claude Agent SDK) — say so at startup too.
-    log "Note: LLM_PROVIDER=$PROVIDER is unsupported — the UI loads, chat won't. Set LLM_PROVIDER=claude-agent-sdk (./scripts/install/setup-claude-plan.sh)." ;;
+    # Unsupported providers fail readiness and produce a clear per-turn error.
+    log "Note: LLM_PROVIDER=$PROVIDER is unsupported. Use codex-sdk or claude-agent-sdk." ;;
 esac
 
 URL="http://${HOST}:${PORT}"

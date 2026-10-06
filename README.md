@@ -49,6 +49,12 @@ locally, or a `claude setup-token` token (`CLAUDE_CODE_OAUTH_TOKEN`) for the in-
 service. To try the whole workflow without touching a cluster, set `SIMULATE=1` in `.env`:
 read-only commands still run, while approved changes return simulated results.
 
+**Codex option for the local server.** You can also use your ChatGPT subscription through
+the official Codex Python SDK. In the project directory, run `uv sync`, then
+`./scripts/install/setup-codex-plan.sh` and `./scripts/run.sh`. The setup reuses your
+ChatGPT login and selects Codex in `.env`. See the
+[Codex setup and configuration](llm-d-benchmarking-agent-project/README.md#run-with-codex-and-your-chatgpt-subscription).
+
 ## Use it from Claude Code (MCP)
 
 [`llm-d-bench-mcp`](https://github.com/TalBenAmii/llm-d-bench-mcp)

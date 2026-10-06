@@ -1,9 +1,16 @@
 # app/agent/ — the SDK-native engine + system-prompt assembly
 
-`engine.py` is THE agent engine: the Claude Agent SDK/CLI runs the model→tool→model loop
+`engine.py` is the Claude engine: the Claude Agent SDK/CLI runs the model→tool→model loop
 natively, and the engine bridges its stream onto the app's WS event contract (same events,
 approvals, steer, persistence as always). `prompt.py` assembles the system prompt. Decision
 logic lives in `knowledge/` and the model's reasoning — **never** in `if/elif` here.
+
+`codex_engine.py` provides the same contract through the official Codex Python SDK.
+Codex dynamic tools use `mcp_server.execute_tool`, so the registry, approvals and cards
+remain shared. Its reader thread forwards tool requests onto the app event loop.
+Cancellation must cancel those pending futures before closing the SDK client.
+Codex thread IDs and cumulative usage have separate persisted fields on Session.
+Settings and account-free model discovery live in `app/llm/codex_options.py`.
 
 ## ⚠️ Headline invariant: the system-prompt prefix is BYTE-STABLE and prompt-cached
 `build_system_prompt()` (in `prompt.py`) must return a **byte-identical** prefix across turns

@@ -1,10 +1,10 @@
 # app/llm/ — SDK options + the switchable model catalog
 
-Small, pure support layer for the SDK-native engine (`app/agent/engine.py`). There is no
-provider abstraction anymore: the engine IS the Claude Agent SDK/CLI (subscription/Max plan,
-keyless — auth via the logged-in `claude` CLI). Anything else in `LLM_PROVIDER` fails app
-readiness with a clear "unsupported provider" error (`AGENT_SDK_PROVIDERS` in
-`model_catalog.py`; guard in `app/main.py` + `app/storage/retention.py`).
+Support for the Claude and Codex SDK engines. `model_catalog.py` holds the Claude
+catalog and provider alias sets. `codex_options.py` configures the official Codex
+SDK, requires a ChatGPT subscription login, disables independent execution tools,
+and discovers model choices without exposing account identity. Unsupported providers
+fail readiness; Codex readiness also checks the login at server startup.
 
 ## Key files
 - `sdk_options.py` — pure helpers the engine builds its `ClaudeAgentOptions` from:

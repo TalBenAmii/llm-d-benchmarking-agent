@@ -32,7 +32,7 @@ from typing import Any
 
 from app.config import Settings
 from app.dig import scrub_strings
-from app.llm.model_catalog import AGENT_SDK_PROVIDERS
+from app.llm.model_catalog import AGENT_SDK_PROVIDERS, CODEX_PROVIDERS, SUPPORTED_PROVIDERS
 
 
 # ---------------------------------------------------------------------------
@@ -403,12 +403,13 @@ def _check_workspace_writable(settings: Settings) -> CheckOutcome:
 
 
 def _check_provider_coherent(settings: Settings) -> CheckOutcome:
-    """The SDK-native engine runs ONLY on the Claude Agent SDK (keyless — the logged-in
-    ``claude`` CLI subscription). Any other LLM_PROVIDER is a clear readiness failure, not a
-    crash; a missing CLI login surfaces on the first chat (this check stays hermetic and never
-    probes the CLI). The alias set lives in app.llm.model_catalog so the badge/picker and this
-    check can't drift."""
+    """Check provider configuration without invoking either SDK. Codex login is checked
+    separately at startup; the HTTP readiness route includes that result."""
     provider = (settings.llm_provider or "claude-agent-sdk").lower()
+    if provider in CODEX_PROVIDERS:
+        return CheckOutcome("provider_coherent", True,
+                            "Codex SDK uses the local ChatGPT subscription login (no API key)",
+                            {"provider": provider})
     if provider in AGENT_SDK_PROVIDERS:
         return CheckOutcome(
             "provider_coherent", True,
@@ -418,8 +419,8 @@ def _check_provider_coherent(settings: Settings) -> CheckOutcome:
     return CheckOutcome(
         "provider_coherent", False,
         f"unsupported LLM_PROVIDER {settings.llm_provider!r} — the SDK-native engine supports "
-        f"only {sorted(AGENT_SDK_PROVIDERS)}",
-        {"provider": provider, "supported": sorted(AGENT_SDK_PROVIDERS)},
+        f"only {sorted(SUPPORTED_PROVIDERS)}",
+        {"provider": provider, "supported": sorted(SUPPORTED_PROVIDERS)},
     )
 
 

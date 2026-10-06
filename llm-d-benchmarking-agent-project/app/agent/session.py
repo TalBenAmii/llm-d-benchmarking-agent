@@ -164,6 +164,9 @@ class Session:
     # None until the first turn completes; the id is stable across resumes (re-issued unchanged
     # by the CLI).
     sdk_session_id: str | None = None
+    # Provider-specific handles prevent resuming a Claude conversation as a Codex thread.
+    codex_thread_id: str | None = None
+    codex_token_usage: dict[str, int] = field(default_factory=dict)
     # Per-session "auto-approve commands" toggle (the UI button). When True, the Channel
     # auto-approves every kind=="command" approval gate (run_shell + the dedicated mutating
     # tools) WITHOUT prompting; the kind=="session_plan" gate is NEVER auto-approved (the one
@@ -271,6 +274,8 @@ class Session:
                     "catalog_injected": self.catalog_injected,
                     "prewarmed": self.prewarmed,
                     "sdk_session_id": self.sdk_session_id,
+                    "codex_thread_id": self.codex_thread_id,
+                    "codex_token_usage": self.codex_token_usage,
                     "auto_approve": self.auto_approve,
                 },
                 indent=2,
@@ -369,6 +374,8 @@ class SessionManager:
             catalog_injected=data.get("catalog_injected", False),
             # None on pre-SDK-native snapshots — the next SDK-native turn just starts fresh.
             sdk_session_id=data.get("sdk_session_id"),
+            codex_thread_id=data.get("codex_thread_id"),
+            codex_token_usage=data.get("codex_token_usage") or {},
             auto_approve=data.get("auto_approve", False),
             # Default False so older state files (no key) load — but a session that already
             # injected the env pre-probe snapshot persists True, so a resume never re-injects it.

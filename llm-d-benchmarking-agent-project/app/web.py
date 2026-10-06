@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from app.agent.ws_schemas import ValidationError
 from app.config import Settings
 from app.dig import scrub_strings
-from app.llm.model_catalog import AGENT_SDK_PROVIDERS, model_views
+from app.llm.model_catalog import AGENT_SDK_PROVIDERS, CODEX_PROVIDERS, model_views
 from app.storage.provenance import BundleStore
 
 # ── inbound-frame validation-error formatting (WS protocol ``error`` event) ─────────────────
@@ -46,16 +46,21 @@ def first_validation_message(exc: ValidationError) -> str:
 # ── response-shaping for the HTTP routes ────────────────────────────────────────────────────
 
 
-def provider_view(settings: Settings) -> dict[str, Any]:
+def provider_view(settings: Settings, codex: dict[str, Any] | None = None) -> dict[str, Any]:
     """The active LLM provider + model as the header badge shows them (GET /api/provider), plus
     the switchable-model picker's data source.
 
-    SDK-native engine: the only supported provider family is the Claude Agent SDK (the logged-in
-    ``claude`` CLI subscription — keyless). ``configured`` is False for any other LLM_PROVIDER
-    (the badge shows "LLM not configured"; /readyz carries the structured reason). Deliberately
-    minimal: never a key, account identity, or error text. ``switchable``/``effort``/``models``
-    feed the model picker (curated catalog + the configured default)."""
+    Claude uses the curated model catalog; Codex uses account-free runtime metadata
+    from startup discovery. Never expose a key, account identity, or raw error text."""
     provider = (settings.llm_provider or "claude-agent-sdk").lower()
+    if provider in CODEX_PROVIDERS:
+        runtime = codex or {}
+        return {
+            "provider": provider, "model": settings.codex_model,
+            "configured": bool(runtime.get("authenticated")),
+            "switchable": bool(runtime.get("models")),
+            "effort": settings.codex_effort, "models": runtime.get("models", []),
+        }
     supported = provider in AGENT_SDK_PROVIDERS
     return {
         "provider": provider,

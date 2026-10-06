@@ -32,13 +32,17 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # LLM engine: the Claude Agent SDK is the ONLY supported provider (runs inference on the
-    # user's Claude subscription via the logged-in ``claude`` CLI — no API key needed). Any
-    # other LLM_PROVIDER value fails readiness with a clear "unsupported provider" reason.
+    # Both SDKs use local subscription logins. Keep Claude as the default for
+    # existing installations; setup-codex-plan.sh explicitly selects codex-sdk.
     # ``claude_cli_path`` is optional (the SDK auto-discovers the CLI on PATH when unset).
     llm_provider: str = "claude-agent-sdk"
     agent_sdk_model: str = "claude-haiku-4-5"
     claude_cli_path: str | None = None
+    # Codex uses the local ChatGPT login, never an OpenAI API key. The Python SDK
+    # bundles its CLI; override the executable only for an intentional local build.
+    codex_model: str = "gpt-6.1-sol"
+    codex_effort: str = "medium"
+    codex_cli_path: str | None = None
     # Reasoning quality + chain-of-thought capture for the Claude Agent SDK provider. These two
     # knobs make the provider match the Sonnet-4.6 behavior of Claude Code: ``effort`` is the
     # response-effort level ("low"|"medium"|"high"|"xhigh"|"max"; "high" is Claude Code's default

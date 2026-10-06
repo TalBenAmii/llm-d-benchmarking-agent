@@ -15,6 +15,9 @@ COMMAND_POLICY_PATH = PROJECT_ROOT / "security" / "command_policy.yaml"
 # on what a command actually DID see a synthetic success instead. Env vars take precedence over
 # the .env file in pydantic-settings; clearing the lru_cache covers any earlier read.
 os.environ["SIMULATE"] = "0"
+# The legacy transport suite must not start a real Codex subprocess merely because
+# the developer selected Codex in .env. Codex tests explicitly select their provider.
+os.environ["LLM_PROVIDER"] = "claude-agent-sdk"
 # Tag every session the suite creates with namespace "test" — the UI hides that folder outright
 # (HIDDEN_NAMESPACE in app/ui/app.js), so test chats never appear in the sidebar (and the
 # namespace-folder feature is exercised end-to-end). Set before the first settings read so

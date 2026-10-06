@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from app.agent import events as ws_events
 from app.agent.cards import build_welcome, load_suggestions
 from app.agent.channel import Channel
+from app.agent.codex_engine import CodexEngine
 from app.agent.engine import SdkNativeEngine
 from app.agent.engine import steer as engine_steer
 from app.agent.lifecycle import RunRegistry
@@ -37,7 +38,14 @@ from app.agent.ws_schemas import (
     parse_inbound,
 )
 from app.config import get_settings
-from app.llm.model_catalog import AGENT_SDK_PROVIDERS, valid_selection
+from app.llm.codex_options import discover_codex
+from app.llm.model_catalog import (
+    AGENT_SDK_PROVIDERS,
+    CODEX_PROVIDERS,
+    SUPPORTED_PROVIDERS,
+    ModelInfo,
+    valid_selection,
+)
 from app.observability import metrics as instrument
 from app.observability.logging import bind as log_bind
 from app.observability.logging import new_corr_id, setup_logging
@@ -110,7 +118,9 @@ async def lifespan(app: FastAPI):
     # SDK-native engine: no provider object to build. An unsupported LLM_PROVIDER is a clear
     # readiness failure (/readyz provider_coherent) + a per-turn error, never a crash.
     app.state.provider_supported = (
-        (settings.llm_provider or "claude-agent-sdk").lower() in AGENT_SDK_PROVIDERS)
+        (settings.llm_provider or "claude-agent-sdk").lower() in SUPPORTED_PROVIDERS)
+    app.state.codex = (await discover_codex(settings)
+                       if settings.llm_provider.lower() in CODEX_PROVIDERS else {})
     # Workspace lifecycle (Phase 18): run the startup configuration self-check (structured
     # pass/fail folded into /readyz) and a one-shot retention GC over scratch. Both honor their
     # toggles + the DATA caps; GC never prunes a session that is currently live/running.
@@ -216,6 +226,12 @@ async def readyz() -> JSONResponse:
     stays on the minimal /healthz; this is the readiness gate a K8s readinessProbe / load
     balancer should poll."""
     contrib = readiness(get_settings())
+    if get_settings().llm_provider.lower() in CODEX_PROVIDERS:
+        authenticated = getattr(app.state, "codex", {}).get("authenticated", False)
+        contrib["codex_authenticated"] = authenticated
+        if not authenticated:
+            contrib["ready"] = False
+            contrib["codex_reason"] = "Run codex login with your ChatGPT account, then restart the app."
     code = status.HTTP_200_OK if contrib.get("ready") else status.HTTP_503_SERVICE_UNAVAILABLE
     return JSONResponse(contrib, status_code=code)
 
@@ -259,7 +275,7 @@ async def provider_info() -> JSONResponse:
     actually built at startup, so the UI can show "LLM not configured" instead of leaving
     the failure to surface at the first chat message. No secrets, no account identity.
     ``getattr``: same no-lifespan defense as graceful_shutdown (a bare read would 500)."""
-    return JSONResponse(provider_view(get_settings()))
+    return JSONResponse(provider_view(get_settings(), getattr(app.state, "codex", {})))
 
 
 def _teardown_session_runtime(sid: str) -> None:
@@ -595,8 +611,9 @@ async def ws(websocket: WebSocket) -> None:
         session = app.state.sessions.create()
     # Hermetic-test seam (the engine's own transport_factory, surfaced app-wide): tests
     # install a FakeTransport factory on app.state; unset (production) → the real CLI.
-    loop = SdkNativeEngine(
-        transport_factory=getattr(app.state, "sdk_transport_factory", None))
+    loop = (CodexEngine(client_factory=getattr(app.state, "codex_client_factory", None))
+            if get_settings().llm_provider.lower() in CODEX_PROVIDERS else SdkNativeEngine(
+                transport_factory=getattr(app.state, "sdk_transport_factory", None)))
 
     def _queue_steer(text: str) -> None:
         """Queue a mid-turn user message for the running turn: onto the LiveTurn's steer queue
@@ -691,8 +708,8 @@ async def ws(websocket: WebSocket) -> None:
                 session.messages.append({"role": "user", "content": text})
                 session.persist()
                 await channel.emit("error", {"message": (
-                    "unsupported LLM_PROVIDER: the SDK-native engine runs on the Claude "
-                    "Agent SDK (set LLM_PROVIDER=claude-agent-sdk)")})
+                    "unsupported LLM_PROVIDER: set LLM_PROVIDER=codex-sdk for Codex or "
+                    "LLM_PROVIDER=claude-agent-sdk for Claude")})
                 await channel.emit("done", {})
                 return
             await loop.run_turn(
@@ -976,6 +993,11 @@ async def ws(websocket: WebSocket) -> None:
                 switchable = (settings.llm_provider or "claude-agent-sdk").lower() in AGENT_SDK_PROVIDERS
                 info = (valid_selection(msg.model, msg.effort, settings.agent_sdk_model)
                         if switchable else None)
+                if settings.llm_provider.lower() in CODEX_PROVIDERS:
+                    selected = next((m for m in getattr(app.state, "codex", {}).get("models", [])
+                                     if m["id"] == msg.model and msg.effort in m["efforts"]), None)
+                    info = (ModelInfo(selected["id"], selected["label"], tuple(selected["efforts"]))
+                            if selected else None)
                 if info is None:
                     await websocket.send_json(outbound(ws_events.ERROR, {
                         "message": f"unavailable model selection: {msg.model!r}"
