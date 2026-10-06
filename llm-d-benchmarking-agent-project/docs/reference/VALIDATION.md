@@ -15,26 +15,26 @@ flow fixtures); layers 3 and 4 are the agent self-eval harness (`tests/eval/`).
 | **(3) Agent-quality SHADOW** (`tests/eval/test_scorecard_shadow.py`) | The judge *pipeline*: a deterministic rule-based scorer runs each golden transcript through serialize → score → aggregate → render → artifact, reusing the harness's `score_flow`/`gating_problems`; the rubric asset parses; the gate is real. A golden transcript shadow-scores 1.0. | ✅ yes | nothing | ✅ **yes** (runs in plain pytest) | none |
 | **(3) LLM-judge** (`tests/eval/live/test_judge_live.py`) | The *interaction quality* the flow-eval can't: a judge LLM scores each session transcript against the versioned rubric (tool-choice, safety, helpfulness, goal) → an aggregate **AGENT-QUALITY SCORE** + a gate. Catches behavioral regressions. | ❌ no | an API key + `LLM_EVAL_LIVE=1` | ❌ no (opt-in) | **spends** (1 judge call / scored flow) |
 | **(4) Bug-oracle SHADOW** (`tests/eval/test_oracle_unit.py`) | The *deterministic bug oracle* + report assembly: invariant→category/severity mapping, dedup, gate (only deterministic `severity >= high` gates; advisory LLM findings never do); plus an end-to-end deterministic hunt (`run_bughunt` with the seeded-RNG fallback) over the real app asserting **0 oracle violations**. | ✅ yes | nothing | ✅ **yes** (runs in plain pytest) | none |
-| **(4) Exploratory bug-hunter** (`tests/eval/live/test_bughunt_live.py`) | An LLM drives the REAL app (HTTP+WS) open-endedly; the existing invariant battery is the authoritative oracle (only it can fail a build); LLM triage is advisory-only. Writes a reproducible bug report. | ❌ no (LLM-driven) / oracle is ✅ | an API key + `LLM_EVAL_LIVE=1` **AND** `BUGHUNT=1` | ❌ no (opt-in) | **spends** (≤ seeds × budget selector calls; printed up front) |
+| **(4) Exploratory bug-hunter** (`tests/eval/live/test_bughunt_live.py`) | An LLM drives the real app (HTTP+WS) open-endedly; the existing invariant battery is the authoritative oracle (only it can fail a build); LLM triage is advisory-only. Writes a reproducible bug report. | ❌ no (LLM-driven) / oracle is ✅ | an API key + `LLM_EVAL_LIVE=1` **AND** `BUGHUNT=1` | ❌ no (opt-in) | **spends** (≤ seeds × budget selector calls; printed up front) |
 
-> **⚠ Quota / cost.** Plain `pytest tests/` stays hermetic and spends ZERO LLM quota. Only
+> **⚠ Quota / cost.** Plain `pytest tests/` stays hermetic and spends zero LLM quota. Only
 > the deterministic SHADOW layers (3-shadow + 4-shadow) are always-on; the two LLM layers are
 > off by default. They share the SAME `LLM_EVAL_LIVE=1` switch the live flow-eval uses (the
 > bug-hunter ALSO requires `BUGHUNT=1`), so they never run in plain pytest or gating CI. The
 > always-safe hermetic entry is `make eval-shadow`. The quota-spending entries are
 > `make eval-judge` and `make bughunt` (each `--timeout=600`). One more independent gate:
 > `SDK_ENGINE_LIVE=1` enables the engine's own live battery
-> (`tests/eval/live/test_sdk_engine_live.py`: cache-health + refusal/gate smokes) — also
+> (`tests/eval/live/test_sdk_engine_live.py`: cache-health + refusal/gate smokes), also
 > quota-spending, also opt-in only. Verify off-by-default: with no login and no flag,
 > `pytest tests/eval/` runs only the shadow tests and SKIPS the live ones.
 
 > **Live-eval mechanics (layer 2).** Two modes: `LLM_EVAL_LIVE=1` (the live set: tool-choice /
 > error-recovery / safety) and `LLM_EVAL_LIVE=1 LLM_EVAL_SIMULATE=1` (the simulate set: multi-step
-> deploy walks); both also runnable WITHOUT pytest via `python scripts/eval/validate_flows.py --live` /
+> deploy walks); both also runnable without pytest via `python scripts/eval/validate_flows.py --live` /
 > `--simulate` (same harness + scoring). Safeguard: the engine's own stream watchdog
 > (fed from `LLM_EVAL_CALL_TIMEOUT`, default 90s) interrupts a stalled live call and fails the flow
 > fast, backed by a per-FLOW cap (`LLM_EVAL_FLOW_TIMEOUT`, default 300s). Guarded hermetically in
-> `tests/flows/test_eval_harness.py` (ZERO quota).
+> `tests/flows/test_eval_harness.py` (zero quota).
 
 ### Isolated eval runner
 
@@ -55,7 +55,7 @@ and the runner reaps any orphaned bundled-CLI subprocess between flows. A stuck 
 ## Quick start
 
 ```bash
-make validate          # deterministic, hermetic — the headline check
+make validate          # deterministic workflow validation; no live services
 make flows             # list known flows
 make validate-live     # the real LLM drives each flow from mock input (needs a key in .env)
 make validate-live-iso     # validate-live, but per-flow process isolation + an EXTERNAL hard timeout
@@ -67,10 +67,9 @@ make eval-judge        # LLM-judge agent-quality scorecard       (OPT-IN, SPENDS
 make bughunt           # autonomous exploratory bug-hunter       (OPT-IN, SPENDS QUOTA, needs a key)
 ```
 
-`make validate` prints, per flow, the exact commands the agent runs:
+`make validate` lists the commands for each flow. For example, the kind quickstart includes:
 
 ```
-[ PASS ] kind-quickstart — kind quickstart (cicd/kind, simulated CPU engine)
         $ git clone https://github.com/llm-d/llm-d-benchmark  [mutating]
         $ install.sh --uv  [mutating]
         $ llmdbenchmark --spec cicd/kind standup -p llmd-quickstart --skip-smoketest  [mutating]
@@ -215,10 +214,10 @@ No harness or CI changes are needed: the tests and the CLI pick it up automatica
 ## Agent self-eval (Layers 3 & 4): `tests/eval/`
 
 A second harness scores the agent's interaction quality (Layer 3) and hunts for bugs
-(Layer 4) — modes, needs, and cost per layer are in the table above. The judgment (the grading
+(Layer 4). The table above lists the modes, requirements, and cost for each layer. The judgment (the grading
 rubric and the bug-oracle policy) lives in versioned eval assets (`tests/eval/rubric.md`,
-`tests/eval/oracle.md`), NOT in `knowledge/` (so they never inflate an agent call or let the
-agent study-to-the-test) and NOT in Python `if/elif`. Artifacts land in the gitignored
+`tests/eval/oracle.md`), not in `knowledge/` (so they never inflate an agent call or let the
+agent study-to-the-test) and not in Python `if/elif`. Artifacts land in the gitignored
 `workspace/eval/` and are never committed.
 
 **Layer 3: LLM-judge quality scorecard.** A judge LLM scores each session transcript against
@@ -236,7 +235,7 @@ agent study-to-the-test) and NOT in Python `if/elif`. Artifacts land in the giti
 ```
 
 **Layer 4: exploratory bug-hunter.** An LLM (`explorer.py::LLMActionSelector`, prompt-seeded
-for reproducibility, with a deterministic seeded-RNG fallback when no key) drives the REAL app
+for reproducibility, with a deterministic seeded-RNG fallback when no key) drives the real app
 over the same HTTP+WS surface the self-play fuzzer drives (the reusable driver was factored out
 into `tests/eval/app_driver.py`, which `tests/platform/test_selfplay_fuzz.py` now imports unchanged). The
 deterministic invariant battery is the authoritative oracle: only a deterministic finding

@@ -15,8 +15,8 @@ referenced. It is not a roadmap.
 ```
  ┌──────────┐   WS/HTTP    ┌──────────────────────────────────────────────┐
  │ Browser  │ ───────────▶ │ FastAPI backend (app/main.py)                 │
- │  (UI)    │ ◀─────────── │  — CORS (Phase 12)                            │
- └──────────┘   events      │  — agent engine (app/agent/engine.py)        │
+ │  (UI)    │ ◀─────────── │  * CORS (Phase 12)                            │
+ └──────────┘   events      │  * agent engine (app/agent/engine.py)        │
    UNTRUSTED               │     ▲ tool calls                              │
    (never holds secrets)   │     │                                         │
                            │  ┌──┴───────────┐   prompts/responses         │
@@ -38,7 +38,7 @@ Three boundaries matter:
 
 1. **Browser ↔ backend.** The browser is untrusted and never receives secrets (LLM API
    keys, HF token). It can only send chat messages and approve/deny proposed
-   mutations. The backend has no auth/rate-limit of its own on this surface — see Network
+   mutations. The backend has no auth/rate-limit of its own on this surface. See Network
    exposure, below.
 2. **LLM output ↔ execution.** The LLM is treated as an untrusted source of proposed
    actions. Nothing the LLM emits runs directly: every command is validated by the command policy
@@ -112,7 +112,7 @@ Every validated command is executed by `CommandRunner`:
 ## Network exposure
 
 The FastAPI surface defaults to `127.0.0.1:8000` and has no Bearer auth or rate-limiting of
-its own — this is a single-user, in-cluster/localhost service. The one trust control the app
+its own. This is a single-user service for in-cluster or localhost use. The one trust control the app
 ships is CORS:
 
 | Control | Env | Effect when enabled |
@@ -121,8 +121,8 @@ ships is CORS:
 
 Exposure guidance:
 
-- **Local dev on `127.0.0.1`** — nothing to configure.
-- **LAN / shared / internet-exposed** — put an authenticating reverse proxy (or your cluster's
+- **Local dev on `127.0.0.1`:** nothing to configure.
+- **LAN / shared / internet-exposed:** put an authenticating reverse proxy (or your cluster's
   ingress auth) in front of the agent; the app itself trusts every request that reaches it.
   TLS termination is likewise out of scope for the app itself.
 

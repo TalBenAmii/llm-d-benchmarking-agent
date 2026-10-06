@@ -6,19 +6,19 @@ Kubernetes service (instead of on a laptop). By audience: **maintainer** (publis
 
 ## 1. Overview: two install paths
 
-Two separate installers (when to pick which → [DEPLOYMENT.md](DEPLOYMENT.md)):
+Choose an installer based on where the agent will run. See [DEPLOYMENT.md](DEPLOYMENT.md) for details:
 
-- `scripts/install/install_local.sh` — the agent on your laptop/dev box (a `.venv` +
+- `scripts/install/install_local.sh`: the agent on your laptop/dev box (a `.venv` +
   `./scripts/run.sh`): clones the 3 sibling repos, installs the client toolchain +
   `llmdbenchmark` CLI + this app's venv + `.env` + MCP server. Debian/Ubuntu; optional
   `--prereqs` for Docker+kind.
-- `scripts/install/install_service.sh` — the agent as a Pod: `helm upgrade --install` of the
+- `scripts/install/install_service.sh`: the agent as a Pod: `helm upgrade --install` of the
   pre-built published image into an existing cluster, with a namespace-scoped SA +
   least-privilege RBAC. Needs `kubectl` + `helm` + a reachable cluster.
 
 This runbook covers the service path: `install_service.sh` + the container image + the Helm chart.
 
-**The image is a self-contained "full-bake" (~1 GB).** Beyond the FastAPI app it carries the
+The image is about 1 GB and includes the FastAPI app, the
 `llmdbenchmark` CLI (in its own venv at `/repos/llm-d-benchmark/.venv`), all three sibling upstream
 repos under `/repos` (`llm-d`, `llm-d-benchmark`, `llm-d-skills`; the app's readiness self-check and
 skill-grounding gate require all three on disk), and the client toolchain the CLI shells out to
@@ -124,7 +124,7 @@ pushes `${IMAGE}:<tag>` and `${IMAGE}:latest` automatically, authenticating with
 ```
 
 On success it prints the port-forward command to reach the UI. `<TOKEN>` is a Claude subscription
-token from `claude setup-token` — the chat auth (see "Provide auth for chat" below).
+token from `claude setup-token` for chat authentication (see "Provide auth for chat" below).
 
 ### Common flags
 
@@ -135,7 +135,7 @@ token from `claude setup-token` — the chat auth (see "Provide auth for chat" b
     --tag TAG               image tag / VERSION       (default: 0.1.0)
     --image-pull-policy P   Always|IfNotPresent|Never (default: IfNotPresent)
     --build                 docker-build the image locally + use it (air-gapped/dev; pullPolicy→Never)
-    --oauth-token TOKEN     Claude subscription token (default: $CLAUDE_CODE_OAUTH_TOKEN) — the chat auth
+    --oauth-token TOKEN     Claude subscription token (default: $CLAUDE_CODE_OAUTH_TOKEN) for chat authentication
     --orchestrator-image IMG   image for in-cluster orchestrated benchmark Jobs (config.orchestratorImage)
     --kubeconfig PATH       kubeconfig file           (default: $KUBECONFIG / ~/.kube/config)
     --context NAME          kube-context              (default: current-context)
@@ -190,12 +190,12 @@ helm upgrade --install bench-agent deploy/helm/llm-d-benchmarking-agent \
 (`secret.existingSecret` must carry the keys `CLAUDE_CODE_OAUTH_TOKEN` / `HF_TOKEN`.)
 
 **No token?** The app still deploys (chat disabled): `/healthz` and the keyless `/readyz` serve,
-but chat stays off until the token is set. There is no API-key fallback — the SDK-native engine
+but chat stays off until the token is set. There is no API-key fallback. The SDK-native engine
 runs only on the Claude Agent SDK, and any other `LLM_PROVIDER` fails the readiness self-check.
 
 > **On terms of service.** Running your own subscription token headlessly in your own Pod is the
 > CLI use Anthropic's auth docs support; this deployment is single-user (your own token, your own
-> cluster) — don't expose it to other users as a product.
+> cluster). Don't expose it to other users as a product.
 
 ### Reach the UI
 
@@ -213,13 +213,13 @@ The chart creates a namespace-scoped ServiceAccount + least-privilege Role (no C
 grants exactly: `batch/jobs` → `create,get,list,watch,patch,delete`; `pods` → `get,list,watch`;
 `pods/log` → `get`; `configmaps` → `get,list,watch,create,patch` (the agent's own sweep-checkpoint
 ConfigMaps). No Secrets, no Roles, nothing cluster-wide. Residual risk: a Job it creates could mount
-any Secret in this namespace — so give the agent a dedicated namespace with only its own LLM/HF Secret.
+any Secret in this namespace, so give the agent a dedicated namespace with only its own LLM/HF Secret.
 
 `install_service.sh` also enforces the **Baseline Pod Security Standard** on the namespace
 (`kubectl label ns … pod-security.kubernetes.io/enforce=baseline`, mirroring `values.yaml`
 `podSecurity.enforce`): the API server then refuses any pod that mounts a `hostPath`, runs
 privileged, or shares a host namespace, so nothing the agent submits can reach the node filesystem.
-Baseline (not Restricted) is deliberate — harness images that need root still run. A raw `helm`
+The Baseline policy allows harness images that need root to run. A raw `helm`
 install does **not** apply the label; set it yourself with the same command. Verify a live
 deployment with `scripts/eval/validate_fs_isolation.sh -n <ns>` (writable mounts are only
 `/workspace` + `/tmp`; rootfs rejects writes; namespace refuses a `hostPath` pod).
@@ -305,14 +305,14 @@ golden base image).
 
 ## 5. Quick reference: key config knobs
 
-(Commands live in §2–§4 above.)
+(Commands live in §2-§4 above.)
 
 | Knob | Flag / value | Default |
 |---|---|---|
 | Image repo/tag | `--image` / `--tag`, or `image.repository` / `image.tag` | `ghcr.io/llm-d/llm-d-benchmarking-agent` / `0.1.0` |
 | Pin by digest | `image.digest` (wins over tag) | `""` |
 | Chat auth: OAuth token | `--oauth-token` / `$CLAUDE_CODE_OAUTH_TOKEN`, or `secret.claudeCodeOauthToken` | empty |
-| No token | chat disabled; `/healthz` + keyless `/readyz` still serve | — |
+| No token | chat disabled; `/healthz` + keyless `/readyz` still serve | None |
 | Existing Secret | `secret.create=false` + `secret.existingSecret=<name>` | `create=true` |
 | Namespace / release | `--namespace` / `--release` | `llmd-bench` / `bench-agent` |
 | Persistence | `workspace.persistence.enabled=true` (+ `storageClass`/`size`/`accessMode`) | `false` (ephemeral) |

@@ -1,11 +1,10 @@
 # Project brain: reference (read on demand)
 
-Slim orientation hub for the reference/historical material that doesn't belong in the
-always-on `CLAUDE.md`. Read it when you need orientation; it is not loaded every session. The
-active `CLAUDE.md` keeps the non-negotiable rules, the folder map, and the on-demand pointers.
+This page collects project history and reference links. The main `CLAUDE.md` contains the
+working rules and folder map; this page is read only when needed.
 
 One focused reference was split out of this file (load it when the task needs it):
-- **[`UPSTREAM_REUSE_PATHS.md`](UPSTREAM_REUSE_PATHS.md)**: where to look in the READ-ONLY
+- **[`UPSTREAM_REUSE_PATHS.md`](UPSTREAM_REUSE_PATHS.md)**: where to look in the read-only
   `llm-d-benchmark/` repo (CLI entry, specs, harnesses/workloads, report schema, safe-preview commands).
   Read when generating configs or picking specs.
 
@@ -16,11 +15,16 @@ end-to-end (probe → ensure repo → `install.sh --uv` → `standup --spec cicd
 built and verified 2026-05-31. It has since grown well past that (orchestrator, analyzer,
 multi-harness compare, capacity pre-flight, history/trends, observability, one-command deploy).
 
-- **Authoritative, evidence-backed feature inventory + how to verify each:** `FEATURES.md` (read first).
+- **Features and verification:** `FEATURES.md` (read first).
 - **Per-upstream-feature coverage status:** `docs/reference/BENCHMARK_FEATURE_COVERAGE.md`.
 - **Design rationale + MVP implementation-status record:** git history only (`docs/history/plan.md`, removed 2026-07-10).
 - **Tool count is never hard-coded here:** `app/tools/registry.py` (`build_registry()`) is the only source of truth.
-- **Tool-set audit (2026-06-19, verified — don't re-litigate):** the set is genuinely lean — every result-cluster tool, `run_shell` (ad-hoc) vs `execute_llmdbenchmark` (the CLI), and `fetch_key_docs` vs `read_repo_doc` has a distinct role pinned by a live-eval flow; do NOT re-propose merging them. DEFERRED (only if advanced-GPU-flag coverage is wanted): `execute_llmdbenchmark` flag passthroughs (wva/deep/serviceaccount/release/non_admin/envvarspod/full_infra) — each needs a command policy + `test_command_policy.py`/`test_command_events.py` entry, and the `-d`/`-r` flag collisions need disjoint keys.
+- **Tool review (2026-06-19):** the result tools, `run_shell`, `execute_llmdbenchmark`,
+  `fetch_key_docs`, and `read_repo_doc` each serve a distinct purpose covered by a live-eval
+  flow. Keep them separate. Advanced GPU flag support remains deferred:
+  `wva`, `deep`, `serviceaccount`, `release`, `non_admin`, `envvarspod`, and `full_infra`.
+  Each addition needs a command-policy entry and coverage in `test_command_policy.py`
+  and `test_command_events.py`. The `-d` and `-r` flag collisions need separate keys.
 
 ## Documentation map
 The full docs index lives in **[`README.md`](../README.md)** (every `docs/` page plus the repo-root

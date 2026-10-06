@@ -1,15 +1,14 @@
 # User Guide
 
-This guide is for the person using the agent. You don't need to know the
-`llm-d-benchmark` CLI, the `<spec, harness, workload>` model, or Kubernetes. You describe
-what you want in plain language and the agent does the rest, asking for your approval before
-anything changes your system.
+Use the agent to plan and run benchmarks without learning the `llm-d-benchmark` CLI first.
+Describe your workload and performance targets. The agent checks the environment, proposes
+a plan, and asks for approval before making changes.
 
 For what's under the hood, see [`ARCHITECTURE.md`](../reference/ARCHITECTURE.md).
 
 ## Install & run
 
-Two ways to get the agent up — full detail in [`DEPLOYMENT.md`](DEPLOYMENT.md):
+Choose one of these two installation methods. Full instructions are in [`DEPLOYMENT.md`](DEPLOYMENT.md):
 
 **One command (recommended POC).** Builds the image, deploys to a local
 [kind](https://kind.sigs.k8s.io/) cluster, and opens the chat UI. It auto-installs missing
@@ -28,10 +27,10 @@ cd llm-d-benchmarking-agent-project
 ./scripts/run.sh --open     # syncs the Python venv (uv), ensures a .env, serves http://127.0.0.1:8000
 ```
 
-**Give it an LLM.** The agent runs on the Claude Agent SDK; the easiest auth is your Claude
-Pro/Max plan — no API key, both installers offer to wire it
+**Authentication.** The agent uses the Claude Agent SDK with your Claude
+Pro/Max subscription. Both installers help configure the login without an API key
 (`scripts/install/setup-claude-plan.sh`). Configuration lives in `.env`
-(`LLM_PROVIDER=claude-agent-sdk` is the default) — the full variable table is in
+(`LLM_PROVIDER=claude-agent-sdk` is the default). The full variable table is in
 [`DEPLOYMENT.md`](DEPLOYMENT.md#configuration-env). To walk the whole workflow without
 touching a cluster, set `SIMULATE=1` (read-only commands run for real; mutations no-op).
 
@@ -43,7 +42,7 @@ model download). Open the UI (`http://127.0.0.1:8000`) and type something like:
 
 > Benchmark a small chat model on my laptop.
 
-The agent will walk through, roughly:
+A typical run follows these steps:
 
 1. **Interview you** briefly to pin down the use case and any quality-of-service targets.
 2. **Probe** your environment (read-only, automatic, no prompt): is Docker up? A cluster?
@@ -58,7 +57,7 @@ The agent will walk through, roughly:
 6. **Stand up** the stack, **smoketest** it, then **run** the benchmark (output streams
    live).
 7. **Summarize** the Benchmark Report in plain words: TTFT, inter-token latency, throughput,
-   percentiles — tied back to what you asked for.
+   percentiles, compared with your targets.
 8. **Offer teardown** when you're done.
 
 ## Approvals: what runs automatically vs what asks first
@@ -71,8 +70,7 @@ The agent will walk through, roughly:
   the exact command and waits for you to click Approve (or Reject). If you Reject,
   the agent acknowledges and replans.
 
-Nothing runs off-screen: the one-click Debug view (`>_`) reveals the executed-command trail
-inline in the chat — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md#debug-mode-ui).
+The Debug view (`>_`) shows the executed commands in the chat. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#debug-mode-ui).
 
 ## Reading the results
 
@@ -87,7 +85,7 @@ or estimates metrics. If a report is missing or invalid, it says so plainly. Com
   feel.
 
 If you gave the agent SLO targets (e.g. "p99 TTFT under 500 ms, at least 1000 tok/s"), it
-can tell you whether each run meets the SLOs and give an honest goodput estimate (the
+can tell you whether each run meets the SLOs and give a goodput estimate (the
 fraction of requests that would meet your targets).
 
 ## Things you can ask for
@@ -133,5 +131,5 @@ benchmark keeps running in the background and its result shows up when you retur
 
 ## Want to change how the agent reasons?
 
-Edit the Markdown/YAML under [`knowledge/`](../../knowledge/) — that's where all the agent's
-judgment lives; no code changes needed.
+Edit the Markdown and YAML files under [`knowledge/`](../../knowledge/) to change the
+agent's benchmarking guidance without changing Python code.

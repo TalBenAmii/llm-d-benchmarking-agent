@@ -1,11 +1,10 @@
 # Troubleshooting
 
-A symptom-first guide to common failures: where to look, and how to use the agent's structured
-logs and its readiness/metrics endpoints to diagnose them.
+Start with the health endpoints and logs, then find your symptom below.
 
 ## First moves (always)
 
-1. Hit the health probes.
+1. Check the health endpoints.
    - `GET /healthz` returns `{"status":"ok"}` when the process is live.
    - `GET /readyz` returns 200 when the startup self-check passed, or 503 with structured
      reasons when it did not (workspace writable, provider coherent, repos resolvable, auth
@@ -17,7 +16,7 @@ logs and its readiness/metrics endpoints to diagnose them.
    - one chat across turns: filter on `session_id`
    - one tool's activity: add `tool=<name>`
    - one orchestrated run: filter on `run_id`
-3. Turn up the volume. Set `LOG_LEVEL=DEBUG` for the backend; use `LOG_FORMAT=text` for a
+3. Enable more detailed logs. Set `LOG_LEVEL=DEBUG` for the backend; use `LOG_FORMAT=text` for a
    compact human line (`ts level logger [corr_id] message`) during local dev.
 
 ## Debug mode (UI)
@@ -32,7 +31,7 @@ transcript position on reconnect/resume.
 ## Symptom → what to check
 
 ### The agent connects but never responds / no LLM output
-- Not logged in. The agent runs on the Claude Agent SDK — auth is the logged-in `claude` CLI
+- Not logged in. The agent uses the Claude Agent SDK and authenticates through the `claude` CLI
   (or a `claude setup-token` token), no API key. Run `./scripts/install/setup-claude-plan.sh`.
   Tests script the engine hermetically, so green tests do not imply a working login.
 - Wrong provider. `LLM_PROVIDER` must be a `claude-agent-sdk` alias; anything else fails the
@@ -55,7 +54,7 @@ transcript position on reconnect/resume.
 
 ### "venv not set up" / `llmdbenchmark` not found
 - The benchmark CLI lives in the benchmark repo's own `.venv` built by its `install.sh`.
-  The runner raises `… not found — the benchmark venv is not set up yet (run install.sh first)`.
+  The runner reports that the benchmark virtual environment is missing and asks you to run `install.sh` first.
   Have the agent run the bootstrap (`install.sh --uv`) first, or set up the venv manually.
 
 ### `kind create cluster` fails on a fresh host ("could not find a log line … Multi-User System")
@@ -71,7 +70,7 @@ transcript position on reconnect/resume.
   kind clusters sharing the kernel exhaust root's 128 `fs.inotify.max_user_instances`.
   `kube-proxy` (and `local-path-provisioner`) crash-loop with
   `failed complete: too many open files`; with kube-proxy dead, ClusterIP routing dies, so
-  every in-cluster API client panics on `dial tcp 10.96.0.1:443: i/o timeout` — which mimics
+  every in-cluster API client panics on `dial tcp 10.96.0.1:443: i/o timeout`, which mimics
   the unrelated bridge-iptables wipe. Check `kube-proxy` before touching iptables. Fix: bump
   the limits as above (re-running `install.sh` now re-verifies persistence even when reusing a
   cluster), then delete the crash-looped pods.

@@ -1,12 +1,11 @@
 # Deployment Guide
 
-How to run the agent in each of its two modes: **local** (a laptop / dev box, the
-direct / dev path) and **in-cluster** (a hardened Deployment via Helm; on a local
-`kind` cluster this is the recommended POC path). Plus configuration, secrets, RBAC,
-and observability wiring.
+Run the agent directly on a development machine or deploy it to Kubernetes with Helm.
+The local `kind` deployment is the recommended proof-of-concept setup. This guide covers
+both options, configuration, secrets, RBAC, and monitoring.
 
-Design (thin code, thick agent) → the [root README](../../../README.md); the operational judgment
-behind this deploy lives in [`knowledge/reference/packaging.md`](../../knowledge/reference/packaging.md).
+See the [root README](../../../README.md) for the design overview. Deployment guidance used
+by the agent lives in [`knowledge/reference/packaging.md`](../../knowledge/reference/packaging.md).
 
 ---
 
@@ -52,11 +51,11 @@ uv run uvicorn app.main:app --reload
 | `AGENT_SDK_MODEL` / `AGENT_SDK_EFFORT` | `claude-sonnet-5` / `high` | Model + reasoning effort for the `claude-agent-sdk` route. |
 | `REPOS_DIR` | parent of the project | Where the `llm-d` / `llm-d-benchmark` repos are (or will be cloned). |
 | `WORKSPACE_DIR` | `./workspace` | Runtime scratch (sessions, configs, logs, history). |
-| `HF_TOKEN` | — | Only for gated models on real (non-sim) deploys; backend-only, never echoed. |
+| `HF_TOKEN` | Not set | Only for gated models on real (non-sim) deploys; backend-only, never echoed. |
 | `HOST` / `PORT` | `127.0.0.1` / `8000` | Server bind. |
 | `MAX_CONCURRENT_RUNS` | `2` | Cross-session cap on concurrent mutating runs (`<=0` = unlimited). |
-| `ORCHESTRATOR_IMAGE` | — | Image for orchestrated (K8s Job) runs; empty → `orchestrate_benchmark_run` refuses and the local CLI path is used. |
-| `ORCHESTRATOR_SERVICE_ACCOUNT` | — | SA the orchestrated Jobs run under; empty → namespace default SA. |
+| `ORCHESTRATOR_IMAGE` | Not set | Image for orchestrated (K8s Job) runs; empty → `orchestrate_benchmark_run` refuses and the local CLI path is used. |
+| `ORCHESTRATOR_SERVICE_ACCOUNT` | Not set | SA the orchestrated Jobs run under; empty → namespace default SA. |
 
 > Secrets live only in the backend env and are never sent to the browser or to child
 > processes (the runner scrubs them out).
@@ -107,7 +106,7 @@ capabilities dropped, `RuntimeDefault` seccomp, no baked-in secrets (`.dockerign
 `.env`), pinned kubectl. Prefer pinning by digest in production (below). Chat auth is
 `secret.claudeCodeOauthToken`, a `claude setup-token` subscription token for the
 `claude-agent-sdk` provider (the only supported one; the `claude` CLI is baked into the
-image) — there is no API-key fallback.
+image). There is no API-key fallback.
 
 Key chart values (`deploy/helm/llm-d-benchmarking-agent/values.yaml`):
 
@@ -144,7 +143,7 @@ The tag is convenient but mutable. For reproducible rollouts pin by digest: set
 `orchestrate_benchmark_run` submits a benchmark as a Kubernetes Job and then watches it,
 reads pods, and streams logs, all via `kubectl` (`app/orchestrator/kube.py`). In-cluster
 those calls authenticate as the pod's ServiceAccount, so the chart creates a namespaced
-least-privilege Role (no ClusterRole, no secrets/exec/portforward) — exact rules →
+least-privilege Role (no ClusterRole, no secrets/exec/portforward). For the exact rules, see
 [`CLUSTER_SERVICE_DEPLOY.md`](CLUSTER_SERVICE_DEPLOY.md#security-model).
 
 Set `ORCHESTRATOR_SERVICE_ACCOUNT` (the deploy does this) so the submitted Jobs also run
@@ -169,7 +168,7 @@ then the agent correctly falls back to the local CLI path (`execute_llmdbenchmar
   `deploy/observability/` (`prometheus-scrape.yaml`, `grafana-dashboard.json`).
 - **Live run metrics** (CPU/memory of the model server / harness during a run) come from
   the `observe_run_metrics` tool via `kubectl top`, which needs the in-cluster metrics-server.
-  It is NOT installed by kind or the `cicd/kind` spec; add it to the cluster separately (on
+  It is not installed by kind or the `cicd/kind` spec; add it to the cluster separately (on
   kind, with `--kubelet-insecure-tls`). The agent ships a vetted, approval-gated installer for
   this: `run_shell("install_metrics_server.sh --kubelet-insecure-tls")`. It is per-cluster:
   install once and every run on that cluster gets live stats.

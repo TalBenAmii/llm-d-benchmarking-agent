@@ -12,19 +12,17 @@ Licensed [Apache-2.0](LICENSE).
 
 ## Demo
 
-A 72-second recording of a live session — the real agent plans, deploys, benchmarks, runs a sweep, and
-explains the results. Use the player to pause, seek along the timeline, or enter fullscreen.
+This 72-second session shows the agent planning a run, deploying, benchmarking, running a sweep,
+and explaining the results. Use the player to pause, seek along the timeline, or enter fullscreen.
 In Chrome and Edge, open the player's three-dot menu to change playback speed.
 
 https://github.com/user-attachments/assets/4f913939-811e-42df-a696-f6ed0491da8c
 
-[Download the full-resolution demo (MP4, 72 seconds)](https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/docs/demo/llm-d-demo-live.mp4)
-
 ## Quick start
 
-> **Proof of concept, laptop-first.** The tested path runs the assistant on a local
+> **Proof of concept.** The tested setup runs the assistant on a local
 > [kind](https://kind.sigs.k8s.io/) cluster. A real remote/GPU cluster uses the same deploy
-> but isn't tested yet — see
+> but hasn't been tested yet. See
 > [CLUSTER_SERVICE_DEPLOY.md](llm-d-benchmarking-agent-project/docs/guides/CLUSTER_SERVICE_DEPLOY.md).
 
 One command builds the image, deploys to a local kind cluster, and opens the chat UI:
@@ -34,26 +32,26 @@ bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarkin
 ```
 
 It auto-installs missing prerequisites (docker/kind/kubectl/helm, asks for `sudo`) and
-offers to wire your Claude subscription so chat works. Useful flags: `--no-open`,
+helps you connect your Claude subscription. Useful flags: `--no-open`,
 `--no-build`, `--cluster NAME` (`./install.sh --help` lists the rest). Tear down with
 `kind delete cluster --name bench-agent`.
 
-**No cluster?** Run it straight on your host instead:
+You can also run the app directly on your host:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/scripts/install/install_local.sh)
 cd ~/llm-d-benchmarking-agent/llm-d-benchmarking-agent-project && ./scripts/run.sh --open
 ```
 
-**Give it an LLM.** The engine runs on the Claude Agent SDK, so auth is your Claude
-Pro/Max subscription — no API key. Both installers offer to wire it: a `claude` CLI login
+**Authentication.** The engine uses the Claude Agent SDK with your Claude
+Pro/Max subscription. No API key is needed. Both installers help set up a `claude` CLI login
 locally, or a `claude setup-token` token (`CLAUDE_CODE_OAUTH_TOKEN`) for the in-cluster
 service. To try the whole workflow without touching a cluster, set `SIMULATE=1` in `.env`:
-read-only commands run for real, mutations are announced but no-opped.
+read-only commands still run, while approved changes return simulated results.
 
 ## Use it from Claude Code (MCP)
 
-Prefer the CLI over the web UI? [`llm-d-bench-mcp`](https://github.com/TalBenAmii/llm-d-bench-mcp)
+[`llm-d-bench-mcp`](https://github.com/TalBenAmii/llm-d-bench-mcp)
 exposes the same tools and knowledge as an MCP server. One command installs and registers it
 (the local installer above already does this by default):
 
@@ -61,45 +59,44 @@ exposes the same tools and knowledge as an MCP server. One command installs and 
 bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-bench-mcp/main/scripts/install.sh)
 ```
 
-No API key needed — it authenticates through your `claude` CLI login.
+It authenticates through your `claude` CLI login, without an API key.
 
 ## How a session goes
 
-1. **Interview** — it asks 2–3 questions to pin down your use case and SLOs.
-2. **Probe** — read-only checks of your environment run automatically.
-3. **Plan** — you get a plan card with the exact steps, plus a capacity pre-flight. You approve.
-4. **Run** — deploy → smoketest → benchmark, output streaming live. Every mutating command
-   waits for your click.
-5. **Explain** — it reads the validated report and answers in plain words: *"median TTFT
-   180 ms, p99 320 ms — under your 400 ms target."*
-6. **Teardown** — it offers to clean everything up.
+1. **Interview:** the agent asks two or three questions about your use case and SLOs.
+2. **Probe:** read-only checks of your environment run automatically.
+3. **Plan:** you review the proposed steps and capacity checks, then approve the plan.
+4. **Run:** the agent deploys the stack, runs a smoke test, and starts the benchmark.
+   Output streams live, and commands that change your system wait for approval.
+5. **Explain:** the agent reads the validated report and explains the results, for example:
+   *"Median TTFT was 180 ms and p99 was 320 ms, both under your 400 ms target."*
+6. **Teardown:** it offers to remove the resources created for the run.
 
 Beyond single runs it can compare runs and harnesses, sweep configs to find the best one for
 your SLOs, track trends across sessions, check "will this model fit my GPU?", export
 shareable HTML reports and reproducible provenance bundles, and orchestrate runs as
-Kubernetes Jobs. The full, evidence-backed list is
+Kubernetes Jobs. See the feature list and verification steps in
 [FEATURES.md](llm-d-benchmarking-agent-project/docs/reference/FEATURES.md).
 
 ## How it stays safe
 
-- **Deny-by-default command policy** — the agent's command tools can only run an explicit
+- **Deny-by-default command policy:** the agent's command tools can only run an explicit
   allowlist ([command_policy.yaml](llm-d-benchmarking-agent-project/security/command_policy.yaml)).
-- **Per-action approval** — read-only commands auto-run; every mutating or unknown command
+- **Per-action approval:** read-only commands auto-run; every mutating or unknown command
   shows you the exact command and waits for Approve/Reject. Everything appears in the chat.
-- **Secrets stay server-side** — keys live in the backend `.env`; the browser never sees
+- **Secrets stay server-side:** keys live in the backend `.env`; the browser never sees
   them, and child-process env is scrubbed.
-- **No invented numbers** — results come only from the schema-validated Benchmark Report;
+- **Validated results:** reported metrics come from the schema-validated Benchmark Report;
   if a report is missing or invalid, it says so.
 
 ## Under the hood
 
-**Thin code, thick agent.** The Python is only mechanism (chat UI, agent loop, tools,
-command policy, schema validation). All benchmarking judgment lives in the LLM plus
-editable Markdown/YAML files under
-[`knowledge/`](llm-d-benchmarking-agent-project/knowledge/) — edit those to change the
-agent's behavior without touching code.
+Python handles the chat UI, agent loop, tool execution, command policy, and schema validation.
+The LLM makes benchmarking decisions using the Markdown and YAML files in
+[`knowledge/`](llm-d-benchmarking-agent-project/knowledge/). Edit those files to change its
+guidance without changing the code.
 
-This repo is a monorepo — the project plus read-only upstream repos it reads at runtime:
+The workspace contains the project and the upstream repos it reads at runtime:
 
 ```
 llm-d-benchmarking-agent/
@@ -110,7 +107,7 @@ llm-d-benchmarking-agent/
 └── llm-d-benchmarking-agent-project/ # the project: app code, knowledge, docs, tests
 ```
 
-Verify it hermetically (no key, cluster, or Docker needed):
+Run the deterministic checks without an API key, cluster, or Docker:
 
 ```bash
 cd llm-d-benchmarking-agent-project
@@ -122,11 +119,11 @@ pytest tests/     # the full suite
 
 | Doc | For |
 |---|---|
-| [USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/guides/USER_GUIDE.md) | **User Guide** — install → deploy → configure → run → usage, end-to-end |
+| [USER_GUIDE.md](llm-d-benchmarking-agent-project/docs/guides/USER_GUIDE.md) | Installation, configuration, and running a benchmark |
 | [GPU_CLUSTER_RUNBOOK.md](llm-d-benchmarking-agent-project/docs/guides/GPU_CLUSTER_RUNBOOK.md) | From CPU-sim to a real single-GPU cluster |
 | [DEPLOYMENT.md](llm-d-benchmarking-agent-project/docs/guides/DEPLOYMENT.md) | Local and in-cluster deploy, config, secrets |
-| [ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/reference/ARCHITECTURE.md) | **Developer's Guide** — design, modules, interactions, build tooling |
-| [FEATURES.md](llm-d-benchmarking-agent-project/docs/reference/FEATURES.md) | Everything it can do + how to verify each |
+| [ARCHITECTURE.md](llm-d-benchmarking-agent-project/docs/reference/ARCHITECTURE.md) | Design, modules, interactions, and build tools |
+| [FEATURES.md](llm-d-benchmarking-agent-project/docs/reference/FEATURES.md) | Features and how to verify them |
 
 Full index: [docs/README.md](llm-d-benchmarking-agent-project/docs/README.md).
 

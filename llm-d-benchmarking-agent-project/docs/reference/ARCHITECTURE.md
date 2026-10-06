@@ -1,8 +1,7 @@
 # Architecture
 
-System-design reference for the llm-d Benchmarking Agent (what it is → the
-[root README](../../../README.md)): the layers, data flow, trust boundaries, and the
-invariants that keep the system safe and reliable.
+This guide describes the system layers, data flow, trust boundaries, and validation rules.
+For installation and an overview of the agent, see the [root README](../../../README.md).
 
 ## The two governing principles
 
@@ -20,14 +19,14 @@ Everything below follows from two rules (full statement → [`CLAUDE.md`](../../
 
 ```mermaid
 flowchart TB
-    UI["Browser chat UI<br/>app/ui — HTML/JS/CSS"] -- "WebSocket /ws" --> SM
+    UI["Browser chat UI<br/>app/ui: HTML/JS/CSS"] -- "WebSocket /ws" --> SM
 
-    subgraph BE["FastAPI backend (app/main.py) — security + secrets boundary"]
+    subgraph BE["FastAPI backend (app/main.py): security + secrets boundary"]
         SM["SessionManager → Session"] --> ENG["SdkNativeEngine (app/agent/engine.py)<br/>system prompt = role + rules + knowledge/ + live catalog"]
         ENG --> SDK["Claude Agent SDK / CLI<br/>model → tool loop"]
         SDK -- "tool calls (in-process MCP)" --> REG["Tool registry (app/tools/registry.py)<br/>gate: schema-validated args"]
         REG --> CTX["ToolContext.run_command / run_readonly"]
-        CTX --> POL["Command policy — deny-by-default<br/>mutating → human approval"]
+        CTX --> POL["Command policy: deny-by-default<br/>mutating → human approval"]
         POL --> RUN["CommandRunner<br/>argv list, shell=False, env scrubbed"]
     end
 
@@ -199,11 +198,11 @@ the namespace with the Baseline Pod Security Standard, so a mistaken/crafted Job
 | Gate | Where | Enforces |
 |---|---|---|
 | **a. Tool args** | `tools/registry.py` `dispatch()` | The LLM can only act through schema-validated tool calls; bad args return errors to the model. |
-| **b. SessionPlan** | `validation/session_plan.py` + `tools/setup/plan.py` | A structured plan whose spec/harness/workload are checked against the live catalog (the workload must belong to *that* harness) and whose namespace is RFC1123. A **human checkpoint**, not a precondition — see below. |
+| **b. SessionPlan** | `validation/session_plan.py` + `tools/setup/plan.py` | A structured plan whose spec/harness/workload are checked against the live catalog (the workload must belong to *that* harness) and whose namespace is RFC1123. A **human checkpoint**, not an infrastructure precondition. See below. |
 | **c. Generated config** | `validation/doe.py` + `validate_structure()` in `tools/run/doe.py` | The DoE cross-product is pure (no benchmarking judgment); the emitted YAML is structurally validated against the repo's format. |
 | **d. Result schema** | `validation/report.py` | Results are parsed from a validated Benchmark Report v0.2 object, never scraped from logs. |
 
-**Not gates** — asked for by the prompt and the tool descriptions, but enforced by no code:
+**Prompt conventions:** requested by the prompt and tool descriptions, but not enforced by code:
 - **Config preview via the CLI's own `--dry-run`/`plan`.** `config_artifact.py` states outright that deep
   `--dry-run` validation is deferred. Older docs listed this as gate (c); they were wrong.
 - **"Plan before mutation."** Nothing keys off `session.approved_plan`. What actually stops an unapproved

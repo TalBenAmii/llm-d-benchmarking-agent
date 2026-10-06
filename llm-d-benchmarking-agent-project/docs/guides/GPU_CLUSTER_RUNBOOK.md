@@ -132,7 +132,7 @@ Judgment about which knobs lives in `knowledge/vllm_overrides.md`; field default
   "model.gpuMemoryUtilization": 0.8,      // → --gpu-memory-utilization (vLLM reserves this up front)
   "vllmCommon.tensorParallelism": 1,      // → --tensor-parallel-size 1 (single GPU)
   "storage.modelPvc.storageClassName": "standard",  // minikube's default hostpath class
-  "storage.modelPvc.size":      "10Gi"    // a 0.5B model is ~1–2 GB; 10Gi is ample
+  "storage.modelPvc.size":      "10Gi"    // a 0.5B model is ~1-2 GB; 10Gi is ample
 }
 ```
 
@@ -147,10 +147,10 @@ Notes:
 
   | Model | Params | Fits 8 GB? | suggested `maxModelLen` |
   |---|---|---|---|
-  | `Qwen/Qwen2.5-0.5B-Instruct` | 0.5B | ✅ safe (start here) | 2048–4096 |
+  | `Qwen/Qwen2.5-0.5B-Instruct` | 0.5B | ✅ safe (start here) | 2048-4096 |
   | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 1.1B | ✅ | 2048 |
-  | `Qwen/Qwen2.5-1.5B-Instruct` | 1.5B | ✅ tight (drop util to ~0.7) | 1024–2048 |
-  | `Qwen/Qwen2.5-3B-Instruct` | 3B | ⚠️ risky on WSL2 | 512–1024 |
+  | `Qwen/Qwen2.5-1.5B-Instruct` | 1.5B | ✅ tight (drop util to ~0.7) | 1024-2048 |
+  | `Qwen/Qwen2.5-3B-Instruct` | 3B | ⚠️ risky on WSL2 | 512-1024 |
   | 7B and up | ≥7B | ❌ won't fit unquantized | use `SIMULATE=1` |
 
   Serve fp16/bf16 to start; skip FP8 on the 40-series (Ada lacks the datacenter FP8 path) and validate fp16/bf16 first even on the 50-series (sm_120).
@@ -203,7 +203,7 @@ deploy / serve / benchmark / observe loop real. The table is the authoritative c
 | `check_capacity` | ✅ real | real GPU-memory sizing instead of the CPU floor |
 | `list_catalog`, `read_knowledge`, `search_knowledge`, `read_repo_doc` | ✅ always | read-only, GPU-independent |
 | `propose_session_plan`, `write_and_validate_config`, `convert_guide_to_scenario`, `set_vllm_flags` | ✅ real | authoring + the GPU SessionPlan |
-| `execute_llmdbenchmark` standup / smoketest / run / teardown | ✅ real vLLM | the headline upgrade: real inference on the tiny model |
+| `execute_llmdbenchmark` standup / smoketest / run / teardown | ✅ real vLLM | real inference on the small model |
 | `orchestrate_benchmark_run` (K8s Job) | ✅ real | runs as a Job on minikube |
 | `locate_and_parse_report`, `analyze_results` (goodput / SLO / Pareto) | ✅ real | over a real report |
 | `compare_reports`, `compare_harness_runs` | ✅ real | run twice / two harnesses, then compare |

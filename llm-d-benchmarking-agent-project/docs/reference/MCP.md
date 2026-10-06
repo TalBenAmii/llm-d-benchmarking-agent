@@ -4,7 +4,7 @@ The standalone MCP server (`llm-d-bench`) that re-exposes this agent's tools, kn
 workflow to external MCP clients (Claude Code, Claude Desktop, Cursor, …) now lives in its own
 repository:
 
-**→ [github.com/TalBenAmii/llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)**
+[TalBenAmii/llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)
 
 Install it with one command (it clones this engine repo at latest `main`, builds a venv, and
 registers the server with Claude Code):
@@ -18,6 +18,6 @@ This engine's own `./scripts/install/install_local.sh` now sets the MCP server u
 web UI into the shared venv too (`cd <engine> && ./scripts/run.sh --open` → http://127.0.0.1:8000),
 so either installer leaves you with both front-ends.
 
-That repo carries the full tool/prompt/resource list, manual-config block, security model, and
-design of record. The server consumes this project as an editable install; the `app.*` import
+That repo documents the tools, prompts, resources, manual configuration, security model, and
+design. The server uses this project as an editable install; the `app.*` import
 surface it relies on is guarded here by `tests/platform/test_mcp_import_surface.py`.

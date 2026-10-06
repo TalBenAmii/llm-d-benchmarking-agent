@@ -1,11 +1,8 @@
-# llm-d Benchmarking Agent — glossary
+# llm-d Benchmarking Agent glossary
 
-> This is the project's ubiquitous-language glossary (mattpocock CONTEXT format):
-> canonical names for domain concepts, and the wrong words to avoid. It is a
-> glossary only: no implementation details, no status, no decisions (those go in code,
-> `docs/`, or ADRs). Keep definitions to 1-2 sentences. Update it the moment a term is
-> coined or sharpened. Architecture/refactor vocabulary (module, interface, depth, seam,
-> adapter, leverage, locality) is out of scope here.
+This glossary defines the project's domain terms and notes names that could cause confusion.
+Keep definitions brief. Put implementation details and design decisions in the relevant
+reference documents.
 
 ## Language
 
@@ -16,7 +13,7 @@ The governing rule that Python is mechanism only (UI, agent loop, tools, command
 _Avoid_: "business logic in code", "config-driven" (it's LLM-reasoned, not a config switch), "rules engine".
 
 **Determinism gate**:
-One of four **code-enforced** validation boundaries that constrain the free-form LLM so the system stays reproducible: (a) tool-arg schema validation (`registry.py::dispatch`), (b) SessionPlan approval (`session_plan.py::validate_plan` + `plan.py`), (c) generated-config structural validation (`doe.py` + the artifact shape-check in `config_artifact.py`), (d) result parsing from the validated report schema (`report.py::validate_report`). The CLI's own `--dry-run`/`plan` preview is an agent-behaviour convention, NOT a gate (see `app/validation/CLAUDE.md`).
+One of four **code-enforced** validation boundaries that constrain the free-form LLM so the system stays reproducible: (a) tool-arg schema validation (`registry.py::dispatch`), (b) SessionPlan approval (`session_plan.py::validate_plan` + `plan.py`), (c) generated-config structural validation (`doe.py` + the artifact shape-check in `config_artifact.py`), (d) result parsing from the validated report schema (`report.py::validate_report`). The CLI's own `--dry-run`/`plan` preview is an agent-behaviour convention, not a gate (see `app/validation/CLAUDE.md`).
 _Avoid_: "guardrail", "check", "assertion" (these are the named, enumerated gates, not ad-hoc checks).
 
 **knowledge/**:
@@ -74,7 +71,7 @@ The traffic shape a harness generates: concurrency, token-length distribution, r
 _Avoid_: "load", "test case", "scenario", "config"; "workload" and "profile" are the canonical pair.
 
 **Simulate Mode**:
-A dry-run toggle (`SIMULATE=1`) where the agent walks the whole workflow, split by command kind: READ-ONLY commands run for real (genuine context); MUTATING actions are **still approval-gated**, then no-opped to synthetic success, with a synthetic report — and SIMULATE results must carry an unmistakable disclaimer wherever they appear. (Unattended walks use the session's auto-approve toggle.)
+With `SIMULATE=1`, read-only commands execute normally, while approved mutations return synthetic results without executing. Reports are synthetic and must be clearly labeled; unattended runs use the session's auto-approve toggle.
 _Avoid_: "dry-run" (that's the CLI's `--dry-run` preview, a different mechanism), "mock mode", "test mode".
 
 ### Benchmark concepts
@@ -88,7 +85,7 @@ Latency until the first output token appears: the "responsiveness" a chat user f
 _Avoid_: "first-token latency" is acceptable; avoid "response time", "latency" unqualified.
 
 **TPOT / ITL**:
-Time per output token / inter-token latency: the streaming pace after the first token. Drives perceived "tokens/sec per user". Read the per-entry `units` — never assume `s/token`.
+Time per output token / inter-token latency: the streaming pace after the first token. Drives perceived "tokens/sec per user". Read the per-entry `units`; do not assume `s/token`.
 _Avoid_: conflating with TTFT; "generation speed", "throughput" (throughput is system-wide).
 
 **goodput**:

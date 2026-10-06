@@ -1,8 +1,7 @@
 # Interactive test guide: drive every feature and flow by hand (real LLM)
 
-> A follow-along runbook for manually exercising every feature in this app with a real LLM
-> driving the agent. Companion to [`FEATURES.md`](../reference/FEATURES.md) (the inventory); this is the
-> do-it-yourself script. Check each box as you go.
+> Use this guide to test the app manually with a live LLM. It complements the feature
+> inventory in [`FEATURES.md`](../reference/FEATURES.md). Check each box as you complete it.
 >
 > A real LLM means the agent's judgment is the live model, not a scripted transcript. Command
 > execution is a separate axis: `SIMULATE=1` (mutations no-op, read-only run for real, no
@@ -17,7 +16,7 @@ execution needs kind. So run the guide in two passes:
 
 - Track A: real LLM + `SIMULATE=1` (no cluster). Covers the entire agent flow, DOE
   generation + sweep wiring, all HTTP/ops/security/observability surfaces, the whole chat UI.
-  The agent drives everything; commands are no-op'd and a synthetic report is produced.
+  Read-only commands still run; approved mutations return simulated results and a synthetic report.
   Do this first: it exercises about 90% of the app.
 - Track B: real LLM + `SIMULATE=0` (live kind cluster). Only for the things that must
   truly execute: real standup/run/teardown, real Benchmark Report numbers, the orchestrator
@@ -195,7 +194,7 @@ After a run/sweep exists in the session:
 ## 6. Security & trust surfaces *(§8)*
 
 The command policy/approval behavior you already saw in §3. This is a single-user in-cluster service
-with no Bearer auth or rate limiting — CORS is the one optional trust control, and it needs a
+with no Bearer auth or rate limiting. CORS is optional and needs a
 restart with an env flag; easiest in a separate instance so your main one stays usable:
 
 ```bash
@@ -224,7 +223,7 @@ Stop this instance when done (`Ctrl-C`).
   cancel it (or use the cancel control) → `cancel_run` frees the concurrency slot and reaps
   the subprocess/Job. *(§9 run lifecycle)*
 - [ ] **[B]** `observe_run_metrics`: ask **"show live cluster resource usage"** during a run
-  → `kubectl top` output (needs the in-cluster metrics-server, which kind / `cicd/kind` do NOT
+  → `kubectl top` output (needs the in-cluster metrics-server, which kind / `cicd/kind` do not
   install; add it separately). *(§7)*
 - [ ] **[A/B]** Workspace GC: the startup `retention.gc` log line proves the pass ran;
   caps are honored and an active session is never pruned. *(§9)*
@@ -297,11 +296,11 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
   LLM_EVAL_LIVE=1 .venv/bin/python -m pytest tests/eval/live/test_flows_live.py -v
   # or: make validate-live
   ```
-  Treat failures as signal (a prompt/knowledge gap or a genuinely wrong choice), not a hard
+  Treat failures as signal (a prompt/knowledge gap or a wrong choice), not a hard
   build break; a live model is nondeterministic.
 
 > The live eval covers the deploy/benchmark vertical (§3) plus tool-choice flows for the other
-> surfaces (DoE/sweep, analysis, history, orchestrator, lifecycle) — the full flow inventory is
+> features (DoE/sweep, analysis, history, orchestrator, lifecycle). The full flow inventory is
 > `tests/flows/flows.py`; the harness is [`VALIDATION.md`](../reference/VALIDATION.md). All run in
 > the same hermetic sandbox as §3 (they score the model's choice, not real numbers), and each is
 > replayed deterministically by `make test`.
@@ -314,7 +313,7 @@ make flows           # hermetic walk of the whole agent flow (scripted provider)
 |---|---|
 | §2 Core agent workflow | §3 |
 | §3 Chat UI | §2, §3 |
-| §4 The agent tools | §3–§5, §8 (each renders as a card) |
+| §4 The agent tools | §3-§5, §8 (each renders as a card) |
 | §5 Orchestrator | §8 (Track B) / hermetic fallback |
 | §6 Analysis & history | §4, §5 |
 | §7 Observability | §1, §7 |

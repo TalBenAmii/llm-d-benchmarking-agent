@@ -5,13 +5,13 @@ A local test adapter that deploys the agent as a Kubernetes service onto a throw
 (`scripts/install/install_service.sh`) + the project Helm chart, and asserts the application
 fully works end to end.
 
-> Test scaffolding only — never ships in the product image; this adapter imports nothing from
+> This test harness is excluded from the product image and imports nothing from
 > `app/`. Full boundary statement + the test that enforces it:
 > [`../local-cluster/README.md`](../local-cluster/README.md#product-safety-how-we-keep-this-out-of-the-shipped-artifact).
 
 ## What it does
 
-`run.sh` is the truth; in short it:
+`run.sh` performs these steps:
 
 - Preflights the prerequisite tools (below); reuses a local `llm-d-benchmarking-agent:0.1.0`
   image or builds it under a hard timeout (`--no-build` fails fast instead).
@@ -20,25 +20,25 @@ fully works end to end.
 - Deploys via the real `scripts/install/install_service.sh` (`--image-pull-policy Never`,
   `--context kind-csvc-sim`); the installer owns provider selection from the auth flag it is
   handed (OAuth token → `claude-agent-sdk`, API key → `anthropic`, none → keyless
-  `claude-agent-sdk` with chat disabled so `/readyz` still goes green) — no `helm` bypass.
+  `claude-agent-sdk` with chat disabled so `/readyz` still passes). It uses the installer rather than invoking Helm directly.
 - Waits for rollout, port-forwards, polls `/healthz` (bounded retry), runs the assertions below
   (each printed `PASS`/`FAIL` with a final summary), and tears down on exit (unless `--keep`).
 
 ## Prerequisites
 
 - `docker` (daemon running), `kind`, `kubectl`, `helm`, `curl`, GNU `timeout` (coreutils) on
-  `PATH`; disk/RAM for the ~1GB full-bake image and a single-node kind cluster.
+  `PATH`; disk/RAM for the ~1GB bundled image and a single-node kind cluster.
 - `python3` (stdlib only) for the live-chat WebSocket round-trip; if absent, the chat check is
   approximated (asserts `/api/provider` shows the authed provider built + ready) and clearly logged.
-- Optional auth — any one enables the live-chat check (skipped if none). PRIMARY: a Claude
+- Optional authentication enables the live-chat check (skipped if none). primary: a Claude
   subscription OAuth token from `claude setup-token` (`--oauth-token` / `$CLAUDE_CODE_OAUTH_TOKEN` /
-  a project `.env` the script reads) → deploys `claude-agent-sdk`. FALLBACK: an Anthropic API key
+  a project `.env` the script reads) → deploys `claude-agent-sdk`. fallback: an Anthropic API key
   (`--anthropic-key` / `$ANTHROPIC_API_KEY` / `.env`) → deploys `anthropic`.
 
 ## How to run
 
 ```bash
-# From the project root (or anywhere — the script resolves its own paths):
+# From the project root (the script resolves its own paths):
 harnesses/cluster-service-sim/run.sh                 # build/reuse image, deploy, assert, tear down
 harnesses/cluster-service-sim/run.sh --keep          # leave the cluster up for inspection
 harnesses/cluster-service-sim/run.sh --no-build      # require the image to already exist locally
@@ -71,7 +71,7 @@ bash fresh-env/run-app.sh --with-runtime   # throwaway 'kind-fresh' distro WITH 
 ```
 
 (`helm` comes from the agent's own `install_local.sh` during setup; if it's not on `PATH` in the
-distro, install it first.) Then run the adapter inside the distro — it deploys its own
+distro, install it first.) Then run the adapter inside the distro. It deploys its own
 cluster-service copy, independent of the local `uvicorn` app `run-app.sh` also starts:
 
 ```bash
@@ -81,7 +81,7 @@ wsl.exe -d kind-fresh -u root -- bash -lc \
 
 ## Self-terminating by design
 
-The maintainer's hard requirement is that this never wedges:
+Timeouts and cleanup keep a stalled run from leaving resources behind:
 
 - Every wait is bounded: `--timeout`/`--wait` flags everywhere, `timeout`-wrapped
   builds/loads/execs, a fixed-count curl retry (never `while true`), and the WebSocket probe
@@ -94,7 +94,7 @@ The maintainer's hard requirement is that this never wedges:
 ## Troubleshooting
 
 - Deploy/rollout/health failures print a best-effort cluster diagnostics dump (pods, recent
-  events, describe, logs) before teardown; re-run with `--keep` to poke at the live cluster.
+  events, describe, logs) before teardown; re-run with `--keep` to inspect the live cluster.
 - kind + WSL networking: a Docker/WSL restart can wipe the kind bridge's iptables `FORWARD`
   rules. This adapter avoids in-cluster image pulls (`kind load` + `pullPolicy=Never`), but see
   the project's Docker/WSL setup notes if `kind create` itself struggles.

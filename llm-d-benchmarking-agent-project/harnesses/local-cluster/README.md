@@ -1,10 +1,10 @@
-# Local mock-GPU cluster harness (DEBUG-ONLY)
+# Local mock-GPU cluster harness (DEBUG-only)
 
 This directory lets you exercise the agent's multi-GPU orchestration and scheduling paths on
 your laptop with no real GPUs and no cloud spend, by standing up a real Kubernetes cluster
 that advertises fake `nvidia.com/gpu` resources.
 
-> This is debugging infrastructure, NOT part of the product. Nothing here is imported by
+> This is debugging infrastructure, not part of the product. Nothing here is imported by
 > `app/`, referenced by the Helm chart, or baked into the container image. See
 > [Product safety](#product-safety-how-we-keep-this-out-of-the-shipped-artifact).
 
@@ -15,9 +15,9 @@ The agent learns about GPUs only from what the cluster advertises as allocatable
 `scheduling.gpu_count` becomes a pod `resources.limits["nvidia.com/gpu"]`, so a node that
 claims to have GPUs is indistinguishable from a real one, and every `Scheduling` field
 (GPU count/resource/type-label, node selector, tolerations, anti-affinity, topology spread)
-gets genuinely exercised against the real K8s scheduler.
+is exercised against the Kubernetes scheduler.
 
-## What it does and does NOT give you
+## What it does and does not give you
 
 | Goal | This harness? |
 |---|---|
@@ -47,7 +47,7 @@ cd harnesses/local-cluster
 
 # kind mode: cluster + fake GPUs on every node
 ./setup.sh                       # multi-node, 4 fake GPUs each
-./setup.sh --single-node         # 1-node cluster — USE THIS ON WSL2 (see caveat below)
+./setup.sh --single-node         # 1-node cluster; use on WSL2 (see caveat below)
 ./setup.sh --gpus 8              # 8 fake GPUs per node
 kubectl get nodes -o custom-columns=NODE:.metadata.name,GPU:.status.capacity.'nvidia\.com/gpu'
 
@@ -65,7 +65,7 @@ Requirements: `kubectl` + `kind` (kind mode) on PATH; an internet connection the
 
 > WSL2 caveat: multi-node real-kubelet kind does not come up on WSL2 (workers fail to join:
 > `kubelet not healthy` / cgroup limitation; the control-plane is fine). Use `--single-node`
-> there — one node still proves GPU-resource scheduling end-to-end (Jobs request
+> there. One node still verifies GPU-resource scheduling end-to-end (Jobs request
 > `nvidia.com/gpu`, schedule onto the fake-GPU node, run, complete). For cross-node placement
 > (anti-affinity / topology spread) on WSL2, use `--mode kwok` (faked nodes, so no real report).
 
@@ -75,7 +75,7 @@ The product is exactly what the `Dockerfile` COPYs (`app/ security/ knowledge/ s
 metadata files) plus the `deploy/` charts; `harnesses/` lives outside that set and
 `.dockerignore` excludes it from the build context. `tests/platform/test_product_boundary.py`
 turns the boundary into a checked invariant (the COPY set never names `harnesses/`, the exclusion
-holds, no module under `app/` imports it) — wiring a harness into the product fails CI loudly.
+holds, and no module under `app/` imports it). Adding a harness to the product fails CI.
 The fake-GPU mechanisms are upstream (kind node PATCH, kwok): nothing to maintain inside the
 product, and the agent drives the mock cluster unchanged because it can't tell fake GPUs from
 real ones.
@@ -87,6 +87,6 @@ them here as fixtures and feed them to the agent at runtime via
 ## Related
 
 - `docs/guides/GPU_CLUSTER_RUNBOOK.md`: the real single-GPU path (your RTX 4060; real vLLM, real
-  numbers, one replica) — this harness is its mock multi-GPU counterpart.
+  numbers, one replica). This harness provides the corresponding mock multi-GPU setup.
 - `app/orchestrator/job.py` (`Scheduling`: how `gpu_count` / affinity / tolerations become a
   manifest); `app/tools/run/orchestrate.py` (`orchestrate_sweep`).

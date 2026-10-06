@@ -20,7 +20,7 @@ the LLM as JSON Schema); the registry and descriptions live in
 | `GET` | `/metrics` | Prometheus text exposition of the agent + orchestrator metrics (content-type `text/plain; version=0.0.4`). Scrape target. |
 | `GET` | `/api/provider` | The active LLM provider + model, for the composer badge. Includes `switchable` (true only for the agent-SDK provider), the current `effort`, and the switchable `models` list (`{id,label,efforts}` from `app/llm/model_catalog.py`) the picker offers. |
 | `GET` | `/api/sessions` | Recent chats for the sidebar (summaries, newest first). |
-| `GET` | `/api/sessions/running` | Ids of the chats with a turn in flight right now — the sidebar's per-conversation busy dots (the WebSocket only streams the attached session, so this is how a *background* chat's running state reaches the client). A chat parked at an approval gate is excluded (it is idle awaiting the user). In-memory, no disk read. Returns `{running: [id, …]}`. |
+| `GET` | `/api/sessions/running` | IDs of chats with an active turn. The sidebar uses this endpoint to show busy indicators for background chats, since the WebSocket streams only the attached session. A chat parked at an approval gate is excluded (it is idle awaiting the user). In-memory, no disk read. Returns `{running: [id, …]}`. |
 | `DELETE` | `/api/sessions/{id}` | Delete a saved chat; `404` if unknown. |
 | `DELETE` | `/api/namespaces/{namespace}` | Delete a whole sidebar folder: every chat in one namespace at once (the `no_namespace` sentinel removes chats with no namespace). Returns `{deleted, count}`; `404` if the folder is empty. |
 | `GET` | `/api/sessions/{id}/artifact?path=` | Serve one image artifact (e.g. a run's latency/throughput PNG) from a session's gitignored workspace dir. Read-only, image suffixes only, path hardened against `..` traversal. |
@@ -28,13 +28,13 @@ the LLM as JSON Schema); the registry and descriptions live in
 | `GET` | `/api/history/trend?metric=&tag=&model=` | Time-series of one metric across stored results (values plus the metric's better-direction; no verdict). |
 | `GET` | `/api/sessions/{id}/bundle/{bundle_id}` | One reproducibility provenance bundle's JSON (for the UI's Reproduce / Export affordances). Path hardened against `..` traversal in either id. |
 | `GET` | `/api/sessions/{id}/bundle/{bundle_id}/report-card.html` | Download a self-contained HTML report card for a provenance bundle (results + full provenance + copy-paste command; zero external assets). `Content-Disposition: attachment`. |
-| `POST` | `/api/sessions/{id}/share` | Mint a read-only public share link: an immutable snapshot taken now (a still-pending approval gate is filtered out). Returns `{token, url}` — absolute when `SHARE_BASE_URL` is set, else a relative `/share/{token}`. `404` unknown chat, `400` nothing to share yet. |
+| `POST` | `/api/sessions/{id}/share` | Create a read-only public share link: an immutable snapshot taken now (a still-pending approval gate is filtered out). Returns `{token, url}`. The URL is absolute when `SHARE_BASE_URL` is set, else a relative `/share/{token}`. `404` unknown chat, `400` nothing to share yet. |
 | `GET` | `/api/share/{token}` | Public read-only transcript snapshot (`{title, created_at, shared_at, items, usage}`; owning session id withheld). The unguessable token is the credential. `404` malformed/unknown/revoked token. |
 | `GET` | `/share/{token}` | Public read-only viewer page: the SPA shell; the client fetches `/api/share/{token}` and renders read-only (no WebSocket, composer, or sidebar). |
 | `GET` | `/api/share/{token}/page.html` | Self-contained offline `.html` export (attachment): the SPA + frozen snapshot in one dependency-free file (no external assets or network). `404` malformed/unknown/revoked token. |
 | `DELETE` | `/api/share/{token}` | Revoke a share link (delete its snapshot). Returns `{deleted, token}`. `404` if already gone. |
 
-> **Sharing off-host:** prefer the self-contained `.html` export (`GET /api/share/{token}/page.html`) — host or send the file, the agent is never reachable. Alternatively expose the live app (e.g. `cloudflared tunnel --url http://localhost:8000`, or set `SHARE_BASE_URL` for absolute links) — but the service has no Bearer auth, so a public URL exposes the whole agent.
+> **Sharing off-host:** prefer the self-contained `.html` export (`GET /api/share/{token}/page.html`) to share the file without exposing the running agent. Alternatively expose the live app (e.g. `cloudflared tunnel --url http://localhost:8000`, or set `SHARE_BASE_URL` for absolute links) but the service has no Bearer auth, so a public URL exposes the whole agent.
 
 ## WebSocket `/ws`
 
@@ -55,7 +55,7 @@ continues live, rather than waiting blind for only the final result.
 
 | Event | Payload | Meaning |
 |---|---|---|
-| `ready` | `{session_id, resumed, running, running_elapsed_ms, resume:{incremental,cur_seq}, usage, context_window, auto_approve, model_override, effort_override}` | Connection established; seeds THIS chat's per-session state on connect/reload/switch. `running`+`running_elapsed_ms` flag and time a still-in-flight background turn; `resume.incremental` says the client's cached view was patched (vs. a full `history` rebuild); `usage`+`context_window` re-seed the token/context meters; `auto_approve` re-seeds the toggle; `model_override`/`effort_override` echo the picker's per-chat pick (each may be `null`). |
+| `ready` | `{session_id, resumed, running, running_elapsed_ms, resume:{incremental,cur_seq}, usage, context_window, auto_approve, model_override, effort_override}` | Connection established; seeds this chat's per-session state on connect/reload/switch. `running`+`running_elapsed_ms` flag and time a still-in-flight background turn; `resume.incremental` says the client's cached view was patched (vs. a full `history` rebuild); `usage`+`context_window` re-seed the token/context meters; `auto_approve` re-seeds the toggle; `model_override`/`effort_override` echo the picker's per-chat pick (each may be `null`). |
 | `history` | `{items, commands}` | On resume: the transcript plus the executed-command trail to replay. |
 | `assistant_text` | `{text}` | A chat message from the agent. |
 | `tool_call` | `{id, name, input}` | The agent invoked a tool. |
