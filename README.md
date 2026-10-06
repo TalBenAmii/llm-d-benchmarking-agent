@@ -12,10 +12,12 @@ Licensed [Apache-2.0](LICENSE).
 
 ## Demo
 
-A 3-minute live session — the real agent plans, deploys, benchmarks, runs a sweep, and
-explains the results. Click to watch:
+A 72-second recording of a live session — the real agent plans, deploys, benchmarks, runs a sweep, and
+explains the results. The preview below plays automatically.
 
-[![Watch the demo (3 min)](llm-d-benchmarking-agent-project/docs/demo/llm-d-demo-live-poster.png)](llm-d-benchmarking-agent-project/docs/demo/llm-d-demo-live.mp4)
+![Animated demo: the agent plans, deploys, benchmarks, runs a sweep, and explains the results](llm-d-benchmarking-agent-project/docs/demo/llm-d-demo-live-preview.gif)
+
+[Download the full-resolution demo (MP4, 72 seconds)](https://raw.githubusercontent.com/TalBenAmii/llm-d-benchmarking-agent/main/llm-d-benchmarking-agent-project/docs/demo/llm-d-demo-live.mp4)
 
 ## Quick start
 
