@@ -46,3 +46,11 @@ def test_all_key_docs_resolve_to_real_files(skills_ctx):
     unresolved = [d["path"] for d in res["docs"] if not d.get("found")]
     assert not unresolved, f"key docs that did not resolve to a real file: {unresolved}"
     assert res["found_count"] == len(res["docs"])
+
+
+def test_curated_workload_profile_paths_resolve(skills_ctx):
+    path = get_settings().knowledge_dir / "reference/key_docs.yaml"
+    entries = yaml.safe_load(path.read_text())["workload_profiles"]["files"]
+    for entry in entries:
+        result = knowledge_access.read_repo_doc(skills_ctx, path=entry["path"], max_bytes=200)
+        assert result["content"], entry["path"]

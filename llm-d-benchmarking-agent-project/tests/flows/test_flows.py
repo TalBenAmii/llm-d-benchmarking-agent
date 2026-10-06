@@ -8,8 +8,6 @@ against the live catalog.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from app.config import get_settings
@@ -21,11 +19,10 @@ from .harness import diff_significant, gating_problems, run_flow
 
 _FLOW_IDS = [f.name for f in ALL_FLOWS]
 
-# The benchmark repo's canonical on-disk location (sibling of this project) — used ONLY by
-# the drift guard. We resolve it directly rather than via settings, because settings'
-# repos_dir can be misconfigured (e.g. a blank REPOS_DIR resolving to '.'), which would
-# make the guard silently skip and stop protecting us.
-_BENCH_REPO = Path(__file__).resolve().parents[2].parent / "llm-d-benchmark"
+# Use the same repo as the runtime and other integration guards. Settings now
+# normalizes blank REPOS_DIR; hardcoding the sibling silently checked the wrong
+# version when CI or an isolated validation explicitly selected pinned repos.
+_BENCH_REPO = get_settings().bench_repo
 
 
 @pytest.mark.parametrize("flow", ALL_FLOWS, ids=_FLOW_IDS)

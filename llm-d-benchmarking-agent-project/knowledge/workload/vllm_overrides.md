@@ -8,8 +8,8 @@ affinity), or a storage / network resource request.
 
 The **mechanism** is one tool — `write_and_validate_config(artifact_type="scenario", …)`. It
 deep-merges the per-knob OVERRIDES you supply onto a minimal `scenario: [ {name, …} ]`
-skeleton, SHAPE-validates the knobs against the repo's own scenario examples (read live, so
-it can never drift from upstream), and writes the file into the **session workspace only** —
+skeleton, SHAPE-validates the knobs against the repo's live scenario examples and defaults,
+and writes the file into the **session workspace only** —
 never into the read-only repos. The **judgment** — *which* knobs to set, and to what — is
 here. There is no knob list hardcoded in Python; this guide is the source of that decision.
 
@@ -44,12 +44,17 @@ thing you feed to `--spec` to gate the scenario (next section); you never hand-b
   legal scenario field with its default (`vllmCommon.*`, `affinity`, `routing.servicePort`,
   `decode`/`prefill` per-section overrides, `schedulerName`, …).
 - `list_catalog(kinds=["scenarios"])` then `read_repo_doc` a near match (e.g.
-  `config/scenarios/guides/wide-ep-lws.yaml` shows `schedulerName` + `vllmCommon.networkResource`;
+  `config/scenarios/guides/wide-ep.yaml` shows `schedulerName` + `vllmCommon.networkResource`;
   `config/scenarios/guides/workload-autoscaling.yaml` shows `vllmCommon.kvTransfer.*`;
   `config/scenarios/examples/gpu.yaml` shows `vllmCommon.flags.*` and `affinity.*`).
 
-The tool refuses any top-level scenario-item key the repo's examples don't use, so a typo or
-a stale field name fails fast (no file written) and you can self-correct.
+Current scenarios group shared settings under `common` and method-specific sections under
+`modelservice`. The upstream renderer also accepts the flat spellings shown above. When
+both spellings occur, nested values win. Read the selected scenario before editing it.
+
+The tool checks top-level keys against both live examples and defaults. A key absent from
+both is refused, so a typo fails fast (no file written) and you can self-correct. This is a
+structural check; the CLI preview below checks the rendered configuration.
 
 ## Then GATE it on the CLI's own determinism check (required)
 

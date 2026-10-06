@@ -92,7 +92,7 @@ well_lit_paths:
       decodes — improving throughput-per-GPU and QoS stability for medium/large models. This
       is the scenario to benchmark for long-context RAG and large models.
     also_consider:
-      - guides/wide-ep-lws  # very large Mixture-of-Experts models needing multi-node EP/DP
+      - guides/wide-ep  # very large Mixture-of-Experts models needing multi-node EP/DP
     benchmark_workloads:
       # guide_pd-disaggregation_* exercise the P/D deploy (FIXED-shape P/D stress, not retrieved-context RAG)
       - guide_pd-disaggregation_1.yaml
@@ -242,12 +242,12 @@ well_lit_paths:
     also_consider:
       - guides/optimized-baseline  # the steady-state routing foundation autoscaling sits on
     benchmark_workloads:
-      - guide_workload-autoscaling_1.yaml   # guidellm rate ladder [4,8,16,24] over 300s
+      - summarization_synthetic.yaml   # guidellm rate ladder [1,2,4,8], 120s per stage; adapt for bursts
 
   - archetype: wide_ep_moe
     title: Very large MoE serving (wide expert/data parallelism, multi-node)
-    scenario: guides/wide-ep-lws
-    guide: llm-d/guides/wide-ep-lws
+    scenario: guides/wide-ep
+    guide: llm-d/guides/wide-ep
     deploy_path: gpu-only
     signals:
       prefix_reuse_ratio: any
@@ -259,10 +259,10 @@ well_lit_paths:
       need wide data/expert parallelism: DeepEP All-to-All over RDMA spreads experts across a
       multi-node LeaderWorkerSet so the whole model serves as one logical replica. Benchmark
       this when serving a giant MoE model where multi-node EP/DP throughput per GPU is the goal.
-      The guide_wide-ep-lws_1.yaml profile is a high-concurrency RANDOM saturation workload
+      The guide_wide-ep_1.yaml profile is a high-concurrency RANDOM saturation workload
       (load.type concurrent, concurrency_level 2048, num_requests 8192, in/out ~2000), not a trace replay.
     benchmark_workloads:
-      - guide_wide-ep-lws_1.yaml
+      - guide_wide-ep_1.yaml
 
   - archetype: tiered_kv_offload
     title: Tiered KV-cache offload (working set exceeds accelerator memory)

@@ -92,8 +92,8 @@ _SOFT_OPTIONAL_KNOBS = {"tracing"}
 
 def _scenario_reference(bench_repo: Path) -> dict[str, Any]:
     """Read the repo's scenario EXAMPLE files at runtime and derive the structural contract
-    an authored scenario must satisfy: the union of top-level scenario-item knob keys the
-    repo's own examples actually use, plus the example file names (for provenance). Reads
+    an authored scenario must satisfy: top-level keys from both scenario examples and
+    defaults, plus the example file names (for provenance). Reads
     repo truth; never vendors a copy. Returns ``{}`` (and the caller falls back to the
     intrinsic shape contract) when the repo / its scenario examples are absent.
 
@@ -157,6 +157,10 @@ def _scenario_reference_cached(scenarios_dir: str) -> dict[str, Any]:
     try:
         defaults = yaml.safe_load(defaults_path.read_text())
         _collect_leaf_keys(defaults, known_leaf_keys)
+        # The renderer still accepts flat overrides even when examples group
+        # them under common/modelservice. Defaults are also authoritative keys.
+        if isinstance(defaults, dict):
+            knob_keys.update(k for k in defaults if not k.startswith("_"))
     except (OSError, yaml.YAMLError):
         pass
     # Union in the soft-optional knobs (e.g. ``tracing``) the jinja renders but the examples

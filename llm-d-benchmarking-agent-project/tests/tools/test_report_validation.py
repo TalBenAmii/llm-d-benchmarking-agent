@@ -16,7 +16,14 @@ def example(br_schema, br_example):
 def test_example_validates_against_schema(example, br_schema):
     v = validate_report(example, br_schema)
     assert v.valid, v.errors
-    assert v.schema_version == "0.2"
+    assert v.schema_version == str(example["version"])
+
+
+@pytest.mark.parametrize("version", ["0.2", "0.2.1"])
+def test_report_patch_versions_are_preserved(example, br_schema, version):
+    v = validate_report({**example, "version": version}, br_schema)
+    assert v.valid, v.errors
+    assert v.schema_version == version
 
 
 def test_summary_extracts_key_metrics(example):

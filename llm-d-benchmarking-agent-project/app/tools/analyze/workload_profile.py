@@ -15,13 +15,16 @@ Two tools let a non-expert PREVIEW a workload before running it:
     missing it says what's missing rather than fabricating a number.
 
 THIN MECHANISM ONLY. Profile layouts differ per harness (inference-perf nests ``load.stages``;
-guidellm is flat ``rate``/``max_seconds``; vllm-benchmark uses ``max-concurrency``/``num-prompts``;
+guidellm uses ``spec``/``benchmarks`` (older versions use flat ``rate``/``max_seconds``);
+vllm-benchmark uses ``max-concurrency``/``num-prompts``;
 aiperf uses ``concurrency``/``request-count``/``isl``/``osl``) — we normalize DEFENSIVELY and never
 assume a key exists. No recommendation/verdict text is baked in here: WHICH workload to pick and
 whether an estimate is "long" is the agent's judgment over knowledge/, not this code.
 """
 from __future__ import annotations
 
+import copy
+import re
 from pathlib import Path
 from typing import Any
 
@@ -149,7 +152,30 @@ def _token_shape(raw: dict[str, Any]) -> dict[str, Any]:
     """Normalize input/output token-length shape + any shared/system-prefix reuse across the
     differing harness layouts. Records the raw key path each fact came from under ``_from``.
     Defensive: every lookup tolerates a missing/oddly-shaped key (returns what it can)."""
-    shape: dict[str, Any] = {}
+    shape: dict[str, Any]
+    if isinstance(raw.get("spec"), dict):
+        datasets = raw["spec"].get("data")
+        # Multiple sources can have different distributions; do not invent a
+        # single mean by silently choosing the first dataset.
+        if not isinstance(datasets, list) or len(datasets) != 1 or not isinstance(datasets[0], dict):
+            return {}
+        data = datasets[0]
+        shape = _token_shape({"data": data})
+        shape["_from"] = {key: f"spec.data[0].{path.removeprefix('data.')}"
+                          for key, path in shape.get("_from", {}).items()}
+        turns = _num(data.get("turns"))
+        if turns is not None:
+            shape["turns"] = turns
+            shape["_from"]["turns"] = "spec.data[0].turns"
+        buckets = data.get("prefix_buckets")
+        if isinstance(buckets, list):
+            shape["prefix_buckets"] = [
+                {k: v for k, v in b.items() if k in {"prefix_tokens", "prefix_count"} and _num(v) is not None}
+                for b in buckets if isinstance(b, dict)
+            ]
+            shape["_from"]["prefix_buckets"] = "spec.data[0].prefix_buckets"
+        return shape
+    shape = {}
     sources: dict[str, str] = {}
 
     # inference-perf: data.input_distribution / data.output_distribution ; shared_prefix block.
@@ -278,6 +304,8 @@ def _load_shape(raw: dict[str, Any]) -> dict[str, Any]:
     """Normalize the LOAD shape (request rate / concurrency / QPS, sweep stages, per-stage and
     total duration, request count) across harness layouts. Records the raw key path each fact
     came from. Pure mechanism — never assumes a key exists."""
+    if isinstance(raw.get("spec"), dict):
+        return _guidellm_load_shape(raw)
     shape: dict[str, Any] = {}
     sources: dict[str, str] = {}
 
@@ -347,12 +375,69 @@ def _load_shape(raw: dict[str, Any]) -> dict[str, Any]:
     return shape
 
 
+def _guidellm_load_shape(raw: dict[str, Any]) -> dict[str, Any]:
+    """GuideLLM spec + dotted benchmark overrides, retaining concurrency vs QPS."""
+    spec = _dict(raw.get("spec"))
+    benchmarks = raw.get("benchmarks", [{}])
+    if not isinstance(benchmarks, list):
+        return {}
+    stages: list[dict[str, Any]] = []
+    for benchmark in benchmarks:
+        if not isinstance(benchmark, dict):
+            continue
+        profile = copy.deepcopy(_dict(spec.get("profile")))
+        constraints = copy.deepcopy(spec.get("constraints", []))
+        if not isinstance(constraints, list):
+            constraints = []
+        for key, value in benchmark.items():
+            if key.startswith("profile."):
+                profile[key.removeprefix("profile.")] = value
+            match = re.fullmatch(r"constraints\[(\d+)\]\.(kind|seconds|count)", key)
+            if match and int(match[1]) < len(constraints):
+                index = int(match[1])
+                if isinstance(constraints[index], dict):
+                    constraints[index][match[2]] = value
+        stage: dict[str, Any] = {}
+        durations = [_num(c.get("seconds")) for c in constraints
+                     if isinstance(c, dict) and c.get("kind") == "max_duration"]
+        limits = [_num(c.get("count")) for c in constraints
+                  if isinstance(c, dict) and c.get("kind") == "max_requests"]
+        if any(v is not None for v in durations):
+            stage["duration"] = min(v for v in durations if v is not None)
+        if any(v is not None for v in limits):
+            stage["num_requests"] = min(v for v in limits if v is not None)
+        concurrent = profile.get("kind") == "concurrent"
+        values = _as_rate_list(profile.get("streams" if concurrent else "rate"))
+        if values:
+            stages.extend({**stage, "concurrency" if concurrent else "rate": v} for v in values)
+        else:
+            stages.append(stage)
+    shape: dict[str, Any] = {"type": _dict(spec.get("profile")).get("kind"), "stages": stages}
+    sources = {"type": "spec.profile.kind", "stages": "spec.profile/constraints + benchmarks[]"}
+    rates = [s["rate"] for s in stages if "rate" in s]
+    if rates:
+        shape["rates"] = rates
+        sources["rates"] = "spec.profile.rate + benchmarks[].profile.rate"
+    if stages and all("duration" in s for s in stages):
+        shape["total_stage_duration_s"] = sum(s["duration"] for s in stages)
+        sources["total_stage_duration_s"] = "sum(spec.constraints[max_duration].seconds per benchmark stage)"
+    shape["_from"] = sources
+    return shape
+
+
 def _prompt_source(raw: dict[str, Any]) -> dict[str, Any]:
     """Normalize the PROMPT/DATASET source: synthetic vs a staged dataset, and whether a dataset
     file/url is required (so the agent knows a run needs a staged dataset). Records raw keys."""
     out: dict[str, Any] = {}
     sources: dict[str, str] = {}
 
+    spec = _dict(raw.get("spec"))
+    datasets = spec.get("data")
+    if isinstance(datasets, list):
+        kinds = [d["kind"] for d in datasets if isinstance(d, dict) and isinstance(d.get("kind"), str)]
+        return {"data_types": kinds,
+                "requires_staged_dataset": False if kinds and all(k == "synthetic_text" for k in kinds) else None,
+                "_from": {"data_types": "spec.data[].kind"}}
     data = _dict(raw.get("data"))
     dtype = data.get("type")
     if isinstance(dtype, str):
@@ -450,9 +535,10 @@ def estimate_run_duration(
             "estimable": True,
             "estimated_seconds": secs,
             "estimated_minutes": round(secs / 60.0, 1),
-            "basis": "sum of per-stage durations (load.stages[].duration)",
+            "basis": f"sum of per-stage durations ({load['_from']['total_stage_duration_s']})",
             "assumption": "wall-clock ≈ the sum of each sweep stage's configured duration; "
-                          "excludes standup/warmup/teardown and any inter-stage settle time.",
+                          "may be shorter if another limit ends a stage first; excludes "
+                          "standup/warmup/teardown and any inter-stage settle time.",
         }
 
     # 2) guidellm: max_seconds capped per rate stage.

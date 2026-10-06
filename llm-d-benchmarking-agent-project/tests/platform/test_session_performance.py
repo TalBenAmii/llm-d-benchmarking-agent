@@ -9,12 +9,13 @@ no network. Asserts:
   * the field-name discovery is DATA in knowledge/standard_metrics.yaml (catalog-driven);
   * summarize_report surfaces session_performance (None when absent), single-turn unchanged;
   * the analyze_results tool surfaces it per run end-to-end on a multi-turn report, and a
-    multi-turn report still passes validation (session_performance is a NON-FATAL
-    additionalProperties deviation, not a hard error).
+    multi-turn report passes the current schema and remains a nonfatal deviation
+    when validated against an older schema without session_performance.
 """
 from __future__ import annotations
 
 import copy
+import json
 
 import pytest
 import yaml
@@ -232,17 +233,28 @@ def test_summary_real_example_surfaces_session_performance(br_example):
 # ---- validation: multi-turn report still passes (non-fatal deviation) -------
 
 
-def test_multi_turn_report_validates_as_nonfatal_deviation(br_example, br_schema):
-    # The committed JSON Schema doesn't declare session_performance, so it surfaces as a
-    # NON-FATAL additionalProperties deviation — the report is still valid.
+@pytest.mark.parametrize("declared", [True, False])
+def test_multi_turn_report_validates_with_current_and_older_schema(br_example, br_schema, tmp_path, declared):
     if not br_example.exists() or not br_schema.exists():
         pytest.skip("BR v0.2 example/schema not present")
     report = load_report(br_example)
     assert "session_performance" in report["results"]
-    v = validate_report(report, br_schema)
+    schema = json.loads(br_schema.read_text())
+    results_ref = schema["properties"]["results"]["$ref"].removeprefix("#/").split("/")
+    results = schema
+    for key in results_ref:
+        results = results[key]
+    if declared:
+        assert "session_performance" in results["properties"]
+    else:
+        # Exercise the earlier schema contract without depending on an old checkout.
+        results["properties"].pop("session_performance", None)
+        results["additionalProperties"] = False
+    schema_file = tmp_path / "schema.json"
+    schema_file.write_text(json.dumps(schema))
+    v = validate_report(report, schema_file)
     assert v.valid is True
-    # the session block shows up as a deviation, not a fatal error.
-    assert any("session_performance" in d for d in v.deviations)
+    assert any("session_performance" in d for d in v.deviations) is not declared
     assert not any("session_performance" in e for e in v.errors)
 
 

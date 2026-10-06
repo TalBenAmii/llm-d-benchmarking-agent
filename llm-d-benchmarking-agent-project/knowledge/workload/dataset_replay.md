@@ -52,7 +52,7 @@ If unsure, ask the user whether they want *representative* (their data) or *cont
     `agentic_code_generation.yaml` (`data.type conversation_replay`), and `otel_traces.yaml`
     (`data.type otel_trace_replay`, `load.type trace_session_replay`).
   Trace formats (otel / mooncake) carry real ARRIVAL timing, not just prompt content, so they
-  reproduce bursty production arrival patterns. NOTE: `guide_wide-ep-lws_1.yaml` is NOT a replay
+  reproduce bursty production arrival patterns. NOTE: `guide_wide-ep_1.yaml` is NOT a replay
   — its `data.type` is `random` (synthetic), so don't reach for it when the user wants a trace.
 - **No env var to set.** The CLI itself derives `LLMDBENCH_RUN_DATASET_DIR` and
   `LLMDBENCH_RUN_DATASET_FILE` from the URL during profile rendering (a trailing `/` means a

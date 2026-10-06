@@ -9,6 +9,10 @@ vs GATED+AUTHORIZED, what to change to make a plan feasible, whether to offer se
 in `knowledge/capacity.md`.
 
 ## Invariants (don't break)
+- Match the current renderer's order: defaults, expanded `shared`, expanded scenario,
+  hoisted `modelservice` sections, then agent overrides. Expand `common` before merging
+  defaults, so it does not replace the chart's own `common` block. Method inheritance
+  follows the keys in live defaults; explicit method values win.
 - **`_deep_merge` must match the repo's own `RenderSpecification.deep_merge` byte-for-byte** — in
   particular a `None` override value is **SKIPPED**, never written. A bare YAML key (`decode:`) parses to
   `None`; clobbering the rich default block with it crashes the upstream planner and spuriously bypasses sizing.

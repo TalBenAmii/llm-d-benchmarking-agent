@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from app.capacity.planner import (
     CapacityError,
@@ -101,6 +102,67 @@ def test_plan_config_merges_scenario_over_defaults(bench_repo):
     assert pc["model"]["name"] == "facebook/opt-125m"
     # A defaults-only key that the scenario doesn't touch is still present (deep merge).
     assert "control" in pc and isinstance(pc["control"], dict)
+
+
+def _scenario_repo(tmp_path, defaults, document):
+    files = {
+        "config/templates/values/defaults.yaml": yaml.safe_dump(defaults),
+        "config/scenarios/test.yaml": yaml.safe_dump(document),
+        "config/specification/test.yaml.j2": "scenario_file:\n  path: config/scenarios/test.yaml\n",
+    }
+    for name, text in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    return tmp_path
+
+
+def test_capacity_common_shared_and_method_precedence(tmp_path):
+    defaults = {"model": {"maxModelLen": 16384}, "common": {"chartSetting": True},
+                "decode": {"replicas": 1, "enabled": True, "monitoring": {"podmonitor": False}},
+                "prefill": {"replicas": 1, "enabled": False},
+                "standalone": {"image": {"repository": "default", "tag": "old"}}}
+    document = {"shared": {"common": {"model": {"maxModelLen": 2048}, "replicas": 2}},
+                "scenario": [{"name": "test", "model": {"maxModelLen": 999},
+                              "common": {"model": {"maxModelLen": 1024}, "replicas": 3,
+                                         "enabled": True,
+                                         "monitoring": {"podmonitor": True, "installPrometheusCrds": True},
+                                         "images": {"vllmOpenai": {"tag": "new", "unknown": "x"}}},
+                              "decode": {"replicas": 4}}]}
+    repo = _scenario_repo(tmp_path, defaults, document)
+    pc, _ = plan_config_for_spec(repo, "test")
+    assert pc["model"]["maxModelLen"] == 1024
+    assert pc["decode"]["replicas"] == 4
+    assert pc["prefill"]["replicas"] == 3
+    assert pc["prefill"]["enabled"] is False
+    assert pc["decode"]["monitoring"] == {"podmonitor": True}
+    assert pc["standalone"]["image"] == {"repository": "default", "tag": "new"}
+    assert pc["common"] == {"chartSetting": True}
+    pc, _ = plan_config_for_spec(repo, "test", overrides={"max_model_len": 512})
+    assert pc["model"]["maxModelLen"] == 512
+
+
+def test_capacity_hoists_modelservice_before_agent_overrides(tmp_path):
+    repo = _scenario_repo(tmp_path, {"decode": {"replicas": 1, "parallelism": {"tensor": 1}}},
+                          {"scenario": [{"name": "test", "decode": {"replicas": 2},
+                                         "modelservice": {"decode": {"replicas": 4}}}]})
+    pc, _ = plan_config_for_spec(repo, "test")
+    assert pc["decode"] == {"replicas": 4, "parallelism": {"tensor": 1}}
+    assert "decode" not in pc["modelservice"]
+    pc, _ = plan_config_for_spec(repo, "test", overrides={"decode_replicas": 8})
+    assert pc["decode"]["replicas"] == 8
+
+
+@pytest.mark.parametrize("field", ["shared", "common"])
+def test_capacity_rejects_malformed_scenario_layers(tmp_path, field):
+    document = {"scenario": [{"name": "test"}]}
+    if field == "shared":
+        document["shared"] = ["bad"]
+    else:
+        document["scenario"][0]["common"] = ["bad"]
+    repo = _scenario_repo(tmp_path, {}, document)
+    with pytest.raises(CapacityError, match=field):
+        plan_config_for_spec(repo, "test")
 
 
 def test_plan_config_overrides_applied_and_listed(bench_repo):

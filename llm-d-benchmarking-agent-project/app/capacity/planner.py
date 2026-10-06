@@ -276,8 +276,10 @@ def resolve_scenario_file(bench_repo: Path, spec: str) -> Path:
     return scenario
 
 
-def _load_first_scenario(scenario_file: Path) -> dict[str, Any]:
+def _load_scenario_layers(scenario_file: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     doc = yaml.safe_load(scenario_file.read_text()) or {}
+    if not isinstance(doc, dict):
+        raise CapacityError(f"scenario file {scenario_file} is not a mapping")
     scenarios = doc.get("scenario")
     if not isinstance(scenarios, list) or not scenarios:
         raise CapacityError(
@@ -287,7 +289,62 @@ def _load_first_scenario(scenario_file: Path) -> dict[str, Any]:
     first = scenarios[0]
     if not isinstance(first, dict):
         raise CapacityError(f"scenario[0] in {scenario_file} is not a mapping")
-    return first
+    shared = doc.get("shared") or {}
+    if not isinstance(shared, dict):
+        raise CapacityError(f"shared in {scenario_file} is not a mapping")
+    return shared, first
+
+
+def _expand_common(values: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
+    """Match upstream RenderPlans._expand_stack_common before merging defaults.
+
+    Shared keys seed only methods that own them in the live defaults. Explicit
+    method values win; nested common values win over legacy root spellings.
+    """
+    result = copy.deepcopy(values)
+    common = result.pop("common", None)
+    if common is None:
+        return result
+    if not isinstance(common, dict):
+        raise CapacityError("scenario common must be a mapping")
+    for section in ("decode", "prefill", "standalone", "fma"):
+        method_defaults = defaults.get(section) or {}
+        for key, value in common.items():
+            if key == "enabled" or key not in method_defaults:
+                continue
+            block = result.setdefault(section, {})
+            if not isinstance(block, dict) or key in block:
+                continue
+            inherited = copy.deepcopy(value)
+            allowed = method_defaults[key]
+            if isinstance(inherited, dict) and isinstance(allowed, dict):
+                inherited = {k: v for k, v in inherited.items() if k in allowed}
+                if not inherited:
+                    continue
+            block[key] = inherited
+    # Upstream's sole differently named common-to-method image alias.
+    images = common.get("images")
+    image = images.get("vllmOpenai") if isinstance(images, dict) else None
+    if isinstance(image, dict):
+        standalone = result.setdefault("standalone", {})
+        if isinstance(standalone, dict) and "image" not in standalone:
+            allowed = (defaults.get("standalone") or {}).get("image") or {}
+            standalone["image"] = {k: v for k, v in image.items() if not allowed or k in allowed}
+    return _deep_merge(result, common)
+
+
+def _hoist_modelservice(values: dict[str, Any]) -> None:
+    """Match the upstream renderer's modelservice authoring aliases in place."""
+    block = values.get("modelservice")
+    if not isinstance(block, dict):
+        return
+    for key in ("common", "gateway", "router", "routing", "httpRoute",
+                "inferenceExtension", "prefill", "decode", "multinode"):
+        if key in block:
+            nested = block.pop(key)
+            existing = values.get(key)
+            values[key] = _deep_merge(existing if isinstance(existing, dict) else {},
+                                      nested if isinstance(nested, dict) else {})
 
 
 def _deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
@@ -388,8 +445,10 @@ def plan_config_for_spec(
         raise CapacityError(f"defaults file {defaults_file} did not parse to a mapping")
 
     scenario_file = resolve_scenario_file(bench_repo, spec)
-    scenario = _load_first_scenario(scenario_file)
+    shared, scenario = _load_scenario_layers(scenario_file)
 
-    plan_config = _deep_merge(defaults, scenario)
+    plan_config = _deep_merge(defaults, _expand_common(shared, defaults))
+    plan_config = _deep_merge(plan_config, _expand_common(scenario, defaults))
+    _hoist_modelservice(plan_config)
     applied = apply_overrides(plan_config, overrides or {})
     return plan_config, applied

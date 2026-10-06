@@ -139,6 +139,22 @@ def test_scenario_reference_absent_repo_degrades_to_empty(tmp_path):
     assert _scenario_reference(tmp_path / "nonexistent-repo") == {}
 
 
+def test_flat_knobs_from_defaults_remain_valid_with_nested_examples(tmp_path):
+    scenarios = tmp_path / "config/scenarios"
+    scenarios.mkdir(parents=True)
+    (scenarios / "test.yaml").write_text("scenario:\n- name: test\n  common:\n    schedulerName: custom\n")
+    defaults = tmp_path / "config/templates/values/defaults.yaml"
+    defaults.parent.mkdir(parents=True)
+    defaults.write_text("schedulerName: default-scheduler\naffinity: {}\n")
+    reference = _scenario_reference(tmp_path)
+    assert validate_scenario_structure(
+        _build_scenario_document("test", {"schedulerName": "custom", "affinity.enabled": True}), reference,
+    ) == []
+    assert validate_scenario_structure(
+        _build_scenario_document("test", {"schedulerNam": "typo"}), reference,
+    )
+
+
 # ---------------------------------------------------------------------------
 # The tool: author into the workspace + validate (the ACCEPTANCE path)
 # ---------------------------------------------------------------------------

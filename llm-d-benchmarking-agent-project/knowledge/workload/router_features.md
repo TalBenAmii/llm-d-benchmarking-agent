@@ -53,7 +53,7 @@ Scorers combine through the EPP **Filter-Score-Pick** pipeline (weighted sum;
   pd-disaggregation.values.yaml` defines a `prefill` profile (prefill-filter → prefix-cache-scorer
   → queue-scorer → kv-cache-utilization-scorer) and a `decode` profile (decode-filter →
   active-request-scorer → prefix-cache-scorer) — both include the prefix scorer. Also composed in
-  `agentic-serving`, `multimodal-serving/e-disaggregation`, and `wide-ep-lws` router values.
+  `agentic-serving`, `multimodal-serving/e-disaggregation`, and `wide-ep` router values.
 
 ## Two weight axes — don't conflate them
 

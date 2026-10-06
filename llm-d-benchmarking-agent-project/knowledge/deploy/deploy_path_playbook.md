@@ -83,7 +83,7 @@ scenario/guide with the SIGNALS that select it:
 - high-throughput / batch → `guides/optimized-baseline` (intelligent scheduling baseline)
 - agentic / multi-turn → `guides/agentic-serving`
 - multimodal (image+text) chat → `guides/multimodal-serving` (profile `guide_multimodal-serving_1.yaml`, inference-perf; advisor-deferred)
-- bursty / elastic load, SLO-aware autoscaling → `guides/workload-autoscaling` (profile `guide_workload-autoscaling_1.yaml.in`, guidellm)
+- bursty / elastic load, SLO-aware autoscaling → `guides/workload-autoscaling` (profile `summarization_synthetic.yaml.in`, guidellm)
 - default / local sanity → `cicd/kind` (this playbook's path 1)
 
 The advisor is loaded into your context; consult it (and confirm names with `list_catalog`)

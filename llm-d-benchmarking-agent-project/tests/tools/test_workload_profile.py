@@ -60,17 +60,18 @@ def test_inspect_shared_prefix_reuse(tool_ctx):
     assert prefix["question_len"] == 256
 
 
-def test_inspect_guidellm_flat_layout(tool_ctx):
-    """guidellm uses a FLAT layout (rate list + max_seconds + data.prompt_tokens*) — normalized to
-    the same token_shape/load_shape keys as inference-perf."""
+def test_inspect_guidellm_spec_layout(tool_ctx):
+    """Read the current GuideLLM spec layout and retain source paths."""
     _skip_if_no_repo(tool_ctx)
     out = workload_profile.inspect_workload_profile(
-        tool_ctx, workload="chatbot_synthetic.yaml", harness="guidellm"
+        tool_ctx, workload="summarization_synthetic.yaml", harness="guidellm"
     )
     assert out["harness"] == "guidellm"
-    assert out["token_shape"]["input_tokens"]["mean"] == 4096
+    assert out["token_shape"]["input_tokens"]["mean"] == 2048
+    assert out["token_shape"]["_from"]["input_tokens"] == "spec.data[0].prompt_tokens*"
     assert out["load_shape"]["rates"] == [1, 2, 4, 8]
-    assert out["load_shape"]["max_seconds"] == 120
+    assert out["load_shape"]["total_stage_duration_s"] == 480
+    assert out["prompt_source"]["requires_staged_dataset"] is False
 
 
 def test_inspect_vllm_benchmark_dataset_required(tool_ctx):
@@ -141,15 +142,63 @@ def test_estimate_from_sweep_stage_durations(tool_ctx):
     assert out["assumption"]
 
 
-def test_estimate_from_guidellm_max_seconds(tool_ctx):
-    """guidellm: max_seconds × number of rate stages (120s × 4 rates = 480s)."""
+def test_estimate_from_guidellm_duration_constraint(tool_ctx):
+    """GuideLLM: max_duration per rate stage (120s × 4 rates = 480s)."""
     _skip_if_no_repo(tool_ctx)
     out = workload_profile.estimate_run_duration(
-        tool_ctx, workload="chatbot_synthetic.yaml", harness="guidellm"
+        tool_ctx, workload="summarization_synthetic.yaml", harness="guidellm"
     )
     assert out["estimable"] is True
     assert out["estimated_seconds"] == 480
-    assert "max_seconds" in out["basis"]
+    assert "max_duration" in out["basis"]
+
+
+def test_guidellm_concurrent_benchmarks_are_not_request_rates(tool_ctx):
+    out = workload_profile.estimate_run_duration(
+        tool_ctx, workload="concurrent-1k-1k.yaml", harness="guidellm",
+    )
+    assert out["estimated_seconds"] == 3000
+    assert "rates" not in out["load_shape"]
+    assert [s["concurrency"] for s in out["load_shape"]["stages"]] == [300, 200, 100, 50, 1]
+
+
+def test_guidellm_multi_turn_request_limits_need_timing_data(tool_ctx):
+    out = workload_profile.inspect_workload_profile(
+        tool_ctx, workload="multi-turn.yaml", harness="guidellm",
+    )
+    assert out["token_shape"]["turns"] == 5
+    assert out["token_shape"]["prefix_buckets"] == [{"prefix_tokens": 10000, "prefix_count": 1024}]
+    assert [s["num_requests"] for s in out["load_shape"]["stages"]] == [320, 640, 1280, 2560, 5120]
+    estimate = workload_profile.estimate_run_duration(
+        tool_ctx, workload="multi-turn.yaml", harness="guidellm",
+    )
+    assert estimate["estimable"] is False
+
+
+def test_guidellm_legacy_flat_format_still_parses():
+    raw = {"data": {"prompt_tokens": 4096}, "rate": [1, 2, 4, 8], "max_seconds": 120}
+    assert workload_profile._token_shape(raw)["input_tokens"]["mean"] == 4096
+    load = workload_profile._load_shape(raw)
+    assert load["rates"] == [1, 2, 4, 8]
+    assert load["max_seconds"] == 120
+
+
+def test_guidellm_benchmark_duration_override_and_missing_duration():
+    raw = {"spec": {"profile": {"kind": "constant", "rate": 1},
+                    "constraints": [{"kind": "max_duration", "seconds": 30}]},
+           "benchmarks": [{"profile.rate": [2, 4], "constraints[0].seconds": 10},
+                          {"profile.rate": 8}]}
+    load = workload_profile._load_shape(raw)
+    assert load["total_stage_duration_s"] == 50
+    assert load["rates"] == [2, 4, 8]
+    raw["benchmarks"][1]["constraints[0].seconds"] = "unknown"
+    assert "total_stage_duration_s" not in workload_profile._load_shape(raw)
+
+
+def test_guidellm_multiple_data_sources_do_not_invent_a_single_mean():
+    assert workload_profile._token_shape({"spec": {"data": [
+        {"prompt_tokens": 100}, {"prompt_tokens": 1000},
+    ]}}) == {}
 
 
 def test_estimate_insufficient_fields_says_whats_missing(tool_ctx):

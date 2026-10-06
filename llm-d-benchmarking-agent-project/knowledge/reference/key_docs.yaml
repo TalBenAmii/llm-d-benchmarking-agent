@@ -81,15 +81,15 @@ docs:
   - path: llm-d-benchmark/config/specification/guides/tiered-prefix-cache.yaml.j2
     task: tiered_prefix_cache
     why: The benchmark spec for tiered-prefix-cache (--spec guides/tiered-prefix-cache).
-  - path: llm-d/guides/wide-ep-lws/README.md
+  - path: llm-d/guides/wide-ep/README.md
     task: wide_ep_lws
     why: >
       Wide expert parallelism — deploys a 500GB+ MoE (DeepSeek-R1-0528) with P/D + NIXL across a
       multi-node LeaderWorkerSet (validated on 32xH200/B200, InfiniBand/RoCE). For very large MoE
       throughput-at-scale. Needs RDMA networking.
-  - path: llm-d-benchmark/config/specification/guides/wide-ep-lws.yaml.j2
+  - path: llm-d-benchmark/config/specification/guides/wide-ep.yaml.j2
     task: wide_ep_lws
-    why: The benchmark spec for wide-ep-lws (--spec guides/wide-ep-lws).
+    why: The benchmark spec for wide expert parallelism (--spec guides/wide-ep).
   - path: llm-d/guides/flow-control/README.md
     task: flow_control
     why: >
@@ -256,7 +256,7 @@ workload_profiles:
       harness: inference-perf
     - path: llm-d-benchmark/workload/profiles/inference-perf/guide_tiered-prefix-cache_1.yaml.in
       harness: inference-perf
-    - path: llm-d-benchmark/workload/profiles/inference-perf/guide_wide-ep-lws_1.yaml.in
+    - path: llm-d-benchmark/workload/profiles/inference-perf/guide_wide-ep_1.yaml.in
       harness: inference-perf
     - path: llm-d-benchmark/workload/profiles/inference-perf/guide_multimodal-serving_1.yaml
       harness: inference-perf

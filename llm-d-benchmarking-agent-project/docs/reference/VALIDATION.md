@@ -119,7 +119,7 @@ For each flow the harness runs the real agent loop and asserts:
 | `pd-disaggregation` | The prefill/decode disaggregation guide (`guides/pd-disaggregation`). |
 | `precise-prefix-cache-routing` | The precise prefix-cache routing guide (`guides/precise-prefix-cache-routing`). |
 | `tiered-prefix-cache` | The tiered prefix cache guide (`guides/tiered-prefix-cache`, shared-prefix workload). |
-| `wide-ep-lws` | The wide expert-parallelism + LeaderWorkerSet guide (`guides/wide-ep-lws`). |
+| `wide-ep` | The wide expert-parallelism guide (`guides/wide-ep`). |
 | `workload-autoscaling` | The workload autoscaling guide (`guides/workload-autoscaling`, guidellm harness). |
 | `predicted-latency-routing` | The predicted-latency routing guide (`guides/predicted-latency-routing`, concurrent load). |
 

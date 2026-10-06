@@ -336,20 +336,20 @@ TIERED_PREFIX_CACHE = _guide_deploy_flow(
     user_input="Deploy the llm-d tiered prefix cache guide and benchmark it with a shared-prefix workload.",
     live_eval=True,   # GPU guide → live-scored in SIMULATE mode only
 )
-WIDE_EP_LWS = _guide_deploy_flow(
-    name="wide-ep-lws",
-    title="wide expert-parallelism + LeaderWorkerSet guide (guides/wide-ep-lws)",
-    spec="guides/wide-ep-lws", namespace="llm-d-wide-ep-lws",
-    harness="inference-perf", workload="guide_wide-ep-lws_1.yaml",
+WIDE_EP = _guide_deploy_flow(
+    name="wide-ep",
+    title="wide expert-parallelism + LeaderWorkerSet guide (guides/wide-ep)",
+    spec="guides/wide-ep", namespace="llm-d-wide-ep-lws",
+    harness="inference-perf", workload="guide_wide-ep_1.yaml",
     summary="Deploy + benchmark the wide expert-parallelism (LWS) guide",
-    user_input="Deploy the llm-d wide expert-parallelism (wide-ep-lws) guide and run its benchmark.",
+    user_input="Deploy the llm-d wide expert-parallelism (wide-ep) guide and run its benchmark.",
     live_eval=True,   # GPU guide → live-scored in SIMULATE mode only
 )
 WORKLOAD_AUTOSCALING = _guide_deploy_flow(
     name="workload-autoscaling",
     title="workload autoscaling guide (guides/workload-autoscaling)",
     spec="guides/workload-autoscaling", namespace="llm-d-workload-autoscaling",
-    harness="guidellm", workload="guide_workload-autoscaling_1.yaml",
+    harness="guidellm", workload="summarization_synthetic.yaml",
     summary="Deploy + benchmark the workload autoscaling guide",
     user_input="Deploy the llm-d workload autoscaling guide and benchmark it.",
     live_eval=True,   # GPU guide → live-scored in SIMULATE mode only
@@ -367,7 +367,7 @@ PREDICTED_LATENCY_ROUTING = _guide_deploy_flow(
 
 GUIDE_FLOWS = [
     OPTIMIZED_BASELINE, PD_DISAGGREGATION, PRECISE_PREFIX_CACHE, TIERED_PREFIX_CACHE,
-    WIDE_EP_LWS, WORKLOAD_AUTOSCALING, PREDICTED_LATENCY_ROUTING,
+    WIDE_EP, WORKLOAD_AUTOSCALING, PREDICTED_LATENCY_ROUTING,
 ]
 
 
@@ -1755,7 +1755,7 @@ WVA_AUTOSCALING_CONFIG = Flow(
                   goal_metrics=["throughput", "ttft"],
                   spec="guides/workload-autoscaling", deploy_path="guide",
                   namespace="llm-d-workload-autoscaling",
-                  harness="guidellm", workload="guide_workload-autoscaling_1.yaml",
+                  harness="guidellm", workload="summarization_synthetic.yaml",
                   expected_steps=["autoscale", "run"],
                   notes="stack already running; configure WVA via run_shell (clone+make+apply-hpa), then "
                         "benchmark the autoscaled stack; no standup/teardown")),
@@ -1777,14 +1777,14 @@ WVA_AUTOSCALING_CONFIG = Flow(
         _turn("WVA is configured — now benchmarking the autoscaled stack under a bursty guidellm rate ladder.",
               _tc("execute_llmdbenchmark", subcommand="run", spec="guides/workload-autoscaling",
                   namespace="llm-d-workload-autoscaling", harness="guidellm",
-                  workload="guide_workload-autoscaling_1.yaml")),
+                  workload="summarization_synthetic.yaml")),
         _turn("Parsing the autoscaled-stack report.", _tc("locate_and_parse_report")),
         _turn("WVA is live and the stack scaled under the bursty load — here's how it held up on throughput and TTFT."),
     ],
     expected=[
         ExpectedCommand(["llmdbenchmark", "--spec", "guides/workload-autoscaling", "--workspace", "*", "run",
                          "-p", "llm-d-workload-autoscaling", "-l", "guidellm",
-                         "-w", "guide_workload-autoscaling_1.yaml", "-r", "local"], MUTATING),
+                         "-w", "summarization_synthetic.yaml", "-r", "local"], MUTATING),
     ],
     required_subcommands=["run"],
     required_spec="guides/workload-autoscaling",

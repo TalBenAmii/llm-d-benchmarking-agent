@@ -173,9 +173,9 @@ RUN groupadd --gid 10001 agent \
 # them). All three are pinned to exact SHAs so the build is reproducible.
 # Declared here (not up top) to keep the toolchain layer cached
 # across ref bumps.
-ARG BENCH_REF=e2e4b9be075bff78dba84e65fe36bbe97753c983
-ARG LLMD_REF=0227212d78661ef184446c875adb4972fda2237c
-ARG SKILLS_REF=84c100c6ec6f4055b4d8132a6eb9bfa326e6c1d4
+ARG BENCH_REF=a75d91e114721b4a918a7c22d6f4e7b2764a3051
+ARG LLMD_REF=51f594319fa57166d842e24512a0e66f3cc05a18
+ARG SKILLS_REF=d23b14ccbedfdd8ffb74a2ee6529235bbef193ac
 
 # Clone all three sibling repos at their pinned refs, then build the CLI venv the app expects at
 # /repos/llm-d-benchmark/.venv. We install the package editable off the cloned source and add the
@@ -198,6 +198,8 @@ RUN set -eux; \
     # The CLI venv the app resolves at $REPOS_DIR/llm-d-benchmark/.venv/bin/llmdbenchmark.
     python -m venv /repos/llm-d-benchmark/.venv; \
     /repos/llm-d-benchmark/.venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel; \
+    # The report package is shipped in this repo, not the package registry.
+    /repos/llm-d-benchmark/.venv/bin/pip install --no-cache-dir /repos/llm-d-benchmark/benchmark-report; \
     /repos/llm-d-benchmark/.venv/bin/pip install --no-cache-dir -e /repos/llm-d-benchmark; \
     /repos/llm-d-benchmark/.venv/bin/pip install --no-cache-dir \
         "git+https://github.com/llm-d-incubation/llm-d-planner.git@v0.1.0"; \

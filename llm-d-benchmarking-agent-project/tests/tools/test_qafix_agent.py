@@ -347,13 +347,14 @@ def test_deep_merge_skips_none_override_keeping_default_dict():
 
 def test_plan_config_gpu_spec_minimal_overrides_no_none_section(bench_repo):
     # real-1 #1: examples/gpu + {model, gpu_memory_gb} used to leave decode=None and crash the
-    # planner. The merged decode block must now be a populated dict with the default replicas.
+    # planner. The current example sets modelservice.decode.replicas=2; hoisting
+    # that block must preserve its explicit value instead of using the default.
     pc, applied = plan_config_for_spec(
         bench_repo, "examples/gpu",
         overrides={"model": "meta-llama/Llama-3.1-70B-Instruct", "gpu_memory_gb": 80},
     )
     assert isinstance(pc.get("decode"), dict)
-    assert pc["decode"].get("replicas") == 1  # default preserved, not wiped to None/0
+    assert pc["decode"].get("replicas") == 2
 
 
 def test_model_override_syncs_huggingface_id(bench_repo):

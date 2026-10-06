@@ -38,11 +38,11 @@ Confirm both harness names + their workload profiles exist in the **live catalog
 ship a `sanity_random.yaml` and several shared synthetic profiles; match the workload to the
 question (a chat profile for the SLO run, a throughput/concurrency profile for the sweep).
 Concrete catalog names: the **SLO / inference-perf** leg → `chatbot_synthetic.yaml` or
-`shared_prefix_synthetic.yaml`; the **guidellm sweep** leg → `shared_prefix_synthetic.yaml`
-(rate ladder `[2,5,8,10,12,15,20]`, `max_seconds 50`) or the higher-load
-`guide_workload-autoscaling_1.yaml` (rate `[4,8,16,24]`, 300s). (guidellm's
-`shared_prefix_synthetic` is the lighter ladder — not a high-rate sweep — so reach for
-`guide_workload-autoscaling_1.yaml` when you want heavier load.)
+`shared_prefix_synthetic.yaml`; the **guidellm sweep** leg → `summarization_synthetic.yaml`
+(request rates `[1,2,4,8]`, 120s per stage) or `concurrent-1k-1k.yaml`
+(concurrency `[300,200,100,50,1]`, 600s per stage). These exercise different load patterns;
+concurrency is not a request rate. Current GuideLLM profiles nest settings under `spec`
+and use dotted `benchmarks` overrides. Inspect the selected profile before changing it.
 
 **Don't claim a "live"/"just-checked" catalog you didn't look at.** The authoritative catalog
 arrives as an in-context "[live catalog snapshot …]" message and is re-enumerable with

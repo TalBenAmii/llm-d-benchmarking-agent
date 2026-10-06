@@ -42,7 +42,7 @@ use_cases:
   throughput_discovery:
     description: "Find max sustainable throughput / sweep load (incl. bursty / autoscaling)."
     prefer_harness: guidellm
-    candidate_workloads: [shared_prefix_synthetic.yaml, chatbot_synthetic.yaml, guide_workload-autoscaling_1.yaml]
+    candidate_workloads: [shared_prefix_synthetic.yaml, chatbot_synthetic.yaml, summarization_synthetic.yaml]
     emphasize_metrics: [total_token_rate, request_rate]
 
   smoke_or_sanity:
