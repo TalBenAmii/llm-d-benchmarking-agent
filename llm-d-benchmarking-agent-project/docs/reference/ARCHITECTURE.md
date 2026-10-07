@@ -6,13 +6,11 @@ benchmarking guidance lives in the model and editable `knowledge/` files.
 
 ## High-level picture
 
-![Final deployment architecture](architecture.svg)
+![Deployment architecture](architecture.svg)
 
-[Open the full architecture artifact](architecture.html). This is adapted from the supplied
-“llm-d Benchmarking Agent · Architecture.html” design: its deployment layout is retained,
-with final engine, prompt-loading and approval behavior corrected. It shows the in-cluster
+[Open the full architecture diagram](architecture.html). It shows the in-cluster
 service; local installation runs the same backend on the host. Codex subscription setup is
-currently documented for that local path. The diagram is also included in the final presentation.
+currently documented for that local path.
 
 ```mermaid
 flowchart TB
@@ -135,7 +133,5 @@ Codex SDK. MCP adds MCP 1.x and AnyIO. Development uses pytest, Ruff and mypy. N
 is required for the UI. Real deployment adds the upstream benchmark CLI environment and
 Docker/kind, kubectl, Helm/helmfile and the documented client utilities.
 
-See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for installation, verification commands,
-module-extension guidance and submission packaging. See
-[the ZIP user manual](../guides/SUBMISSION_USER_MANUAL.md) for a no-clone installation,
+See [USER_GUIDE.md](../guides/USER_GUIDE.md) for installation,
 [API.md](API.md) for protocols and [VALIDATION.md](VALIDATION.md) for flow replay.

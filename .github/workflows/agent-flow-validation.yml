@@ -90,7 +90,7 @@ jobs:
       - name: Check out the read-only sibling repos for the covered suite
         # The coverage gate runs the FULL suite, including the tests that read the
         # real Benchmark Report schema/specs from llm-d-benchmark. Use the same
-        # compatibility pins as the image, installer and submission archive.
+        # compatibility pins as the image and installer.
         run: |
           source scripts/_env.sh
           log() { printf '%s\n' "$*"; }

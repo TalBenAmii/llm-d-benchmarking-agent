@@ -12,11 +12,7 @@ Licensed [Apache-2.0](LICENSE).
 
 ## Demo
 
-This 72-second session shows the agent planning a run, deploying, benchmarking, running a sweep,
-and explaining the results. Use the player to pause, seek along the timeline, or enter fullscreen.
-In Chrome and Edge, open the player's three-dot menu to change playback speed.
-
-https://github.com/user-attachments/assets/4f913939-811e-42df-a696-f6ed0491da8c
+https://github.com/user-attachments/assets/674b3eb5-6474-450e-b9dd-5bec2aa10c86
 
 ## Quick start
 
@@ -122,9 +118,6 @@ pytest tests/     # the full suite
 ```
 
 ## Docs
-
-For the course ZIP, use the [ZIP user manual](llm-d-benchmarking-agent-project/docs/guides/SUBMISSION_USER_MANUAL.md) and [developer guide](llm-d-benchmarking-agent-project/docs/reference/DEVELOPER_GUIDE.md).
-The [final architecture artifact](llm-d-benchmarking-agent-project/docs/reference/architecture.html) is embedded in the architecture guide and [presentation](llm-d-benchmarking-agent-project/docs/submission/presentation.html).
 
 | Doc | For |
 |---|---|

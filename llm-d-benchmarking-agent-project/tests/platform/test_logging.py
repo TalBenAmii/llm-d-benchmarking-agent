@@ -7,7 +7,7 @@ Pins the contract the acceptance criteria require:
 (c) the LOG_FORMAT=text path works.
 
 No network / cluster / GPU: a real `git status -s` in a temporary repository exercises
-runner logging, including when the source was extracted from the submission ZIP.
+runner logging, including when the source was extracted from an archive.
 """
 from __future__ import annotations
 

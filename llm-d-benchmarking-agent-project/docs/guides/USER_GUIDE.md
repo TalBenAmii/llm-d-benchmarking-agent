@@ -8,8 +8,6 @@ For what's under the hood, see [`ARCHITECTURE.md`](../reference/ARCHITECTURE.md)
 
 ## Install & run
 
-**Course ZIP:** follow [SUBMISSION_USER_MANUAL.md](SUBMISSION_USER_MANUAL.md) for installation from the submitted source, including a credential-free fixture demo and replay.
-
 Choose one of these two installation methods. Full instructions are in [`DEPLOYMENT.md`](DEPLOYMENT.md):
 
 **One command (recommended POC).** Builds the image, deploys to a local
