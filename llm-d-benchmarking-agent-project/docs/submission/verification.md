@@ -1,4 +1,6 @@
-# Submission verification — 6 October 2026
+# Submission verification
+
+Runtime verification: 6 October 2026. Presentation revision: 7 October 2026.
 
 ## Method
 
@@ -43,7 +45,7 @@ beside the ZIP. Source hashes and exact repository revisions are inside `docs/so
 | Live Codex conversation | The documented setup script reused the tester's existing ChatGPT login. The extracted app called `list_catalog`, returned actual harness names and emitted `done` without an error. No mutation was requested or approved. |
 | Browser | Chrome loaded the actual extracted app and fixture preview. Theme/debug controls and guided-builder open/close worked. Desktop/mobile views inspected; no JavaScript errors or failed local requests. |
 | Helm / shell | Chart lint and Bash syntax checks passed. Helm's optional icon recommendation remains. |
-| Presentation | **13 A4 pages** (portrait, with a landscape architecture page); exact title/name-only cover, no browser headers/footers, no clipped content or footer overlap. Diagram checked in the rendered PDF. |
+| Presentation | **8 A4 landscape pages**; exact title/name-only cover, no browser headers/footers, no clipped content or footer overlap. Diagram checked in the rendered PDF. |
 | Archive | CRC, exact required roots, student schema, source inventory, per-file SHA-256, executable modes and safe paths verified. |
 | Exclusions | No Git history, environments, `.env` secrets, runtime chats or caches. Credential-pattern scan found no matches. Student ID is in the ZIP metadata, not committed to public source. |
 
@@ -84,3 +86,15 @@ bundle of system tools, account credentials, models or container images.
 Licenses/notices are retained and upstream origins recorded. See `third_party.md` for the
 asset inventory and the course's public-repository condition; no trademark clearance is
 asserted and repository visibility was not changed.
+
+## Presentation revision — 7 October 2026
+
+The audience deck was reduced from 13 pages to 8: title, problem, alpha-to-final progress,
+product demo, high-level architecture, project lessons, generative AI and future extensions.
+Test statistics, installation/verification commentary and implementation caveats remain in
+the documentation rather than on slides. The architecture slide retains the supplied
+artifact's layout with simpler labels; the detailed architecture guide remains available.
+
+The revised PDF and all slide layouts were inspected, local image/video links checked,
+and the ZIP rebuilt and verified against its manifest. Application code, dependency lockfile
+and upstream pins are unchanged; the runtime results above refer to the October 6 check.

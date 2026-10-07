@@ -1,13 +1,232 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><title>llm-d Benchmarking Assistant — Final Presentation</title><style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;background:#e9eef1;color:#163346;font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.48}.page{width:210mm;height:297mm;margin:12mm auto;background:white;padding:18mm 17mm 17mm;position:relative;break-after:page;overflow:hidden}.page:last-child{break-after:auto}.cover{padding-top:22mm}.cover h1{font-size:27px;line-height:1.25;margin:0 0 9px;white-space:nowrap}.cover p{font-size:22px;margin:0}.kicker{font-size:12px;font-weight:700;letter-spacing:2px;color:#187c80;margin-bottom:14px}h1{font-size:37px;line-height:1.14;letter-spacing:-1px;margin:0 0 27px}h2{font-size:20px;margin:0 0 7px;color:#116f73}p{margin:0 0 17px}.lead{font-size:22px;line-height:1.5}blockquote{border-left:4px solid #16868a;background:#eff7f7;padding:19px;margin:23px 0;font-size:22px}.cards{display:grid;gap:17px}.cards article{background:#f4f7f9;border:1px solid #dbe5ea;border-radius:10px;padding:17px 20px}.cards p{margin:0}.note{font-size:13px;line-height:1.5;color:#506773;margin-top:22px}.callout{background:#fff3dc;border-left:4px solid #d99b35;padding:17px 20px;margin-top:24px}.diagram{width:100%;height:auto;margin-top:5px}.statrow{display:flex;justify-content:space-between;margin-bottom:25px;gap:12px}.statrow div{flex:1;background:#eaf5f4;padding:16px;text-align:center;font-size:15px}.statrow b{display:block;font-size:40px;line-height:1.2;color:#137d80}.steps{padding-left:25px;margin:0}.steps li{padding-left:10px;margin-bottom:23px}.steps strong{color:#116f73;font-size:21px}footer{position:absolute;left:17mm;right:17mm;bottom:10mm;border-top:1px solid #d4e0e5;padding-top:8px;font-size:11px;color:#627986}footer span{float:right}.closing{margin-top:28px}@media print{body{background:white}.page{margin:0}}@page architecture{size:A4 landscape;margin:0}.page.architecture{page:architecture;width:297mm;height:210mm;padding:12mm 15mm}.architecture h1{font-size:27px;margin-bottom:8px}.architecture .kicker{margin-bottom:6px}.architecture .diagram{width:100%;max-height:143mm}.architecture .note{margin-top:6px;font-size:11px}.architecture footer{left:15mm;right:15mm;bottom:6mm}</style></head><body><section class="page cover"><h1>llm-d Benchmarking Assistant</h1><p>Tal Ben Ami</p></section>
-<section class="page"><div class="kicker">THE PROJECT</div><h1>From a benchmark goal<br>to an explained result</h1><p class="lead">A conversational assistant for running llm-d benchmarks without first learning the entire toolchain.</p><blockquote>“Benchmark a chat workload, compare two configurations, and tell me which meets my latency target.”</blockquote><div class="cards"><article><h2>Understand</h2><p>Interview the user, inspect the environment and choose from the live catalog.</p></article><article><h2>Run with visibility</h2><p>Show plans and commands, obtain approval, stream progress and handle failures.</p></article><article><h2>Explain with evidence</h2><p>Read validated reports, compare outcomes and retain reproducible results.</p></article></div><p class="note">Original contribution: the assistant, orchestration/analysis integration and MCP interface. Inference serving, benchmark harnesses and upstream skills are reused.</p><footer>llm-d Benchmarking Assistant <span>02</span></footer></section>
-<section class="page"><div class="kicker">ALPHA → FINAL</div><h1>From alpha to the final product</h1><p class="lead">Alpha presented the design and selected past-chat examples from the web demo.</p><div class="cards"><article><h2>Final workflow</h2><p>Planning → approved execution → structured results, with sweeps and comparison in the same workflow.</p></article><article><h2>Final architecture</h2><p>Claude and Codex SDK-native engines, a shared tool layer and a standalone MCP adapter.</p></article><article><h2>Beyond a single chat</h2><p>Persistent sessions, trends, provenance and operational controls, backed by automated validation.</p></article></div><footer>llm-d Benchmarking Assistant <span>03</span></footer></section>
-<section class="page architecture"><div class="kicker">FINAL HIGH-LEVEL DESIGN</div><h1>Final deployment architecture</h1><img class="diagram" src="../reference/architecture.svg" alt="High-level architecture"/><p class="note">Adapted from the supplied architecture artifact. Local mode runs the backend on the host. Dedicated commands use policy; run_shell uses a classifier. Auto-approve can waive cards. Standalone MCP reuses tools with client-managed permissions.</p><footer>llm-d Benchmarking Assistant <span>04</span></footer></section>
-<section class="page"><div class="kicker">WEB WORKFLOW</div><h1>A complete benchmark session</h1><ol class="steps"><li><strong>Interview and probe</strong><br>Clarify workload/SLOs; inspect the actual environment.</li><li><strong>Ground and plan</strong><br>Read catalog/skills; show a structured SessionPlan and capacity/readiness findings.</li><li><strong>Approve and execute</strong><br>Deploy or reuse a stack, smoketest and run; inspect the command trail or steer mid-turn.</li><li><strong>Analyze and follow up</strong><br>Explain report-backed metrics, save a baseline, compare, sweep, export or clean up.</li></ol><div class="callout">Three different modes: synthetic app simulation; real kind/harness execution against a CPU inference simulator; real model inference on GPU hardware.</div><p class="note">SIMULATE still runs read-only checks, requires approval for mutations and returns synthetic results. It still needs a Claude or ChatGPT login for chat.</p><footer>llm-d Benchmarking Assistant <span>05</span></footer></section>
-<section class="page"><div class="kicker">FINAL PRODUCT DEMO</div><h1>Show the workflow,<br>then explore the changes</h1><ol class="steps"><li><strong>Live walkthrough</strong><br>Describe a small chat benchmark; inspect the plan and a command approval; show results and the Debug trail.</li><li><strong>Final additions</strong><br>Compare or sweep configurations; reopen saved results. Show the provider selector and explain the shared MCP interface.</li><li><strong>Account-free fallback</strong><br>Open <code>/static/preview.html</code> for fixture cards and run the deterministic workflow replay from the user manual.</li></ol><p><a href="../demo/llm-d-demo-live.mp4">Play the bundled 72-second recorded workflow</a></p><p class="note">The recording is historical demo evidence. Fixture/simulation numbers are synthetic. Live chat requires the presenter’s provider login; actual deployment requires its infrastructure.</p><footer>llm-d Benchmarking Assistant <span>06</span></footer></section>
-<section class="page"><div class="kicker">RESULTS & EXPERIMENTS</div><h1>More than “the run passed”</h1><div class="cards"><article><h2>Measure and compare</h2><p>TTFT, inter-token latency, throughput and percentiles; A/B and cross-harness comparison; missing fields stay missing.</p></article><article><h2>Explore trade-offs</h2><p>Generate DoE treatments, run bounded parallel sweeps, identify SLO-feasible configurations and the Pareto frontier.</p></article><article><h2>Remember and reproduce</h2><p>Cross-session history, eleven trend metrics, provenance bundles, reproduction proposals and portable HTML exports.</p></article></div><div class="callout">Goodput is a percentile-derived upper-bound estimate. Different workloads or harnesses do not automatically produce a fair winner.</div><p class="note">The dedicated autotuner was retired. Iterative goal seeking now uses the existing sweep/analysis tools and knowledge playbooks.</p><footer>llm-d Benchmarking Assistant <span>07</span></footer></section>
-<section class="page"><div class="kicker">ADDITIONAL DELIVERABLE</div><h1>The MCP server I built</h1><p class="lead">Shared tools, knowledge resources and workflow prompts.</p><div class="cards"><article><h2>Useful outside the web app</h2><p>Claude Code can inspect, plan, benchmark and analyze using the same mechanisms and knowledge.</p></article><article><h2>A thin adapter</h2><p>stdio transport, per-connection ToolContext, progress notifications, resources and workflow prompts; no duplicated benchmark engine.</p></article><article><h2>Approval moves to the client</h2><p>Command execution relies on MCP tool permissions. Plan elicitation is used when available; its fallback accepts the inert plan.</p></article></div><p class="note">Separate repository: github.com/TalBenAmii/llm-d-bench-mcp. Supported installation: local, single-user Claude Code. Other clients and shared HTTP transport remain future work.</p><footer>llm-d Benchmarking Assistant <span>08</span></footer></section>
-<section class="page"><div class="kicker">ENGINEERING DEPTH</div><h1>Making runs observable<br>and recoverable</h1><div class="cards"><article><h2>Kubernetes orchestration</h2><p>Labeled Jobs, deadlines, fault classification, transient retries, dead-letter failures, bounded sweep parallelism and checkpoint/resume.</p></article><article><h2>Operational visibility</h2><p>Live logs/resources, Prometheus metrics, Grafana assets, structured logs and correlation IDs.</p></article><article><h2>Usable application</h2><p>Resumable chats, namespace grouping, busy indicators, approval cards, model/effort selection, token/cache counts, charts, sharing and guided next steps.</p></article><article><h2>Installation and deployment</h2><p>Host bootstrap, one-command kind deployment, full container/toolchain, Helm and RBAC.</p></article></div><p class="note">The SDK-native cutover replaced the custom loop while keeping the application’s event/approval interface. This is a single-user proof of concept, not a multi-tenant benchmark service.</p><footer>llm-d Benchmarking Assistant <span>09</span></footer></section>
-<section class="page"><div class="kicker">EVIDENCE & LIMITS</div><h1>Validation and current scope</h1><div id="verification-summary"><p class="lead">2,391 application tests passed · 93.19% coverage.<br>44/44 workflow replays · 17 MCP tests passed.<br>53 opt-in/dependency tests skipped in the base suite.</p></div><div class="cards"><article><h2>Mechanisms</h2><p>Unit/integration tests, Ruff, mypy and a coverage gate; schema and command checks, SDK protocol fakes and event/recovery tests.</p></article><article><h2>Agent behavior</h2><p>Golden flow replay, self-play/oracle checks and opt-in live judge/bughunt/skill-use evaluation.</p></article><article><h2>Validation scope</h2><p>Automated checks cover application mechanisms and workflow replay. A live Codex conversation called the catalog tool successfully from extracted source. Real GPU deployments and Claude-backed conversations were not rerun.</p></article></div><p class="note">The submission packages the project’s current Dockerfile pins; exact SHAs, hashes and checks are in docs/verification.md and docs/source_manifest.json.</p><footer>llm-d Benchmarking Assistant <span>10</span></footer></section>
-<section class="page"><div class="kicker">PROJECT REFLECTION</div><h1>What went well.<br>What was difficult.</h1><div class="cards"><article><h2>What went well</h2><p>Designing the system, coming up with a project plan and working in an organized way.</p></article><article><h2>Main difficulty</h2><p>Understanding the requirements thoroughly. The proposal contained conflicting or wrong information, which made it harder to know what the final scope should be.</p></article><article><h2>How I responded</h2><p>I explored ideas that looked compelling and tried to think about which additions would be useful to someone using the application.</p></article><article><h2>Technical challenges</h2><p>Version drift, reliable approvals/recovery, report units/comparability, deployment/authentication and stale documentation all required careful validation.</p></article></div><footer>llm-d Benchmarking Assistant <span>11</span></footer></section>
-<section class="page"><div class="kicker">GENERATIVE AI</div><h1>AI in development<br>and in the product</h1><div class="cards"><article><h2>Development — Claude Code</h2><p>I built the project with Claude Code, using it for design iterations, implementation and refactoring, tests, bug investigation, documentation and workflow automation.</p></article><article><h2>Product — Claude Agent SDK</h2><p>Runs the Claude conversational tool loop; the final local app also supports Codex SDK with a ChatGPT login. Knowledge is editable data; code validates inputs and supplies execution/analysis mechanisms. Claude Code is also the supported MCP client.</p></article><article><h2>Submission refresh — Codex</h2><p>Helped inspect code, update the architecture and guides, rebuild the presentation/ZIP, and verify an extracted installation in fresh Python environments.</p></article><article><h2>Experience and lesson</h2><p>Organized planning helped, but the proposal still contained contradictions. AI-generated plans and descriptions need verification against requirements, the implementation and runnable evidence.</p></article></div><footer>llm-d Benchmarking Assistant <span>12</span></footer></section>
-<section class="page"><div class="kicker">NEXT STEPS</div><h1>Where I would take it next</h1><div class="cards"><article><h2>Version compatibility</h2><p>Maintain a tested upstream matrix and automate dependency/schema/catalog drift checks before upgrades.</p></article><article><h2>Real deployment evidence</h2><p>Validate more GPU and remote-cluster configurations and make reproducibility checks easier to repeat.</p></article><article><h2>Broader MCP access</h2><p>Test additional clients; design caller identity, credential isolation and authorization before adding remote transport.</p></article><article><h2>Better experiment evidence</h2><p>Use per-request joint SLO measurements, stronger workload comparability and richer observability where upstream data permits.</p></article></div><p class="lead closing">The final product connects a natural-language benchmark goal to an explained, reproducible result through the web application or MCP.</p><footer>llm-d Benchmarking Assistant <span>13</span></footer></section></body></html>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>llm-d Benchmarking Assistant — Final Presentation</title>
+<style>
+@page { size: A4 landscape; margin: 0; }
+* { box-sizing: border-box; }
+:root { --ink:#173448; --muted:#587082; --accent:#126b70; --surface:#fff; --accent-soft:#eff6f8; --gate:#997128; --gate-bg:#faf5e9; --upstream:#66578c; --upstream-bg:#f4f0fa; }
+body { margin:0; background:#e5eaf0; color:var(--ink); font-family:Arial,Helvetica,sans-serif; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.slide { width:297mm; height:210mm; margin:10mm auto; padding:14mm 17mm 15mm; background:#fff; position:relative; break-after:page; }
+.slide:last-child { break-after:auto; }
+.cover { padding-top:22mm; }
+.cover h1 { font-size:34px; letter-spacing:0; margin:0 0 10px; white-space:nowrap; }
+.cover p { font-size:25px; margin:0; }
+.kicker { color:var(--accent); font-size:13px; font-weight:700; letter-spacing:2px; margin-bottom:12px; }
+h1 { font-size:39px; line-height:1.12; letter-spacing:-.8px; margin:0 0 20px; }
+h2 { font-size:25px; line-height:1.18; margin:0 0 12px; }
+p { font-size:21px; line-height:1.45; margin:0; }
+.lead { font-size:25px; line-height:1.4; max-width:920px; }
+.quote { font-size:33px; line-height:1.3; padding:27px 30px; background:#eef6f6; border-left:5px solid var(--accent); margin:28px 0; }
+.grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:22px; }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:36px; }
+.card { border-top:3px solid #bfd5dc; padding:20px 4px 0; }
+.card p { font-size:20px; }
+.number { color:var(--accent); font-size:15px; font-weight:700; letter-spacing:1px; margin-bottom:14px; }
+.band { margin-top:28px; padding:17px 22px; background:#eef6f6; font-size:23px; line-height:1.35; }
+.alpha { display:grid; grid-template-columns:230px 1fr; gap:35px; margin-top:33px; }
+.alpha-intro { padding:23px; background:#f1f4f7; }
+.alpha-intro p { font-size:21px; }
+.final-list { display:grid; gap:22px; }
+.final-list h2 { margin-bottom:5px; font-size:24px; }
+.final-list p { font-size:21px; }
+.demo-grid { display:grid; grid-template-columns:275px 1fr; gap:28px; margin-top:22px; align-items:start; }
+.demo-steps { display:grid; gap:26px; padding-top:10px; }
+.demo-steps h2 { font-size:24px; margin-bottom:5px; }
+.demo-steps p { font-size:20px; }
+.product-shot { display:block; width:100%; height:auto; border-radius:10px; background:#19151f; }
+.caption { font-size:16px; color:var(--muted); margin-top:10px; }
+a { color:var(--accent); text-decoration:none; border-bottom:1px solid #99bdbf; }
+.demo-link { margin-top:21px; font-size:19px; }
+ul { list-style:none; padding:0; margin:0; }
+li { font-size:23px; line-height:1.4; margin:0 0 24px; padding-left:19px; position:relative; }
+li::before { content:'•'; position:absolute; left:0; color:var(--accent); }
+.reflection .grid2, .ai .grid2 { margin-top:36px; }
+.reflection h2, .ai h2 { color:var(--accent); margin-bottom:22px; }
+.ai .band { margin-top:21px; }
+.next .grid3 { margin-top:43px; }
+.closing { margin-top:47px; font-size:29px; color:var(--accent); }
+footer { position:absolute; left:17mm; right:17mm; bottom:9mm; display:flex; justify-content:space-between; border-top:1px solid #d9e3e9; padding-top:8px; font-size:11px; color:var(--muted); }
+.design h1 { margin-bottom:6px; }
+.design .lead { font-size:22px; }
+.architecture-diagram { display:block; width:100%; height:540px; margin-top:4px; }
+.architecture-diagram .box { fill:var(--surface); stroke:var(--ink); stroke-width:1.4; }
+.architecture-diagram .box-up { fill:var(--upstream-bg); stroke:var(--upstream); stroke-width:1.4; stroke-dasharray:5 4; }
+.architecture-diagram .box-gate { fill:var(--gate-bg); stroke:var(--gate); stroke-width:1.4; }
+.architecture-diagram .box-ext { fill:var(--surface); stroke:var(--muted); stroke-width:1.3; stroke-dasharray:5 4; }
+.architecture-diagram .container-host { fill:var(--surface); stroke:var(--muted); stroke-width:1.2; }
+.architecture-diagram .container-cluster { fill:var(--accent-soft); stroke:#c7d9e3; stroke-width:1.2; }
+.architecture-diagram .container-pod { fill:var(--surface); stroke:var(--ink); stroke-width:1.3; }
+.architecture-diagram .bt { font-size:18px; font-weight:700; fill:var(--ink); }
+.architecture-diagram .bs { font-size:13px; fill:var(--muted); }
+.architecture-diagram .lb { font-size:13px; fill:var(--muted); }
+.architecture-diagram .cl, .architecture-diagram .cl-ink, .architecture-diagram .cl-mut { font-size:12px; letter-spacing:1px; fill:var(--muted); }
+.architecture-diagram .wire { stroke:var(--ink); stroke-width:1.5; fill:none; }
+.architecture-diagram .wire-soft { stroke:var(--muted); stroke-width:1.3; fill:none; stroke-dasharray:4 4; }
+.architecture-diagram .wire-ret { stroke:var(--accent); stroke-width:1.8; fill:none; stroke-dasharray:7 5; }
+@media print { body { background:#fff; } .slide { margin:0; } }
+</style></head><body>
+<section class="slide cover">
+<h1>llm-d Benchmarking Assistant</h1><p>Tal Ben Ami</p>
+</section>
+<section class="slide problem">
+<div class="kicker">THE PROBLEM</div>
+<h1>Benchmark LLM serving through a conversation.</h1>
+<div class="quote">“Which configuration can handle my workload<br>and still meet my latency target?”</div>
+<p class="lead">Answering it usually means learning deployment tools, benchmark settings and performance reports.</p>
+<div class="grid3" style="margin-top:30px">
+<div class="card"><h2>Describe the goal</h2><p>Use plain language to explain the workload and targets.</p></div>
+<div class="card"><h2>Review the plan</h2><p>See the proposed setup and stay involved in execution.</p></div>
+<div class="card"><h2>Understand the result</h2><p>Compare outcomes and decide what to try next.</p></div>
+</div>
+<footer><span>llm-d Benchmarking Assistant</span><span>02</span></footer>
+</section>
+<section class="slide progress">
+<div class="kicker">ALPHA → FINAL</div>
+<h1>From chat examples to a complete workflow.</h1>
+<div class="alpha">
+<div class="alpha-intro"><div class="number">AT ALPHA</div><h2>Design &amp;<br>chat examples</h2><p>Presented the approach and selected sessions from the web demo.</p></div>
+<div class="final-list">
+<div><h2>Run the whole experiment</h2><p>Plan, deploy, benchmark and explain results in one conversation.</p></div>
+<div><h2>Go beyond one run</h2><p>Compare configurations, explore sweeps and return to saved results.</p></div>
+<div><h2>Use it where you work</h2><p>A browser app or shared tools in Claude Code through MCP.</p></div>
+</div>
+</div>
+<footer><span>llm-d Benchmarking Assistant</span><span>03</span></footer>
+</section>
+<section class="slide demo">
+<div class="kicker">DEMO</div>
+<h1>From a request to a useful comparison.</h1>
+<div class="demo-grid">
+<div class="demo-steps">
+<div><h2>1. Describe</h2><p>Ask to compare two workload configurations.</p></div>
+<div><h2>2. Review</h2><p>Inspect the plan and follow execution.</p></div>
+<div><h2>3. Compare</h2><p>See the latency and throughput trade-off.</p></div>
+<p class="demo-link"><a href="https://github.com/TalBenAmii/llm-d-benchmarking-agent/blob/main/llm-d-benchmarking-agent-project/docs/demo/llm-d-demo-live.mp4">Watch the recorded demo ↗</a></p>
+</div>
+<div>
+<svg class="product-shot" viewBox="632 381 860 355" role="img" aria-label="The application's A/B comparison card showing latency and throughput differences between two runs."><image href="../images/A_vs_B_comparison.png" width="1861" height="1029"/></svg>
+<p class="caption">Application screenshot · CPU simulator example</p>
+<p style="font-size:24px;margin-top:24px">More throughput can come at the cost of latency.</p>
+</div>
+</div>
+<footer><span>llm-d Benchmarking Assistant</span><span>04</span></footer>
+</section>
+<section class="slide design">
+<div class="kicker">HIGH-LEVEL DESIGN</div>
+<h1>One assistant connects the pieces.</h1>
+<p class="lead">The model plans. Shared tools run benchmarks and interpret their reports.</p>
+<svg class="architecture-diagram" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 580" role="img" aria-label="The user talks to an assistant guided by a language model and domain knowledge. Shared tools connect to llm-d-benchmark, run benchmarks and return explained results.">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--ink)"/>
+        </marker>
+        <marker id="arr-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+        </marker>
+        <marker id="arr-soft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+        </marker>
+      </defs>
+      <rect class="box-ext" x="420" y="8" width="320" height="40" rx="8"/>
+      <text class="bt" x="580" y="33" text-anchor="middle">Language model</text>
+
+      <line class="wire" x1="482" y1="48" x2="482" y2="170" marker-start="url(#arr)" marker-end="url(#arr)"/>
+
+      <rect class="container-host" x="30" y="96" width="250" height="220" rx="10"/>
+      <text class="cl-mut" x="50" y="122">USER</text>
+
+      <rect class="box" x="50" y="140" width="210" height="48" rx="8"/>
+      <text class="bt" x="155" y="169" text-anchor="middle">Benchmark goal</text>
+
+      <line class="wire" x1="155" y1="188" x2="155" y2="212" marker-end="url(#arr)"/>
+
+      <rect class="box" x="50" y="214" width="210" height="48" rx="8"/>
+      <text class="bt" x="155" y="243" text-anchor="middle">Chat interface</text>
+
+
+
+      <rect class="container-cluster" x="320" y="96" width="830" height="416" rx="10"/>
+      <text class="cl" x="620" y="122">BENCHMARK ENVIRONMENT</text>
+      <rect class="container-pod" x="345" y="136" width="520" height="346" rx="10"/>
+      <text class="cl-ink" x="620" y="156">ASSISTANT SERVICE</text>
+
+      <rect class="box" x="370" y="172" width="225" height="64" rx="8"/>
+      <text class="bt" x="482" y="196" text-anchor="middle">Assistant</text>
+      <text class="bs" x="482" y="216" text-anchor="middle">plans the workflow</text>
+
+      <rect class="box" x="620" y="172" width="220" height="64" rx="8"/>
+      <text class="bt" x="730" y="196" text-anchor="middle">Domain knowledge</text>
+      <text class="bs" x="730" y="216" text-anchor="middle">guides and procedures</text>
+
+      <line class="wire" x1="618" y1="204" x2="599" y2="204" marker-end="url(#arr)"/>
+
+      <rect class="box" x="370" y="264" width="225" height="58" rx="8"/>
+      <text class="bt" x="482" y="287" text-anchor="middle">Shared tools</text>
+      <text class="bs" x="482" y="305" text-anchor="middle">inspect, run, analyze</text>
+
+      <line class="wire" x1="482" y1="236" x2="482" y2="262" marker-end="url(#arr)"/>
+
+      <rect class="box-up" x="620" y="264" width="220" height="58" rx="8"/>
+      <text class="bt" x="730" y="287" text-anchor="middle">llm-d-benchmark</text>
+      <text class="bs" x="730" y="305" text-anchor="middle">existing benchmark framework</text>
+
+      <rect class="box-gate" x="370" y="350" width="470" height="62" rx="8"/>
+      <text class="bt" x="605" y="370" text-anchor="middle" fill="var(--gate)">Review &amp; execution controls</text>
+      <text class="bs" x="605" y="388" text-anchor="middle">User reviews proposed changes</text>
+      <text class="bs" x="605" y="403" text-anchor="middle">Results come from structured benchmark reports</text>
+
+      <line class="wire" x1="482" y1="322" x2="482" y2="348" marker-end="url(#arr)"/>
+
+      <line class="wire" x1="730" y1="348" x2="730" y2="324" marker-end="url(#arr)"/>
+
+      <line class="wire-soft" x1="605" y1="412" x2="605" y2="428" marker-end="url(#arr-soft)"/>
+      <rect class="box" x="370" y="430" width="470" height="40" rx="8"/>
+      <text class="bt" x="605" y="455" text-anchor="middle">Saved runs &amp; results</text>
+      <line class="wire" x1="842" y1="293" x2="893" y2="293" marker-end="url(#arr)"/>
+
+
+      <rect class="box" x="895" y="264" width="230" height="58" rx="8"/>
+      <text class="bt" x="1010" y="287" text-anchor="middle">llm-d deployment</text>
+      <text class="bs" x="1010" y="305" text-anchor="middle">runs the benchmark</text>
+
+      <path class="wire" d="M1010,322 V450 H844" marker-end="url(#arr)"/>
+      <text class="lb" x="1018" y="345">reports</text>
+      <path class="wire-ret" d="M605,470 V544 H20 V238 H46" marker-end="url(#arr-acc)"/>
+      <text class="lb" x="580" y="536" text-anchor="middle" fill="var(--accent)">Results explained to the user</text>
+      <line class="wire" x1="482" y1="48" x2="482" y2="170" marker-start="url(#arr)" marker-end="url(#arr)"/>
+      <path class="wire" d="M260,238 H330 V204 H368" marker-end="url(#arr)"/>
+    </svg>
+
+<footer><span>llm-d Benchmarking Assistant</span><span>05</span></footer>
+</section>
+<section class="slide reflection">
+<div class="kicker">PROJECT LESSONS</div>
+<h1>What worked—and what took the most effort.</h1>
+<div class="grid2">
+<div><h2>What went well</h2><ul><li>Designing the system before expanding it.</li><li>Working through an organized project plan.</li><li>Building on the existing llm-d ecosystem.</li></ul></div>
+<div><h2>Main difficulties</h2><ul><li>Turning ambiguous requirements into a clear scope.</li><li>Keeping up with changes in upstream tools.</li><li>Making long, multi-step runs understandable and recoverable.</li></ul></div>
+</div>
+<footer><span>llm-d Benchmarking Assistant</span><span>06</span></footer>
+</section>
+<section class="slide ai">
+<div class="kicker">GENERATIVE AI</div>
+<h1>AI helped build the project—and powers it.</h1>
+<div class="grid2">
+<div><h2>During development</h2><ul><li><b>Claude Code:</b> design, implementation, debugging and documentation.</li><li><b>Codex:</b> code review, installation checks and submission preparation.</li></ul></div>
+<div><h2>Inside the product</h2><ul><li>Claude or Codex guides the conversation and chooses tools.</li><li>Project knowledge supplies the benchmarking procedures.</li></ul></div>
+</div>
+<div class="band">The experience: useful for iteration, but requirements, code and explanations still needed careful review.</div>
+<footer><span>llm-d Benchmarking Assistant</span><span>07</span></footer>
+</section>
+<section class="slide next">
+<div class="kicker">POTENTIAL EXTENSIONS</div>
+<h1>Where I would take it next.</h1>
+<div class="grid3">
+<div class="card"><div class="number">01</div><h2>More deployment environments</h2><p>Expand hands-on validation across real GPU and remote clusters.</p></div>
+<div class="card"><div class="number">02</div><h2>Stronger comparisons</h2><p>Improve workload matching and measurements of latency-target success.</p></div>
+<div class="card"><div class="number">03</div><h2>Broader access</h2><p>Support more MCP clients and develop a shared service.</p></div>
+</div>
+<p class="closing">Make benchmarking accessible—from the first question<br>to the next decision.</p>
+<footer><span>llm-d Benchmarking Assistant</span><span>08</span></footer>
+</section>
+</body></html>

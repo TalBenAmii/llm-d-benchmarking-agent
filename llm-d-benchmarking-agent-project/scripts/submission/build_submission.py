@@ -44,8 +44,8 @@ def prepare():
     (PACKAGE / 'repo.url').write_text('https://github.com/TalBenAmii/llm-d-benchmarking-agent\n')
     html = (PROJECT / 'docs/submission/presentation.html').read_text()
     html = html.replace('../reference/architecture.svg', 'docs/architecture.svg')
-    html = html.replace('../demo/llm-d-demo-live.mp4',
-                        'src/llm-d-benchmarking-agent-project/docs/demo/llm-d-demo-live.mp4')
+    html = html.replace('../demo/', 'src/llm-d-benchmarking-agent-project/docs/demo/')
+    html = html.replace('../images/', 'src/llm-d-benchmarking-agent-project/docs/images/')
     (PACKAGE / 'presentation.html').write_text(html)
     chrome = shutil.which('google-chrome') or shutil.which('chromium')
     if not chrome:
