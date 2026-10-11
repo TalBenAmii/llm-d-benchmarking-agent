@@ -108,6 +108,18 @@ async def test_simulate_run_shell_runs_readonly_grep_for_real(tmp_path):
     assert out["mode"] == READ_ONLY and out["stdout_tail"] == "SENTINEL"
 
 
+async def test_simulate_generate_config_never_creates_helper_resources(tmp_path):
+    approve = AsyncMock(return_value=True)
+    spy = _SpyRunner()
+    ctx = _ctx(tmp_path, simulate=True, runner=spy, request_approval=approve)
+    ctx.consulted_skills.add("quickstart")
+    argv = ["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns", "--generate-config"]
+    result = await ctx.run_command(argv)
+    assert result.exit_code == 0
+    assert spy.calls == []
+    approve.assert_awaited_once()
+
+
 async def test_simulate_run_shell_noops_mutating_command(tmp_path):
     """Under SIMULATE an ad-hoc MUTATING shell command is approved, announced, never executed."""
     approve = AsyncMock(return_value=True)

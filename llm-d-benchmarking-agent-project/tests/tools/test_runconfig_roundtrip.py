@@ -6,8 +6,8 @@ generate-vs-reuse-vs-author JUDGMENT lives in knowledge/runconfig_roundtrip.md, 
 
   * build_argv emits --generate-config (GENERATE + exit) and -c <path> (REPLAY) on ``run`` ONLY
     (upstream defines both on the run subcommand alone); absent/None/empty => nothing;
-  * the policy permits both on ``run``: --generate-config is a read_only_trigger (it
-    generates-and-exits, deploys nothing, so it auto-runs), while a -c replay STAYS mutating
+  * the policy permits both on ``run``: --generate-config can create helper resources,
+    so it requires approval, while a -c replay also STAYS mutating
     (approval-gated) and is value-pinned to a *.yaml/*.yml config path (no `..`); the metachar
     screen still rejects an injection-laden config path;
   * the ExecuteInput schema accepts ``generate_config``/``run_config`` inside ``flags``;
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.security.policy import MUTATING, READ_ONLY
+from app.security.policy import MUTATING
 from app.tools.run.execute import build_argv
 from app.tools.schemas import ExecuteInput
 
@@ -112,16 +112,16 @@ def _argv(*rest):
     return ["llmdbenchmark", "--spec", "cicd/kind", "run", *rest]
 
 
-def test_policy_generate_config_auto_runs_read_only(policy, catalog):
-    # --generate-config generates-and-exits (deploys nothing) => it downgrades the run to a
-    # read-only AUTO-RUN, exactly like --dry-run / --list-endpoints.
+def test_policy_generate_config_requires_approval(policy, catalog):
+    # Upstream prepares the harness namespace/PVC/helper pod before writing the config.
     d = policy.validate(
         _argv("-p", "llmdbench", "-l", "inference-perf", "-w", "sanity_random.yaml",
               "--generate-config"),
         catalog=catalog,
     )
     assert d.allowed, f"--generate-config should be allowed on run: {d.reason}"
-    assert d.mode == READ_ONLY
+    assert d.mode == MUTATING
+    assert d.requires_approval
 
 
 @pytest.mark.parametrize("flag", ["-c", "--config"])
@@ -163,14 +163,14 @@ def test_policy_rejects_injection_laden_run_config(policy, catalog):
 
 
 def test_roundtrip_in_one_session_acceptance(policy, catalog):
-    # ACCEPTANCE end-to-end at the argv/policy boundary: generate (auto-run, read-only) THEN
+    # ACCEPTANCE end-to-end at the argv/policy boundary: generate (approval-gated) THEN
     # replay (approval-gated, mutating) — both expressible and both permitted.
     gen = build_argv(
         "run", spec="cicd/kind", namespace="llmdbench", harness="inference-perf",
         workload="sanity_random.yaml", flags={"generate_config": True, "output": "local"},
     )
     gd = policy.validate(gen, catalog=catalog)
-    assert gd.allowed and gd.mode == READ_ONLY
+    assert gd.allowed and gd.mode == MUTATING and gd.requires_approval
 
     replay = build_argv("run", namespace="llmdbench", flags={"run_config": RUN_CONFIG})
     rd = policy.validate(replay, catalog=catalog)

@@ -122,7 +122,7 @@ def test_global_position_dry_run_does_not_bypass_approval(policy, catalog, argv)
           "-w", "sanity_random.yaml", "--dry-run"], READ_ONLY),
         (["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns", "--list-endpoints"], READ_ONLY),
         (["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns", "-z"], READ_ONLY),
-        (["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns", "--generate-config"], READ_ONLY),
+        (["llmdbenchmark", "--spec", "cicd/kind", "run", "-p", "ns", "--generate-config"], MUTATING),
         (["llmdbenchmark", "--spec", "cicd/kind", "plan", "-n"], READ_ONLY),
         (["llmdbenchmark", "-n", "experiment", "-e", "exp.yaml"], MUTATING),  # contrast: global -> mutating
     ],

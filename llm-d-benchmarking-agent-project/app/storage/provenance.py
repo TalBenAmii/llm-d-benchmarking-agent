@@ -81,7 +81,7 @@ class ProvenanceBundle:
 class RunReadonly(Protocol):
     """The read-only runner the tool passes in. A structural type (kept abstract so this module
     never imports ToolContext — avoids a cycle): an awaitable call accepting an argv + an optional
-    ``cwd`` and returning an object with ``.ok``/``.stdout`` (a RunResult)."""
+    ``cwd`` and returning an object with ``.exit_code``/``.output`` (a RunResult)."""
 
     async def __call__(self, argv: list[str], *, cwd: str | None = ...) -> Any: ...
 
@@ -110,11 +110,11 @@ async def capture_repo_state(repo_path: str | Path, run_readonly: RunReadonly) -
         # Any policy/runner error → honest "unavailable" rather than a crash or a fake SHA.
         return {"sha": None, "dirty": None, "unavailable": True}
 
-    if not getattr(sha_res, "ok", False):
+    if getattr(sha_res, "exit_code", None) != 0:
         return {"sha": None, "dirty": None, "unavailable": True}
 
-    sha = (getattr(sha_res, "stdout", "") or "").strip().splitlines()
-    dirty = bool((getattr(status_res, "stdout", "") or "").strip()) if getattr(status_res, "ok", False) else None
+    sha = (getattr(sha_res, "output", "") or "").strip().splitlines()
+    dirty = bool((getattr(status_res, "output", "") or "").strip()) if getattr(status_res, "exit_code", None) == 0 else None
     return {
         "sha": sha[0] if sha else None,
         "dirty": dirty,

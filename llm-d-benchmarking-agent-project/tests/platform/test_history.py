@@ -354,6 +354,7 @@ def test_context_history_store_rooted_outside_session_dir():
 # ---- result_history tool (real reports on disk) ----------------------------
 
 async def test_tool_store_validates_then_persists(tool_ctx, br_example, tmp_path):
+    tool_ctx.session_id = "presentation-session"
     base = load_report(br_example)
     run = tmp_path / "run"
     _write_report(run, base, ttft_s=0.15, out_rate=400.0, uid="run-good")
@@ -362,6 +363,7 @@ async def test_tool_store_validates_then_persists(tool_ctx, br_example, tmp_path
         tags=["8B", "baseline"], harness="inference-perf",
     )
     assert out["stored"] is True and out["created"] is True
+    assert out["record"]["session_id"] == "presentation-session"
     assert out["record"]["label"] == "my baseline" and out["record"]["tags"] == ["8B", "baseline"]
     assert out["summary"]["model"] is not None
     # It really landed in the cross-session store.

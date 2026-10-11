@@ -44,9 +44,10 @@ parsed a validated report, OFFER `export_run_bundle` on it so this run *is* capt
 The bundle inlines the CLI's own **resolved run-config** so a replay is byte-identical. If this
 session has no generated run-config, `export_run_bundle` records `run_config_found: false` and the
 bundle is still valid but not byte-reproducible. To fix that, FIRST run
-`execute_llmdbenchmark(subcommand="run", flags={"generate_config": True})` (read-only; writes
+`execute_llmdbenchmark(subcommand="run", flags={"generate_config": True})` (approval-gated; may create harness helper resources and writes
 `run-config.yaml` under the session workspace — see `read_knowledge('runconfig_roundtrip')`), THEN
-export the bundle. Prefer doing this so the user gets a real, replayable artifact.
+export the bundle. In SIMULATE mode generation is a no-op: preserve `run_config_found: false`
+and explain that a sample report bundle cannot exactly reproduce a measured run.
 
 ## The reproduce SEQUENCE — through the gates, never around them
 

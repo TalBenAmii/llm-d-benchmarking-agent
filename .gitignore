@@ -22,3 +22,8 @@
 /llm-d-benchmarking-agent-project/docs/submission/
 /llm-d-benchmarking-agent-project/docs/guides/SUBMISSION_USER_MANUAL.md
 /llm-d-benchmarking-agent-project/scripts/submission/
+/llm-d-benchmarking-agent-project/scripts/demo/
+/llm-d-benchmarking-agent-project/docs/reference/DEVELOPER_GUIDE.md
+
+# Local design previews; published diagrams live in docs/reference/.
+/design-preview/

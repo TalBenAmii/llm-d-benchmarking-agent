@@ -11,8 +11,9 @@ two — and choosing to generate-then-reuse at all — is judgment, not a defaul
    - `execute_llmdbenchmark(subcommand="run", …, flags={"generate_config": True})` emits
      `--generate-config`. The CLI takes the CURRENT settings (spec, namespace, harness `-l`,
      workload `-w`, model `-m`, monitoring, overrides, …) and writes a **run-config YAML from
-     those settings under the session `--workspace`, then EXITS**. It deploys nothing and runs
-     no load, so it auto-runs (read-only) — no approval prompt. Nothing is benchmarked yet.
+     those settings under the session `--workspace`, then EXITS**. It runs no load, but can
+     create a harness namespace, PVC and helper pod. It is **mutating and approval-gated**.
+     In SIMULATE mode it is a no-op and produces no config. Use `--dry-run` for a preview.
    - `execute_llmdbenchmark(subcommand="run", flags={"run_config": "<path-to-that-yaml>"})`
      emits `-c <path>`, which **REPLAYS** the saved config in run-only mode. This *does* execute
      the benchmark load against an existing stack, so it is **mutating and approval-gated** like
@@ -42,8 +43,8 @@ two — and choosing to generate-then-reuse at all — is judgment, not a defaul
 - **Neither (just run normally)** for a one-off run you won't repeat — don't generate a config
   you'll never replay.
 
-When unsure, prefer generating a config after a good run (cheap, read-only) so the user has a
-reproducible artifact; replay it only when they actually want the same run again.
+Offer config generation after a good run when a reusable artifact is useful; explain its
+possible helper-resource changes and obtain approval. Replay only when requested.
 
 ## Mechanism notes (for grounding, not decisions)
 
@@ -53,7 +54,7 @@ reproducible artifact; replay it only when they actually want the same run again
   lives in the workspace). The agent never writes into the read-only sibling repos.
 - `flags.run_config` is value-pinned by the command policy to a `*.yaml`/`*.yml` path with **no `..`
   traversal** (`value_constraints.run_config_path`); `--generate-config` is policy-allowed as a
-  read-only trigger (generates-and-exits) on `run` only.
+  mutating flag on `run` only; only an explicit dry-run downgrades it to a preview.
 - **No env var** is involved — the CLI consumes `--generate-config` / `-c` directly. Don't set
   any `LLMDBENCH_*` config var yourself.
 - A `-c` replay is **run-only mode**: it expects a stack already serving the model. If no stack

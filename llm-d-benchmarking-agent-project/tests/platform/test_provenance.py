@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from app.security.runner import RunResult
 from app.storage.provenance import (
     BundleStore,
     InvalidReportError,
@@ -37,21 +38,20 @@ _HERMETIC_GIT_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GI
 # ---- helpers ---------------------------------------------------------------
 
 
-class _FakeResult:
-    def __init__(self, ok: bool, stdout: str = "", exit_code: int = 0):
-        self.ok = ok
-        self.stdout = stdout
-        self.exit_code = exit_code
+def _fake_result(ok: bool, stdout: str = "", exit_code: int = 0) -> RunResult:
+    # Use the production result shape so a drift to nonexistent ok/stdout fields fails.
+    return RunResult(exit_code=exit_code if ok else (exit_code or 1),
+                     duration_s=0, real_argv=[], cwd=None, output=stdout)
 
 
-def _fake_run_readonly(responses: dict[tuple[str, ...], _FakeResult]):
+def _fake_run_readonly(responses: dict[tuple[str, ...], RunResult]):
     """A fake ctx.run_readonly: matches an argv prefix to a canned result; cwd is accepted +
     ignored (the mapping already encodes the repo). Unknown argv → ok=False."""
     async def run(argv, *, cwd=None, timeout=None, quiet=False):
         for prefix, res in responses.items():
             if tuple(argv[: len(prefix)]) == prefix:
                 return res
-        return _FakeResult(False)
+        return _fake_result(False)
     return run
 
 
@@ -111,7 +111,7 @@ async def test_capture_repo_state_clean_then_dirty(tmp_path):
     # A real read-only runner that shells out with the given cwd (mirrors the tool's path).
     async def run(argv, *, cwd=None, timeout=None, quiet=False):
         r = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, env=_HERMETIC_GIT_ENV)
-        return _FakeResult(r.returncode == 0, r.stdout, r.returncode)
+        return _fake_result(r.returncode == 0, r.stdout, r.returncode)
 
     clean = await capture_repo_state(repo, run)
     assert clean["sha"] == real_sha and clean["dirty"] is False
@@ -141,7 +141,7 @@ async def test_capture_repo_state_git_error_degrades(tmp_path):
     (repo / ".git").mkdir(parents=True)  # looks like a repo but git will fail
 
     async def run(argv, *, cwd=None, timeout=None, quiet=False):
-        return _FakeResult(False)  # rev-parse fails
+        return _fake_result(False)  # rev-parse fails
 
     out = await capture_repo_state(repo, run)
     assert out == {"sha": None, "dirty": None, "unavailable": True}
@@ -323,8 +323,8 @@ def test_provenance_view_is_compact(br_example):
 
 async def test_capture_repo_state_with_canned_runner():
     run = _fake_run_readonly({
-        ("git", "rev-parse", "--short", "HEAD"): _FakeResult(True, "deadbee\n"),
-        ("git", "status", "--porcelain"): _FakeResult(True, " M file.py\n"),
+        ("git", "rev-parse", "--short", "HEAD"): _fake_result(True, "deadbee\n"),
+        ("git", "status", "--porcelain"): _fake_result(True, " M file.py\n"),
     })
     # A dir that looks like a git repo so we get past the cheap .git existence check.
     import tempfile

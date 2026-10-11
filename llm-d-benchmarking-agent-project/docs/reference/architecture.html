@@ -99,102 +99,81 @@
   </header>
 
   <div class="diagram-card">
-    <svg viewBox="0 0 1180 580" role="img" aria-label="Deployment diagram: a browser chat UI on the host reaches the agent service pod in a Kubernetes cluster via port-forward on port 8000. The pod holds the agent loop, knowledge files, the tool registry, read-only upstream repos baked into the image, and a guardrail layer; it talks to an external LLM provider and shells out to the llmdbenchmark CLI, which deploys the llm-d stack and runs benchmarks in a plan-chosen namespace. Raw results land in the workspace mount, are parsed against the Benchmark Report v0.2 schema in the backend, and are explained to the user.">
-      <defs>
-        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--ink)"/>
-        </marker>
-        <marker id="arr-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
-        </marker>
-        <marker id="arr-soft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
-        </marker>
-      </defs>
-
-      <!-- ===== external LLM provider ===== -->
-      <rect class="box-ext" x="420" y="8" width="320" height="40" rx="8"/>
-      <text class="bt" x="580" y="33" text-anchor="middle">Claude / Codex provider (external)</text>
-
-      <line class="wire" x1="482" y1="48" x2="482" y2="170" marker-start="url(#arr)" marker-end="url(#arr)"/>
-      <text class="lb" x="492" y="86">prompts / tool calls</text>
-
-      <!-- ===== host ===== -->
-      <rect class="container-host" x="30" y="96" width="250" height="220" rx="10"/>
-      <text class="cl-mut" x="50" y="122">HOST</text>
-
-      <rect class="box" x="50" y="140" width="210" height="48" rx="8"/>
-      <text class="bt" x="155" y="169" text-anchor="middle">User (non-expert)</text>
-
-      <line class="wire" x1="155" y1="188" x2="155" y2="212" marker-end="url(#arr)"/>
-
-      <rect class="box" x="50" y="214" width="210" height="48" rx="8"/>
-      <text class="bt" x="155" y="243" text-anchor="middle">Browser chat UI</text>
+    <svg xmlns="http://www.w3.org/2000/svg" id="updated-hld" class="architecture-diagram" width="1320" height="740" viewBox="0 140 1320 740" role="img" aria-labelledby="title desc">
+<title id="title">llm-d Benchmarking Assistant — simplified high-level design</title><desc id="desc">A browser assistant connects to an external model provider and shared tools. MCP clients also access the tools. Project knowledge and the llm-d, llm-d-skills, and llm-d-benchmark repositories guide the workflow. Execution controls lead to benchmark harnesses testing an llm-d deployment. Reports are validated, analyzed, saved, and explained in chat.</desc>
+<style>#updated-hld text{font-family:Arial,Helvetica,sans-serif}#updated-hld .bg{fill:#fff}#updated-hld .box{fill:#fff;stroke:#173448;stroke-width:1.5}#updated-hld .box-up{fill:#f4f0fa;stroke:#66578c;stroke-width:1.5;stroke-dasharray:6 5}#updated-hld .box-ext{fill:#fff;stroke:#587082;stroke-width:1.4;stroke-dasharray:6 5}#updated-hld .box-gate{fill:#faf5e9;stroke:#997128;stroke-width:1.5}#updated-hld .container{fill:#eff6f8;stroke:#c7d9e3;stroke-width:1.4}#updated-hld .bt{font-size:20px;font-weight:700;fill:#173448}#updated-hld .bs{font-size:16px;fill:#587082}#updated-hld .label{font-size:14px;letter-spacing:1.6px;fill:#587082}#updated-hld .kicker{font-size:16px;letter-spacing:2px;font-weight:700;fill:#126b70}#updated-hld .heading{font-size:40px;font-weight:700;fill:#173448}#updated-hld .lead{font-size:22px;fill:#587082}#updated-hld .note{font-size:16px;fill:#587082}#updated-hld .accent{font-size:18px;fill:#126b70}#updated-hld .wire{stroke:#173448;stroke-width:1.7;fill:none}#updated-hld .wire-soft{stroke:#587082;stroke-width:1.5;fill:none;stroke-dasharray:5 5}#updated-hld .wire-ret{stroke:#126b70;stroke-width:2;fill:none;stroke-dasharray:8 6}
+</style>
+<defs>
+<marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#173448"/></marker>
+<marker id="arr-soft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#587082"/></marker>
+<marker id="arr-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#126b70"/></marker>
+</defs>
+<rect width="1320" height="950" fill="#fff"/>
 
 
-      <text class="lb" x="301" y="275" text-anchor="middle">WS :8000</text>
+<rect class="box-ext" x="330" y="154" width="270" height="78" rx="10"/>
+<text class="bt" x="465.0" y="188.0" text-anchor="middle">External model provider</text>
+<text class="bs" x="465.0" y="214.0" text-anchor="middle">Claude or Codex</text>
+<rect class="container" x="300" y="270" width="580" height="594" rx="10"/>
+<text class="label" x="850" y="294" text-anchor="end">ASSISTANT SERVICE</text><text class="bs" x="850" y="315" text-anchor="end">Local or in-cluster</text>
+<rect class="box" x="330" y="330" width="270" height="80" rx="10"/>
+<text class="bt" x="465.0" y="365.0" text-anchor="middle">Assistant</text>
+<text class="bs" x="465.0" y="391.0" text-anchor="middle">Chat and sessions</text>
+<rect class="box" x="650" y="330" width="200" height="80" rx="10"/>
+<text class="bt" x="750.0" y="365.0" text-anchor="middle">Knowledge</text>
+<text class="bs" x="750.0" y="391.0" text-anchor="middle">Project guidance</text>
+<path class="wire" d="M465 232 V328" marker-end="url(#arr)" marker-start="url(#arr)"/>
+<path class="wire-soft" d="M650 370 H602" marker-end="url(#arr-soft)"/>
+<rect class="box" x="330" y="455" width="520" height="80" rx="10"/>
+<text class="bt" x="590.0" y="490.0" text-anchor="middle">Shared tools</text>
+<text class="bs" x="590.0" y="516.0" text-anchor="middle">Inspect · plan · run · analyze</text>
+<path class="wire" d="M465 410 V453" marker-end="url(#arr)" marker-start="url(#arr)"/>
+<rect class="box-gate" x="330" y="575" width="520" height="80" rx="10"/>
+<text class="bt" x="590.0" y="610.0" text-anchor="middle">Review &amp; execution controls</text>
+<text class="bs" x="590.0" y="636.0" text-anchor="middle">Command policy · shell checks · approvals</text>
+<path class="wire" d="M590 535 V573" marker-end="url(#arr)"/>
+<rect class="box" x="330" y="695" width="520" height="70" rx="10"/>
+<text class="bt" x="590.0" y="725.0" text-anchor="middle">Benchmark execution</text>
+<text class="bs" x="590.0" y="751.0" text-anchor="middle">CLI · optional Kubernetes Jobs</text>
+<path class="wire" d="M590 655 V693" marker-end="url(#arr)"/>
+<rect class="box" x="330" y="797" width="520" height="48" rx="10"/>
+<text class="bt" x="590.0" y="828.0" text-anchor="middle">Results: validate, analyze and save</text>
+<text class="label" x="55" y="307" text-anchor="start">USER</text>
+<rect class="box" x="55" y="330" width="195" height="80" rx="10"/>
+<text class="bt" x="152.5" y="377.0" text-anchor="middle">Browser chat</text>
+<path class="wire" d="M250 370 H328" marker-end="url(#arr)" marker-start="url(#arr)"/>
+<rect class="box-ext" x="55" y="455" width="195" height="80" rx="10"/>
+<text class="bt" x="152.5" y="490.0" text-anchor="middle">MCP clients</text>
+<text class="bs" x="152.5" y="516.0" text-anchor="middle">via llm-d-bench-mcp</text>
+<path class="wire" d="M250 495 H328" marker-end="url(#arr)" marker-start="url(#arr)"/>
+<rect class="box-up" x="950" y="270" width="330" height="335" rx="10"/>
+<text class="label" x="975" y="300" text-anchor="start">UPSTREAM REPOSITORIES</text>
+<text class="bt" x="1115" y="348" text-anchor="middle">llm-d</text>
+<text class="bs" x="1115" y="375" text-anchor="middle">Deployment guides</text>
+<path d="M975 398 H1255" stroke="#ded5ea"/>
+<text class="bt" x="1115" y="437" text-anchor="middle">llm-d-skills</text>
+<text class="bs" x="1115" y="464" text-anchor="middle">Operational procedures</text>
+<path d="M975 487 H1255" stroke="#ded5ea"/>
+<text class="bt" x="1115" y="526" text-anchor="middle">llm-d-benchmark</text>
+<text class="bs" x="1115" y="553" text-anchor="middle">CLI, catalog and report schema</text>
+<path class="wire-soft" d="M950 495 H852" marker-end="url(#arr-soft)"/>
+<rect class="container" x="950" y="650" width="330" height="214" rx="10"/>
+<text class="label" x="975" y="680" text-anchor="start">BENCHMARK ENVIRONMENT</text>
+<rect class="box" x="975" y="702" width="280" height="55" rx="10"/>
+<text class="bt" x="1115.0" y="736.5" text-anchor="middle">Benchmark harnesses</text>
+<rect class="box" x="975" y="795" width="280" height="50" rx="10"/>
+<text class="bt" x="1115.0" y="827.0" text-anchor="middle">llm-d deployment</text>
+<path class="wire" d="M850 723 H973" marker-end="url(#arr)"/>
+<path class="wire" d="M1115 757 V793" marker-end="url(#arr)" marker-start="url(#arr)"/>
+<path class="wire" d="M975 743 H910 V821 H852" marker-end="url(#arr)"/>
+<text class="bs" x="939" y="785" text-anchor="end">Reports</text>
+<path class="wire-ret" d="M330 821 H35 V395 H53" marker-end="url(#arr-acc)"/>
+<text class="accent" x="65" y="780" text-anchor="start">Results explained</text>
+<text class="accent" x="65" y="804" text-anchor="start">in chat</text>
 
-      <!-- ===== cluster ===== -->
-      <rect class="container-cluster" x="320" y="96" width="830" height="416" rx="10"/>
-      <text class="cl" x="620" y="122">CLUSTER · kind CPU-sim or GPU</text>
 
-      <!-- agent service pod -->
-      <rect class="container-pod" x="345" y="136" width="520" height="346" rx="10"/>
-      <text class="cl-ink" x="620" y="156">AGENT SERVICE POD</text>
 
-      <rect class="box" x="370" y="172" width="225" height="64" rx="8"/>
-      <text class="bt" x="482" y="196" text-anchor="middle">Agent loop</text>
-      <text class="bs" x="482" y="216" text-anchor="middle">FastAPI · Claude / Codex SDK</text>
-
-      <rect class="box" x="620" y="172" width="220" height="64" rx="8"/>
-      <text class="bt" x="730" y="196" text-anchor="middle">knowledge/</text>
-      <text class="bs" x="730" y="216" text-anchor="middle">core prompt + on-demand md/yaml</text>
-
-      <line class="wire" x1="618" y1="204" x2="599" y2="204" marker-end="url(#arr)"/>
-
-      <rect class="box" x="370" y="264" width="225" height="58" rx="8"/>
-      <text class="bt" x="482" y="287" text-anchor="middle">Tool registry</text>
-      <text class="bs" x="482" y="305" text-anchor="middle">shared tools · schema-validated args</text>
-
-      <line class="wire" x1="482" y1="236" x2="482" y2="262" marker-end="url(#arr)"/>
-
-      <rect class="box-up" x="620" y="264" width="220" height="58" rx="8"/>
-      <text class="bt" x="730" y="287" text-anchor="middle">/repos · upstream</text>
-      <text class="bs" x="730" y="305" text-anchor="middle">read-only source + benchmark CLI</text>
-
-      <rect class="box-gate" x="370" y="350" width="470" height="62" rx="8"/>
-      <text class="bt" x="605" y="370" text-anchor="middle" fill="var(--gate)">Validation &amp; execution controls</text>
-      <text class="bs" x="605" y="388" text-anchor="middle">dedicated commands: policy · shell: classifier · approvals by default</text>
-      <text class="bs" x="605" y="403" text-anchor="middle">results parsed from the Benchmark Report v0.2 schema, never log-scraped</text>
-
-      <line class="wire" x1="482" y1="322" x2="482" y2="348" marker-end="url(#arr)"/>
-
-      <line class="wire" x1="730" y1="348" x2="730" y2="324" marker-end="url(#arr)"/>
-      <text class="lb" x="738" y="341">shells out</text>
-
-      <!-- writable mounts -->
-      <line class="wire-soft" x1="605" y1="412" x2="605" y2="428" marker-end="url(#arr-soft)"/>
-      <rect class="box" x="370" y="430" width="470" height="40" rx="8"/>
-      <text class="bt" x="605" y="455" text-anchor="middle">/workspace + /tmp · the pod's only writable mounts</text>
-
-      <!-- llm-d stack + runs -->
-      <line class="wire" x1="842" y1="293" x2="893" y2="293" marker-end="url(#arr)"/>
-      <text class="lb" x="1010" y="252" text-anchor="middle">standup · run</text>
-
-      <rect class="box" x="895" y="264" width="230" height="58" rx="8"/>
-      <text class="bt" x="1010" y="287" text-anchor="middle">llm-d stack + runs</text>
-      <text class="bs" x="1010" y="305" text-anchor="middle">plan-chosen namespace · sweeps · retry</text>
-
-      <path class="wire" d="M1010,322 V450 H844" marker-end="url(#arr)"/>
-      <text class="lb" x="1018" y="345">raw results</text>
-
-      <!-- ===== return path ===== -->
-      <path class="wire-ret" d="M605,470 V544 H20 V238 H46" marker-end="url(#arr-acc)"/>
-      <text class="lb" x="580" y="536" text-anchor="middle" fill="var(--accent)">results explained to the user</text>
-      <!-- Redraw connections above container fills for print clarity. -->
-      <line class="wire" x1="482" y1="48" x2="482" y2="170" marker-start="url(#arr)" marker-end="url(#arr)"/>
-      <path class="wire" d="M260,238 H330 V204 H368" marker-end="url(#arr)"/>
-    </svg>
+</svg>
     <div class="legend">
       <span><i class="swatch owned"></i> owned code</span>
       <span><i class="swatch up"></i> upstream, read-only</span>
@@ -230,8 +209,8 @@
   </div>
 
   <div class="col" style="margin-top:24px">
-    <b>Deployment view and scope.</b> This diagram shows the in-cluster deployment. A local
-    installation runs the same FastAPI backend on the host. Claude and Codex engines share the
+    <b>Deployment view and scope.</b> This diagram covers the browser and MCP interfaces, shared tools, upstream repositories,
+    and benchmark environment. The assistant backend runs locally or as an in-cluster service. Claude and Codex engines share the
     tool registry; Codex subscription setup is documented for the local path. The standalone
     <code>llm-d-bench-mcp/</code> adapter exposes the same tools to an external MCP client.
     <p>Auto-approve can waive command cards. <code>run_shell</code> uses a heuristic classifier,

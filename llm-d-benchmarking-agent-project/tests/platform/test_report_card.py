@@ -113,6 +113,15 @@ def test_report_card_escapes_injected_markup():
     assert "&lt;script&gt;" in html
 
 
+def test_report_card_preserves_and_escapes_sample_label():
+    bundle = _bundle()
+    bundle["label"] = "SYNTHETIC sample — not measured <script>alert(1)</script>"
+    html = render_report_card(bundle)
+    assert "SYNTHETIC sample — not measured" in html
+    assert "&lt;script&gt;" in html
+    assert "<script>alert(1)</script>" not in html
+
+
 def test_report_card_handles_missing_fields_gracefully():
     # A minimal bundle (no env, no config, no repos) still renders without crashing.
     html = render_report_card({

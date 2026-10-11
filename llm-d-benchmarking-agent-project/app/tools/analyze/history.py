@@ -140,7 +140,7 @@ async def _store(
         summary,
         label=label,
         tags=tags,
-        session_id=session_id,
+        session_id=session_id or ctx.session_id,
         report_path=str(report_path),
         spec=spec,
         harness=harness,

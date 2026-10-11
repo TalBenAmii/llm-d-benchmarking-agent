@@ -119,7 +119,7 @@ class ExecuteInput(BaseModel):
                     "`modelservice_deploy_timeout` / `kustomize_deploy_timeout` / "
                     "`pvc_bind_timeout` on standup; `fma_teardown_timeout` on teardown; "
                     "knowledge/phase_timeouts.md. `generate_config` => --generate-config on a "
-                    "run (writes a reusable run-config YAML and exits; read-only/auto-runs); "
+                    "run (may create harness helper resources, writes run-config YAML, then exits; approval-gated); "
                     "`run_config` => -c <path> to REPLAY one (run-only; still approval-gated); "
                     "knowledge/runconfig_roundtrip.md. `debug` => -d on run/experiment ONLY "
                     "(harness pods sleep instead of running the load; still approval-gated; on "

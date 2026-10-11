@@ -957,9 +957,9 @@ executables:
           "--data-access-timeout": { takes_value: true, value: { ref: positive_int } }
           # Phase 42: run-config round-trip — both flags are upstream `run`-ONLY.
           # --generate-config GENERATES a reusable run-config YAML from the current settings and
-          # EXITS (deploys nothing); it auto-runs like --list-endpoints/--dry-run, so it is a
-          # read_only_trigger. The generated config lands under the session --workspace.
-          "--generate-config": { read_only_trigger: true }
+          # EXITS before load, but upstream can prepare a namespace, PVC and helper pod.
+          # Keep approval + SIMULATE no-op protection; only --dry-run is a safe preview.
+          "--generate-config": {}
           # -c/--config REPLAYS a previously generated run-config (run-only mode). A replay still
           # executes the benchmark load against an existing stack, so it STAYS mutating (NOT a
           # read_only_trigger) — approval-gated like a normal run. Value-pinned to a *.yaml/*.yml

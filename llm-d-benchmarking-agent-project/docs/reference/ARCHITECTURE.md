@@ -6,32 +6,13 @@ benchmarking guidance lives in the model and editable `knowledge/` files.
 
 ## High-level picture
 
-![Deployment architecture](architecture.svg)
+![High-level architecture](architecture.svg)
 
-[Open the full architecture diagram](architecture.html). It shows the in-cluster
-service; local installation runs the same backend on the host. Codex subscription setup is
-currently documented for that local path.
+[Open the full architecture diagram](architecture.html). It shows the browser and MCP
+interfaces, shared tools, all three upstream repositories, and benchmark environment.
+The backend runs locally or as an in-cluster service; Codex subscription setup is
+currently documented for the local path.
 
-```mermaid
-flowchart TB
-    UI[Browser UI] -->|WebSocket| Session[FastAPI / SessionManager]
-    Session --> Claude[SdkNativeEngine / Claude SDK]
-    Session --> Codex[CodexEngine / Codex SDK]
-    Client[External MCP client] --> MCP[Standalone MCP adapter]
-    Knowledge[Core prompt + on-demand knowledge] --> Claude
-    Knowledge --> Codex
-    Claude --> Registry[Shared tool registry / validated arguments]
-    Codex --> Registry
-    MCP --> Registry
-    Registry --> Dedicated[Dedicated commands: policy + approval]
-    Registry --> Shell[run_shell: classifier + approval]
-    Dedicated --> CLI[llmdbenchmark / client tools]
-    Shell --> CLI
-    CLI --> Cluster[llm-d stack / benchmark Jobs]
-    Cluster --> Reports[Workspace reports / schema validation]
-    Reports --> Analysis[Analysis / history / provenance]
-    Analysis --> UI
-```
 
 The standalone MCP client owns its conversation and command permissions. It does not use
 the application's browser session loop. Shared handlers and knowledge avoid duplicating

@@ -130,9 +130,11 @@ def _header(bundle: dict[str, Any]) -> str:
             bits.append(f"{_esc(label)}: {_esc(val)}")
     sub = " · ".join(bits)
     av = _esc(bundle.get("agent_version"))
+    run_label = f'<p><strong>{_esc(bundle["label"])}</strong></p>' if bundle.get("label") else ""
     return (
         f'<header class="card-head">{_LOGO_SVG}'
         f"<div><h1>Benchmark report — {_esc(model)}</h1>"
+        f'{run_label}'
         f'<p class="sub">{sub}</p>'
         f'<p class="muted">captured {_esc(when)} · agent v{av}</p></div></header>'
     )
