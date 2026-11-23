@@ -6,7 +6,7 @@ FROZEN pins that are never regenerated — and ``<name>.sdk-native.events.json``
 streams, what ``scripts/eval/capture_ws_baseline.py`` regenerates. The structural checks keep
 them from rotting silently (exist, parse, real flow, end with ``done``, no orphans); the parity
 test diffs the engine's streams against the frozen pins — they must be BYTE-IDENTICAL modulo
-the one adjudicated cutover difference (usage cadence). The capture script is NOT run in CI
+the cutover difference (usage cadence) and subsequent welcome-card copy edits. The capture script is NOT run in CI
 (re-capturing is a deliberate act).
 """
 from __future__ import annotations
@@ -14,6 +14,8 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+
+from app.agent.cards import build_welcome
 
 from .flows import FLOWS_BY_NAME
 
@@ -73,21 +75,23 @@ def test_no_orphan_baseline_files():
     )
 
 
-def test_sdk_native_wire_stream_matches_old_engine_modulo_usage_cadence():
-    """The over-the-wire cutover parity diff: for every baseline conversation, the engine's
-    stream equals the retired loop's FROZEN pin event-for-event — texts, tool calls/results,
-    command argv, approval cards, cards, done — after dropping ``usage`` events from both
-    sides. Usage cadence was the ONE adjudicated cutover difference: the old loop emitted one
-    usage per LLM call (mid-turn), the engine one per SDK response (post-result). Both
-    files are already normalized by the capture (ids -> <tc-N>/<approval-N>, paths -> tokens,
-    seq/durations/token-numbers stripped), so equality here is exact, not fuzzy. NO other
-    difference is normalized — a new divergence must fail this test and be adjudicated."""
+def test_sdk_native_wire_stream_matches_old_engine(tool_ctx):
+    """Compare every event against the retired engine, accounting for usage cadence
+    and the current user-facing text of the welcome card."""
+    welcome = build_welcome(tool_ctx)
+    assert welcome is not None
     for name in _declared_baselines():
         streams = []
         for suffix in _ENGINE_SUFFIXES:
             doc = json.loads((_BASELINE_DIR / f"{name}{suffix}.events.json").read_text())
             streams.append([e for e in doc["events"] if e["type"] != "usage"])
         old, new = streams
+        # Historical captures keep their original wording. Only the three copy fields
+        # changed. Their presence, event order, and the rest of the stream still matter.
+        [old_card] = [event["data"] for event in old if event["type"] == "welcome"]
+        for field in ("heading", "bullets", "nudge"):
+            assert field in old_card
+            old_card[field] = welcome[field]
         assert new == old, (
             f"{name}: sdk-native wire stream diverged from the pinned old-engine baseline "
             "(compare the two .events.json files; adjudicate before normalizing anything)"

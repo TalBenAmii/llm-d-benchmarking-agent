@@ -22,17 +22,15 @@
     {
       "type": "welcome",
       "data": {
-        "heading": "Hi! I'm the llm-d Benchmarking Assistant \u2014 here's how I can help.",
+        "heading": "Hi! I'm the llm-d Benchmarking Assistant.",
         "bullets": [
-          "Deploy a model stack on the local quickstart (a kind cluster with a CPU-simulated engine).",
-          "Run a capacity pre-flight so a model/config is confirmed to fit before anything is stood up.",
-          "Run benchmarks against a fresh or already-running stack.",
-          "Compare configurations and run parameter sweeps to see what wins.",
-          "Read and explain Benchmark Reports in plain language, tied to your goal.",
-          "Track results and trends over time so you can spot regressions and wins.",
-          "Co-author a custom spec and workload with you, step by step, then validate it before running."
+          "Tell me about your app and what you want to measure. I\u2019ll choose settings for llm-d-benchmark and show you the plan for approval.",
+          "I can benchmark a model you already serve, or deploy a CPU simulator for a local trial.",
+          "I can explain how quickly your model responded and whether it met your target.",
+          "I can compare configurations, track performance trends, or help you design a custom workload.",
+          "If you\u2019re planning a deployment, I can estimate whether the model will fit on your hardware."
         ],
-        "nudge": "Tell me what you'd like to benchmark, or pick one of the suggestions below to get started."
+        "nudge": "Try asking \u201cHow quickly will my chat app start replying when it gets busy?\u201d"
       }
     },
     {

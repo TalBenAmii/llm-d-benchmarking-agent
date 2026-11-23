@@ -1,8 +1,10 @@
 # Documentation
 
-The technical documentation for the llm-d Benchmarking Agent: a conversational agent,
-Kubernetes-native benchmark orchestrator, and results analyzer for
-[`llm-d-benchmark`](https://github.com/llm-d/llm-d-benchmark).
+The llm-d Benchmarking Agent helps you use
+[`llm-d-benchmark`](https://github.com/llm-d/llm-d-benchmark) without having to learn
+its commands or configuration files. Describe your workload and what you want to measure.
+The agent chooses a load generator and workload profile, shows you the plan for approval,
+runs the benchmark, and explains what the results mean for your workload.
 
 Start with [USER_GUIDE.md](guides/USER_GUIDE.md), [DEPLOYMENT.md](guides/DEPLOYMENT.md),
 and [TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md) to install and use the agent.

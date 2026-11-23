@@ -8,6 +8,9 @@ the retired agent loop's stream from before the migration (Phase 0c). These base
 kept in version control and must not be regenerated. The guard test diffs the two sets event-for-event; the streams are
 byte-identical modulo `usage` cadence (old loop: one per LLM call, mid-turn; engine: one per
 SDK response, post-result). This is the one accepted difference from the migration.
+The assistant's greeting was revised after the migration. For the welcome event, the
+guard checks the current heading, bullets, and nudge against the welcome card built from
+`knowledge/conversation/welcome.md`. The historical captures retain their original text.
 
 Normalized at capture: `seq`/timestamps/durations stripped; usage token numbers omitted;
 request/tool-call ids → `<approval-N>`/`<tc-N>`; absolute paths → `<WS>`/`<REPOS>`/`<TMP>`/
