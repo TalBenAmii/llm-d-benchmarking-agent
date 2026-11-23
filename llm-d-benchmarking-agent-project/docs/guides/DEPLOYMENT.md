@@ -2,7 +2,8 @@
 
 Run the agent directly on a development machine or deploy it to Kubernetes with Helm.
 The local `kind` deployment is the recommended proof-of-concept setup. This guide covers
-both options, configuration, secrets, RBAC, and monitoring.
+both browser deployment options, configuration, secrets, RBAC, and monitoring. To run
+the tools directly in Codex CLI or Claude Code, follow the [local MCP setup](../reference/MCP.md).
 
 See the [root README](../../../README.md) for the design overview. Deployment guidance used
 by the agent lives in [`knowledge/reference/packaging.md`](../../knowledge/reference/packaging.md).
@@ -20,10 +21,11 @@ the one the kind/sim quickstart uses.
   if it's missing, and it fetches a matching Python 3.11 itself. Plus whatever the agent installs for
   you (Docker + the kind binary via the vetted `scripts/install/install_prereqs.sh`, and the benchmark repo's
   toolchain via `install.sh`).
-- A Claude subscription login for the `claude-agent-sdk` provider (the only supported one):
+- For the default Claude browser engine, use a Claude subscription login:
   the local `claude` CLI logged in, or a `claude setup-token` token in
   `CLAUDE_CODE_OAUTH_TOKEN`. Without it the server still boots and the deterministic
-  test/validation paths run.
+  test/validation paths run. For the local Codex browser engine, follow the
+  [ChatGPT subscription setup](../../README.md#run-with-codex-and-your-chatgpt-subscription).
 
 ### Run it
 The quickest way: `scripts/run.sh` syncs the venv from `uv.lock` (via `uv sync`), ensures a `.env`,
@@ -47,7 +49,7 @@ uv run uvicorn app.main:app --reload
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_PROVIDER` | `claude-agent-sdk` | Must be a `claude-agent-sdk` alias: your Claude Pro/Max plan via the local `claude` CLI login or a `claude setup-token` token, no API key (`scripts/install/setup-claude-plan.sh` wires it interactively). Anything else fails readiness. |
+| `LLM_PROVIDER` | `claude-agent-sdk` | Browser engine. For Claude, run `scripts/install/setup-claude-plan.sh`. For Codex on the local server, run `scripts/install/setup-codex-plan.sh` to select `codex-sdk` and sign in with ChatGPT. |
 | `AGENT_SDK_MODEL` / `AGENT_SDK_EFFORT` | `claude-sonnet-5` / `high` | Model + reasoning effort for the `claude-agent-sdk` route. |
 | `REPOS_DIR` | parent of the project | Where the `llm-d` / `llm-d-benchmark` repos are (or will be cloned). |
 | `WORKSPACE_DIR` | `./workspace` | Runtime scratch (sessions, configs, logs, history). |

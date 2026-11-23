@@ -5,6 +5,9 @@ them. It covers the MVP, roadmap phases 0-66, token tracking, and subsequent fix
 backend features are checked through HTTP, WebSocket, cluster, or CI interfaces rather
 than through the chat UI.
 
+Codex CLI and Claude Code can also run the benchmarking tools through the local MCP
+server. The [MCP guide](MCP.md) includes a read-only catalog query to verify the connection.
+
 Legend for the "How to see / verify" column:
 - 🟢 verified in the recorded live checks: exercised against the running app and the output observed (see the [Evidence log](#evidence-log) at the bottom).
 - 🔵 driveable in the browser/cluster: observable by using the chat UI or a kind cluster (needs the LLM key, when configured, and/or a cluster).

@@ -7,7 +7,7 @@ Useful links:
 
 - **Get started:** [Quick start](../README.md#quick-start)
 - **Features and verification:** [`docs/reference/FEATURES.md`](docs/reference/FEATURES.md)
-- **MCP server for Claude Code:** [`docs/reference/MCP.md`](docs/reference/MCP.md)
+- [Use the MCP server from Codex CLI or Claude Code](docs/reference/MCP.md)
 - **Documentation index:** [`docs/README.md`](docs/README.md)
 
 ## Run with Codex and your ChatGPT subscription

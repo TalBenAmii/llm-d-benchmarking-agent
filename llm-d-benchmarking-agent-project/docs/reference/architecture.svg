@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" id="updated-hld" class="architecture-diagram" width="1320" height="740" viewBox="0 140 1320 740" role="img" aria-labelledby="title desc">
-<title id="title">llm-d Benchmarking Assistant — simplified high-level design</title><desc id="desc">A browser assistant connects to an external model provider and shared tools. MCP clients also access the tools. Project knowledge and the llm-d, llm-d-skills, and llm-d-benchmark repositories guide the workflow. Execution controls lead to benchmark harnesses testing an llm-d deployment. Reports are validated, analyzed, saved, and explained in chat.</desc>
+<title id="title">llm-d Benchmarking Assistant — simplified high-level design</title><desc id="desc">A browser assistant connects to an external model provider and shared tools. Codex CLI and Claude Code also access the tools over local stdio. Project knowledge and the llm-d, llm-d-skills, and llm-d-benchmark repositories guide the workflow. Execution controls lead to benchmark harnesses testing an llm-d deployment. Reports are validated, analyzed, saved, and explained in chat.</desc>
 <style>#updated-hld text{font-family:Arial,Helvetica,sans-serif}#updated-hld .bg{fill:#fff}#updated-hld .box{fill:#fff;stroke:#173448;stroke-width:1.5}#updated-hld .box-up{fill:#f4f0fa;stroke:#66578c;stroke-width:1.5;stroke-dasharray:6 5}#updated-hld .box-ext{fill:#fff;stroke:#587082;stroke-width:1.4;stroke-dasharray:6 5}#updated-hld .box-gate{fill:#faf5e9;stroke:#997128;stroke-width:1.5}#updated-hld .container{fill:#eff6f8;stroke:#c7d9e3;stroke-width:1.4}#updated-hld .bt{font-size:20px;font-weight:700;fill:#173448}#updated-hld .bs{font-size:16px;fill:#587082}#updated-hld .label{font-size:14px;letter-spacing:1.6px;fill:#587082}#updated-hld .kicker{font-size:16px;letter-spacing:2px;font-weight:700;fill:#126b70}#updated-hld .heading{font-size:40px;font-weight:700;fill:#173448}#updated-hld .lead{font-size:22px;fill:#587082}#updated-hld .note{font-size:16px;fill:#587082}#updated-hld .accent{font-size:18px;fill:#126b70}#updated-hld .wire{stroke:#173448;stroke-width:1.7;fill:none}#updated-hld .wire-soft{stroke:#587082;stroke-width:1.5;fill:none;stroke-dasharray:5 5}#updated-hld .wire-ret{stroke:#126b70;stroke-width:2;fill:none;stroke-dasharray:8 6}
 </style>
 <defs>
@@ -43,7 +43,7 @@
 <path class="wire" d="M250 370 H328" marker-end="url(#arr)" marker-start="url(#arr)"/>
 <rect class="box-ext" x="55" y="455" width="195" height="80" rx="10"/>
 <text class="bt" x="152.5" y="490.0" text-anchor="middle">MCP clients</text>
-<text class="bs" x="152.5" y="516.0" text-anchor="middle">via llm-d-bench-mcp</text>
+<text class="bs" x="152.5" y="516.0" text-anchor="middle">Codex CLI / Claude Code</text>
 <path class="wire" d="M250 495 H328" marker-end="url(#arr)" marker-start="url(#arr)"/>
 <rect class="box-up" x="950" y="270" width="330" height="335" rx="10"/>
 <text class="label" x="975" y="300" text-anchor="start">UPSTREAM REPOSITORIES</text>

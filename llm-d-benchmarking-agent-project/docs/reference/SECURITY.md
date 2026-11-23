@@ -34,7 +34,12 @@ referenced. It is not a roadmap.
                            └──────────────────────────────────────────────┘
 ```
 
-Three boundaries matter:
+For the standalone MCP server, Codex CLI or Claude Code authorizes each tool call according
+to the client's permission settings. A single call can run multiple commands with the user's
+local credentials. The Codex installer configures a fresh registration to prompt for every
+tool call. See the [MCP guide](MCP.md).
+
+Three boundaries matter for the browser application:
 
 1. **Browser ↔ backend.** The browser is untrusted and never receives secrets (LLM API
    keys, HF token). It can only send chat messages and approve/deny proposed

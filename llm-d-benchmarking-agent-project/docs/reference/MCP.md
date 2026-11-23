@@ -1,23 +1,40 @@
-# MCP server: moved to its own repo
+# Use the benchmarking tools from Codex CLI or Claude Code
 
-The standalone MCP server (`llm-d-bench`) that re-exposes this agent's tools, knowledge, and
-workflow to external MCP clients (Claude Code, Claude Desktop, Cursor, …) now lives in its own
-repository:
+The `llm-d-bench` MCP server lets either CLI use the agent's tools, knowledge resources,
+and workflow prompts. The CLI starts the server locally over stdio and supplies the model
+and login. The browser app's `LLM_PROVIDER` setting applies only to browser sessions.
 
-[TalBenAmii/llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)
+## Install and verify
 
-Install it with one command (it clones this engine repo at latest `main`, builds a venv, and
-registers the server with Claude Code):
+Choose the command for your client. The installer fetches the engine and its sibling
+repositories and installs the server in the agent project's virtual environment.
+
+**Codex CLI.** Install the `codex` executable first and sign in to Codex.
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-bench-mcp/main/scripts/install.sh) --client codex
+codex mcp get llm-d-bench
+```
+
+Start a new Codex session and open `/mcp` to check that `llm-d-bench` is connected.
+Ask “Use llm-d-bench to list the available benchmark harnesses.” The catalog is read-only
+and works without a cluster. A fresh registration configures Codex to prompt for each tool
+call, including this one, and allows up to one hour for a benchmark tool to return.
+
+**Claude Code (default).** Run the installer and select the Claude Code registration when
+prompted. Use your Claude Code login and check the registration with `claude mcp list`.
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-bench-mcp/main/scripts/install.sh)
 ```
 
-This engine's own `./scripts/install/install_local.sh` now sets the MCP server up by default as well
-(registers `llm-d-bench`; opt out with `--no-mcp`). Conversely, the one-liner above installs the
-web UI into the shared venv too (`cd <engine> && ./scripts/run.sh --open` → http://127.0.0.1:8000),
-so either installer leaves you with both front-ends.
+## If you already installed the agent
 
-That repo documents the tools, prompts, resources, manual configuration, security model, and
-design. The server uses this project as an editable install; the `app.*` import
-surface it relies on is guarded here by `tests/platform/test_mcp_import_surface.py`.
+The agent's `scripts/install/install_local.sh` installs the MCP server and attempts to
+register it with Claude Code by default (`--no-mcp` skips this step). To add Codex to an
+existing installation, register the same executable in Codex and apply the documented
+approval and timeout settings. See [manual Codex setup](https://github.com/TalBenAmii/llm-d-bench-mcp#manual-config-codex-cli).
+
+The server runs with your local kubeconfig. Each allowed tool call can execute several
+commands, so review tool permissions in the CLI you use. For the tool list, workflow
+prompts, and approval behavior, see the [MCP server README](https://github.com/TalBenAmii/llm-d-bench-mcp#what-your-agent-gets).

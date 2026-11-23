@@ -13,10 +13,9 @@ interfaces, shared tools, all three upstream repositories, and benchmark environ
 The backend runs locally or as an in-cluster service; Codex subscription setup is
 currently documented for the local path.
 
-
-The standalone MCP client owns its conversation and command permissions. It does not use
-the application's browser session loop. Shared handlers and knowledge avoid duplicating
-benchmark implementation between interfaces.
+Codex CLI and Claude Code can each launch the standalone MCP server over stdio. The CLI
+owns the conversation, model login, and tool permissions. The server dispatches calls to
+the same handlers and knowledge used by the browser engines. See [MCP setup](MCP.md).
 
 ## Components (by layer)
 

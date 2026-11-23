@@ -51,17 +51,26 @@ the official Codex Python SDK. In the project directory, run `uv sync`, then
 ChatGPT login and selects Codex in `.env`. See the
 [Codex setup and configuration](llm-d-benchmarking-agent-project/README.md#run-with-codex-and-your-chatgpt-subscription).
 
-## Use it from Claude Code (MCP)
+<a id="use-it-from-claude-code-mcp"></a>
 
-[`llm-d-bench-mcp`](https://github.com/TalBenAmii/llm-d-bench-mcp)
-exposes the same tools and knowledge as an MCP server. One command installs and registers it
-(the local installer above already does this by default):
+## Use it from Codex CLI or Claude Code (MCP)
+
+Your CLI can run the benchmarking tools through a local MCP server. It supplies the model,
+login, and tool approval prompts. You can use it without starting the browser app.
+
+With Codex CLI installed, run the MCP installer.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-bench-mcp/main/scripts/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/TalBenAmii/llm-d-bench-mcp/main/scripts/install.sh) --client codex
 ```
 
-It authenticates through your `claude` CLI login, without an API key.
+Start a new Codex session, open `/mcp`, and look for `llm-d-bench`. Try asking
+“Which benchmark harnesses are available?” to check the connection without a cluster.
+
+For Claude Code, run the same installer without the flag. The agent's local installer
+also attempts to register the server with Claude Code by default.
+See the [MCP setup guide](llm-d-benchmarking-agent-project/docs/reference/MCP.md) for existing installations
+and the [MCP server README](https://github.com/TalBenAmii/llm-d-bench-mcp) for tools and prompts.
 
 ## How a session goes
 

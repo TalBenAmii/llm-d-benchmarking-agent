@@ -8,7 +8,8 @@ For what's under the hood, see [`ARCHITECTURE.md`](../reference/ARCHITECTURE.md)
 
 ## Install & run
 
-Choose one of these two installation methods. Full instructions are in [`DEPLOYMENT.md`](DEPLOYMENT.md):
+To benchmark from Codex CLI or Claude Code, follow the [MCP setup guide](../reference/MCP.md).
+For the browser chat, choose one of the two installations below. See the [deployment guide](DEPLOYMENT.md).
 
 **One command (recommended POC).** Builds the image, deploys to a local
 [kind](https://kind.sigs.k8s.io/) cluster, and opens the chat UI. It auto-installs missing

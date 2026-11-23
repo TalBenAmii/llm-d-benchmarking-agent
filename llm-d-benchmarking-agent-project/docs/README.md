@@ -19,7 +19,7 @@ For development, see [ARCHITECTURE.md](reference/ARCHITECTURE.md), [API.md](refe
 | [GPU_CLUSTER_RUNBOOK.md](guides/GPU_CLUSTER_RUNBOOK.md) | end users / operators | Real single-GPU cluster (minikube + NVIDIA): setup, a tiny-model scenario, what's real vs simulated on one card. |
 | [VALIDATION.md](reference/VALIDATION.md) | contributors | The flow-validation harness: proving the agent runs the right commands. |
 | [SDK_NATIVE_ENGINE.md](reference/SDK_NATIVE_ENGINE.md) | engineers / reviewers | Design and implementation record for the SDK-native engine: decisions, initial findings, architecture, and migration results. |
-| [MCP.md](reference/MCP.md) | Claude Code users | Pointer to the split-out `llm-d-bench` MCP server repo ([llm-d-bench-mcp](https://github.com/TalBenAmii/llm-d-bench-mcp)). |
+| [MCP.md](reference/MCP.md) | Codex CLI and Claude Code users | Install the local server, verify the connection, and add a client to an existing installation. |
 | [SECURITY.md](reference/SECURITY.md) | operators / reviewers | Threat model: trust boundaries, command policy/approvals, secret scrubbing, exposure guidance. |
 | [TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md) | operators | Symptom → what to check; debug mode; structured logs; readiness/metrics endpoints. |
 | [INTERACTIVE_TEST_GUIDE.md](guides/INTERACTIVE_TEST_GUIDE.md) | contributors / testers | Follow-along runbook to drive every feature by hand with a real LLM. |

@@ -11,7 +11,8 @@ Choose an installer based on where the agent will run. See [DEPLOYMENT.md](DEPLO
 - `scripts/install/install_local.sh`: the agent on your laptop/dev box (a `.venv` +
   `./scripts/run.sh`): clones the 3 sibling repos, installs the client toolchain +
   `llmdbenchmark` CLI + this app's venv + `.env` + MCP server. Debian/Ubuntu; optional
-  `--prereqs` for Docker+kind.
+  `--prereqs` for Docker+kind. Its MCP registration targets Claude Code. For Codex CLI,
+  see [MCP setup](../reference/MCP.md).
 - `scripts/install/install_service.sh`: the agent as a Pod: `helm upgrade --install` of the
   pre-built published image into an existing cluster, with a namespace-scoped SA +
   least-privilege RBAC. Needs `kubectl` + `helm` + a reachable cluster.
