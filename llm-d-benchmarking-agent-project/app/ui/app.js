@@ -626,15 +626,29 @@ function readStoredPick() {
 function persistPick() { try { localStorage.setItem(LLM_PICK_KEY, JSON.stringify(llmPick)); } catch (e) {} }
 
 // Fetch the provider catalog, then reconcile against the `ready` frame's echoed override.
-// Called on boot and on every (re)connect.
-async function loadProviderBadge() {
+// Called on boot, on every (re)connect, and when opening the model picker.
+async function loadProviderBadge(preservePick = false) {
   if (!llmBadge) return;
   try {
     const r = await fetch("/api/provider");
     if (!r.ok) return;
     providerData = await r.json();
   } catch (e) { return; }   // offline — leave the badge as-is
-  reconcilePick();
+  if (preservePick && llmPick) {
+    // Catalog updates must not change the model already selected for this chat.
+    renderBadge();
+    if (modelPopover && !modelPopover.hidden) {
+      const focused = document.activeElement;
+      const modelId = focused && focused.dataset.modelId;
+      const effort = focused && focused.dataset.effort;
+      renderPopover();
+      const replacement = menuItems().find((item) =>
+        (modelId && item.dataset.modelId === modelId) || (effort && item.dataset.effort === effort));
+      if (replacement) focusMenuItem(replacement);
+    }
+  } else {
+    reconcilePick();
+  }
 }
 
 // Seed the badge's selection from the two async inputs — the provider catalog (labels/efforts) and
@@ -707,6 +721,7 @@ function renderPopover() {
     const sel = m.id === llmPick.model;
     const row = el("button", "mp-model");
     row.type = "button";
+    row.dataset.modelId = m.id;
     row.setAttribute("role", "menuitemradio");
     row.setAttribute("aria-checked", sel ? "true" : "false");
     row.tabIndex = sel ? 0 : -1;               // roving focus: the checked model is the menu's tabstop
@@ -724,6 +739,7 @@ function renderPopover() {
     if (!efforts.includes(level)) continue;
     const seg = el("button", "mp-effort", level);
     seg.type = "button";
+    seg.dataset.effort = level;
     seg.setAttribute("role", "menuitemradio");
     seg.setAttribute("aria-checked", level === llmPick.effort ? "true" : "false");
     seg.tabIndex = -1;                         // the checked model owns the initial tabstop
@@ -773,6 +789,7 @@ function openPopover() {
   llmBadge.setAttribute("aria-expanded", "true");
   const first = mpModels.querySelector('[aria-checked="true"]') || mpModels.querySelector(".mp-model");
   if (first) first.focus();
+  loadProviderBadge(true);
 }
 function closePopover(focusBadge) {
   if (!modelPopover || modelPopover.hidden) return;

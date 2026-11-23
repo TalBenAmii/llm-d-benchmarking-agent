@@ -24,7 +24,10 @@ a headless host. It selects `LLM_PROVIDER=codex-sdk` in `.env`; no OpenAI API ke
 Usage counts against your ChatGPT plan's Codex allowance.
 
 `CODEX_MODEL` defaults to `gpt-6.1-sol`, and `CODEX_EFFORT` to `medium`. The browser's
-model picker gets its model and effort choices from Codex at startup. A completed turn
+model picker gets its model and effort choices from Codex. Opening the picker refreshes
+the catalog, cached for up to one minute, without changing the current selection.
+New models appear when the configured Codex runtime exposes them; keep the SDK updated
+for models that require a newer runtime. A completed turn
 verifies access to the selected model. `/readyz` also checks that Codex has a ChatGPT login.
 After logging in or changing the provider, restart the server.
 

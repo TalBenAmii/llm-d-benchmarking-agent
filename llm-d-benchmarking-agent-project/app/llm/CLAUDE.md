@@ -5,6 +5,10 @@ catalog and provider alias sets. `codex_options.py` configures the official Code
 SDK, requires a ChatGPT subscription login, disables independent execution tools,
 and discovers model choices without exposing account identity. Unsupported providers
 fail readiness; Codex readiness also checks the login at server startup.
+Codex discovery reads every `model/list` page. `/api/provider` refreshes its catalog
+under a shared lock with a 60-second cache; a failed refresh retains the last usable
+catalog. Opening the browser picker requests fresh metadata without changing the
+selected model. The bundled CLI version comes from the pinned `openai-codex` SDK.
 
 ## Key files
 - `sdk_options.py` — pure helpers the engine builds its `ClaudeAgentOptions` from:

@@ -51,7 +51,7 @@ def provider_view(settings: Settings, codex: dict[str, Any] | None = None) -> di
     the switchable-model picker's data source.
 
     Claude uses the curated model catalog; Codex uses account-free runtime metadata
-    from startup discovery. Never expose a key, account identity, or raw error text."""
+    from cached SDK discovery. Never expose a key, account identity, or raw error text."""
     provider = (settings.llm_provider or "claude-agent-sdk").lower()
     if provider in CODEX_PROVIDERS:
         runtime = codex or {}

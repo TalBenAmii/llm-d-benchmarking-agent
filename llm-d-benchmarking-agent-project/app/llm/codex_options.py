@@ -7,7 +7,7 @@ from typing import Any
 
 from openai_codex import CodexConfig
 from openai_codex.client import CodexClient
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.config import Settings
 
@@ -45,6 +45,11 @@ class _ConfigResponse(BaseModel):
     config: dict[str, Any]
 
 
+class _ModelCatalogPage(BaseModel):
+    data: list[dict[str, Any]]
+    next_cursor: str | None = Field(default=None, alias="nextCursor")
+
+
 def isolated_thread_config(client: CodexClient) -> dict[str, Any]:
     # Empty tables merge with user settings. Explicitly disable every inherited
     # MCP server so it cannot bypass the application's approval boundary.
@@ -71,13 +76,30 @@ async def discover_codex(settings: Settings) -> dict[str, Any]:
         client.start()
         client.initialize()
         require_chatgpt(client)
-        data = client.model_list().model_dump(mode="json", by_alias=True)
-        return {"authenticated": True, "models": [
-            {"id": m["model"], "label": m["displayName"],
-             "efforts": [e["reasoningEffort"] for e in m["supportedReasoningEfforts"]
-                         if e["reasoningEffort"] != "ultra"]}
-            for m in data["data"]
-        ]}
+        models: dict[str, dict[str, Any]] = {}
+        cursor = None
+        seen_cursors: set[str] = set()
+        while True:
+            # The SDK's model_list convenience method only returns the first page.
+            page = client.request(
+                "model/list", {"includeHidden": False, "cursor": cursor},
+                response_model=_ModelCatalogPage,
+            )
+            for model in page.data:
+                if model.get("hidden"):
+                    continue
+                models[model["model"]] = {
+                    "id": model["model"], "label": model["displayName"],
+                    "efforts": [e["reasoningEffort"] for e in model["supportedReasoningEfforts"]
+                                if e["reasoningEffort"] != "ultra"],
+                }
+            cursor = page.next_cursor
+            if not cursor:
+                break
+            if cursor in seen_cursors:
+                raise RuntimeError("Repeated model catalog cursor")
+            seen_cursors.add(cursor)
+        return {"authenticated": True, "models": list(models.values())}
 
     try:
         return await asyncio.wait_for(asyncio.to_thread(probe), timeout=20)

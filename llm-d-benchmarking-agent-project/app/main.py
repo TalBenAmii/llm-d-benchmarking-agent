@@ -11,6 +11,7 @@ import contextlib
 import json
 import logging
 import signal
+import time
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +76,7 @@ from app.web import redact_share_items as _redact_share_items
 
 # Prometheus text exposition content type (v0.0.4); scrapers and Grafana expect exactly this.
 _PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+_CODEX_CATALOG_TTL = 60.0
 
 log = logging.getLogger("app.main")
 
@@ -121,6 +123,8 @@ async def lifespan(app: FastAPI):
         (settings.llm_provider or "claude-agent-sdk").lower() in SUPPORTED_PROVIDERS)
     app.state.codex = (await discover_codex(settings)
                        if settings.llm_provider.lower() in CODEX_PROVIDERS else {})
+    app.state.codex_catalog_checked_at = time.monotonic()
+    app.state.codex_catalog_lock = asyncio.Lock()
     # Workspace lifecycle (Phase 18): run the startup configuration self-check (structured
     # pass/fail folded into /readyz) and a one-shot retention GC over scratch. Both honor their
     # toggles + the DATA caps; GC never prunes a session that is currently live/running.
@@ -271,11 +275,23 @@ async def list_running_sessions() -> JSONResponse:
 
 @app.get("/api/provider")
 async def provider_info() -> JSONResponse:
-    """The active LLM provider + model for the header badge — plus whether the provider
-    actually built at startup, so the UI can show "LLM not configured" instead of leaving
-    the failure to surface at the first chat message. No secrets, no account identity.
-    ``getattr``: same no-lifespan defense as graceful_shutdown (a bare read would 500)."""
-    return JSONResponse(provider_view(get_settings(), getattr(app.state, "codex", {})))
+    """Provider metadata and model choices, refreshing Codex at most once per minute.
+
+    Retain the last successful discovery on failure. No secrets or account identity.
+    The state guards also support callers that do not run the application lifespan.
+    """
+    settings = get_settings()
+    if (settings.llm_provider.lower() in CODEX_PROVIDERS
+            and hasattr(app.state, "codex_catalog_lock")):
+        async with app.state.codex_catalog_lock:
+            if time.monotonic() - app.state.codex_catalog_checked_at >= _CODEX_CATALOG_TTL:
+                fresh = await discover_codex(settings)
+                # Keep the last usable catalog if discovery temporarily fails. Model
+                # availability and authentication are still enforced by the SDK at execution.
+                if fresh.get("authenticated") or not app.state.codex.get("models"):
+                    app.state.codex = fresh
+                app.state.codex_catalog_checked_at = time.monotonic()
+    return JSONResponse(provider_view(settings, getattr(app.state, "codex", {})))
 
 
 def _teardown_session_runtime(sid: str) -> None:
@@ -995,7 +1011,9 @@ async def ws(websocket: WebSocket) -> None:
                         if switchable else None)
                 if settings.llm_provider.lower() in CODEX_PROVIDERS:
                     selected = next((m for m in getattr(app.state, "codex", {}).get("models", [])
-                                     if m["id"] == msg.model and msg.effort in m["efforts"]), None)
+                                     if m["id"] == msg.model
+                                     and (msg.effort in m["efforts"] if m["efforts"]
+                                          else msg.effort is None)), None)
                     info = (ModelInfo(selected["id"], selected["label"], tuple(selected["efforts"]))
                             if selected else None)
                 if info is None:
